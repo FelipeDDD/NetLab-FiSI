@@ -5,6 +5,8 @@ import { NODE_H, NODE_W } from './DeviceNode';
 const COLORS: Record<string, string> = {
   arp: '#f59e0b',
   icmp: '#38bdf8',
+  tcp: '#34d399',
+  udp: '#c084fc',
 };
 
 // Animated dots for frames in flight. Packets travel the centre line

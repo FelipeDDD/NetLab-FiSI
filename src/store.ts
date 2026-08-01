@@ -75,6 +75,14 @@ interface NetsimState {
   toggleIface(deviceId: string, ifaceName: string): void;
   setServices(deviceId: string, proto: 'tcp' | 'udp', text: string): string | null;
   copyDeviceConfig(deviceId: string): void;
+  setNameserver(deviceId: string, text: string): string | null;
+  toggleDhcpServer(deviceId: string): void;
+  setDhcpField(deviceId: string, field: 'rangeStart' | 'rangeEnd' | 'router' | 'dns', text: string): string | null;
+  toggleDnsServer(deviceId: string): void;
+  setDnsRecords(deviceId: string, text: string): string | null;
+  toggleHttpServer(deviceId: string): void;
+  setHttpPort(deviceId: string, text: string): string | null;
+  setHttpBody(deviceId: string, text: string): void;
   openTerminal(id: string): void;
   closeTerminal(id: string): void;
   setActiveTerminal(id: string): void;
@@ -289,6 +297,127 @@ export const useStore = create<NetsimState>()((set, get) => {
         .catch(() => get().setNotice('Could not access clipboard'));
     },
 
+    setNameserver(deviceId, text) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice)) return 'not an IP device';
+      const trimmed = text.trim();
+      if (trimmed === '') {
+        d.nameserver = null;
+      } else {
+        const ip = parseIp(trimmed);
+        if (ip === null) return 'invalid nameserver address';
+        d.nameserver = ip;
+      }
+      get().refresh();
+      saveSoon();
+      return null;
+    },
+
+    toggleDhcpServer(deviceId) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice)) return;
+      if (!d.dhcpServer) {
+        // Sensible defaults derived from the first addressed interface.
+        const iface = d.interfaces.find((i) => i.ip);
+        const base = iface?.ip ? (iface.ip.addr & 0xffffff00) >>> 0 : parseIp('192.168.0.0')!;
+        d.dhcpServer = {
+          enabled: true,
+          rangeStart: (base | 100) >>> 0,
+          rangeEnd: (base | 150) >>> 0,
+          router: iface?.ip?.addr ?? null,
+          dns: d.nameserver,
+          leases: new Map(),
+        };
+      } else {
+        d.dhcpServer.enabled = !d.dhcpServer.enabled;
+      }
+      get().refresh();
+      saveSoon();
+    },
+
+    setDhcpField(deviceId, field, text) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice) || !d.dhcpServer) return 'DHCP server not enabled';
+      const trimmed = text.trim();
+      if (field === 'router' || field === 'dns') {
+        if (trimmed === '') {
+          d.dhcpServer[field] = null;
+        } else {
+          const ip = parseIp(trimmed);
+          if (ip === null) return 'invalid address';
+          d.dhcpServer[field] = ip;
+        }
+      } else {
+        const ip = parseIp(trimmed);
+        if (ip === null) return 'invalid address';
+        d.dhcpServer[field] = ip;
+      }
+      get().refresh();
+      saveSoon();
+      return null;
+    },
+
+    toggleDnsServer(deviceId) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice)) return;
+      if (!d.dnsServer) d.dnsServer = { enabled: true, records: new Map() };
+      else d.dnsServer.enabled = !d.dnsServer.enabled;
+      get().refresh();
+      saveSoon();
+    },
+
+    setDnsRecords(deviceId, text) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice) || !d.dnsServer) return 'DNS server not enabled';
+      const records = new Map<string, number>();
+      for (const line of text.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const [addr, name] = trimmed.split(/\s+/);
+        const ip = parseIp(addr ?? '');
+        if (ip === null || !name) return `invalid hosts line: "${trimmed}" (use: <ip> <name>)`;
+        records.set(name.toLowerCase(), ip);
+      }
+      d.dnsServer.records = records;
+      get().refresh();
+      saveSoon();
+      return null;
+    },
+
+    toggleHttpServer(deviceId) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice)) return;
+      if (!d.httpServer) {
+        d.httpServer = {
+          enabled: true,
+          port: 80,
+          body: `<html><body><h1>Hello from ${d.name}</h1></body></html>`,
+        };
+      } else {
+        d.httpServer.enabled = !d.httpServer.enabled;
+      }
+      get().refresh();
+      saveSoon();
+    },
+
+    setHttpPort(deviceId, text) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice) || !d.httpServer) return 'web server not enabled';
+      const port = Number(text.trim());
+      if (!Number.isInteger(port) || port < 1 || port > 65535) return 'invalid port';
+      d.httpServer.port = port;
+      get().refresh();
+      saveSoon();
+      return null;
+    },
+
+    setHttpBody(deviceId, text) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice) || !d.httpServer) return;
+      d.httpServer.body = text;
+      saveSoon();
+    },
+
     openTerminal(id) {
       const d = sim.net.devices.get(id);
       if (!d || !(d instanceof IpDevice)) return;
@@ -374,25 +503,49 @@ export const useStore = create<NetsimState>()((set, get) => {
       get().newTopology();
       const net = sim.net;
       const pc1 = createDevice(net, 'host') as IpDevice;
+      const pc2 = createDevice(net, 'host') as IpDevice;
       const sw1 = createDevice(net, 'switch');
       const r1 = createDevice(net, 'router') as IpDevice;
-      const pc2 = createDevice(net, 'host') as IpDevice;
+      const srv1 = createDevice(net, 'server') as IpDevice;
       net.connect(pc1.id, sw1.id);
-      net.connect(sw1.id, r1.id);
-      net.connect(r1.id, pc2.id);
+      net.connect(pc2.id, sw1.id);
+      net.connect(sw1.id, r1.id); // r1 eth0 = LAN side
+      net.connect(r1.id, srv1.id); // r1 eth1 = server side
       pc1.getInterface('eth0')!.ip = parseCidr('192.168.1.10/24');
-      // eth0 was claimed by the switch link, eth1 by the pc2 link (connect order above).
+      // pc2 is left unconfigured on purpose: run `dhclient` on it.
       r1.getInterface('eth0')!.ip = parseCidr('192.168.1.1/24');
       r1.getInterface('eth1')!.ip = parseCidr('10.0.0.1/24');
-      pc2.getInterface('eth0')!.ip = parseCidr('10.0.0.20/24');
+      srv1.getInterface('eth0')!.ip = parseCidr('10.0.0.20/24');
       pc1.addRoute(0, 0, parseIp('192.168.1.1')!);
-      pc2.addRoute(0, 0, parseIp('10.0.0.1')!);
+      srv1.addRoute(0, 0, parseIp('10.0.0.1')!);
+      pc1.nameserver = parseIp('10.0.0.20');
+      r1.dhcpServer = {
+        enabled: true,
+        rangeStart: parseIp('192.168.1.100')!,
+        rangeEnd: parseIp('192.168.1.150')!,
+        router: parseIp('192.168.1.1'),
+        dns: parseIp('10.0.0.20'),
+        leases: new Map(),
+      };
+      srv1.dnsServer = {
+        enabled: true,
+        records: new Map([
+          ['web.lan', parseIp('10.0.0.20')!],
+          ['pc1.lan', parseIp('192.168.1.10')!],
+        ]),
+      };
+      srv1.httpServer = {
+        enabled: true,
+        port: 80,
+        body: '<html><body><h1>It works!</h1><p>Served by srv1 over simulated TCP.</p></body></html>',
+      };
       set({
         nodes: [
-          deviceNode(pc1.id, 'host', pc1.name, 80, 220),
-          deviceNode(sw1.id, 'switch', sw1.name, 300, 220),
-          deviceNode(r1.id, 'router', r1.name, 520, 220),
-          deviceNode(pc2.id, 'host', pc2.name, 740, 220),
+          deviceNode(pc1.id, 'host', pc1.name, 60, 120),
+          deviceNode(pc2.id, 'host', pc2.name, 60, 320),
+          deviceNode(sw1.id, 'switch', sw1.name, 290, 220),
+          deviceNode(r1.id, 'router', r1.name, 510, 220),
+          deviceNode(srv1.id, 'server', srv1.name, 730, 220),
         ],
         edges: edgesFromEngine(),
       });

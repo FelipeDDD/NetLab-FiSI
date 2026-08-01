@@ -1,6 +1,7 @@
 import type { IpDevice } from '../engine/ipdevice';
-import { ipToString, parseIp } from '../engine/ip';
+import { ipToString, type U32 } from '../engine/ip';
 import type { Running } from './shell';
+import { resolveHost } from './resolve';
 
 const PROBES_PER_HOP = 3;
 const PROBE_TIMEOUT_MS = 1500;
@@ -23,7 +24,7 @@ export function runTraceroute(
         return null;
       }
     } else if (a.startsWith('-')) {
-      write(`traceroute: netsim supports only: traceroute [-m max_hops] <ip>  (got "${a}")\n`);
+      write(`traceroute: netsim supports only: traceroute [-m max_hops] <host>  (got "${a}")\n`);
       done();
       return null;
     } else {
@@ -31,17 +32,29 @@ export function runTraceroute(
     }
   }
   if (!target) {
-    write('usage: traceroute [-m max_hops] <destination ip>\n');
-    done();
-    return null;
-  }
-  const ip = parseIp(target);
-  if (ip === null) {
-    write(`traceroute: ${target}: Name or service not known\n`);
+    write('usage: traceroute [-m max_hops] <destination>\n');
     done();
     return null;
   }
 
+  let cancelFn: (() => void) | undefined;
+  const resolver = resolveHost(device, target, (res) => {
+    if ('error' in res) {
+      write(`traceroute: ${res.error}\n`);
+      done();
+      return;
+    }
+    cancelFn = start(res.ip);
+  });
+  if (!cancelFn) {
+    cancelFn = () => {
+      resolver.cancel();
+      done();
+    };
+  }
+  return { cancel: () => cancelFn!() };
+
+  function start(ip: U32): () => void {
   const sched = device.network.scheduler;
   const id = device.allocIcmpId();
   let finished = false;
@@ -55,7 +68,7 @@ export function runTraceroute(
   let hopReached = false;
   let sendTime = 0;
 
-  write(`traceroute to ${target} (${target}), ${maxHops} hops max, 60 byte packets\n`);
+  write(`traceroute to ${target} (${ipToString(ip)}), ${maxHops} hops max, 60 byte packets\n`);
 
   const cleanup = () => {
     if (finished) return;
@@ -145,5 +158,6 @@ export function runTraceroute(
   };
 
   sendProbe();
-  return { cancel: cleanup };
+  return cleanup;
+  }
 }

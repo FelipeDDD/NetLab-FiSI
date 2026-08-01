@@ -3,6 +3,7 @@
 export type U32 = number;
 
 export const BROADCAST_MAC = 'ff:ff:ff:ff:ff:ff';
+export const BROADCAST_IP: U32 = 0xffffffff;
 
 export function parseIp(s: string): U32 | null {
   const m = s.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);

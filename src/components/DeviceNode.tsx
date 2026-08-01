@@ -27,6 +27,18 @@ function Icon({ kind }: { kind: DeviceKind }) {
       </svg>
     );
   }
+  if (kind === 'server') {
+    return (
+      <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden>
+        <rect x="6" y="4" width="20" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <rect x="6" y="14" width="20" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <circle cx="10" cy="8" r="1.3" fill="currentColor" />
+        <circle cx="10" cy="18" r="1.3" fill="currentColor" />
+        <path d="M14 8h8M14 18h8" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M12 25h8M16 22v3" stroke="currentColor" strokeWidth="1.6" fill="none" />
+      </svg>
+    );
+  }
   if (kind === 'firewall') {
     return (
       <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden>

@@ -1,6 +1,6 @@
 import type { IpDevice } from '../engine/ipdevice';
-import { parseIp } from '../engine/ip';
 import type { Running } from './shell';
+import { resolveHost } from './resolve';
 
 const DEFAULT_TIMEOUT_S = 3;
 
@@ -67,13 +67,7 @@ export function runNc(
   const host = positional[0];
   const port = Number(positional[1]);
   if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
-    write('usage: nc [-u] [-z] [-w secs] <ip> <port>\n');
-    done();
-    return null;
-  }
-  const ip = parseIp(host);
-  if (ip === null) {
-    write(`nc: getaddrinfo for host "${host}" port ${port}: Name or service not known\n`);
+    write('usage: nc [-u] [-z] [-w secs] <host> <port>\n');
     done();
     return null;
   }
@@ -98,17 +92,25 @@ export function runNc(
     done();
   };
 
-  const err = udp
-    ? device.probeUdp(ip, port, timeoutS * 1000, report)
-    : device.connectTcp(ip, port, timeoutS * 1000, report);
-  if (err) {
-    write(`nc: connect to ${host} port ${port} (${proto}) failed: ${err}\n`);
-    done();
-    return null;
-  }
+  const resolver = resolveHost(device, host, (res) => {
+    if (cancelled) return;
+    if ('error' in res) {
+      write(`nc: getaddrinfo for host "${host}" port ${port}: Name or service not known\n`);
+      done();
+      return;
+    }
+    const err = udp
+      ? device.probeUdp(res.ip, port, timeoutS * 1000, report)
+      : device.connectTcp(res.ip, port, timeoutS * 1000, report);
+    if (err) {
+      write(`nc: connect to ${host} port ${port} (${proto}) failed: ${err}\n`);
+      done();
+    }
+  });
   return {
     cancel: () => {
       cancelled = true;
+      resolver.cancel();
       done();
     },
   };

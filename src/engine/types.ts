@@ -51,6 +51,52 @@ export interface IcmpL4 {
   msg: IcmpMessage;
 }
 
+// Application payloads carried inside TCP/UDP. These ride real simulated
+// packets, so DHCP/DNS/HTTP traffic animates on the wire and can be
+// firewalled like anything else.
+export type DhcpOp = 'discover' | 'offer' | 'request' | 'ack';
+
+export interface DhcpApp {
+  kind: 'dhcp';
+  op: DhcpOp;
+  xid: number;
+  clientMac: string;
+  yourIp?: U32;
+  prefix?: number;
+  router?: U32 | null;
+  dns?: U32 | null;
+  serverIp?: U32;
+}
+
+export interface DnsQueryApp {
+  kind: 'dns-query';
+  qid: number;
+  qname: string;
+}
+
+export interface DnsAnswerApp {
+  kind: 'dns-answer';
+  qid: number;
+  qname: string;
+  addr: U32 | null; // null = NXDOMAIN
+}
+
+export interface HttpRequestApp {
+  kind: 'http-request';
+  method: 'GET';
+  path: string;
+  host: string;
+}
+
+export interface HttpResponseApp {
+  kind: 'http-response';
+  status: number;
+  reason: string;
+  body: string;
+}
+
+export type AppData = DhcpApp | DnsQueryApp | DnsAnswerApp | HttpRequestApp | HttpResponseApp;
+
 export interface TcpSegment {
   kind: 'tcp';
   srcPort: number;
@@ -59,12 +105,14 @@ export interface TcpSegment {
   ack: boolean;
   rst: boolean;
   fin: boolean;
+  app?: AppData;
 }
 
 export interface UdpDatagram {
   kind: 'udp';
   srcPort: number;
   dstPort: number;
+  app?: AppData;
 }
 
 export type L4 = IcmpL4 | TcpSegment | UdpDatagram;

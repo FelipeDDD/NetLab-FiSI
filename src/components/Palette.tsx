@@ -4,6 +4,7 @@ import type { DeviceKind } from '../engine/device';
 
 const ITEMS: { kind: DeviceKind; label: string; blurb: string }[] = [
   { kind: 'host', label: 'Host', blurb: 'Linux workstation' },
+  { kind: 'server', label: 'Server', blurb: 'DHCP / DNS / web services' },
   { kind: 'switch', label: 'Switch', blurb: 'L2 learning switch' },
   { kind: 'router', label: 'Router', blurb: 'IP forwarding on' },
   { kind: 'firewall', label: 'Firewall', blurb: 'router + nftables ready' },

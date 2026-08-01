@@ -10,12 +10,18 @@ export interface WireTransfer {
   linkId: string;
   fromDeviceId: string;
   toDeviceId: string;
-  kind: 'arp' | 'icmp';
+  kind: 'arp' | 'icmp' | 'tcp' | 'udp';
   start: number;
   end: number;
 }
 
-const NAME_PREFIX: Record<DeviceKind, string> = { host: 'pc', switch: 'sw', router: 'r', firewall: 'fw' };
+const NAME_PREFIX: Record<DeviceKind, string> = {
+  host: 'pc',
+  switch: 'sw',
+  router: 'r',
+  firewall: 'fw',
+  server: 'srv',
+};
 
 export class Network {
   scheduler = new Scheduler();
@@ -114,7 +120,7 @@ export class Network {
       linkId: link.id,
       fromDeviceId: from.id,
       toDeviceId: to.id,
-      kind: frame.payload.kind === 'arp' ? 'arp' : 'icmp',
+      kind: frame.payload.kind === 'arp' ? 'arp' : frame.payload.l4.kind,
       start: this.scheduler.now,
       end: this.scheduler.now + link.latency,
     });

@@ -53,7 +53,7 @@ of phase 2.
 See [docs/DESIGN.md](docs/DESIGN.md) for the full design document and
 [docs/adr/](docs/adr/) for the architecture decision records behind these choices.
 
-## Status — phase 2 (of 6)
+## Status — phase 3 (of 6)
 
 Working now:
 
@@ -72,14 +72,25 @@ Working now:
 - **Sockets (phase 2):** minimal TCP handshake + UDP, `nc` port testing
   (open / refused / filtered), `nc -l` listeners, per-device "listening services" (lab
   targets), `ss` and `conntrack -L`
-- Inspector panel: interface state/addresses, live routing/ARP/MAC/conntrack tables, nftables
-  ruleset view with copy-as-config, firewall log
-- Autosave, JSON export/import (including firewall rules and services), shareable topology
-  URLs, demo topology
+- **Services (phase 3):** DHCP — `dhclient` runs the real DISCOVER/OFFER/REQUEST/ACK exchange
+  as broadcast packets against a configurable DHCP server (pool, gateway, DNS options, visible
+  leases) and installs the address, default route and nameserver; DNS — an A-record server
+  (hosts-file style records) queried over real udp/53 traffic by `dig [@server] [+short]`,
+  with hostname resolution wired into `ping`, `traceroute`, `nc` and `curl`; HTTP — a
+  configurable web server fetched with `curl [-v]` over the simulated TCP handshake, with
+  genuine curl error codes for refused/filtered/unresolvable. All service traffic is ordinary
+  packets: it animates on the wire (per-protocol colours) and can be firewalled — blocking
+  udp/67 kills DHCP, udp/53 kills DNS, tcp/80 kills the web. New Server device type; the demo
+  ships the full journey: `dhclient` on pc2, then `curl http://web.lan/`.
+- Inspector panel: interface state/addresses, DNS client setting, DHCP/DNS/web service
+  editors, live routing/ARP/MAC/conntrack tables, nftables ruleset view with copy-as-config,
+  firewall log
+- Autosave, JSON export/import (including firewall rules and all service configs), shareable
+  topology URLs, demo topology
 
-Roadmap (see DESIGN.md for detail): **3** DHCP, DNS, TCP/HTTP services ·
-**4** guided labs with auto-graded objectives · **5** exports (real config files,
-containerlab/docker-compose, diagrams) · **6** RIP/OSPF, VLANs, wireless.
+Roadmap (see DESIGN.md for detail): **4** guided labs with auto-graded objectives ·
+**5** exports (real config files, containerlab/docker-compose, diagrams) ·
+**6** RIP/OSPF, VLANs, wireless.
 
 ## Development
 

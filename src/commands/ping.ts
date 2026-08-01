@@ -1,6 +1,7 @@
 import type { IpDevice } from '../engine/ipdevice';
-import { ipToString, parseIp } from '../engine/ip';
+import { ipToString, type U32 } from '../engine/ip';
 import type { Running } from './shell';
+import { resolveHost } from './resolve';
 
 const INTERVAL_MS = 1000;
 const TIMEOUT_MS = 2000;
@@ -23,7 +24,7 @@ export function runPing(
         return null;
       }
     } else if (a.startsWith('-')) {
-      write(`ping: netsim supports only: ping [-c count] <ip>  (got "${a}")\n`);
+      write(`ping: netsim supports only: ping [-c count] <host>  (got "${a}")\n`);
       done();
       return null;
     } else {
@@ -31,18 +32,30 @@ export function runPing(
     }
   }
   if (!target) {
-    write('usage: ping [-c count] <destination ip>\n');
-    done();
-    return null;
-  }
-  const ip = parseIp(target);
-  if (ip === null) {
-    // DNS arrives in phase 3; until then only literal addresses resolve.
-    write(`ping: ${target}: Name or service not known\n`);
+    write('usage: ping [-c count] <destination>\n');
     done();
     return null;
   }
 
+  // Resolution may complete synchronously (literal IP) or after DNS traffic.
+  let cancelFn: (() => void) | undefined;
+  const resolver = resolveHost(device, target, (res) => {
+    if ('error' in res) {
+      write(`ping: ${res.error}\n`);
+      done();
+      return;
+    }
+    cancelFn = start(res.ip);
+  });
+  if (!cancelFn) {
+    cancelFn = () => {
+      resolver.cancel();
+      done();
+    };
+  }
+  return { cancel: () => cancelFn!() };
+
+  function start(ip: U32): () => void {
   const sched = device.network.scheduler;
   const id = device.allocIcmpId();
   const startedAt = sched.now;
@@ -53,7 +66,7 @@ export function runPing(
   let received = 0;
   let finished = false;
 
-  write(`PING ${target} (${target}) 56(84) bytes of data.\n`);
+  write(`PING ${target} (${ipToString(ip)}) 56(84) bytes of data.\n`);
 
   const finish = () => {
     if (finished) return;
@@ -143,5 +156,6 @@ export function runPing(
   };
 
   sendOne();
-  return { cancel: finish };
+  return finish;
+  }
 }

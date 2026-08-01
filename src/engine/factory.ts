@@ -1,6 +1,6 @@
 import type { Network } from './network';
 import type { Device, DeviceKind } from './device';
-import { FirewallDevice, Host, RouterDevice } from './ipdevice';
+import { FirewallDevice, Host, RouterDevice, ServerDevice } from './ipdevice';
 import { SwitchDevice } from './switch';
 
 export function createDevice(
@@ -12,6 +12,7 @@ export function createDevice(
   const name = opts.name ?? net.allocName(kind);
   let d: Device;
   if (kind === 'host') d = new Host(net, id, name);
+  else if (kind === 'server') d = new ServerDevice(net, id, name);
   else if (kind === 'router') d = new RouterDevice(net, id, name);
   else if (kind === 'firewall') d = new FirewallDevice(net, id, name);
   else d = new SwitchDevice(net, id, name);

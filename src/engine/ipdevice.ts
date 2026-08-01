@@ -1,15 +1,18 @@
 import { Device, NetInterface } from './device';
 import type { ScheduledEvent } from './scheduler';
 import type {
+  AppData,
   ArpPayload,
+  DhcpApp,
   EthernetFrame,
   IcmpMessage,
   Ipv4Packet,
   L4,
   OriginalRef,
   TcpSegment,
+  UdpDatagram,
 } from './types';
-import { BROADCAST_MAC, ipToString, networkOf, type U32 } from './ip';
+import { BROADCAST_IP, BROADCAST_MAC, ipToString, networkOf, type U32 } from './ip';
 import { FirewallModel, type EvalResult, type FilterHook } from './firewall';
 import { ConnTrack, tupleOf } from './conntrack';
 import { filterRuleText } from './firewall-fmt';
@@ -18,6 +21,7 @@ export const DEFAULT_TTL = 64;
 const ARP_RETRY_MS = 500;
 const ARP_MAX_TRIES = 3;
 const FW_LOG_MAX = 80;
+const DNS_TIMEOUT_MS = 2500;
 
 // Events delivered to a ping/traceroute session registered under an ICMP id.
 export type IcmpEvent =
@@ -27,6 +31,14 @@ export type IcmpEvent =
   | { type: 'send-error'; seq: number | null; message: string };
 
 export type SocketResult = 'open' | 'refused' | 'timeout' | 'unreachable';
+
+export type TcpSessionEvent =
+  | { type: 'open' }
+  | { type: 'refused' }
+  | { type: 'unreachable' }
+  | { type: 'data'; app: AppData };
+
+export type DnsResult = U32 | null | 'timeout' | 'refused';
 
 export interface Route {
   dest: U32;
@@ -50,11 +62,35 @@ export interface FwLogEntry {
   pkt: string;
 }
 
+export interface DhcpServerConfig {
+  enabled: boolean;
+  rangeStart: U32;
+  rangeEnd: U32;
+  router: U32 | null;
+  dns: U32 | null;
+  leases: Map<string, U32>; // client MAC -> leased address
+}
+
+export interface DnsServerConfig {
+  enabled: boolean;
+  records: Map<string, U32>; // lowercased name -> address
+}
+
+export interface HttpServerConfig {
+  enabled: boolean;
+  port: number;
+  body: string;
+}
+
 interface PendingArp {
   iface: NetInterface;
   queue: Ipv4Packet[];
   tries: number;
   timer: ScheduledEvent | null;
+}
+
+export function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/\.$/, '');
 }
 
 function refOf(pkt: Ipv4Packet): OriginalRef {
@@ -111,16 +147,30 @@ export abstract class IpDevice extends Device {
   services = { tcp: new Set<number>(), udp: new Set<number>() };
   ncTcp = new Map<number, (msg: string) => void>();
   ncUdp = new Map<number, (msg: string) => void>();
+  // Phase-3 services and client settings.
+  nameserver: U32 | null = null;
+  dhcpServer: DhcpServerConfig | null = null;
+  dnsServer: DnsServerConfig | null = null;
+  httpServer: HttpServerConfig | null = null;
+  // DHCP client sessions (dhclient) register here to hear offers/acks.
+  dhcpListeners = new Set<(app: DhcpApp) => void>();
 
   private pendingArp = new Map<U32, PendingArp>();
   private icmpListeners = new Map<number, (ev: IcmpEvent) => void>();
   private icmpIdSeq = 0;
-  private tcpSessions = new Map<string, (r: SocketResult) => void>();
+  private tcpSessions = new Map<string, (ev: TcpSessionEvent) => void>();
   private udpSessions = new Map<string, (r: SocketResult) => void>();
+  private dnsPending = new Map<number, { finish: (r: DnsResult) => void }>();
   private ephemeralPort = 39999;
+  private dnsQidSeq = 0;
+  private dhcpXidSeq = 0;
 
   allocIcmpId(): number {
     return ++this.icmpIdSeq;
+  }
+
+  nextDhcpXid(): number {
+    return ++this.dhcpXidSeq;
   }
 
   onIcmp(id: number, fn: (ev: IcmpEvent) => void): void {
@@ -259,27 +309,55 @@ export abstract class IpDevice extends Device {
     return null;
   }
 
+  // DHCP speaks on the wire before addresses exist, so it bypasses routing
+  // and goes out as a raw L2 broadcast (still subject to the OUTPUT chain).
+  sendDhcpFrame(iface: NetInterface, srcIp: U32, srcPort: number, dstPort: number, app: DhcpApp): boolean {
+    if (!iface.up || !iface.link) return false;
+    const pkt: Ipv4Packet = {
+      kind: 'ipv4',
+      src: srcIp,
+      dst: BROADCAST_IP,
+      ttl: DEFAULT_TTL,
+      l4: { kind: 'udp', srcPort, dstPort, app },
+    };
+    const res = this.fw.evaluate('output', pkt, { oif: iface.name, ctState: 'new' });
+    this.logFw(res, pkt);
+    if (res.verdict !== 'accept') return false;
+    iface.send({ srcMac: iface.mac, dstMac: BROADCAST_MAC, payload: pkt });
+    return true;
+  }
+
+  sendDhcpClient(iface: NetInterface, app: DhcpApp): boolean {
+    return this.sendDhcpFrame(iface, 0, 68, 67, app);
+  }
+
   // ---------- TCP / UDP sockets ----------
 
   tcpListening(port: number): boolean {
-    return this.services.tcp.has(port) || this.ncTcp.has(port);
+    return (
+      this.services.tcp.has(port) ||
+      this.ncTcp.has(port) ||
+      (this.httpServer?.enabled === true && this.httpServer.port === port)
+    );
   }
 
   udpListening(port: number): boolean {
-    return this.services.udp.has(port) || this.ncUdp.has(port);
+    return (
+      this.services.udp.has(port) ||
+      this.ncUdp.has(port) ||
+      (port === 53 && this.dnsServer?.enabled === true)
+    );
   }
 
-  connectTcp(dst: U32, port: number, timeoutMs: number, cb: (r: SocketResult) => void): string | null {
+  openTcp(
+    dst: U32,
+    port: number,
+    onEvent: (ev: TcpSessionEvent) => void,
+  ): { srcPort: number; close: () => void; error: string | null } {
     const srcPort = ++this.ephemeralPort;
     const key = `${srcPort}|${dst}|${port}`;
-    let finished = false;
-    const finish = (r: SocketResult) => {
-      if (finished) return;
-      finished = true;
-      this.tcpSessions.delete(key);
-      cb(r);
-    };
-    this.tcpSessions.set(key, finish);
+    this.tcpSessions.set(key, onEvent);
+    const close = () => this.tcpSessions.delete(key);
     const err = this.sendL4(dst, {
       kind: 'tcp',
       srcPort,
@@ -290,9 +368,26 @@ export abstract class IpDevice extends Device {
       fin: false,
     });
     if (err) {
-      this.tcpSessions.delete(key);
-      return err;
+      close();
+      return { srcPort, close, error: err };
     }
+    return { srcPort, close, error: null };
+  }
+
+  connectTcp(dst: U32, port: number, timeoutMs: number, cb: (r: SocketResult) => void): string | null {
+    let finished = false;
+    const finish = (r: SocketResult) => {
+      if (finished) return;
+      finished = true;
+      conn.close();
+      cb(r);
+    };
+    const conn = this.openTcp(dst, port, (ev) => {
+      if (ev.type === 'open') finish('open');
+      else if (ev.type === 'refused') finish('refused');
+      else if (ev.type === 'unreachable') finish('unreachable');
+    });
+    if (conn.error) return conn.error;
     this.network.scheduler.schedule(timeoutMs, () => finish('timeout'));
     return null;
   }
@@ -318,6 +413,84 @@ export abstract class IpDevice extends Device {
     return null;
   }
 
+  httpGet(
+    dst: U32,
+    port: number,
+    path: string,
+    host: string,
+    timeoutMs: number,
+    cb: (
+      res:
+        | { ok: true; status: number; reason: string; body: string }
+        | { ok: false; error: 'refused' | 'timeout' | 'unreachable' | 'empty' | string },
+    ) => void,
+    onConnect?: () => void,
+  ): string | null {
+    let finished = false;
+    let connected = false;
+    const finish = (res: Parameters<typeof cb>[0]) => {
+      if (finished) return;
+      finished = true;
+      conn.close();
+      cb(res);
+    };
+    const conn = this.openTcp(dst, port, (ev) => {
+      if (ev.type === 'open') {
+        connected = true;
+        onConnect?.();
+        this.sendL4(dst, {
+          kind: 'tcp',
+          srcPort: conn.srcPort,
+          dstPort: port,
+          syn: false,
+          ack: true,
+          rst: false,
+          fin: false,
+          app: { kind: 'http-request', method: 'GET', path, host },
+        });
+      } else if (ev.type === 'data' && ev.app.kind === 'http-response') {
+        finish({ ok: true, status: ev.app.status, reason: ev.app.reason, body: ev.app.body });
+      } else if (ev.type === 'refused') {
+        finish({ ok: false, error: 'refused' });
+      } else if (ev.type === 'unreachable') {
+        finish({ ok: false, error: 'unreachable' });
+      }
+    });
+    if (conn.error) return conn.error;
+    this.network.scheduler.schedule(timeoutMs, () =>
+      finish({ ok: false, error: connected ? 'empty' : 'timeout' }),
+    );
+    return null;
+  }
+
+  resolveDns(name: string, server: U32, cb: (r: DnsResult) => void): void {
+    const qid = ++this.dnsQidSeq;
+    const srcPort = ++this.ephemeralPort;
+    const sessKey = `${srcPort}|${server}|53`;
+    let finished = false;
+    const finish = (r: DnsResult) => {
+      if (finished) return;
+      finished = true;
+      this.dnsPending.delete(qid);
+      this.udpSessions.delete(sessKey);
+      cb(r);
+    };
+    this.dnsPending.set(qid, { finish });
+    // ICMP errors (closed port / unreachable) surface through the UDP session.
+    this.udpSessions.set(sessKey, (r) => finish(r === 'refused' ? 'refused' : 'timeout'));
+    const err = this.sendL4(server, {
+      kind: 'udp',
+      srcPort,
+      dstPort: 53,
+      app: { kind: 'dns-query', qid, qname: normalizeName(name) },
+    });
+    if (err) {
+      finish('timeout');
+      return;
+    }
+    this.network.scheduler.schedule(DNS_TIMEOUT_MS, () => finish('timeout'));
+  }
+
   // ---------- receive path ----------
 
   receiveFrame(iface: NetInterface, frame: EthernetFrame): void {
@@ -330,6 +503,16 @@ export abstract class IpDevice extends Device {
   }
 
   private handleIp(pktIn: Ipv4Packet, iif: string): void {
+    if (pktIn.dst === BROADCAST_IP) {
+      // Broadcasts are never forwarded and never conntracked, but the INPUT
+      // chain still sees them (blocking udp dport 67 kills DHCP — a real lab).
+      const res = this.fw.evaluate('input', pktIn, { iif, ctState: 'new' });
+      this.logFw(res, pktIn);
+      if (res.verdict !== 'accept') return;
+      this.deliverBroadcast(pktIn, iif);
+      return;
+    }
+
     const now = this.network.now;
     const proc = this.ct.process(pktIn, now);
     let pkt = proc.pkt;
@@ -385,6 +568,58 @@ export abstract class IpDevice extends Device {
       if (origTuple && trans) this.ct.confirm(origTuple, trans, now);
     }
     this.routePacket(pkt, route);
+  }
+
+  private deliverBroadcast(pkt: Ipv4Packet, iif: string): void {
+    const l4 = pkt.l4;
+    if (l4.kind !== 'udp' || !l4.app || l4.app.kind !== 'dhcp') return;
+    if (l4.dstPort === 67) this.handleDhcpServer(l4.app, iif);
+    else if (l4.dstPort === 68) for (const h of [...this.dhcpListeners]) h(l4.app);
+  }
+
+  private handleDhcpServer(app: DhcpApp, iif: string): void {
+    const cfg = this.dhcpServer;
+    if (!cfg?.enabled) return;
+    const iface = this.getInterface(iif);
+    if (!iface?.ip) return;
+    if (app.op === 'discover') {
+      const lease = this.allocLease(cfg, app.clientMac);
+      if (lease === null) return; // pool exhausted: silence, like a real server
+      this.sendDhcpFrame(iface, iface.ip.addr, 67, 68, {
+        kind: 'dhcp',
+        op: 'offer',
+        xid: app.xid,
+        clientMac: app.clientMac,
+        yourIp: lease,
+        prefix: iface.ip.prefix,
+        router: cfg.router,
+        dns: cfg.dns,
+        serverIp: iface.ip.addr,
+      });
+    } else if (app.op === 'request' && app.yourIp !== undefined) {
+      cfg.leases.set(app.clientMac, app.yourIp);
+      this.sendDhcpFrame(iface, iface.ip.addr, 67, 68, {
+        kind: 'dhcp',
+        op: 'ack',
+        xid: app.xid,
+        clientMac: app.clientMac,
+        yourIp: app.yourIp,
+        prefix: iface.ip.prefix,
+        router: cfg.router,
+        dns: cfg.dns,
+        serverIp: iface.ip.addr,
+      });
+    }
+  }
+
+  private allocLease(cfg: DhcpServerConfig, mac: string): U32 | null {
+    const existing = cfg.leases.get(mac);
+    if (existing !== undefined) return existing;
+    const taken = new Set([...cfg.leases.values(), ...this.myIps()]);
+    for (let ip = cfg.rangeStart; ip <= cfg.rangeEnd; ip++) {
+      if (!taken.has(ip >>> 0)) return ip >>> 0;
+    }
+    return null;
   }
 
   private applyDnat(pkt: Ipv4Packet, addr: U32, port?: number): Ipv4Packet {
@@ -533,13 +768,7 @@ export abstract class IpDevice extends Device {
       return;
     }
     if (l4.kind === 'udp') {
-      if (this.udpListening(l4.dstPort)) {
-        this.ncUdp.get(l4.dstPort)?.(
-          `Received UDP datagram from ${ipToString(pkt.src)}:${l4.srcPort}`,
-        );
-        return;
-      }
-      this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'port', original: refOf(pkt) });
+      this.handleUdp(pkt, l4);
       return;
     }
     const msg = l4.msg;
@@ -578,7 +807,50 @@ export abstract class IpDevice extends Device {
     }
   }
 
+  private handleUdp(pkt: Ipv4Packet, dgram: UdpDatagram): void {
+    const app = dgram.app;
+    if (app?.kind === 'dns-query' && dgram.dstPort === 53 && this.dnsServer?.enabled) {
+      const addr = this.dnsServer.records.get(normalizeName(app.qname)) ?? null;
+      this.sendL4(
+        pkt.src,
+        {
+          kind: 'udp',
+          srcPort: 53,
+          dstPort: dgram.srcPort,
+          app: { kind: 'dns-answer', qid: app.qid, qname: app.qname, addr },
+        },
+        { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined },
+      );
+      return;
+    }
+    if (app?.kind === 'dns-answer') {
+      const pending = this.dnsPending.get(app.qid);
+      if (pending) {
+        pending.finish(app.addr);
+        return;
+      }
+    }
+    if (this.udpListening(dgram.dstPort)) {
+      this.ncUdp.get(dgram.dstPort)?.(
+        `Received UDP datagram from ${ipToString(pkt.src)}:${dgram.srcPort}`,
+      );
+      return;
+    }
+    this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'port', original: refOf(pkt) });
+  }
+
   private handleTcp(pkt: Ipv4Packet, seg: TcpSegment): void {
+    const sessionKey = `${seg.dstPort}|${pkt.src}|${seg.srcPort}`;
+    if (seg.app) {
+      const session = this.tcpSessions.get(sessionKey);
+      if (session) {
+        session({ type: 'data', app: seg.app });
+        return;
+      }
+      this.handleServerTcpData(pkt, seg);
+      return;
+    }
+
     const reply = (flags: Partial<Pick<TcpSegment, 'syn' | 'ack' | 'rst'>>) => {
       this.sendL4(
         pkt.src,
@@ -607,28 +879,62 @@ export abstract class IpDevice extends Device {
       }
       return;
     }
-    const key = `${seg.dstPort}|${pkt.src}|${seg.srcPort}`;
     if (seg.syn && seg.ack) {
       reply({ ack: true });
-      this.tcpSessions.get(key)?.('open');
+      this.tcpSessions.get(sessionKey)?.({ type: 'open' });
       return;
     }
     if (seg.rst) {
-      this.tcpSessions.get(key)?.('refused');
+      this.tcpSessions.get(sessionKey)?.({ type: 'refused' });
     }
     // Bare ACKs (handshake completion) need no action in this model.
+  }
+
+  private handleServerTcpData(pkt: Ipv4Packet, seg: TcpSegment): void {
+    const app = seg.app!;
+    if (app.kind === 'http-request' && this.httpServer?.enabled && seg.dstPort === this.httpServer.port) {
+      this.sendL4(
+        pkt.src,
+        {
+          kind: 'tcp',
+          srcPort: seg.dstPort,
+          dstPort: seg.srcPort,
+          syn: false,
+          ack: true,
+          rst: false,
+          fin: false,
+          app: { kind: 'http-response', status: 200, reason: 'OK', body: this.httpServer.body },
+        },
+        { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined },
+      );
+    }
+    // Data to a generic open port (services/nc) is accepted silently.
   }
 
   private notifySocket(ref: OriginalRef, result: SocketResult): void {
     if (ref.srcPort === null || ref.dstPort === null) return;
     const key = `${ref.srcPort}|${ref.dst}|${ref.dstPort}`;
-    if (ref.proto === 'tcp') this.tcpSessions.get(key)?.(result);
-    else this.udpSessions.get(key)?.(result);
+    if (ref.proto === 'tcp') {
+      this.tcpSessions.get(key)?.(result === 'refused' ? { type: 'refused' } : { type: 'unreachable' });
+    } else {
+      this.udpSessions.get(key)?.(result);
+    }
   }
 }
 
 export class Host extends IpDevice {
   readonly kind = 'host' as const;
+
+  constructor(network: Network, id: string, name: string) {
+    super(network, id, name);
+    this.addInterfaces('eth', 1);
+  }
+}
+
+// A server is a host with a rack icon and intent: DHCP/DNS/HTTP services are
+// configured on it via the inspector (they work on any IP device, as on Linux).
+export class ServerDevice extends IpDevice {
+  readonly kind = 'server' as const;
 
   constructor(network: Network, id: string, name: string) {
     super(network, id, name);

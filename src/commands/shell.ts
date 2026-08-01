@@ -6,6 +6,9 @@ import { runTraceroute } from './traceroute';
 import { runNft } from './nft';
 import { runIptables } from './iptables';
 import { runNc } from './nc';
+import { runDig } from './dig';
+import { runCurl } from './curl';
+import { runDhclient } from './dhclient';
 
 export interface TermIO {
   write(s: string): void;
@@ -20,11 +23,14 @@ const HELP = `NetSim commands (real Linux syntax, curated subset):
   ip link    [show | set <if> up|down]
   ip route   [show | add <cidr>|default via <gw> [dev <if>] | del <cidr>|default]
   ip neigh / arp           neighbour (ARP) cache
-  ping [-c N] <ip>         ICMP echo (Ctrl-C to stop)
-  traceroute [-m max] <ip> trace the route packets take
+  ping [-c N] <host>       ICMP echo (Ctrl-C to stop)
+  traceroute [-m max] <host>  trace the route packets take
+  dhclient [<if>]          acquire an address over DHCP
+  dig [@server] <name> [+short]   DNS lookup
+  curl [-v] http://<host>[:port][/path]   fetch a web page
   nft <...>                nftables firewall (try: nft list ruleset)
   iptables <...>           iptables front-end onto the same ruleset
-  nc [-u] [-z] [-w s] <ip> <port>   test a port; nc -l [-u] <port> to listen
+  nc [-u] [-z] [-w s] <host> <port> test a port; nc -l [-u] <port> to listen
   conntrack -L             connection tracking table
   ss -tlnu                 listening sockets
   sysctl [-w] net.ipv4.ip_forward[=0|1]
@@ -75,13 +81,22 @@ export function formatConntrack(device: IpDevice): string {
 }
 
 export function formatSockets(device: IpDevice): string {
-  let s = 'Netid  State   Local Address:Port\n';
+  const s = 'Netid  State   Local Address:Port   Process\n';
+  const tcp = new Map<number, string>();
+  const udp = new Map<number, string>();
+  for (const p of device.services.tcp) tcp.set(p, '');
+  for (const p of device.ncTcp.keys()) tcp.set(p, 'nc');
+  if (device.httpServer?.enabled) tcp.set(device.httpServer.port, 'httpd');
+  for (const p of device.services.udp) udp.set(p, '');
+  for (const p of device.ncUdp.keys()) udp.set(p, 'nc');
+  if (device.dnsServer?.enabled) udp.set(53, 'dnsmasq');
+  if (device.dhcpServer?.enabled) udp.set(67, 'dnsmasq');
   const rows: string[] = [];
-  for (const p of [...device.services.tcp, ...device.ncTcp.keys()].sort((a, b) => a - b)) {
-    rows.push(`tcp    LISTEN  0.0.0.0:${p}\n`);
+  for (const [p, proc] of [...tcp.entries()].sort((a, b) => a[0] - b[0])) {
+    rows.push(`tcp    LISTEN  0.0.0.0:${String(p).padEnd(14)}${proc}\n`);
   }
-  for (const p of [...device.services.udp, ...device.ncUdp.keys()].sort((a, b) => a - b)) {
-    rows.push(`udp    UNCONN  0.0.0.0:${p}\n`);
+  for (const [p, proc] of [...udp.entries()].sort((a, b) => a[0] - b[0])) {
+    rows.push(`udp    UNCONN  0.0.0.0:${String(p).padEnd(14)}${proc}\n`);
   }
   return s + rows.join('');
 }
@@ -136,6 +151,12 @@ export class Shell {
         return runTraceroute(this.device, args, io.write.bind(io), done);
       case 'nc':
         return runNc(this.device, args, io.write.bind(io), done);
+      case 'dig':
+        return runDig(this.device, args, io.write.bind(io), done);
+      case 'curl':
+        return runCurl(this.device, args, io.write.bind(io), done);
+      case 'dhclient':
+        return runDhclient(this.device, args, io.write.bind(io), done);
       default:
         io.write(`${cmd}: command not found (try 'help')\n`);
         break;

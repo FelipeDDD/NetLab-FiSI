@@ -23,7 +23,10 @@ const MINIMAP_COLORS: Record<string, string> = {
   switch: '#a78bfa',
   router: '#34d399',
   firewall: '#fb923c',
+  server: '#2dd4bf',
 };
+
+const DROPPABLE_KINDS = new Set(['host', 'switch', 'router', 'firewall', 'server']);
 
 export function Flow() {
   const nodes = useStore((s) => s.nodes);
@@ -68,7 +71,7 @@ export function Flow() {
     (e: DragEvent) => {
       e.preventDefault();
       const kind = e.dataTransfer.getData('application/netsim') as DeviceKind | '';
-      if (kind !== 'host' && kind !== 'switch' && kind !== 'router' && kind !== 'firewall') return;
+      if (kind === '' || !DROPPABLE_KINDS.has(kind)) return;
       const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       addDeviceAt(kind, { x: pos.x - 48, y: pos.y - 39 });
     },

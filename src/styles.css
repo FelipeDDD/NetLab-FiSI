@@ -10,6 +10,7 @@
   --switch: #a78bfa;
   --router: #34d399;
   --firewall: #fb923c;
+  --server: #2dd4bf;
   --danger: #f87171;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
@@ -243,6 +244,15 @@ body,
   border-color: var(--firewall);
 }
 
+.device-node.kind-server {
+  color: var(--server);
+}
+
+.device-node.kind-server.selected,
+.device-node.kind-server:hover {
+  border-color: var(--server);
+}
+
 .dev-fw-badge {
   position: absolute;
   top: 3px;
@@ -383,6 +393,77 @@ body,
 
 .palette-item.kind-firewall:hover {
   border-color: var(--firewall);
+}
+
+.palette-item.kind-server:hover {
+  border-color: var(--server);
+}
+
+.inspector-kind.kind-server {
+  color: var(--server);
+}
+
+.svc {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 9px;
+  margin-bottom: 7px;
+  background: var(--bg-raised);
+}
+
+.svc summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style-position: inside;
+}
+
+.svc-state {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.svc-state.on {
+  color: var(--router);
+}
+
+.svc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin: 7px 0;
+  cursor: pointer;
+}
+
+.svc-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.svc-textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  padding: 6px 7px;
+  margin-bottom: 4px;
 }
 
 .service-row {

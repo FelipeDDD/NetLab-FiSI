@@ -99,10 +99,10 @@ describe('ping command', () => {
     expect(out).toContain('2 packets transmitted, 2 received, 0% packet loss');
   });
 
-  it('reports name resolution as unavailable (DNS is phase 3)', () => {
+  it('reports resolution failure when no nameserver is configured', () => {
     const net = new Network();
     const pc = createDevice(net, 'host') as Host;
-    expect(run(net, pc, 'ping example.com')).toContain('Name or service not known');
+    expect(run(net, pc, 'ping example.com')).toContain('Temporary failure in name resolution');
   });
 });
 

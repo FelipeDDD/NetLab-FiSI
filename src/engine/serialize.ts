@@ -28,6 +28,16 @@ export interface SavedDevice {
   routes: SavedRoute[];
   services?: { tcp: number[]; udp: number[] };
   firewall?: FirewallJSON;
+  nameserver?: string | null;
+  dhcpServer?: {
+    enabled: boolean;
+    rangeStart: string;
+    rangeEnd: string;
+    router: string | null;
+    dns: string | null;
+  };
+  dnsServer?: { enabled: boolean; records: [string, string][] };
+  httpServer?: { enabled: boolean; port: number; body: string };
 }
 
 export interface SavedLink {
@@ -74,6 +84,29 @@ export function serializeNetwork(
       }
       const fwj = firewallToJSON(ipd.fw);
       if (fwj) saved.firewall = fwj;
+      if (ipd.nameserver !== null) saved.nameserver = ipToString(ipd.nameserver);
+      if (ipd.dhcpServer) {
+        saved.dhcpServer = {
+          enabled: ipd.dhcpServer.enabled,
+          rangeStart: ipToString(ipd.dhcpServer.rangeStart),
+          rangeEnd: ipToString(ipd.dhcpServer.rangeEnd),
+          router: ipd.dhcpServer.router !== null ? ipToString(ipd.dhcpServer.router) : null,
+          dns: ipd.dhcpServer.dns !== null ? ipToString(ipd.dhcpServer.dns) : null,
+        };
+      }
+      if (ipd.dnsServer) {
+        saved.dnsServer = {
+          enabled: ipd.dnsServer.enabled,
+          records: [...ipd.dnsServer.records.entries()].map(([n, a]) => [n, ipToString(a)]),
+        };
+      }
+      if (ipd.httpServer) {
+        saved.httpServer = {
+          enabled: ipd.httpServer.enabled,
+          port: ipd.httpServer.port,
+          body: ipd.httpServer.body,
+        };
+      }
     }
     return saved;
   });
@@ -106,6 +139,30 @@ export function restoreNetwork(data: SaveFile): Network {
         d.services.udp = new Set(sd.services.udp);
       }
       if (sd.firewall) firewallFromJSON(d.fw, sd.firewall);
+      if (sd.nameserver) d.nameserver = parseIp(sd.nameserver);
+      if (sd.dhcpServer) {
+        const start = parseIp(sd.dhcpServer.rangeStart);
+        const end = parseIp(sd.dhcpServer.rangeEnd);
+        if (start !== null && end !== null) {
+          d.dhcpServer = {
+            enabled: sd.dhcpServer.enabled,
+            rangeStart: start,
+            rangeEnd: end,
+            router: sd.dhcpServer.router !== null ? parseIp(sd.dhcpServer.router) : null,
+            dns: sd.dhcpServer.dns !== null ? parseIp(sd.dhcpServer.dns) : null,
+            leases: new Map(),
+          };
+        }
+      }
+      if (sd.dnsServer) {
+        const records = new Map<string, number>();
+        for (const [name, addr] of sd.dnsServer.records) {
+          const ip = parseIp(addr);
+          if (ip !== null) records.set(name.toLowerCase(), ip);
+        }
+        d.dnsServer = { enabled: sd.dnsServer.enabled, records };
+      }
+      if (sd.httpServer) d.httpServer = { ...sd.httpServer };
       for (const sr of sd.routes) {
         const dest = parseCidr(sr.dest);
         const via = sr.via !== null ? parseIp(sr.via) : null;

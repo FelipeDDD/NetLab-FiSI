@@ -2,7 +2,7 @@ import type { Network } from './network';
 import type { EthernetFrame } from './types';
 import type { U32 } from './ip';
 
-export type DeviceKind = 'host' | 'switch' | 'router' | 'firewall';
+export type DeviceKind = 'host' | 'switch' | 'router' | 'firewall' | 'server';
 
 export class NetInterface {
   link: Link | null = null;
