@@ -24,9 +24,10 @@ const MINIMAP_COLORS: Record<string, string> = {
   router: '#34d399',
   firewall: '#fb923c',
   server: '#2dd4bf',
+  ap: '#f472b6',
 };
 
-const DROPPABLE_KINDS = new Set(['host', 'switch', 'router', 'firewall', 'server']);
+const DROPPABLE_KINDS = new Set(['host', 'switch', 'router', 'firewall', 'server', 'ap']);
 
 export function Flow() {
   const nodes = useStore((s) => s.nodes);

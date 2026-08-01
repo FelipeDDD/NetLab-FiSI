@@ -22,6 +22,11 @@ const ARP_RETRY_MS = 500;
 const ARP_MAX_TRIES = 3;
 const FW_LOG_MAX = 80;
 const DNS_TIMEOUT_MS = 2500;
+// RIP timers are compressed versus the RFC's 30s/180s so convergence is
+// watchable in class without waiting minutes of simulated time.
+const RIP_INTERVAL_MS = 10_000;
+const RIP_TIMEOUT_MS = 45_000;
+const RIP_INFINITY = 16;
 
 // Events delivered to a ping/traceroute session registered under an ICMP id.
 export type IcmpEvent =
@@ -45,7 +50,17 @@ export interface Route {
   prefix: number;
   via: U32 | null;
   ifaceName: string;
-  kind: 'connected' | 'static';
+  kind: 'connected' | 'static' | 'rip';
+  metric?: number;
+}
+
+interface RipRoute {
+  dest: U32;
+  prefix: number;
+  via: U32;
+  ifaceName: string;
+  metric: number;
+  learnedAt: number;
 }
 
 export interface ArpEntry {
@@ -154,6 +169,9 @@ export abstract class IpDevice extends Device {
   httpServer: HttpServerConfig | null = null;
   // DHCP client sessions (dhclient) register here to hear offers/acks.
   dhcpListeners = new Set<(app: DhcpApp) => void>();
+  ripEnabled = false;
+  private ripRoutes: RipRoute[] = [];
+  private ripScheduled = false;
 
   private pendingArp = new Map<U32, PendingArp>();
   private icmpListeners = new Map<number, (ev: IcmpEvent) => void>();
@@ -203,7 +221,79 @@ export abstract class IpDevice extends Device {
       }
     }
     rs.push(...this.staticRoutes);
+    for (const r of this.freshRipRoutes()) {
+      rs.push({ dest: r.dest, prefix: r.prefix, via: r.via, ifaceName: r.ifaceName, kind: 'rip', metric: r.metric });
+    }
     return rs;
+  }
+
+  private freshRipRoutes(): RipRoute[] {
+    const now = this.network.now;
+    this.ripRoutes = this.ripRoutes.filter((r) => now - r.learnedAt < RIP_TIMEOUT_MS);
+    return this.ripRoutes;
+  }
+
+  // ---------- RIP ----------
+
+  enableRip(on: boolean): void {
+    this.ripEnabled = on;
+    if (on && !this.ripScheduled) this.ripTick();
+    if (!on) this.ripRoutes = [];
+  }
+
+  private ripTick(): void {
+    if (!this.ripEnabled) {
+      this.ripScheduled = false;
+      return;
+    }
+    this.ripScheduled = true;
+    for (const iface of this.interfaces) {
+      if (iface.up && iface.link && iface.ip) this.advertiseRip(iface);
+    }
+    this.network.scheduler.schedule(RIP_INTERVAL_MS, () => this.ripTick());
+  }
+
+  private advertiseRip(iface: NetInterface): void {
+    const entries: { dest: U32; prefix: number; metric: number }[] = [];
+    for (const i of this.interfaces) {
+      // Split horizon: never advertise a network back onto its own segment.
+      if (i === iface || !i.up || !i.ip) continue;
+      entries.push({ dest: networkOf(i.ip.addr, i.ip.prefix), prefix: i.ip.prefix, metric: 1 });
+    }
+    for (const r of this.freshRipRoutes()) {
+      if (r.ifaceName === iface.name) continue;
+      entries.push({ dest: r.dest, prefix: r.prefix, metric: r.metric });
+    }
+    if (!entries.length) return;
+    this.sendBroadcastUdp(iface, iface.ip!.addr, 520, 520, { kind: 'rip', routes: entries });
+  }
+
+  private handleRip(app: { routes: { dest: U32; prefix: number; metric: number }[] }, iif: string, from: U32): void {
+    const now = this.network.now;
+    for (const e of app.routes) {
+      const metric = Math.min(e.metric + 1, RIP_INFINITY);
+      // Locally-known networks always win over anything learned.
+      const isConnected = this.interfaces.some(
+        (i) => i.up && i.ip && networkOf(i.ip.addr, i.ip.prefix) === e.dest && i.ip.prefix === e.prefix,
+      );
+      const isStatic = this.staticRoutes.some((r) => r.dest === e.dest && r.prefix === e.prefix);
+      if (isConnected || isStatic) continue;
+      const existing = this.freshRipRoutes().find((r) => r.dest === e.dest && r.prefix === e.prefix);
+      if (metric >= RIP_INFINITY) {
+        if (existing && existing.via === from) {
+          this.ripRoutes = this.ripRoutes.filter((r) => r !== existing);
+        }
+        continue;
+      }
+      if (!existing) {
+        this.ripRoutes.push({ dest: e.dest, prefix: e.prefix, via: from, ifaceName: iif, metric, learnedAt: now });
+      } else if (existing.via === from || metric < existing.metric) {
+        existing.via = from;
+        existing.ifaceName = iif;
+        existing.metric = metric;
+        existing.learnedAt = now;
+      }
+    }
   }
 
   lookupRoute(dst: U32): Route | null {
@@ -309,9 +399,9 @@ export abstract class IpDevice extends Device {
     return null;
   }
 
-  // DHCP speaks on the wire before addresses exist, so it bypasses routing
-  // and goes out as a raw L2 broadcast (still subject to the OUTPUT chain).
-  sendDhcpFrame(iface: NetInterface, srcIp: U32, srcPort: number, dstPort: number, app: DhcpApp): boolean {
+  // DHCP and RIP speak as raw L2 broadcasts, bypassing routing (but still
+  // subject to the OUTPUT chain).
+  sendBroadcastUdp(iface: NetInterface, srcIp: U32, srcPort: number, dstPort: number, app: AppData): boolean {
     if (!iface.up || !iface.link) return false;
     const pkt: Ipv4Packet = {
       kind: 'ipv4',
@@ -328,7 +418,7 @@ export abstract class IpDevice extends Device {
   }
 
   sendDhcpClient(iface: NetInterface, app: DhcpApp): boolean {
-    return this.sendDhcpFrame(iface, 0, 68, 67, app);
+    return this.sendBroadcastUdp(iface, 0, 68, 67, app);
   }
 
   // ---------- TCP / UDP sockets ----------
@@ -345,7 +435,8 @@ export abstract class IpDevice extends Device {
     return (
       this.services.udp.has(port) ||
       this.ncUdp.has(port) ||
-      (port === 53 && this.dnsServer?.enabled === true)
+      (port === 53 && this.dnsServer?.enabled === true) ||
+      (port === 520 && this.ripEnabled)
     );
   }
 
@@ -572,9 +663,15 @@ export abstract class IpDevice extends Device {
 
   private deliverBroadcast(pkt: Ipv4Packet, iif: string): void {
     const l4 = pkt.l4;
-    if (l4.kind !== 'udp' || !l4.app || l4.app.kind !== 'dhcp') return;
-    if (l4.dstPort === 67) this.handleDhcpServer(l4.app, iif);
-    else if (l4.dstPort === 68) for (const h of [...this.dhcpListeners]) h(l4.app);
+    if (l4.kind !== 'udp' || !l4.app) return;
+    if (l4.app.kind === 'dhcp') {
+      if (l4.dstPort === 67) this.handleDhcpServer(l4.app, iif);
+      else if (l4.dstPort === 68) for (const h of [...this.dhcpListeners]) h(l4.app);
+      return;
+    }
+    if (l4.app.kind === 'rip' && l4.dstPort === 520 && this.ripEnabled) {
+      this.handleRip(l4.app, iif, pkt.src);
+    }
   }
 
   private handleDhcpServer(app: DhcpApp, iif: string): void {
@@ -585,7 +682,7 @@ export abstract class IpDevice extends Device {
     if (app.op === 'discover') {
       const lease = this.allocLease(cfg, app.clientMac);
       if (lease === null) return; // pool exhausted: silence, like a real server
-      this.sendDhcpFrame(iface, iface.ip.addr, 67, 68, {
+      this.sendBroadcastUdp(iface, iface.ip.addr, 67, 68, {
         kind: 'dhcp',
         op: 'offer',
         xid: app.xid,
@@ -598,7 +695,7 @@ export abstract class IpDevice extends Device {
       });
     } else if (app.op === 'request' && app.yourIp !== undefined) {
       cfg.leases.set(app.clientMac, app.yourIp);
-      this.sendDhcpFrame(iface, iface.ip.addr, 67, 68, {
+      this.sendBroadcastUdp(iface, iface.ip.addr, 67, 68, {
         kind: 'dhcp',
         op: 'ack',
         xid: app.xid,

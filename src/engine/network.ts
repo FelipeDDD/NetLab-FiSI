@@ -21,6 +21,7 @@ const NAME_PREFIX: Record<DeviceKind, string> = {
   router: 'r',
   firewall: 'fw',
   server: 'srv',
+  ap: 'ap',
 };
 
 export class Network {

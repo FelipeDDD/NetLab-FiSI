@@ -157,6 +157,8 @@ export function formatRoutes(device: IpDevice): string {
       const iface = device.getInterface(r.ifaceName);
       const src = iface?.ip ? ` src ${ipToString(iface.ip.addr)}` : '';
       s += `${dest} dev ${r.ifaceName} proto kernel scope link${src}\n`;
+    } else if (r.kind === 'rip' && r.via !== null) {
+      s += `${dest} via ${ipToString(r.via)} dev ${r.ifaceName} proto rip metric ${r.metric ?? 1}\n`;
     } else if (r.via !== null) {
       s += `${dest} via ${ipToString(r.via)} dev ${r.ifaceName}\n`;
     } else {

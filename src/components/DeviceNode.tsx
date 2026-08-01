@@ -39,6 +39,16 @@ function Icon({ kind }: { kind: DeviceKind }) {
       </svg>
     );
   }
+  if (kind === 'ap') {
+    return (
+      <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden>
+        <path d="M6 14a14 14 0 0 1 20 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path d="M10 18a8.5 8.5 0 0 1 12 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="16" cy="23" r="2.4" fill="currentColor" />
+        <path d="M16 25v3" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    );
+  }
   if (kind === 'firewall') {
     return (
       <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden>

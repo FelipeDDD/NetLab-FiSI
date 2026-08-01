@@ -53,7 +53,7 @@ of phase 2.
 See [docs/DESIGN.md](docs/DESIGN.md) for the full design document and
 [docs/adr/](docs/adr/) for the architecture decision records behind these choices.
 
-## Status — phase 5 (of 6)
+## Status — all six roadmap phases complete
 
 Working now:
 
@@ -102,10 +102,18 @@ Working now:
   diagrams** (documentation-grade, light theme); and a **printable HTML network report**
   (inline diagram, device inventory, cabling, routing tables, DHCP/DNS config, firewall
   rulesets).
-- Autosave, JSON export/import (including firewall rules, service configs, and lab progress),
-  shareable topology URLs, demo topology
+- **Dynamic routing, VLANs & wireless (phase 6):** RIP on routers/firewalls — periodic udp/520
+  broadcast advertisements with split horizon, hop-count metrics, route timeout and visible
+  convergence; learned routes appear in `ip route` as `proto rip` and firewalls can block the
+  protocol (drop udp/520) like anything else. Access-port **VLANs** on switches: per-port VLAN
+  assignment isolates broadcast domains (same-subnet hosts in different VLANs can't even ARP),
+  with a per-VLAN MAC table. **Wireless APs**: SSID-labelled bridge devices whose client links
+  render as dashed wireless associations.
+- Autosave, JSON export/import (including firewall rules, service configs, lab progress, RIP,
+  VLANs and SSIDs), shareable topology URLs, demo topology
 
-Roadmap (see DESIGN.md for detail): **6** RIP/OSPF dynamic routing, VLANs, wireless.
+Future work beyond the original roadmap: OSPF, 802.1Q trunks, IPv6, a v86 real-VM node type
+(ADR 0002), and more bundled labs — contributions welcome.
 
 ## Development
 

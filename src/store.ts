@@ -9,6 +9,7 @@ import type { DeviceKind } from './engine/device';
 import { restoreNetwork, serializeNetwork, type SaveFile } from './engine/serialize';
 import { listRuleset } from './engine/firewall-fmt';
 import { cidrToString, parseCidr, parseIp } from './engine/ip';
+import { ApDevice, SwitchDevice } from './engine/switch';
 import { disposeAllSessions, disposeSession } from './terminals';
 import { sim } from './sim';
 import type { LabDef } from './labs/types';
@@ -45,12 +46,19 @@ function deviceNode(id: string, kind: DeviceKind, label: string, x: number, y: n
 }
 
 function edgesFromEngine(): Edge[] {
-  return [...sim.net.links.values()].map((l) => ({
-    id: l.id,
-    source: l.a.device.id,
-    target: l.b.device.id,
-    type: 'floating',
-  }));
+  return [...sim.net.links.values()].map((l) => {
+    // AP-to-endpoint links are wireless associations: draw them dashed.
+    const kinds = [l.a.device.kind, l.b.device.kind];
+    const wireless =
+      kinds.includes('ap') && kinds.some((k) => k === 'host' || k === 'server');
+    return {
+      id: l.id,
+      source: l.a.device.id,
+      target: l.b.device.id,
+      type: 'floating',
+      ...(wireless ? { style: { strokeDasharray: '7 5' } } : {}),
+    };
+  });
 }
 
 function deviceIps(id: string): string[] {
@@ -98,6 +106,9 @@ interface NetsimState {
   toggleHttpServer(deviceId: string): void;
   setHttpPort(deviceId: string, text: string): string | null;
   setHttpBody(deviceId: string, text: string): void;
+  toggleRip(deviceId: string): void;
+  setPortVlan(deviceId: string, port: string, text: string): string | null;
+  setSsid(deviceId: string, text: string): string | null;
   openTerminal(id: string): void;
   closeTerminal(id: string): void;
   setActiveTerminal(id: string): void;
@@ -480,6 +491,36 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!(d instanceof IpDevice) || !d.httpServer) return;
       d.httpServer.body = text;
       saveSoon();
+    },
+
+    toggleRip(deviceId) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice)) return;
+      d.enableRip(!d.ripEnabled);
+      get().refresh();
+      saveSoon();
+    },
+
+    setPortVlan(deviceId, port, text) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof SwitchDevice)) return 'not a switch';
+      const vlan = Number(text.trim());
+      if (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094) return 'VLAN must be 1–4094';
+      if (vlan === 1) d.vlans.delete(port);
+      else d.vlans.set(port, vlan);
+      get().refresh();
+      saveSoon();
+      return null;
+    },
+
+    setSsid(deviceId, text) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof ApDevice)) return 'not an access point';
+      if (!text.trim()) return 'SSID cannot be empty';
+      d.ssid = text.trim();
+      get().refresh();
+      saveSoon();
+      return null;
     },
 
     openTerminal(id) {

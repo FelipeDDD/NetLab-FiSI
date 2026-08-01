@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { sim } from '../sim';
 import { IpDevice } from '../engine/ipdevice';
-import { SwitchDevice } from '../engine/switch';
+import { ApDevice, SwitchDevice } from '../engine/switch';
 import { cidrToString, ipToString } from '../engine/ip';
 import { formatNeigh, formatRoutes } from '../commands/ip-cmd';
 import { formatConntrack } from '../commands/shell';
@@ -300,6 +300,29 @@ export function Inspector() {
         </div>
       )}
 
+      {ipd && (device.kind === 'router' || device.kind === 'firewall') && (
+        <label className="svc-toggle" style={{ margin: 0 }}>
+          <input
+            type="checkbox"
+            checked={ipd.ripEnabled}
+            onChange={() => useStore.getState().toggleRip(device.id)}
+          />
+          RIP routing — advertise &amp; learn routes (udp/520 broadcasts)
+        </label>
+      )}
+
+      {swd instanceof ApDevice && (
+        <div className="svc-grid">
+          <span>SSID</span>
+          <CommitInput
+            key={device.id + swd.ssid}
+            value={swd.ssid}
+            onCommit={(t) => useStore.getState().setSsid(device.id, t)}
+            mono={false}
+          />
+        </div>
+      )}
+
       <section>
         <h3>Interfaces</h3>
         {device.interfaces.map((i) => (
@@ -384,10 +407,32 @@ export function Inspector() {
 
       {swd && (
         <section>
-          <h3>MAC address table</h3>
+          <h3>Port VLANs (access)</h3>
+          {swd.interfaces
+            .filter((i) => i.link)
+            .map((i) => (
+              <div className="service-row" key={device.id + i.name + swd.vlanOf(i.name)}>
+                <span className="service-proto">{i.name}</span>
+                <span className="hint" style={{ width: 90 }}>
+                  → {sim.net.links.get(i.link!.id) ? i.link!.other(i).device.name : '?'}
+                </span>
+                <CommitInput
+                  value={String(swd.vlanOf(i.name))}
+                  onCommit={(t) => useStore.getState().setPortVlan(device.id, i.name, t)}
+                  width={64}
+                />
+              </div>
+            ))}
+          {swd.interfaces.every((i) => !i.link) && <span className="hint">no connected ports</span>}
+          <h3 style={{ marginTop: 10 }}>MAC address table</h3>
           <pre className="table-pre">
             {swd.macTable.size
-              ? [...swd.macTable.entries()].map(([mac, port]) => `${mac}  ${port.name}\n`).join('')
+              ? [...swd.macTable.entries()]
+                  .map(([key, port]) => {
+                    const [vlan, mac] = key.split('|');
+                    return `vlan ${vlan.padEnd(5)}${mac}  ${port.name}\n`;
+                  })
+                  .join('')
               : '(empty — forward a frame to teach me)\n'}
           </pre>
         </section>

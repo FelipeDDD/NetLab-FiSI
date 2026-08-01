@@ -11,6 +11,7 @@
   --router: #34d399;
   --firewall: #fb923c;
   --server: #2dd4bf;
+  --ap: #f472b6;
   --danger: #f87171;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
@@ -251,6 +252,23 @@ body,
 .device-node.kind-server.selected,
 .device-node.kind-server:hover {
   border-color: var(--server);
+}
+
+.device-node.kind-ap {
+  color: var(--ap);
+}
+
+.device-node.kind-ap.selected,
+.device-node.kind-ap:hover {
+  border-color: var(--ap);
+}
+
+.palette-item.kind-ap:hover {
+  border-color: var(--ap);
+}
+
+.inspector-kind.kind-ap {
+  color: var(--ap);
 }
 
 .dev-fw-badge {

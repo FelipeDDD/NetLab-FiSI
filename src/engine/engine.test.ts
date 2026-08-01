@@ -72,8 +72,9 @@ describe('switching', () => {
     net.scheduler.advanceTo(10_000);
 
     expect(evs[0]?.type).toBe('reply');
-    expect(sw.macTable.get(a.getInterface('eth0')!.mac)).toBeTruthy();
-    expect(sw.macTable.get(b.getInterface('eth0')!.mac)).toBeTruthy();
+    // MAC table keys are "vlan|mac"; default access VLAN is 1.
+    expect(sw.macTable.get(`1|${a.getInterface('eth0')!.mac}`)).toBeTruthy();
+    expect(sw.macTable.get(`1|${b.getInterface('eth0')!.mac}`)).toBeTruthy();
   });
 });
 

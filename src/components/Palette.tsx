@@ -8,6 +8,7 @@ const ITEMS: { kind: DeviceKind; label: string; blurb: string }[] = [
   { kind: 'switch', label: 'Switch', blurb: 'L2 learning switch' },
   { kind: 'router', label: 'Router', blurb: 'IP forwarding on' },
   { kind: 'firewall', label: 'Firewall', blurb: 'router + nftables ready' },
+  { kind: 'ap', label: 'Wi-Fi AP', blurb: 'wireless bridge (SSID)' },
 ];
 
 export function Palette() {

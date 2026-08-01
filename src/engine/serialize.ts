@@ -1,6 +1,7 @@
 import { Network } from './network';
 import { createDevice } from './factory';
 import { IpDevice } from './ipdevice';
+import { ApDevice, SwitchDevice } from './switch';
 import type { DeviceKind } from './device';
 import { cidrToString, ipToString, networkOf, parseCidr, parseIp } from './ip';
 import { firewallFromJSON, firewallToJSON, type FirewallJSON } from './firewall';
@@ -39,6 +40,9 @@ export interface SavedDevice {
   };
   dnsServer?: { enabled: boolean; records: [string, string][] };
   httpServer?: { enabled: boolean; port: number; body: string };
+  ripEnabled?: boolean;
+  vlans?: Record<string, number>;
+  ssid?: string;
 }
 
 export interface SavedLink {
@@ -111,6 +115,13 @@ export function serializeNetwork(
           body: ipd.httpServer.body,
         };
       }
+      if (ipd.ripEnabled) saved.ripEnabled = true;
+    }
+    if (d instanceof SwitchDevice) {
+      const vlans: Record<string, number> = {};
+      for (const [port, vlan] of d.vlans) if (vlan !== 1) vlans[port] = vlan;
+      if (Object.keys(vlans).length) saved.vlans = vlans;
+      if (d instanceof ApDevice) saved.ssid = d.ssid;
     }
     return saved;
   });
@@ -180,6 +191,10 @@ export function restoreNetwork(data: SaveFile): Network {
         });
       }
     }
+    if (d instanceof SwitchDevice) {
+      if (sd.vlans) for (const [port, vlan] of Object.entries(sd.vlans)) d.vlans.set(port, vlan);
+      if (d instanceof ApDevice && sd.ssid) d.ssid = sd.ssid;
+    }
   }
   for (const sl of data.links) {
     try {
@@ -187,6 +202,12 @@ export function restoreNetwork(data: SaveFile): Network {
     } catch {
       // Skip malformed links rather than failing the whole import.
     }
+  }
+  // RIP starts after cabling so the first advertisement actually goes somewhere.
+  for (const sd of data.devices) {
+    if (!sd.ripEnabled) continue;
+    const d = net.devices.get(sd.id);
+    if (d instanceof IpDevice) d.enableRip(true);
   }
   return net;
 }

@@ -95,7 +95,12 @@ export interface HttpResponseApp {
   body: string;
 }
 
-export type AppData = DhcpApp | DnsQueryApp | DnsAnswerApp | HttpRequestApp | HttpResponseApp;
+export interface RipApp {
+  kind: 'rip';
+  routes: { dest: U32; prefix: number; metric: number }[];
+}
+
+export type AppData = DhcpApp | DnsQueryApp | DnsAnswerApp | HttpRequestApp | HttpResponseApp | RipApp;
 
 export interface TcpSegment {
   kind: 'tcp';
