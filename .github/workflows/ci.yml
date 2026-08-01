@@ -16,3 +16,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # ADR 0003: exported configs must be genuine syntax. The test suite
+      # writes samples/, which the real tools then validate.
+      - name: Validate generated nftables config with real nft
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq nftables dnsmasq-base
+          sudo nft -c -f samples/nftables.conf
+          dnsmasq --test --conf-file=samples/dnsmasq.conf
+          sh -n samples/setup-fw1.sh

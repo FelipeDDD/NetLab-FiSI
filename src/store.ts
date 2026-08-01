@@ -14,6 +14,12 @@ import { sim } from './sim';
 import type { LabDef } from './labs/types';
 import { runChecks } from './labs/checker';
 import { LABS } from './labs/library';
+import { zipSync, strToU8 } from 'fflate';
+import { configBundle } from './export/configs';
+import { containerlabYaml } from './export/containerlab';
+import { composeYaml } from './export/compose';
+import { svgToPngBlob, topologySvg } from './export/diagram';
+import { networkReport } from './export/report';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -103,6 +109,12 @@ interface NetsimState {
   newTopology(): void;
   loadDemo(): void;
   exportJson(): void;
+  exportConfigs(): void;
+  exportContainerlab(): void;
+  exportCompose(): void;
+  exportSvg(): void;
+  exportPng(): void;
+  exportReport(): void;
   importJson(text: string): string | null;
   shareUrl(): void;
   boot(): void;
@@ -153,6 +165,21 @@ export const useStore = create<NetsimState>()((set, get) => {
     }
     return save;
   };
+
+  const download = (filename: string, blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const currentSvg = () =>
+    topologySvg(
+      sim.net,
+      get().nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y })),
+    );
 
   const saveSoon = () => {
     if (saveTimer) clearTimeout(saveTimer);
@@ -596,13 +623,42 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     exportJson() {
-      const blob = new Blob([JSON.stringify(currentSave(), null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'netsim-topology.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      download('netsim-topology.json', new Blob([JSON.stringify(currentSave(), null, 2)], { type: 'application/json' }));
+    },
+
+    exportConfigs() {
+      const files = configBundle(sim.net);
+      const entries: Record<string, Uint8Array> = {};
+      for (const f of files) entries[`netsim-configs/${f.path}`] = strToU8(f.content);
+      const zipped = zipSync(entries);
+      download('netsim-configs.zip', new Blob([zipped.slice().buffer], { type: 'application/zip' }));
+      get().setNotice('Config bundle exported — real iproute2/nftables/dnsmasq files');
+    },
+
+    exportContainerlab() {
+      download('netsim.clab.yml', new Blob([containerlabYaml(sim.net)], { type: 'text/yaml' }));
+      get().setNotice('containerlab topology exported — deploy with: containerlab deploy -t netsim.clab.yml');
+    },
+
+    exportCompose() {
+      download('docker-compose.yml', new Blob([composeYaml(sim.net)], { type: 'text/yaml' }));
+      get().setNotice('docker-compose exported (approximate L2 — see header note)');
+    },
+
+    exportSvg() {
+      download('netsim-topology.svg', new Blob([currentSvg()], { type: 'image/svg+xml' }));
+    },
+
+    exportPng() {
+      svgToPngBlob(currentSvg())
+        .then((blob) => download('netsim-topology.png', blob))
+        .catch(() => get().setNotice('PNG export failed in this browser — try the SVG export'));
+    },
+
+    exportReport() {
+      const positions = get().nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }));
+      const html = networkReport(sim.net, positions, new Date().toLocaleString());
+      download('netsim-report.html', new Blob([html], { type: 'text/html' }));
     },
 
     importJson(text) {

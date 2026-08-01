@@ -2,8 +2,44 @@ import { useRef, useState } from 'react';
 import { useStore } from '../store';
 import { LABS } from '../labs/library';
 
+type ExportAction =
+  | 'exportJson'
+  | 'exportConfigs'
+  | 'exportContainerlab'
+  | 'exportCompose'
+  | 'exportSvg'
+  | 'exportPng'
+  | 'exportReport';
+
+function ExportItem({
+  label,
+  hint,
+  action,
+  close,
+}: {
+  label: string;
+  hint: string;
+  action: ExportAction;
+  close: (open: boolean) => void;
+}) {
+  const fn = useStore((s) => s[action]);
+  return (
+    <button
+      className="labs-menu-item"
+      onClick={() => {
+        fn();
+        close(false);
+      }}
+    >
+      <span className="labs-menu-title">{label}</span>
+      <span className="labs-menu-blurb">{hint}</span>
+    </button>
+  );
+}
+
 export function Toolbar() {
   const [labsOpen, setLabsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const loadBundledLab = useStore((s) => s.loadBundledLab);
   const clock = useStore((s) => s.clock);
   const paused = useStore((s) => s.paused);
@@ -13,7 +49,6 @@ export function Toolbar() {
   const setSpeed = useStore((s) => s.setSpeed);
   const newTopology = useStore((s) => s.newTopology);
   const loadDemo = useStore((s) => s.loadDemo);
-  const exportJson = useStore((s) => s.exportJson);
   const importJson = useStore((s) => s.importJson);
   const shareUrl = useStore((s) => s.shareUrl);
   const setNotice = useStore((s) => s.setNotice);
@@ -66,9 +101,22 @@ export function Toolbar() {
         <button className="btn" onClick={() => fileRef.current?.click()}>
           Import
         </button>
-        <button className="btn" onClick={() => exportJson()}>
-          Export
-        </button>
+        <div className="labs-menu-wrap">
+          <button className="btn" onClick={() => setExportOpen((v) => !v)}>
+            Export ▾
+          </button>
+          {exportOpen && (
+            <div className="labs-menu export-menu" onMouseLeave={() => setExportOpen(false)}>
+              <ExportItem label="Topology (.json)" hint="save/share/import in NetSim" action="exportJson" close={setExportOpen} />
+              <ExportItem label="Device configs (.zip)" hint="real setup.sh, nftables.conf, dnsmasq.conf per device" action="exportConfigs" close={setExportOpen} />
+              <ExportItem label="containerlab (.clab.yml)" hint="deploy the design with real containers" action="exportContainerlab" close={setExportOpen} />
+              <ExportItem label="docker-compose (.yml)" hint="approximate L2 — see file header" action="exportCompose" close={setExportOpen} />
+              <ExportItem label="Diagram (.svg)" hint="documentation-grade topology drawing" action="exportSvg" close={setExportOpen} />
+              <ExportItem label="Diagram (.png)" hint="same drawing, rasterised 2×" action="exportPng" close={setExportOpen} />
+              <ExportItem label="Network report (.html)" hint="printable design document with tables + diagram" action="exportReport" close={setExportOpen} />
+            </div>
+          )}
+        </div>
         <button className="btn" onClick={() => shareUrl()}>
           Share link
         </button>

@@ -53,7 +53,7 @@ of phase 2.
 See [docs/DESIGN.md](docs/DESIGN.md) for the full design document and
 [docs/adr/](docs/adr/) for the architecture decision records behind these choices.
 
-## Status — phase 4 (of 6)
+## Status — phase 5 (of 6)
 
 Working now:
 
@@ -93,11 +93,19 @@ Working now:
   (attempts re-import with full progress). Four bundled labs follow the classic iNetwork
   sequence: static addressing & ARP → routing → stateful firewalls → DHCP/DNS/web. Lecturers
   author labs as JSON and distribute them as files or share-links.
+- **Exports (phase 5)** — the design-tool half of the vision. From the Export menu:
+  **device config bundle (.zip)** with genuine per-device `setup.sh` (iproute2 + sysctl),
+  `nftables.conf` and `dnsmasq.conf` — *validated in CI against the real `nft` and `dnsmasq`
+  binaries*, so what the browser generates, Linux accepts; **containerlab topology**
+  (`.clab.yml`, linux nodes + bridged switches + nft rules as exec lines) to deploy the design
+  with real kernels; **docker-compose** (approximate L2, documented); **SVG/PNG topology
+  diagrams** (documentation-grade, light theme); and a **printable HTML network report**
+  (inline diagram, device inventory, cabling, routing tables, DHCP/DNS config, firewall
+  rulesets).
 - Autosave, JSON export/import (including firewall rules, service configs, and lab progress),
   shareable topology URLs, demo topology
 
-Roadmap (see DESIGN.md for detail): **5** exports (real config files, containerlab/
-docker-compose, diagrams) · **6** RIP/OSPF, VLANs, wireless.
+Roadmap (see DESIGN.md for detail): **6** RIP/OSPF dynamic routing, VLANs, wireless.
 
 ## Development
 
