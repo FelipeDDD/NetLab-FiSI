@@ -7,6 +7,7 @@ import { createDevice } from './engine/factory';
 import { IpDevice } from './engine/ipdevice';
 import type { DeviceKind } from './engine/device';
 import { restoreNetwork, serializeNetwork, type SaveFile } from './engine/serialize';
+import { listRuleset } from './engine/firewall-fmt';
 import { cidrToString, parseCidr, parseIp } from './engine/ip';
 import { disposeAllSessions, disposeSession } from './terminals';
 import { sim } from './sim';
@@ -15,6 +16,14 @@ export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
   label: string;
   ips: string[];
+  fw?: boolean;
+}
+
+export interface DropFlash {
+  id: number;
+  deviceId: string;
+  start: number;
+  until: number;
 }
 
 export type DevNode = Node<DevNodeData>;
@@ -45,6 +54,7 @@ interface NetsimState {
   nodes: DevNode[];
   edges: Edge[];
   packets: WireTransfer[];
+  dropFlashes: DropFlash[];
   clock: number;
   uiPulse: number;
   selected: string | null;
@@ -63,6 +73,8 @@ interface NetsimState {
   renameDevice(id: string, name: string): void;
   setIfaceIp(deviceId: string, ifaceName: string, value: string): string | null;
   toggleIface(deviceId: string, ifaceName: string): void;
+  setServices(deviceId: string, proto: 'tcp' | 'udp', text: string): string | null;
+  copyDeviceConfig(deviceId: string): void;
   openTerminal(id: string): void;
   closeTerminal(id: string): void;
   setActiveTerminal(id: string): void;
@@ -84,10 +96,20 @@ let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 let lastPulse = 0;
 
 export const useStore = create<NetsimState>()((set, get) => {
+  let flashSeq = 0;
   const wireNet = (net: Network) => {
     net.onWireTransfer = (t) => {
       const packets = get().packets;
       set({ packets: [...packets.slice(-(MAX_PACKETS - 1)), t] });
+    };
+    net.onFwDrop = (deviceId) => {
+      const now = net.scheduler.now;
+      set({
+        dropFlashes: [
+          ...get().dropFlashes.slice(-19),
+          { id: ++flashSeq, deviceId, start: now, until: now + 700 },
+        ],
+      });
     };
   };
   wireNet(sim.net);
@@ -118,6 +140,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       nodes,
       edges: edgesFromEngine(),
       packets: [],
+      dropFlashes: [],
       selected: null,
       terminals: [],
       activeTerminal: null,
@@ -129,6 +152,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     nodes: [],
     edges: [],
     packets: [],
+    dropFlashes: [],
     clock: 0,
     uiPulse: 0,
     selected: null,
@@ -240,6 +264,31 @@ export const useStore = create<NetsimState>()((set, get) => {
       saveSoon();
     },
 
+    setServices(deviceId, proto, text) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice)) return 'not an IP device';
+      const ports = new Set<number>();
+      for (const part of text.split(',').map((p) => p.trim()).filter(Boolean)) {
+        const n = Number(part);
+        if (!Number.isInteger(n) || n < 1 || n > 65535) return `invalid port "${part}"`;
+        ports.add(n);
+      }
+      d.services[proto] = ports;
+      get().refresh();
+      saveSoon();
+      return null;
+    },
+
+    copyDeviceConfig(deviceId) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice)) return;
+      const text = listRuleset(d.fw);
+      navigator.clipboard
+        .writeText(text)
+        .then(() => get().setNotice(`${d.name} nftables config copied — paste into /etc/nftables.conf`))
+        .catch(() => get().setNotice('Could not access clipboard'));
+    },
+
     openTerminal(id) {
       const d = sim.net.devices.get(id);
       if (!d || !(d instanceof IpDevice)) return;
@@ -266,7 +315,8 @@ export const useStore = create<NetsimState>()((set, get) => {
         nodes: get().nodes.map((n) => {
           const d = sim.net.devices.get(n.id);
           if (!d) return n;
-          return { ...n, data: { ...n.data, label: d.name, ips: deviceIps(n.id) } };
+          const fw = d instanceof IpDevice ? d.fw.active() : false;
+          return { ...n, data: { ...n.data, label: d.name, ips: deviceIps(n.id), fw } };
         }),
       });
     },
@@ -278,10 +328,13 @@ export const useStore = create<NetsimState>()((set, get) => {
       const now = sim.net.scheduler.now;
       const packets = get().packets;
       const alive = packets.filter((p) => p.end > now - 120);
+      const flashes = get().dropFlashes;
+      const aliveFlashes = flashes.filter((f) => f.until > now);
       const pulse = Math.floor(now / 400);
       set({
         clock: now,
         ...(alive.length !== packets.length ? { packets: alive } : {}),
+        ...(aliveFlashes.length !== flashes.length ? { dropFlashes: aliveFlashes } : {}),
         ...(pulse !== lastPulse ? { uiPulse: pulse } : {}),
       });
       lastPulse = pulse;
@@ -309,6 +362,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         nodes: [],
         edges: [],
         packets: [],
+        dropFlashes: [],
         selected: null,
         terminals: [],
         activeTerminal: null,

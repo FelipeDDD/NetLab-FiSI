@@ -12,10 +12,11 @@ const COLORS: Record<string, string> = {
 export function PacketLayer() {
   const { x, y, zoom } = useViewport();
   const packets = useStore((s) => s.packets);
+  const dropFlashes = useStore((s) => s.dropFlashes);
   const clock = useStore((s) => s.clock);
   const nodes = useStore((s) => s.nodes);
 
-  if (!packets.length) return null;
+  if (!packets.length && !dropFlashes.length) return null;
 
   const centers = new Map<string, { x: number; y: number }>();
   for (const n of nodes) {
@@ -37,9 +38,33 @@ export function PacketLayer() {
       return <circle key={p.id} cx={px} cy={py} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;
     });
 
+  // Expanding red ring where a firewall chain dropped or rejected a packet.
+  const rings = dropFlashes
+    .filter((f) => clock >= f.start && clock <= f.until)
+    .map((f) => {
+      const c = centers.get(f.deviceId);
+      if (!c) return null;
+      const t = (clock - f.start) / (f.until - f.start || 1);
+      return (
+        <circle
+          key={`flash-${f.id}`}
+          cx={c.x}
+          cy={c.y}
+          r={10 + t * 26}
+          fill="none"
+          stroke="#f87171"
+          strokeWidth={2.5}
+          opacity={1 - t}
+        />
+      );
+    });
+
   return (
     <svg className="packet-layer">
-      <g transform={`translate(${x} ${y}) scale(${zoom})`}>{dots}</g>
+      <g transform={`translate(${x} ${y}) scale(${zoom})`}>
+        {dots}
+        {rings}
+      </g>
     </svg>
   );
 }

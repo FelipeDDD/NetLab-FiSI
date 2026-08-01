@@ -1,7 +1,11 @@
 import type { IpDevice } from '../engine/ipdevice';
+import { ipToString } from '../engine/ip';
 import { formatArpClassic, runIp } from './ip-cmd';
 import { runPing } from './ping';
 import { runTraceroute } from './traceroute';
+import { runNft } from './nft';
+import { runIptables } from './iptables';
+import { runNc } from './nc';
 
 export interface TermIO {
   write(s: string): void;
@@ -11,14 +15,18 @@ export interface Running {
   cancel(): void;
 }
 
-const HELP = `NetSim phase-1 commands (real Linux syntax, curated subset):
+const HELP = `NetSim commands (real Linux syntax, curated subset):
   ip address [show | add <cidr> dev <if> | del <cidr> dev <if>]
   ip link    [show | set <if> up|down]
   ip route   [show | add <cidr>|default via <gw> [dev <if>] | del <cidr>|default]
-  ip neigh                 show the neighbour (ARP) cache
-  arp                      classic ARP table view
+  ip neigh / arp           neighbour (ARP) cache
   ping [-c N] <ip>         ICMP echo (Ctrl-C to stop)
   traceroute [-m max] <ip> trace the route packets take
+  nft <...>                nftables firewall (try: nft list ruleset)
+  iptables <...>           iptables front-end onto the same ruleset
+  nc [-u] [-z] [-w s] <ip> <port>   test a port; nc -l [-u] <port> to listen
+  conntrack -L             connection tracking table
+  ss -tlnu                 listening sockets
   sysctl [-w] net.ipv4.ip_forward[=0|1]
   hostname | help | clear
 Anything else errors loudly — NetSim never fakes syntax it doesn't implement.
@@ -50,19 +58,49 @@ function runSysctl(device: IpDevice, args: string[], write: (s: string) => void)
   write(`sysctl: cannot stat /proc/sys/${arg.replace(/\./g, '/')}: No such file or directory\n`);
 }
 
+export function formatConntrack(device: IpDevice): string {
+  const entries = device.ct.list(device.network.now);
+  let s = '';
+  for (const e of entries) {
+    const o = e.orig;
+    const state = e.state === 'established' ? 'ESTABLISHED' : 'NEW';
+    const natNote =
+      e.trans.srcIp !== o.srcIp || e.trans.dstIp !== o.dstIp || e.trans.srcPort !== o.srcPort || e.trans.dstPort !== o.dstPort
+        ? ` [nat: ${ipToString(e.trans.srcIp)}:${e.trans.srcPort} > ${ipToString(e.trans.dstIp)}:${e.trans.dstPort}]`
+        : '';
+    s += `${o.proto.padEnd(8)}src=${ipToString(o.srcIp)} dst=${ipToString(o.dstIp)} sport=${o.srcPort} dport=${o.dstPort} state=${state}${natNote}\n`;
+  }
+  s += `conntrack: ${entries.length} flow entries have been shown.\n`;
+  return s;
+}
+
+export function formatSockets(device: IpDevice): string {
+  let s = 'Netid  State   Local Address:Port\n';
+  const rows: string[] = [];
+  for (const p of [...device.services.tcp, ...device.ncTcp.keys()].sort((a, b) => a - b)) {
+    rows.push(`tcp    LISTEN  0.0.0.0:${p}\n`);
+  }
+  for (const p of [...device.services.udp, ...device.ncUdp.keys()].sort((a, b) => a - b)) {
+    rows.push(`udp    UNCONN  0.0.0.0:${p}\n`);
+  }
+  return s + rows.join('');
+}
+
 export class Shell {
   constructor(public device: IpDevice) {}
 
   // Runs one command line. `done` is always called exactly once — immediately
-  // for synchronous commands, later for ping/traceroute. Returns a handle for
-  // Ctrl-C when the command is still running, else null.
+  // for synchronous commands, later for ping/traceroute/nc. Returns a handle
+  // for Ctrl-C when the command is still running, else null.
   exec(line: string, io: TermIO, done: () => void): Running | null {
-    const argv = line.trim().split(/\s+/).filter(Boolean);
+    const trimmed = line.trim();
+    const argv = trimmed.split(/\s+/).filter(Boolean);
     if (argv.length === 0) {
       done();
       return null;
     }
     const [cmd, ...args] = argv;
+    const rawRest = trimmed.slice(cmd.length).trim();
     switch (cmd) {
       case 'help':
         io.write(HELP);
@@ -79,10 +117,25 @@ export class Shell {
       case 'sysctl':
         runSysctl(this.device, args, io.write.bind(io));
         break;
+      case 'nft':
+        runNft(this.device, rawRest, io.write.bind(io));
+        break;
+      case 'iptables':
+        runIptables(this.device, args, io.write.bind(io));
+        break;
+      case 'conntrack':
+        if (args[0] === '-L' || args.length === 0) io.write(formatConntrack(this.device));
+        else io.write('conntrack: netsim supports only: conntrack -L\n');
+        break;
+      case 'ss':
+        io.write(formatSockets(this.device));
+        break;
       case 'ping':
         return runPing(this.device, args, io.write.bind(io), done);
       case 'traceroute':
         return runTraceroute(this.device, args, io.write.bind(io), done);
+      case 'nc':
+        return runNc(this.device, args, io.write.bind(io), done);
       default:
         io.write(`${cmd}: command not found (try 'help')\n`);
         break;

@@ -104,11 +104,8 @@ export function runPing(
       case 'unreachable': {
         const seq = ev.seq ?? 0;
         answered.add(seq);
-        write(
-          `From ${ipToString(ev.from)} icmp_seq=${seq} Destination ${
-            ev.code === 'net' ? 'Net' : 'Host'
-          } Unreachable\n`,
-        );
+        const what = ev.code === 'net' ? 'Net' : ev.code === 'host' ? 'Host' : 'Port';
+        write(`From ${ipToString(ev.from)} icmp_seq=${seq} Destination ${what} Unreachable\n`);
         maybeFinish(seq);
         break;
       }
@@ -129,7 +126,9 @@ export function runPing(
     const err = device.sendEcho(ip, id, seq);
     if (err) {
       sent--;
-      write(`ping: connect: ${err}\n`);
+      // EPERM (an OUTPUT-chain drop) reads differently from a routing failure.
+      if (err === 'Operation not permitted') write(`ping: sendmsg: ${err}\n`);
+      else write(`ping: connect: ${err}\n`);
       finish();
       return;
     }

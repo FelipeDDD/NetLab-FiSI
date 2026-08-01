@@ -10,12 +10,15 @@ export interface ArpPayload {
 }
 
 // Reference back to the packet that triggered an ICMP error, so the
-// original sender's ping/traceroute session can be matched by icmp id.
+// original sender's ping/traceroute/socket session can be matched.
 export interface OriginalRef {
   src: U32;
   dst: U32;
+  proto: 'icmp' | 'tcp' | 'udp';
   icmpId: number | null;
   icmpSeq: number | null;
+  srcPort: number | null;
+  dstPort: number | null;
 }
 
 export interface IcmpEchoRequest {
@@ -37,18 +40,41 @@ export interface IcmpTimeExceeded {
 
 export interface IcmpUnreachable {
   type: 'dest-unreachable';
-  code: 'net' | 'host';
+  code: 'net' | 'host' | 'port';
   original: OriginalRef;
 }
 
 export type IcmpMessage = IcmpEchoRequest | IcmpEchoReply | IcmpTimeExceeded | IcmpUnreachable;
+
+export interface IcmpL4 {
+  kind: 'icmp';
+  msg: IcmpMessage;
+}
+
+export interface TcpSegment {
+  kind: 'tcp';
+  srcPort: number;
+  dstPort: number;
+  syn: boolean;
+  ack: boolean;
+  rst: boolean;
+  fin: boolean;
+}
+
+export interface UdpDatagram {
+  kind: 'udp';
+  srcPort: number;
+  dstPort: number;
+}
+
+export type L4 = IcmpL4 | TcpSegment | UdpDatagram;
 
 export interface Ipv4Packet {
   kind: 'ipv4';
   src: U32;
   dst: U32;
   ttl: number;
-  icmp: IcmpMessage;
+  l4: L4;
 }
 
 export type FramePayload = ArpPayload | Ipv4Packet;

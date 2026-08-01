@@ -15,13 +15,16 @@ export interface WireTransfer {
   end: number;
 }
 
-const NAME_PREFIX: Record<DeviceKind, string> = { host: 'pc', switch: 'sw', router: 'r' };
+const NAME_PREFIX: Record<DeviceKind, string> = { host: 'pc', switch: 'sw', router: 'r', firewall: 'fw' };
 
 export class Network {
   scheduler = new Scheduler();
   devices = new Map<string, Device>();
   links = new Map<string, Link>();
   onWireTransfer: ((t: WireTransfer) => void) | null = null;
+  // Fired when a declared firewall chain drops or rejects a packet — the UI
+  // flashes the device so students see *where* traffic died.
+  onFwDrop: ((deviceId: string) => void) | null = null;
 
   private macCounter = 0;
   private wireCounter = 0;

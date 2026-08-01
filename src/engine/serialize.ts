@@ -3,6 +3,7 @@ import { createDevice } from './factory';
 import { IpDevice } from './ipdevice';
 import type { DeviceKind } from './device';
 import { cidrToString, ipToString, networkOf, parseCidr, parseIp } from './ip';
+import { firewallFromJSON, firewallToJSON, type FirewallJSON } from './firewall';
 
 export interface SavedIface {
   name: string;
@@ -25,6 +26,8 @@ export interface SavedDevice {
   forwarding: boolean;
   ifaces: SavedIface[];
   routes: SavedRoute[];
+  services?: { tcp: number[]; udp: number[] };
+  firewall?: FirewallJSON;
 }
 
 export interface SavedLink {
@@ -47,7 +50,7 @@ export function serializeNetwork(
   const devices: SavedDevice[] = [...net.devices.values()].map((d) => {
     const pos = positions[d.id] ?? { x: 0, y: 0 };
     const ipd = d instanceof IpDevice ? d : null;
-    return {
+    const saved: SavedDevice = {
       id: d.id,
       kind: d.kind,
       name: d.name,
@@ -65,6 +68,14 @@ export function serializeNetwork(
         dev: r.ifaceName,
       })),
     };
+    if (ipd) {
+      if (ipd.services.tcp.size || ipd.services.udp.size) {
+        saved.services = { tcp: [...ipd.services.tcp], udp: [...ipd.services.udp] };
+      }
+      const fwj = firewallToJSON(ipd.fw);
+      if (fwj) saved.firewall = fwj;
+    }
+    return saved;
   });
   const links: SavedLink[] = [...net.links.values()].map((l) => ({
     id: l.id,
@@ -90,6 +101,11 @@ export function restoreNetwork(data: SaveFile): Network {
     }
     if (d instanceof IpDevice) {
       d.forwarding = sd.forwarding;
+      if (sd.services) {
+        d.services.tcp = new Set(sd.services.tcp);
+        d.services.udp = new Set(sd.services.udp);
+      }
+      if (sd.firewall) firewallFromJSON(d.fw, sd.firewall);
       for (const sr of sd.routes) {
         const dest = parseCidr(sr.dest);
         const via = sr.via !== null ? parseIp(sr.via) : null;

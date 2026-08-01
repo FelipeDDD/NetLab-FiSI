@@ -22,6 +22,7 @@ const MINIMAP_COLORS: Record<string, string> = {
   host: '#38bdf8',
   switch: '#a78bfa',
   router: '#34d399',
+  firewall: '#fb923c',
 };
 
 export function Flow() {
@@ -37,24 +38,37 @@ export function Flow() {
   const { screenToFlowPosition } = useReactFlow();
 
   // Advance the virtual clock in real time; the engine itself is
-  // deterministic and only moves when we push it.
+  // deterministic and only moves when we push it. rAF drives smooth
+  // animation while the window is visible; the interval keeps simulated
+  // time flowing when the browser throttles rAF (background tab/window),
+  // so pings and timeouts don't freeze the moment focus is lost.
   useEffect(() => {
     let last = performance.now();
     let raf = 0;
-    const loop = (t: number) => {
+    const step = () => {
+      const t = performance.now();
       tick(t - last);
       last = t;
+    };
+    const loop = () => {
+      step();
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    const interval = window.setInterval(() => {
+      if (performance.now() - last > 200) step();
+    }, 250);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearInterval(interval);
+    };
   }, [tick]);
 
   const onDrop = useCallback(
     (e: DragEvent) => {
       e.preventDefault();
       const kind = e.dataTransfer.getData('application/netsim') as DeviceKind | '';
-      if (kind !== 'host' && kind !== 'switch' && kind !== 'router') return;
+      if (kind !== 'host' && kind !== 'switch' && kind !== 'router' && kind !== 'firewall') return;
       const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       addDeviceAt(kind, { x: pos.x - 48, y: pos.y - 39 });
     },

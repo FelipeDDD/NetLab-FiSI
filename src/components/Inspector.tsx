@@ -5,6 +5,41 @@ import { IpDevice } from '../engine/ipdevice';
 import { SwitchDevice } from '../engine/switch';
 import { cidrToString } from '../engine/ip';
 import { formatNeigh, formatRoutes } from '../commands/ip-cmd';
+import { formatConntrack } from '../commands/shell';
+import { listRuleset } from '../engine/firewall-fmt';
+
+function ServicesRow({ deviceId, proto }: { deviceId: string; proto: 'tcp' | 'udp' }) {
+  const setServices = useStore((s) => s.setServices);
+  const setNotice = useStore((s) => s.setNotice);
+  const device = sim.net.devices.get(deviceId);
+  const current = device instanceof IpDevice ? [...device.services[proto]].sort((a, b) => a - b).join(', ') : '';
+  const [value, setValue] = useState(current);
+
+  const commit = () => {
+    if (value.trim() === current) return;
+    const err = setServices(deviceId, proto, value);
+    if (err) {
+      setNotice(err);
+      setValue(current);
+    }
+  };
+
+  return (
+    <div className="service-row">
+      <span className="service-proto">{proto}</span>
+      <input
+        className="iface-ip"
+        placeholder="open ports, e.g. 22, 80"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+      />
+    </div>
+  );
+}
 
 function IfaceRow({ deviceId, ifaceName }: { deviceId: string; ifaceName: string }) {
   const setIfaceIp = useStore((s) => s.setIfaceIp);
@@ -104,6 +139,47 @@ export function Inspector() {
           <pre className="table-pre">{formatRoutes(ipd) || '(empty)\n'}</pre>
           <h3>Neighbours (ARP)</h3>
           <pre className="table-pre">{formatNeigh(ipd) || '(empty)\n'}</pre>
+        </section>
+      )}
+
+      {ipd && (
+        <section>
+          <h3>Listening services</h3>
+          <ServicesRow key={ipd.id + 'tcp'} deviceId={ipd.id} proto="tcp" />
+          <ServicesRow key={ipd.id + 'udp'} deviceId={ipd.id} proto="udp" />
+          <span className="hint">Open ports answer TCP connects / accept UDP; test them with nc.</span>
+        </section>
+      )}
+
+      {ipd && (
+        <section>
+          <h3>
+            Firewall (nftables)
+            <button className="mini-btn" onClick={() => useStore.getState().copyDeviceConfig(ipd.id)}>
+              copy config
+            </button>
+          </h3>
+          <pre className="table-pre">{listRuleset(ipd.fw)}</pre>
+          {ipd.fw.active() && (
+            <>
+              <h3>Conntrack</h3>
+              <pre className="table-pre">{formatConntrack(ipd)}</pre>
+            </>
+          )}
+          {ipd.fwLog.length > 0 && (
+            <>
+              <h3>Firewall log (latest first)</h3>
+              <pre className="table-pre fw-log">
+                {ipd.fwLog
+                  .slice(0, 12)
+                  .map(
+                    (e) =>
+                      `${(e.t / 1000).toFixed(1)}s ${e.hook.toUpperCase()} ${e.verdict.toUpperCase()} ${e.pkt}\n    ← ${e.rule}\n`,
+                  )
+                  .join('')}
+              </pre>
+            </>
+          )}
         </section>
       )}
 

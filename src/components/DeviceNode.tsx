@@ -27,6 +27,19 @@ function Icon({ kind }: { kind: DeviceKind }) {
       </svg>
     );
   }
+  if (kind === 'firewall') {
+    return (
+      <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden>
+        <path
+          d="M16 3l10 4v8c0 7-4.5 11.5-10 14C10.5 26.5 6 22 6 15V7l10-4z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <path d="M9 12h14M9 17h14M13 12v5M19 12v5" stroke="currentColor" strokeWidth="1.4" fill="none" />
+      </svg>
+    );
+  }
   return (
     <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden>
       <circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -45,6 +58,11 @@ function DeviceNodeInner({ data, selected }: NodeProps<DevNode>) {
       <div className="dev-icon">
         <Icon kind={data.kind} />
       </div>
+      {data.fw === true && (
+        <span className="dev-fw-badge" title="firewall rules active">
+          ⛨
+        </span>
+      )}
       <div className="dev-label">{data.label}</div>
       <div className="dev-ip">{data.ips.length ? data.ips[0] + (data.ips.length > 1 ? ' +' : '') : ' '}</div>
     </div>

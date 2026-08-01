@@ -6,6 +6,7 @@ const ITEMS: { kind: DeviceKind; label: string; blurb: string }[] = [
   { kind: 'host', label: 'Host', blurb: 'Linux workstation' },
   { kind: 'switch', label: 'Switch', blurb: 'L2 learning switch' },
   { kind: 'router', label: 'Router', blurb: 'IP forwarding on' },
+  { kind: 'firewall', label: 'Firewall', blurb: 'router + nftables ready' },
 ];
 
 export function Palette() {

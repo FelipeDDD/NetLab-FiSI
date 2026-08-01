@@ -9,6 +9,7 @@
   --host: #38bdf8;
   --switch: #a78bfa;
   --router: #34d399;
+  --firewall: #fb923c;
   --danger: #f87171;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
@@ -233,6 +234,27 @@ body,
   color: var(--router);
 }
 
+.device-node.kind-firewall {
+  color: var(--firewall);
+}
+
+.device-node.kind-firewall.selected,
+.device-node.kind-firewall:hover {
+  border-color: var(--firewall);
+}
+
+.dev-fw-badge {
+  position: absolute;
+  top: 3px;
+  right: 7px;
+  font-size: 11px;
+  color: var(--firewall);
+}
+
+.device-node {
+  position: relative;
+}
+
 .device-node.kind-host.selected,
 .device-node.kind-host:hover {
   border-color: var(--host);
@@ -353,6 +375,51 @@ body,
 
 .inspector-kind.kind-router {
   color: var(--router);
+}
+
+.inspector-kind.kind-firewall {
+  color: var(--firewall);
+}
+
+.palette-item.kind-firewall:hover {
+  border-color: var(--firewall);
+}
+
+.service-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+}
+
+.service-proto {
+  width: 34px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: ui-monospace, monospace;
+}
+
+.mini-btn {
+  margin-left: 8px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 10px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.mini-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.fw-log {
+  max-height: 180px;
+  overflow-y: auto;
 }
 
 .inspector-forwarding {

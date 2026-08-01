@@ -53,20 +53,31 @@ of phase 2.
 See [docs/DESIGN.md](docs/DESIGN.md) for the full design document and
 [docs/adr/](docs/adr/) for the architecture decision records behind these choices.
 
-## Status — phase 1 (of 6)
+## Status — phase 2 (of 6)
 
 Working now:
 
-- Drag-and-drop topology editor (hosts, L2 learning switches, routers) with cable connections
+- Drag-and-drop topology editor (hosts, L2 learning switches, routers, firewalls) with cable
+  connections
 - Per-device xterm.js terminals: `ip address|link|route|neigh`, `ping`, `traceroute`, `arp`,
   `sysctl net.ipv4.ip_forward`, `hostname`, `help`
 - Full ARP + IPv4 + ICMP simulation: longest-prefix routing, TTL/time-exceeded,
   destination-unreachable, MAC learning — with live packet animation, pause and speed control
-- Inspector panel: interface state/addresses, live routing/ARP/MAC tables
-- Autosave, JSON export/import, shareable topology URLs, demo topology
+- **Firewalls (phase 2):** `nft` and `iptables` front-ends compiling to one shared rule model —
+  rules added in either dialect list in both (`nft list ruleset`, `iptables -S`); input/forward/
+  output chains with accept/drop/reject and policies; connection tracking for
+  `ct state new,established,related` (stateful firewalls); NAT — masquerade, SNAT, DNAT port
+  forwarding; a per-device firewall log that names the exact rule behind every verdict; red
+  drop-flash animation at the device that killed a packet
+- **Sockets (phase 2):** minimal TCP handshake + UDP, `nc` port testing
+  (open / refused / filtered), `nc -l` listeners, per-device "listening services" (lab
+  targets), `ss` and `conntrack -L`
+- Inspector panel: interface state/addresses, live routing/ARP/MAC/conntrack tables, nftables
+  ruleset view with copy-as-config, firewall log
+- Autosave, JSON export/import (including firewall rules and services), shareable topology
+  URLs, demo topology
 
-Roadmap (see DESIGN.md for detail): **2** firewalls — nftables + iptables front-ends over one
-rule model, conntrack, NAT, verdict explanations · **3** DHCP, DNS, TCP/HTTP services ·
+Roadmap (see DESIGN.md for detail): **3** DHCP, DNS, TCP/HTTP services ·
 **4** guided labs with auto-graded objectives · **5** exports (real config files,
 containerlab/docker-compose, diagrams) · **6** RIP/OSPF, VLANs, wireless.
 
