@@ -4,6 +4,7 @@ import { IpDevice } from './ipdevice';
 import type { DeviceKind } from './device';
 import { cidrToString, ipToString, networkOf, parseCidr, parseIp } from './ip';
 import { firewallFromJSON, firewallToJSON, type FirewallJSON } from './firewall';
+import type { LabDef, LabProgress } from '../labs/types';
 
 export interface SavedIface {
   name: string;
@@ -51,6 +52,9 @@ export interface SaveFile {
   version: 1;
   devices: SavedDevice[];
   links: SavedLink[];
+  // Present when the file is a lab (or a student's attempt at one).
+  lab?: LabDef;
+  labProgress?: LabProgress;
 }
 
 export function serializeNetwork(

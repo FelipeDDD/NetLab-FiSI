@@ -11,6 +11,9 @@ import { listRuleset } from './engine/firewall-fmt';
 import { cidrToString, parseCidr, parseIp } from './engine/ip';
 import { disposeAllSessions, disposeSession } from './terminals';
 import { sim } from './sim';
+import type { LabDef } from './labs/types';
+import { runChecks } from './labs/checker';
+import { LABS } from './labs/library';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -64,6 +67,12 @@ interface NetsimState {
   speed: number;
   notice: string | null;
 
+  lab: LabDef | null;
+  labStep: number;
+  labResults: Record<string, { pass: boolean; detail: string }>;
+  labChecking: boolean;
+  quizAnswers: Record<string, number>;
+
   addDeviceAt(kind: DeviceKind, pos: { x: number; y: number }): void;
   onNodesChange(changes: NodeChange<DevNode>[]): void;
   onEdgesChange(changes: EdgeChange[]): void;
@@ -97,6 +106,13 @@ interface NetsimState {
   importJson(text: string): string | null;
   shareUrl(): void;
   boot(): void;
+
+  loadBundledLab(index: number): void;
+  setLabStep(step: number): void;
+  answerQuiz(qid: string, choice: number): void;
+  checkStep(): void;
+  exportAttempt(): void;
+  closeLab(): void;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -125,7 +141,17 @@ export const useStore = create<NetsimState>()((set, get) => {
   const currentSave = (): SaveFile => {
     const positions: Record<string, { x: number; y: number }> = {};
     for (const n of get().nodes) positions[n.id] = { x: n.position.x, y: n.position.y };
-    return serializeNetwork(sim.net, positions);
+    const save = serializeNetwork(sim.net, positions);
+    const lab = get().lab;
+    if (lab) {
+      save.lab = lab;
+      save.labProgress = {
+        step: get().labStep,
+        results: get().labResults,
+        quiz: get().quizAnswers,
+      };
+    }
+    return save;
   };
 
   const saveSoon = () => {
@@ -152,6 +178,11 @@ export const useStore = create<NetsimState>()((set, get) => {
       selected: null,
       terminals: [],
       activeTerminal: null,
+      lab: data.lab ?? null,
+      labStep: data.labProgress?.step ?? 0,
+      labResults: data.labProgress?.results ?? {},
+      labChecking: false,
+      quizAnswers: data.labProgress?.quiz ?? {},
     });
     get().refresh();
   };
@@ -169,6 +200,12 @@ export const useStore = create<NetsimState>()((set, get) => {
     paused: false,
     speed: 1,
     notice: null,
+
+    lab: null,
+    labStep: 0,
+    labResults: {},
+    labChecking: false,
+    quizAnswers: {},
 
     addDeviceAt(kind, pos) {
       const d = createDevice(sim.net, kind);
@@ -495,6 +532,11 @@ export const useStore = create<NetsimState>()((set, get) => {
         selected: null,
         terminals: [],
         activeTerminal: null,
+        lab: null,
+        labStep: 0,
+        labResults: {},
+        labChecking: false,
+        quizAnswers: {},
       });
       saveSoon();
     },
@@ -607,6 +649,65 @@ export const useStore = create<NetsimState>()((set, get) => {
         }
       }
       get().loadDemo();
+    },
+
+    loadBundledLab(index) {
+      const lab = LABS[index];
+      if (!lab) return;
+      adoptSave(JSON.parse(JSON.stringify(lab)) as SaveFile);
+      saveSoon();
+    },
+
+    setLabStep(step) {
+      const lab = get().lab;
+      if (!lab) return;
+      set({ labStep: Math.max(0, Math.min(lab.steps.length - 1, step)) });
+      saveSoon();
+    },
+
+    answerQuiz(qid, choice) {
+      set({ quizAnswers: { ...get().quizAnswers, [qid]: choice } });
+      saveSoon();
+    },
+
+    checkStep() {
+      const lab = get().lab;
+      if (!lab || get().labChecking) return;
+      const step = lab.steps[get().labStep];
+      if (!step || step.objectives.length === 0) return;
+      set({ labChecking: true, paused: false });
+      runChecks(
+        sim.net,
+        step.objectives,
+        (r) => {
+          set({
+            labResults: { ...get().labResults, [r.id]: { pass: r.pass, detail: r.detail } },
+          });
+        },
+        () => {
+          set({ labChecking: false });
+          get().refresh();
+          saveSoon();
+        },
+      );
+    },
+
+    exportAttempt() {
+      const lab = get().lab;
+      if (!lab) return;
+      const blob = new Blob([JSON.stringify(currentSave(), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `netsim-attempt-${lab.id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      get().setNotice('Attempt exported — submit the JSON file');
+    },
+
+    closeLab() {
+      set({ lab: null, labStep: 0, labResults: {}, quizAnswers: {}, labChecking: false });
+      saveSoon();
     },
   };
 });

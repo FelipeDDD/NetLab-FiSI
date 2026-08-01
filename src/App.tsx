@@ -4,6 +4,7 @@ import { Palette } from './components/Palette';
 import { Inspector } from './components/Inspector';
 import { TerminalDock } from './components/TerminalDock';
 import { Toolbar } from './components/Toolbar';
+import { LabPanel } from './components/LabPanel';
 import { useStore } from './store';
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
           <Palette />
           <div className="canvas">
             <Flow />
+            <LabPanel />
           </div>
           {selected && <Inspector />}
         </div>

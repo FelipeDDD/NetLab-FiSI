@@ -53,7 +53,7 @@ of phase 2.
 See [docs/DESIGN.md](docs/DESIGN.md) for the full design document and
 [docs/adr/](docs/adr/) for the architecture decision records behind these choices.
 
-## Status — phase 3 (of 6)
+## Status — phase 4 (of 6)
 
 Working now:
 
@@ -85,12 +85,19 @@ Working now:
 - Inspector panel: interface state/addresses, DNS client setting, DHCP/DNS/web service
   editors, live routing/ARP/MAC/conntrack tables, nftables ruleset view with copy-as-config,
   firewall log
-- Autosave, JSON export/import (including firewall rules and all service configs), shareable
-  topology URLs, demo topology
+- **Guided labs (phase 4):** a lab file format (starting topology + steps + objectives +
+  quizzes) with an auto-grader that probes the live simulation using *real packets* — students
+  watch the grader's pings, TCP connects, DNS queries and HTTP fetches animate while being
+  marked. Lab player panel with step navigation, per-objective pass/fail with explanations,
+  progress bar, instant-feedback quizzes, and one-click **attempt export** for LMS submission
+  (attempts re-import with full progress). Four bundled labs follow the classic iNetwork
+  sequence: static addressing & ARP → routing → stateful firewalls → DHCP/DNS/web. Lecturers
+  author labs as JSON and distribute them as files or share-links.
+- Autosave, JSON export/import (including firewall rules, service configs, and lab progress),
+  shareable topology URLs, demo topology
 
-Roadmap (see DESIGN.md for detail): **4** guided labs with auto-graded objectives ·
-**5** exports (real config files, containerlab/docker-compose, diagrams) ·
-**6** RIP/OSPF, VLANs, wireless.
+Roadmap (see DESIGN.md for detail): **5** exports (real config files, containerlab/
+docker-compose, diagrams) · **6** RIP/OSPF, VLANs, wireless.
 
 ## Development
 

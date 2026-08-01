@@ -1,7 +1,10 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useStore } from '../store';
+import { LABS } from '../labs/library';
 
 export function Toolbar() {
+  const [labsOpen, setLabsOpen] = useState(false);
+  const loadBundledLab = useStore((s) => s.loadBundledLab);
   const clock = useStore((s) => s.clock);
   const paused = useStore((s) => s.paused);
   const speed = useStore((s) => s.speed);
@@ -37,6 +40,29 @@ export function Toolbar() {
         <button className="btn" onClick={() => loadDemo()}>
           Demo
         </button>
+        <div className="labs-menu-wrap">
+          <button className="btn" onClick={() => setLabsOpen((v) => !v)}>
+            Labs ▾
+          </button>
+          {labsOpen && (
+            <div className="labs-menu" onMouseLeave={() => setLabsOpen(false)}>
+              {LABS.map((l, i) => (
+                <button
+                  key={l.lab!.id}
+                  className="labs-menu-item"
+                  onClick={() => {
+                    loadBundledLab(i);
+                    setLabsOpen(false);
+                  }}
+                >
+                  <span className="labs-menu-title">{l.lab!.title}</span>
+                  <span className="labs-menu-blurb">{l.lab!.blurb}</span>
+                </button>
+              ))}
+              <div className="labs-menu-note">Loading a lab replaces the current canvas.</div>
+            </div>
+          )}
+        </div>
         <button className="btn" onClick={() => fileRef.current?.click()}>
           Import
         </button>
