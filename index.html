@@ -3,10 +3,183 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NetSim — browser network simulator</title>
+    <title>NetSim — a network simulator in your browser</title>
+    <meta
+      name="description"
+      content="A free, open-source network simulator that runs entirely in your browser. Real Linux syntax (iproute2, nftables, dig, curl), drag-and-drop topologies, guided labs — zero install."
+    />
+    <style>
+      :root {
+        --bg: #0a0f1c;
+        --bg-panel: #0f172a;
+        --bg-raised: #16223b;
+        --border: #24324e;
+        --text: #dbe6f4;
+        --dim: #8ba0bd;
+        --accent: #38bdf8;
+        --host: #38bdf8;
+        --router: #34d399;
+        --firewall: #fb923c;
+        --ap: #f472b6;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: var(--bg); color: var(--text);
+        font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; line-height: 1.6; }
+      a { color: var(--accent); }
+      .wrap { max-width: 960px; margin: 0 auto; padding: 0 22px; }
+
+      header.hero { text-align: center; padding: 72px 22px 40px; }
+      .logo { font-size: 30px; font-weight: 800; letter-spacing: 0.5px; color: var(--accent); }
+      .logo span { color: var(--text); font-weight: 400; font-size: 15px; margin-left: 8px; }
+      h1 { font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 28px auto 14px; max-width: 720px; }
+      .tagline { font-size: clamp(15px, 2.4vw, 19px); color: var(--dim); max-width: 640px; margin: 0 auto 32px; }
+      .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+      .btn { display: inline-block; text-decoration: none; border-radius: 10px; padding: 13px 26px;
+        font-size: 15px; font-weight: 600; border: 1px solid var(--border); transition: transform .12s, border-color .15s; }
+      .btn:hover { transform: translateY(-1px); }
+      .btn-primary { background: var(--accent); color: #04141f; border-color: var(--accent); }
+      .btn-ghost { background: var(--bg-raised); color: var(--text); }
+      .btn-ghost:hover { border-color: var(--accent); }
+      .free-note { margin-top: 18px; font-size: 13px; color: var(--dim); }
+
+      .shot { max-width: 900px; margin: 44px auto 0; padding: 0 22px; }
+      .shot img { width: 100%; border-radius: 12px; border: 1px solid var(--border);
+        box-shadow: 0 20px 60px rgba(0,0,0,.5); display: block; }
+
+      section { padding: 56px 0; }
+      h2 { font-size: 24px; margin: 0 0 26px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+      .card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+      .card h3 { margin: 0 0 8px; font-size: 16px; }
+      .card p { margin: 0; color: var(--dim); font-size: 14px; }
+      .card .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+
+      .who { background: var(--bg-panel); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+      .who .grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+      code { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 4px;
+        padding: 1px 6px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #9ed8ff; }
+
+      .lineage { color: var(--dim); font-size: 14px; max-width: 760px; }
+      .lineage em { color: var(--text); font-style: normal; }
+
+      footer { border-top: 1px solid var(--border); padding: 34px 22px; text-align: center; color: var(--dim); font-size: 13px; }
+      footer a { margin: 0 10px; }
+      .footer-links { margin-bottom: 12px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <header class="hero">
+      <div class="logo">NetSim<span>real Linux syntax · in your browser</span></div>
+      <h1>Build, break and secure networks — right in your browser.</h1>
+      <p class="tagline">
+        A free, open-source network simulator for teaching and design. Drag devices onto a canvas,
+        configure them with <em>genuine</em> Linux commands, and watch every packet travel.
+        No install, no accounts, no server.
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="./app.html">▶ Run in your browser</a>
+        <a class="btn btn-ghost" href="https://github.com/michael-borck/netsim">View on GitHub</a>
+      </div>
+      <div class="free-note">Runs entirely on your device · works on Chromebooks and lab machines · MIT licensed</div>
+    </header>
+
+    <div class="shot">
+      <img src="docs/img/screenshot.jpg" alt="NetSim running a network-hardening lab" />
+    </div>
+
+    <div class="wrap">
+      <section>
+        <h2>What you can do</h2>
+        <div class="grid">
+          <div class="card">
+            <h3><span class="dot" style="background: var(--host)"></span>Real commands, not fakes</h3>
+            <p>Configure devices with <code>ip addr</code>, <code>ip route</code>, <code>nft</code>,
+              <code>iptables</code>, <code>dig</code>, <code>curl</code> and more. Unsupported syntax
+              errors loudly — you never learn a command that won't work on a real box.</p>
+          </div>
+          <div class="card">
+            <h3><span class="dot" style="background: var(--firewall)"></span>Firewalls that explain themselves</h3>
+            <p>Write nftables or iptables rules over one shared model. Stateful <code>ct state</code>,
+              NAT, and a log that names the exact rule behind every dropped packet.</p>
+          </div>
+          <div class="card">
+            <h3><span class="dot" style="background: var(--router)"></span>A whole stack</h3>
+            <p>ARP, IPv4 routing (static + RIP), ICMP, TCP/UDP, DHCP, DNS, HTTP, VLANs and Wi-Fi —
+              all as animated packets you can pause and step through.</p>
+          </div>
+          <div class="card">
+            <h3><span class="dot" style="background: var(--ap)"></span>Guided, auto-graded labs</h3>
+            <p>Five built-in labs from addressing to network hardening. The grader probes the live
+              network with real packets; students export their attempt for submission.</p>
+          </div>
+          <div class="card">
+            <h3><span class="dot" style="background: var(--accent)"></span>Design &amp; export</h3>
+            <p>Turn a design into real <code>nftables.conf</code>/<code>dnsmasq.conf</code>, a
+              containerlab or docker-compose file to run for real, SVG diagrams, or a printable report.</p>
+          </div>
+          <div class="card">
+            <h3><span class="dot" style="background: var(--dim)"></span>Share anything</h3>
+            <p>Autosaves locally. Hand out a scenario as a file or a single link with the whole
+              topology encoded in it. No backend, ever.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="who">
+      <div class="wrap">
+        <section>
+          <h2>Who it's for</h2>
+          <div class="grid">
+            <div class="card">
+              <h3>Students</h3>
+              <p>Practise real networking and security on any device — build a topology, break it,
+                fix it, and see exactly why each change worked.</p>
+              <p style="margin-top:10px"><a href="./app.html">Open the simulator →</a></p>
+            </div>
+            <div class="card">
+              <h3>Educators</h3>
+              <p>Drop labs straight into your unit. Author your own with auto-graded objectives and
+                collect attempts through your LMS — no infrastructure to run.</p>
+              <p style="margin-top:10px">
+                <a href="https://github.com/michael-borck/netsim/blob/main/docs/LAB_AUTHORING.md">Lab authoring guide →</a>
+              </p>
+            </div>
+            <div class="card">
+              <h3>Tinkerers</h3>
+              <p>Prototype a firewall or a small network, then export a containerlab file and run the
+                exact design on real kernels.</p>
+              <p style="margin-top:10px">
+                <a href="https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md">User guide →</a>
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <section>
+        <h2>Lineage</h2>
+        <p class="lineage">
+          NetSim is a modern, open successor to the <em>iNetwork Simulator</em>, a GUI teaching tool
+          built at the University of Technology Sydney in the mid-2000s (C#/.NET, Windows-only,
+          described in an IEEE paper on teaching firewall concepts). NetSim reimagines it with
+          today's constraints removed: it runs on anything with a browser, uses real open-source
+          Linux syntax instead of an invented CLI, and is free and open source.
+        </p>
+      </section>
+    </div>
+
+    <footer>
+      <div class="footer-links">
+        <a href="./app.html">Run in browser</a>
+        <a href="https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md">User guide</a>
+        <a href="https://github.com/michael-borck/netsim/blob/main/docs/LABS.md">Labs</a>
+        <a href="https://github.com/michael-borck/netsim/blob/main/docs/LAB_AUTHORING.md">Author labs</a>
+        <a href="https://github.com/michael-borck/netsim">GitHub</a>
+      </div>
+      <div>Free &amp; open source under the MIT licence · © 2026 Michael Borck</div>
+    </footer>
   </body>
 </html>

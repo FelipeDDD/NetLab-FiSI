@@ -593,6 +593,23 @@ a.btn {
   align-items: center;
 }
 
+.home-link {
+  position: fixed;
+  bottom: 8px;
+  left: 10px;
+  z-index: 60;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-decoration: none;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.home-link:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+
 .lab-pill {
   position: absolute;
   top: 12px;
