@@ -5,6 +5,7 @@ import { Host, IpDevice } from '../engine/ipdevice';
 import { parseCidr, parseIp } from '../engine/ip';
 import { Shell } from '../commands/shell';
 import { LABS } from './library';
+import { EXAMPLES } from './examples';
 import { runChecks, type CheckResult } from './checker';
 import type { Objective } from './types';
 
@@ -138,6 +139,67 @@ describe('lab 4 — services', () => {
     expect(r['l4-route'].pass).toBe(true);
     expect(r['l4-dns'].pass).toBe(true);
     expect(r['l4-http'].pass).toBe(true);
+  });
+});
+
+describe('lab 5 — hardening', () => {
+  it('audit objectives pass on the open network, then invert after hardening', () => {
+    const net = restoreNetwork(labFile('harden-network'));
+    const lab = LABS[4].lab!;
+    const fw1 = device(net, 'fw1');
+
+    // Step 1: the vulnerabilities are present (audit objectives pass).
+    let r = check(net, lab.steps[0].objectives);
+    expect(r['l5-audit-ping'].pass).toBe(true);
+    expect(r['l5-audit-ssh'].pass).toBe(true);
+
+    // Step 2 objectives fail before hardening...
+    r = check(net, lab.steps[1].objectives);
+    expect(r['l5-policy'].pass).toBe(false);
+    expect(r['l5-ssh'].pass).toBe(false); // ssh still open, not yet filtered
+
+    shell(net, fw1, 'iptables -P FORWARD DROP');
+    shell(net, fw1, 'iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT');
+    shell(net, fw1, 'iptables -A FORWARD -s 192.168.1.0/24 -m conntrack --ctstate NEW -j ACCEPT');
+    shell(net, fw1, 'iptables -A FORWARD -d 192.168.1.20 -p tcp --dport 80 -m conntrack --ctstate NEW -j ACCEPT');
+
+    r = check(net, lab.steps[1].objectives);
+    expect(r['l5-policy'].pass).toBe(true);
+    expect(r['l5-web'].pass).toBe(true);
+    expect(r['l5-ssh'].pass).toBe(true); // now filtered
+    expect(r['l5-ping'].pass).toBe(true); // internet -> pc1 now blocked
+    expect(r['l5-out'].pass).toBe(true); // staff still reach out
+  });
+});
+
+describe('example networks', () => {
+  it('good network: only tcp/80 is published inbound; ssh/ping to LAN are blocked', () => {
+    const net = restoreNetwork(JSON.parse(JSON.stringify(EXAMPLES[0].file)));
+    const webOpen = check(net, [
+      { id: 'web', label: '', check: { type: 'tcp', from: 'inet1', toAddr: '203.0.113.1', port: 80, expect: 'open' } },
+    ]);
+    expect(webOpen['web'].pass).toBe(true); // DNAT publishes the DMZ web server
+    const lanBlocked = check(net, [
+      { id: 'ping', label: '', check: { type: 'ping', from: 'inet1', toDevice: 'pc1', expect: 'fail' } },
+    ]);
+    expect(lanBlocked['ping'].pass).toBe(true);
+    // Outbound with masquerade works.
+    const out = check(net, [
+      { id: 'out', label: '', check: { type: 'ping', from: 'pc1', toDevice: 'inet1', expect: 'success' } },
+    ]);
+    expect(out['out'].pass).toBe(true);
+  });
+
+  it('bad network: the internet can reach everything', () => {
+    const net = restoreNetwork(JSON.parse(JSON.stringify(EXAMPLES[1].file)));
+    const r = check(net, [
+      { id: 'ssh', label: '', check: { type: 'tcp', from: 'inet1', toDevice: 'srv1', port: 22, expect: 'open' } },
+      { id: 'telnet', label: '', check: { type: 'tcp', from: 'inet1', toDevice: 'srv1', port: 23, expect: 'open' } },
+      { id: 'ping', label: '', check: { type: 'ping', from: 'inet1', toDevice: 'pc1', expect: 'success' } },
+    ]);
+    expect(r['ssh'].pass).toBe(true);
+    expect(r['telnet'].pass).toBe(true);
+    expect(r['ping'].pass).toBe(true);
   });
 });
 

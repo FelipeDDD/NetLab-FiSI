@@ -410,4 +410,137 @@ const lab4: SaveFile = {
   },
 };
 
-export const LABS: SaveFile[] = [lab1, lab2, lab3, lab4];
+const lab5: SaveFile = {
+  app: 'netsim',
+  version: 1,
+  devices: [
+    dev('host', 'pc1', 60, 120, {
+      ifaces: [{ name: 'eth0', ip: '192.168.1.10/24', up: true }],
+      routes: [{ dest: '0.0.0.0/0', via: '192.168.1.1', dev: 'eth0' }],
+    }),
+    dev('server', 'srv1', 60, 320, {
+      ifaces: [{ name: 'eth0', ip: '192.168.1.20/24', up: true }],
+      routes: [{ dest: '0.0.0.0/0', via: '192.168.1.1', dev: 'eth0' }],
+      services: { tcp: [22], udp: [] },
+      httpServer: { enabled: true, port: 80, body: '<h1>company web</h1>' },
+    }),
+    dev('switch', 'sw1', 280, 220),
+    dev('firewall', 'fw1', 500, 220, {
+      ifaces: [
+        { name: 'eth0', ip: '192.168.1.1/24', up: true },
+        { name: 'eth1', ip: '203.0.113.1/24', up: true },
+      ],
+    }),
+    dev('host', 'inet1', 720, 220, {
+      ifaces: [{ name: 'eth0', ip: '203.0.113.66/24', up: true }],
+      routes: [{ dest: '0.0.0.0/0', via: '203.0.113.1', dev: 'eth0' }],
+    }),
+  ],
+  links: [
+    link('pc1', 'eth0', 'sw1', 'eth0'),
+    link('srv1', 'eth0', 'sw1', 'eth1'),
+    link('sw1', 'eth2', 'fw1', 'eth0'),
+    link('fw1', 'eth1', 'inet1', 'eth0'),
+  ],
+  lab: {
+    id: 'harden-network',
+    title: 'Lab 5 — Harden a vulnerable network',
+    blurb: 'You inherit an open network. Audit the exposure, then lock it down without breaking the business.',
+    steps: [
+      {
+        title: 'Audit the exposure',
+        body:
+          'fw1 sits between the company (pc1, srv1) and the internet (inet1) — but it forwards ' +
+          'everything. Play attacker from inet1: `ping 192.168.1.10`, `nc -z -w 2 192.168.1.20 22`, ' +
+          '`nc -z -w 2 192.168.1.20 80`. All of it works. The objectives below *confirm* the ' +
+          'vulnerabilities — they should all pass before you fix anything.',
+        objectives: [
+          {
+            id: 'l5-audit-ping',
+            label: 'Confirmed: the internet can ping the workstation (bad!)',
+            check: { type: 'ping', from: 'inet1', toDevice: 'pc1', expect: 'success' },
+          },
+          {
+            id: 'l5-audit-ssh',
+            label: 'Confirmed: SSH on srv1 is open to the internet (bad!)',
+            check: { type: 'tcp', from: 'inet1', toDevice: 'srv1', port: 22, expect: 'open' },
+          },
+        ],
+        quiz: [
+          {
+            q: 'Which of these is NOT one of this network’s design problems?',
+            options: [
+              'The firewall forwards everything by default',
+              'The server sits on the same segment as the workstations',
+              'Management services (SSH) are reachable from the internet',
+              'The workstation uses a private RFC1918 address',
+            ],
+            answer: 3,
+          },
+        ],
+      },
+      {
+        title: 'Harden the perimeter',
+        body:
+          'Business requirements: the web site must stay reachable from the internet; staff must ' +
+          'still be able to reach out; everything else inbound dies. On fw1:\n' +
+          '`iptables -P FORWARD DROP`\n' +
+          '`iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT`\n' +
+          '`iptables -A FORWARD -s 192.168.1.0/24 -m conntrack --ctstate NEW -j ACCEPT`\n' +
+          '`iptables -A FORWARD -d 192.168.1.20 -p tcp --dport 80 -m conntrack --ctstate NEW -j ACCEPT`\n' +
+          'Re-run your attacks from inet1 and read fw1’s firewall log: every drop names the rule that killed it.',
+        objectives: [
+          {
+            id: 'l5-policy',
+            label: 'FORWARD policy is drop (default deny)',
+            check: { type: 'fw-policy', device: 'fw1', hook: 'forward', policy: 'drop' },
+          },
+          {
+            id: 'l5-web',
+            label: 'The public web site still works from the internet',
+            check: { type: 'tcp', from: 'inet1', toDevice: 'srv1', port: 80, expect: 'open' },
+          },
+          {
+            id: 'l5-ssh',
+            label: 'SSH is now silently filtered from the internet',
+            check: { type: 'tcp', from: 'inet1', toDevice: 'srv1', port: 22, expect: 'filtered' },
+          },
+          {
+            id: 'l5-ping',
+            label: 'The internet can no longer ping the workstation',
+            check: { type: 'ping', from: 'inet1', toDevice: 'pc1', expect: 'fail' },
+          },
+          {
+            id: 'l5-out',
+            label: 'Staff can still reach the internet (stateful return traffic)',
+            check: { type: 'ping', from: 'pc1', toDevice: 'inet1', expect: 'success' },
+          },
+        ],
+        quiz: [
+          {
+            q: 'SSH shows as "filtered" rather than "refused" to the attacker. Why is that usually preferable?',
+            options: [
+              'It is faster for the attacker',
+              'A silent drop reveals nothing — a refusal confirms a live host and a real, reachable port',
+              'REJECT would crash the firewall',
+              'It is not preferable; they are identical',
+            ],
+            answer: 1,
+          },
+          {
+            q: 'What further improvement would most reduce the blast radius if srv1 were compromised?',
+            options: [
+              'A stronger root password on srv1',
+              'Moving srv1 to its own DMZ segment so it cannot reach the workstations directly',
+              'Changing SSH to port 2222',
+              'Enabling RIP on fw1',
+            ],
+            answer: 1,
+          },
+        ],
+      },
+    ],
+  },
+};
+
+export const LABS: SaveFile[] = [lab1, lab2, lab3, lab4, lab5];

@@ -15,6 +15,7 @@ import { sim } from './sim';
 import type { LabDef } from './labs/types';
 import { runChecks } from './labs/checker';
 import { LABS } from './labs/library';
+import { EXAMPLES } from './labs/examples';
 import { zipSync, strToU8 } from 'fflate';
 import { configBundle } from './export/configs';
 import { containerlabYaml } from './export/containerlab';
@@ -131,6 +132,7 @@ interface NetsimState {
   boot(): void;
 
   loadBundledLab(index: number): void;
+  loadExample(index: number): void;
   setLabStep(step: number): void;
   answerQuiz(qid: string, choice: number): void;
   checkStep(): void;
@@ -752,6 +754,13 @@ export const useStore = create<NetsimState>()((set, get) => {
       const lab = LABS[index];
       if (!lab) return;
       adoptSave(JSON.parse(JSON.stringify(lab)) as SaveFile);
+      saveSoon();
+    },
+
+    loadExample(index) {
+      const ex = EXAMPLES[index];
+      if (!ex) return;
+      adoptSave(JSON.parse(JSON.stringify(ex.file)) as SaveFile);
       saveSoon();
     },
 

@@ -3,10 +3,21 @@
 **A network simulator that runs entirely in your browser — real Linux syntax, drag-and-drop
 topologies, zero install, no backend.**
 
+### ▶ Try it live: <https://michael-borck.github.io/netsim/>
+
 Build networks from hosts, switches and routers on a canvas; open a terminal on any device and
 configure it with genuine `iproute2` commands (`ip addr`, `ip route`, `ping`, `traceroute`);
 watch ARP and ICMP packets animate across the wire. Built as a teaching tool first, with network
 design and firewall-config testing as first-class goals.
+
+![NetSim running the "harden a vulnerable network" lab](docs/img/screenshot.jpg)
+
+## Documentation
+
+- **[User guide](docs/USER_GUIDE.md)** — the interface, workflow, and what is and isn't simulated
+- **[Labs & examples catalogue](docs/LABS.md)** — the five bundled labs and two example networks
+- **[Lab authoring guide](docs/LAB_AUTHORING.md)** — write and grade your own labs (for educators)
+- **[Design document](docs/DESIGN.md)** · **[Architecture decisions](docs/adr/)** · **[Contributing](CONTRIBUTING.md)**
 
 ## Inspiration
 

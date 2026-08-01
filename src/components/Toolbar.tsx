@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react';
 import { useStore } from '../store';
 import { LABS } from '../labs/library';
+import { EXAMPLES } from '../labs/examples';
+
+const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 
 type ExportAction =
   | 'exportJson'
@@ -41,6 +44,7 @@ export function Toolbar() {
   const [labsOpen, setLabsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const loadBundledLab = useStore((s) => s.loadBundledLab);
+  const loadExample = useStore((s) => s.loadExample);
   const clock = useStore((s) => s.clock);
   const paused = useStore((s) => s.paused);
   const speed = useStore((s) => s.speed);
@@ -94,7 +98,21 @@ export function Toolbar() {
                   <span className="labs-menu-blurb">{l.lab!.blurb}</span>
                 </button>
               ))}
-              <div className="labs-menu-note">Loading a lab replaces the current canvas.</div>
+              <div className="labs-menu-section">Example networks</div>
+              {EXAMPLES.map((ex, i) => (
+                <button
+                  key={ex.title}
+                  className="labs-menu-item"
+                  onClick={() => {
+                    loadExample(i);
+                    setLabsOpen(false);
+                  }}
+                >
+                  <span className="labs-menu-title">{ex.title}</span>
+                  <span className="labs-menu-blurb">{ex.blurb}</span>
+                </button>
+              ))}
+              <div className="labs-menu-note">Loading a lab or example replaces the current canvas.</div>
             </div>
           )}
         </div>
@@ -120,6 +138,9 @@ export function Toolbar() {
         <button className="btn" onClick={() => shareUrl()}>
           Share link
         </button>
+        <a className="btn" href={USER_GUIDE_URL} target="_blank" rel="noopener noreferrer">
+          Help
+        </a>
         <input
           ref={fileRef}
           type="file"
