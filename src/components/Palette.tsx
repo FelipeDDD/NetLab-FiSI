@@ -1,6 +1,7 @@
 import type { DragEvent } from 'react';
 import { useStore } from '../store';
 import type { DeviceKind } from '../engine/device';
+import { DeviceIcon } from './DeviceNode';
 
 const ITEMS: { kind: DeviceKind; label: string; blurb: string }[] = [
   { kind: 'host', label: 'Host', blurb: 'Linux workstation' },
@@ -32,8 +33,13 @@ export function Palette() {
           onClick={() => addDeviceAt(it.kind, { x: 140 + (nodeCount % 5) * 60, y: 120 + (nodeCount % 7) * 50 })}
           title="Drag onto the canvas, or click to add"
         >
-          <span className="palette-item-label">{it.label}</span>
-          <span className="palette-item-blurb">{it.blurb}</span>
+          <span className="palette-item-icon">
+            <DeviceIcon kind={it.kind} size={22} />
+          </span>
+          <span className="palette-item-text">
+            <span className="palette-item-label">{it.label}</span>
+            <span className="palette-item-blurb">{it.blurb}</span>
+          </span>
         </button>
       ))}
       <div className="palette-hint">
