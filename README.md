@@ -3,7 +3,7 @@
 **A network simulator that runs entirely in your browser — real Linux syntax, drag-and-drop
 topologies, zero install, no backend.**
 
-### ▶ Try it live: <https://michael-borck.github.io/netsim/>
+### ▶ Try it live: <https://netsim.borck.education/>
 
 Build networks from hosts, switches and routers on a canvas; open a terminal on any device and
 configure it with genuine `iproute2` commands (`ip addr`, `ip route`, `ping`, `traceroute`);

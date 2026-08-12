@@ -6,7 +6,7 @@ terminal on any device and configure it with **real Linux commands**, and
 watch packets travel between them. Nothing to install; nothing is sent to a
 server.
 
-Live app: <https://michael-borck.github.io/netsim/>
+Live app: <https://netsim.borck.education/>
 
 > In-app, the `help` command in any terminal lists the supported commands.
 > This guide is the bigger picture: the interface, the workflow, and what the
