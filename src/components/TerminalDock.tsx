@@ -10,9 +10,8 @@ function TerminalPane({ deviceId, active }: { deviceId: string; active: boolean 
   useEffect(() => {
     const device = sim.net.devices.get(deviceId);
     if (!(device instanceof IpDevice) || !ref.current) return;
-    const session = getSession(device, {
-      onAfterCommand: () => useStore.getState().refresh(),
-    });
+    // The store owns session lifetime; mounting/moving a pane only attaches it.
+    const session = getSession(device);
     if (!session.opened) {
       session.term.open(ref.current);
       session.opened = true;

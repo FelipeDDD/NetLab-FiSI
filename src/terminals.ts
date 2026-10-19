@@ -2,15 +2,17 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Shell, type Running } from './commands/shell';
 import type { IpDevice } from './engine/ipdevice';
+import { serializeNetwork } from './engine/serialize';
 
 export interface SessionOpts {
-  onAfterCommand?: () => void;
+  onAfterCommand?: (configurationChanged: boolean) => void;
 }
 
 export interface Session {
   term: Terminal;
   fit: FitAddon;
   opened: boolean;
+  dispose(): void;
 }
 
 const sessions = new Map<string, Session>();
@@ -36,10 +38,9 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
 
   const shell = new Shell(device);
   const promptStr = () => `\x1b[1;32m${device.name}\x1b[0m:\x1b[1;34m~\x1b[0m$ `;
-  const writeOut = (s: string) => term.write(s.replace(/\n/g, '\r\n'));
-
   let buf = '';
   let running: Running | null = null;
+  let disposed = false;
   const history: string[] = [];
   let hIdx = 0;
 
@@ -64,14 +65,26 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       term.write(promptStr());
       return;
     }
-    running = shell.exec(line, { write: writeOut }, () => {
+    // Compare only persisted configuration, not ARP/conntrack caches or output.
+    const before = JSON.stringify(serializeNetwork(device.network, {}));
+    let completed = false;
+    const command = shell.exec(line, {
+      write: (s) => {
+        if (!disposed && !completed) term.write(s.replace(/\n/g, '\r\n'));
+      },
+    }, () => {
+      if (disposed || completed) return;
+      completed = true;
       running = null;
-      opts.onAfterCommand?.();
-      term.write(promptStr());
+      opts.onAfterCommand?.(before !== JSON.stringify(serializeNetwork(device.network, {})));
+      if (!disposed) term.write(promptStr());
     });
+    // Some commands call done synchronously and still return a cancel handle.
+    running = completed ? null : command;
   };
 
-  term.onData((data) => {
+  const input = term.onData((data) => {
+    if (disposed) return;
     if (running) {
       if (data === '\x03') {
         term.write('^C\r\n');
@@ -113,7 +126,23 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   term.writeln(`\x1b[90mNetSim — ${device.name} (${device.kind}). Type 'help' for commands.\x1b[0m`);
   term.write(promptStr());
 
-  const session: Session = { term, fit, opened: false };
+  const session: Session = {
+    term, fit, opened: false,
+    dispose() {
+      if (disposed) return;
+      // Invalidate callbacks before cancel(), which may synchronously call done.
+      disposed = true;
+      if (sessions.get(device.id) === session) sessions.delete(device.id);
+      input.dispose();
+      const command = running;
+      running = null;
+      try {
+        command?.cancel();
+      } finally {
+        term.dispose();
+      }
+    },
+  };
   sessions.set(device.id, session);
   return session;
 }
@@ -121,8 +150,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
 export function disposeSession(deviceId: string): void {
   const s = sessions.get(deviceId);
   if (!s) return;
-  s.term.dispose();
-  sessions.delete(deviceId);
+  s.dispose();
 }
 
 export function disposeAllSessions(): void {

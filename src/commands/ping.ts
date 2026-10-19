@@ -2,6 +2,7 @@ import type { IpDevice } from '../engine/ipdevice';
 import { ipToString, type U32 } from '../engine/ip';
 import type { Running } from './shell';
 import { resolveHost } from './resolve';
+import type { ScheduledEvent } from '../engine/scheduler';
 
 const INTERVAL_MS = 1000;
 const TIMEOUT_MS = 2000;
@@ -65,12 +66,22 @@ export function runPing(
   let sent = 0;
   let received = 0;
   let finished = false;
+  const timers = new Set<ScheduledEvent>();
+  const schedule = (delay: number, fn: () => void) => {
+    const timer = sched.schedule(delay, () => {
+      timers.delete(timer);
+      fn();
+    });
+    timers.add(timer);
+  };
 
   write(`PING ${target} (${ipToString(ip)}) 56(84) bytes of data.\n`);
 
   const finish = () => {
     if (finished) return;
     finished = true;
+    for (const timer of timers) sched.cancel(timer);
+    timers.clear();
     device.offIcmp(id);
     const loss = sent ? Math.round(((sent - received) / sent) * 100) : 0;
     write(`\n--- ${target} ping statistics ---\n`);
@@ -145,14 +156,15 @@ export function runPing(
       finish();
       return;
     }
-    sched.schedule(TIMEOUT_MS, () => {
+    if (finished) return;
+    schedule(TIMEOUT_MS, () => {
       if (finished || answered.has(seq)) return;
       answered.add(seq);
       // Matches real `ping -O` behaviour; silent gaps teach nothing.
       write(`no answer yet for icmp_seq=${seq}\n`);
       maybeFinish(seq);
     });
-    if (count === null || sent < count) sched.schedule(INTERVAL_MS, sendOne);
+    if (count === null || sent < count) schedule(INTERVAL_MS, sendOne);
   };
 
   sendOne();

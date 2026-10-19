@@ -10,7 +10,7 @@ import { restoreNetwork, serializeNetwork, type SaveFile } from './engine/serial
 import { listRuleset } from './engine/firewall-fmt';
 import { cidrToString, parseCidr, parseIp } from './engine/ip';
 import { ApDevice, SwitchDevice } from './engine/switch';
-import { disposeAllSessions, disposeSession } from './terminals';
+import { disposeAllSessions, disposeSession, getSession } from './terminals';
 import { sim } from './sim';
 import type { LabDef } from './labs/types';
 import { runChecks } from './labs/checker';
@@ -114,6 +114,7 @@ interface NetsimState {
   closeTerminal(id: string): void;
   setActiveTerminal(id: string): void;
   refresh(): void;
+  flushAutosave(): void;
   tick(dtMs: number): void;
   setPaused(p: boolean): void;
   setSpeed(s: number): void;
@@ -194,15 +195,19 @@ export const useStore = create<NetsimState>()((set, get) => {
       get().nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y })),
     );
 
+  const saveNow = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = null;
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(currentSave()));
+    } catch {
+      // Storage full or unavailable; autosave is best-effort.
+    }
+  };
+
   const saveSoon = () => {
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(currentSave()));
-      } catch {
-        // Storage full or unavailable; autosave is best-effort.
-      }
-    }, 500);
+    saveTimer = setTimeout(saveNow, 500);
   };
 
   const adoptSave = (data: SaveFile) => {
@@ -528,6 +533,12 @@ export const useStore = create<NetsimState>()((set, get) => {
     openTerminal(id) {
       const d = sim.net.devices.get(id);
       if (!d || !(d instanceof IpDevice)) return;
+      getSession(d, {
+        onAfterCommand: (configurationChanged) => {
+          get().refresh();
+          if (configurationChanged) saveSoon();
+        },
+      });
       const terminals = get().terminals.includes(id) ? get().terminals : [...get().terminals, id];
       set({ terminals, activeTerminal: id });
     },
@@ -544,6 +555,10 @@ export const useStore = create<NetsimState>()((set, get) => {
 
     setActiveTerminal(id) {
       set({ activeTerminal: id });
+    },
+
+    flushAutosave() {
+      if (saveTimer !== null) saveNow();
     },
 
     refresh() {

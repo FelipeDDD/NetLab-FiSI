@@ -6,5 +6,7 @@ import App from './App';
 import { useStore } from './store';
 
 useStore.getState().boot();
+// Preserve pending debounced edits even if the page is reloaded immediately.
+window.addEventListener('pagehide', useStore.getState().flushAutosave);
 
 createRoot(document.getElementById('root')!).render(<App />);
