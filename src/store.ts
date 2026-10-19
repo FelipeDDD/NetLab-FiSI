@@ -22,6 +22,9 @@ import { containerlabYaml } from './export/containerlab';
 import { composeYaml } from './export/compose';
 import { svgToPngBlob, topologySvg } from './export/diagram';
 import { networkReport } from './export/report';
+import { adjacentTerminal, type TerminalDirection } from './terminalShortcuts';
+import { activatePanelSession, openPanelSession, prunePanelSessions, type TerminalPanel } from './terminalPanels';
+import { DEFAULT_TERMINAL_COLORS, DEFAULT_TERMINAL_APPEARANCE, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, type AppearanceSaveFile, type TerminalAppearance } from './terminalAppearance';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -78,7 +81,11 @@ interface NetsimState {
   selected: string | null;
   terminals: string[];
   activeTerminal: string | null;
+  terminalPanels: TerminalPanel[];
+  terminalHasFocus: boolean;
   terminalFocusRequest: number;
+  terminalColors: Record<string, string>;
+  terminalAppearance: TerminalAppearance;
   paused: boolean;
   speed: number;
   notice: string | null;
@@ -114,6 +121,14 @@ interface NetsimState {
   openTerminal(id: string): void;
   closeTerminal(id: string): void;
   setActiveTerminal(id: string): void;
+  noteTerminalFocus(id: string): void;
+  noteTerminalPanelFocus(id: string): void;
+  releaseTerminalFocus(): void;
+  setTerminalPanels(panels: TerminalPanel[]): void;
+  cycleTerminal(direction: TerminalDirection, origin?: string): void;
+  setTerminalColor(id: string, color: string | null): void;
+  setTerminalAppearance(preference: Partial<TerminalAppearance>): void;
+  resetTerminalAppearance(): void;
   refresh(): void;
   flushAutosave(): void;
   tick(dtMs: number): void;
@@ -165,10 +180,16 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
   wireNet(sim.net);
 
-  const currentSave = (): SaveFile => {
+  const currentSave = (): AppearanceSaveFile => {
     const positions: Record<string, { x: number; y: number }> = {};
     for (const n of get().nodes) positions[n.id] = { x: n.position.x, y: n.position.y };
-    const save = serializeNetwork(sim.net, positions);
+    const save: AppearanceSaveFile = serializeNetwork(sim.net, positions);
+    if (Object.keys(get().terminalColors).length) {
+      save.ui = { terminalColors: { ...get().terminalColors } };
+    }
+    const appearance = get().terminalAppearance;
+    // An explicit size distinguishes new defaults from the legacy 13px files.
+    save.ui = { ...save.ui, terminalAppearance: { ...appearance } };
     const lab = get().lab;
     if (lab) {
       save.lab = lab;
@@ -211,7 +232,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     saveTimer = setTimeout(saveNow, 500);
   };
 
-  const adoptSave = (data: SaveFile) => {
+  const adoptSave = (data: AppearanceSaveFile) => {
     disposeAllSessions();
     sim.net = restoreNetwork(data);
     wireNet(sim.net);
@@ -224,6 +245,10 @@ export const useStore = create<NetsimState>()((set, get) => {
       selected: null,
       terminals: [],
       activeTerminal: null,
+      terminalPanels: [],
+      terminalHasFocus: false,
+      terminalColors: readTerminalColors(data),
+      terminalAppearance: readTerminalAppearance(data),
       lab: data.lab ?? null,
       labStep: data.labProgress?.step ?? 0,
       labResults: data.labProgress?.results ?? {},
@@ -243,7 +268,11 @@ export const useStore = create<NetsimState>()((set, get) => {
     selected: null,
     terminals: [],
     activeTerminal: null,
+    terminalPanels: [],
+    terminalHasFocus: false,
     terminalFocusRequest: 0,
+    terminalColors: {},
+    terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE },
     paused: false,
     speed: 1,
     notice: null,
@@ -274,14 +303,15 @@ export const useStore = create<NetsimState>()((set, get) => {
           ? {
               edges: edgesFromEngine(),
               terminals: get().terminals.filter((t) => sim.net.devices.has(t)),
-              activeTerminal:
-                get().activeTerminal && sim.net.devices.has(get().activeTerminal!)
-                  ? get().activeTerminal
-                  : null,
+              ...prunePanelSessions(get().terminalPanels, get().terminals.filter((id) => sim.net.devices.has(id)), get().activeTerminal),
+              terminalHasFocus: false,
               selected: get().selected && sim.net.devices.has(get().selected!) ? get().selected : null,
             }
           : {}),
       });
+      if (removed) {
+        set({ terminalColors: Object.fromEntries(Object.entries(get().terminalColors).filter(([id]) => sim.net.devices.has(id))) });
+      }
       if (removed || changes.some((c) => c.type === 'position' && !c.dragging)) saveSoon();
     },
 
@@ -315,8 +345,10 @@ export const useStore = create<NetsimState>()((set, get) => {
         nodes: get().nodes.filter((n) => n.id !== id),
         edges: edgesFromEngine(),
         terminals: get().terminals.filter((t) => t !== id),
-        activeTerminal: get().activeTerminal === id ? null : get().activeTerminal,
+        ...prunePanelSessions(get().terminalPanels, get().terminals.filter((t) => t !== id), get().activeTerminal),
+        terminalHasFocus: false,
         selected: get().selected === id ? null : get().selected,
+        terminalColors: Object.fromEntries(Object.entries(get().terminalColors).filter(([key]) => key !== id)),
       });
       saveSoon();
     },
@@ -542,21 +574,85 @@ export const useStore = create<NetsimState>()((set, get) => {
         },
       });
       const terminals = get().terminals.includes(id) ? get().terminals : [...get().terminals, id];
-      set({ terminals, activeTerminal: id, terminalFocusRequest: get().terminalFocusRequest + 1 });
+      set({ terminals, terminalPanels: openPanelSession(get().terminalPanels, id, get().activeTerminal),
+        activeTerminal: id, terminalHasFocus: true, terminalFocusRequest: get().terminalFocusRequest + 1 });
     },
 
     closeTerminal(id) {
       disposeSession(id);
       const terminals = get().terminals.filter((t) => t !== id);
+      const next = prunePanelSessions(get().terminalPanels, terminals, get().activeTerminal);
+      const refocus = id === get().activeTerminal && next.activeTerminal !== null;
       set({
         terminals,
-        activeTerminal:
-          get().activeTerminal === id ? (terminals.length ? terminals[terminals.length - 1] : null) : get().activeTerminal,
+        ...next,
+        terminalHasFocus: refocus || (next.activeTerminal !== null && get().terminalHasFocus),
+        terminalFocusRequest: get().terminalFocusRequest + (refocus ? 1 : 0),
       });
     },
 
     setActiveTerminal(id) {
-      set({ activeTerminal: id, terminalFocusRequest: get().terminalFocusRequest + 1 });
+      if (!get().terminals.includes(id)) return;
+      set({ terminalPanels: activatePanelSession(get().terminalPanels, id), activeTerminal: id,
+        terminalHasFocus: true, terminalFocusRequest: get().terminalFocusRequest + 1 });
+    },
+
+    noteTerminalFocus(id) {
+      if (!get().terminals.includes(id) || (get().activeTerminal === id && get().terminalHasFocus)) return;
+      set({ terminalPanels: activatePanelSession(get().terminalPanels, id), activeTerminal: id, terminalHasFocus: true });
+    },
+
+    noteTerminalPanelFocus(id) {
+      const panel = get().terminalPanels.find((item) => item.id === id);
+      if (panel && (get().activeTerminal !== panel.active || get().terminalHasFocus)) set({ activeTerminal: panel.active, terminalHasFocus: false });
+    },
+
+    releaseTerminalFocus() {
+      if (get().terminalHasFocus) set({ terminalHasFocus: false });
+    },
+
+    setTerminalPanels(panels) {
+      // Width changes only. Tab membership/selection stays owned by the actions
+      // above until explicit tab movement is implemented.
+      set({ terminalPanels: get().terminalPanels.map((panel) => {
+        const weight = panels.find((item) => item.id === panel.id)?.weight;
+        return weight && Number.isFinite(weight) && weight > 0 ? { ...panel, weight } : panel;
+      }) });
+    },
+
+    cycleTerminal(direction, origin) {
+      const next = adjacentTerminal(get().terminals, origin ?? get().activeTerminal, direction);
+      if (next !== null) get().setActiveTerminal(next);
+    },
+
+    setTerminalColor(id, value) {
+      const device = sim.net.devices.get(id);
+      if (!device || !hasTerminalColor(device.kind)) return;
+      const color = value === null ? null : normalizeTerminalColor(value);
+      if (value !== null && !color) return;
+      const custom = color === DEFAULT_TERMINAL_COLORS[device.kind] ? null : color;
+      if ((get().terminalColors[id] ?? null) === custom) return;
+      const colors = { ...get().terminalColors };
+      if (custom) Object.defineProperty(colors, id, { value: custom, enumerable: true, configurable: true, writable: true });
+      else delete colors[id];
+      set({ terminalColors: colors });
+      saveSoon();
+    },
+
+    setTerminalAppearance(preference) {
+      const next = normalizeTerminalAppearance({ ...get().terminalAppearance, ...preference });
+      const current = get().terminalAppearance;
+      if (next.style === current.style && next.intensity === current.intensity && next.fontSize === current.fontSize && next.fontFamily === current.fontFamily) return;
+      set({ terminalAppearance: next });
+      saveSoon();
+    },
+
+    resetTerminalAppearance() {
+      const current = get().terminalAppearance;
+      const defaults = DEFAULT_TERMINAL_APPEARANCE;
+      if (!Object.keys(get().terminalColors).length && Object.entries(defaults).every(([key, value]) => current[key as keyof TerminalAppearance] === value)) return;
+      set({ terminalColors: {}, terminalAppearance: { ...defaults } });
+      saveSoon();
     },
 
     flushAutosave() {
@@ -619,6 +715,10 @@ export const useStore = create<NetsimState>()((set, get) => {
         selected: null,
         terminals: [],
         activeTerminal: null,
+        terminalPanels: [],
+        terminalHasFocus: false,
+        terminalColors: {},
+        terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE },
         lab: null,
         labStep: 0,
         labResults: {},

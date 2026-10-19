@@ -7,6 +7,7 @@ import { cidrToString, ipToString } from '../engine/ip';
 import { formatNeigh, formatRoutes } from '../commands/ip-cmd';
 import { formatConntrack } from '../commands/shell';
 import { listRuleset } from '../engine/firewall-fmt';
+import { CopyIpButton } from './CopyIpButton';
 
 // A small controlled input that commits on blur/Enter and reverts on error.
 function CommitInput({
@@ -252,6 +253,7 @@ function IfaceRow({ deviceId, ifaceName }: { deviceId: string; ifaceName: string
       <input
         className="iface-ip"
         placeholder="no address (CIDR)"
+        aria-label={`IPv4 address for ${device?.name} ${ifaceName}`}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={commit}
@@ -259,6 +261,7 @@ function IfaceRow({ deviceId, ifaceName }: { deviceId: string; ifaceName: string
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
       />
+      {iface.ip && <CopyIpButton address={ipToString(iface.ip.addr)} context={`${device?.name} ${ifaceName}`} />}
     </div>
   );
 }
@@ -292,6 +295,7 @@ export function Inspector() {
         />
         <span className={`inspector-kind kind-${device.kind}`}>{device.kind}</span>
       </div>
+
 
       {ipd && (
         <div className="inspector-forwarding">

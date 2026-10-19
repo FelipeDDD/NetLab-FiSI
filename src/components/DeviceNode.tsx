@@ -3,6 +3,7 @@ import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
 import { useStore, type DevNode } from '../store';
 import type { DeviceKind } from '../engine/device';
+import { CopyIpButton } from './CopyIpButton';
 
 export const NODE_W = 96;
 export const NODE_H = 78;
@@ -108,7 +109,12 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
         </span>
       )}
       <div className="dev-label">{data.label}</div>
-      <div className="dev-ip">{data.ips.length ? data.ips[0] + (data.ips.length > 1 ? ' +' : '') : ' '}</div>
+      <div className="dev-ip">
+        {data.ips.length ? <>
+          <CopyIpButton address={data.ips[0]} context={data.label}>{data.ips[0]}</CopyIpButton>
+          {data.ips.length > 1 && <span title="More interface addresses in the Inspector"> +</span>}
+        </> : ' '}
+      </div>
     </div>
   );
 }

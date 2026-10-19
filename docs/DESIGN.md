@@ -110,6 +110,112 @@ paper's stated future work (outbound filtering, NAT, stateful).
 6. **Kitchen sink** — RIPv1/v2 (iNetwork parity) then OSPF; VLANs/802.1Q on switches;
    wireless AP/client (SSID association model). Optional: v86 real-VM node type.
 
+## NetLab-FiSI — aparência dos terminais
+
+- `terminalAppearance.ts` define padrões por tipo, validação de cores hexadecimais
+  opacas e tema fixo do xterm. A preferência por dispositivo pertence ao store,
+  sem campos adicionados ao motor. O JSON v1 recebe apenas a extensão opcional
+  `ui.terminalColors`, um mapa de ID para `#rrggbb`, e `ui.terminalAppearance`
+  opcional com `{ style: 'diagonal' | 'dual-glow', intensity: 0..100, fontSize: 12..18,
+  fontFamily: 'system' | 'consolas' | 'cascadia' | 'courier' }`.
+  Estilo/intensidade se aplicam aos terminais da topologia e usam Diagonal/80%
+  quando ausentes. As cores individuais anteriores são preservadas. Arquivos antigos continuam
+  válidos; cores inválidas e referências a dispositivos ausentes são ignoradas.
+  Editores antigos podem abrir o arquivo, mas podem descartar esses metadados ao
+  reexportá-lo. A restauração da cor padrão remove o override.
+  Novas topologias usam fonte de 14 px; arquivos anteriores sem `fontSize`
+  preservam os 13 px originais. O tamanho é inteiro e limitado a 12–18 px.
+  O salvamento inclui a preferência de fonte mesmo no padrão, distinguindo
+  arquivos novos de antigos. O tamanho afeta somente os terminais.
+  Famílias são identificadores de uma lista fixa, nunca CSS importado. Arquivos
+  sem família preservam a pilha original (`system`); valores inválidos também
+  usam esse padrão. As fontes são locais, com fallback monoespaçado, sem downloads.
+- As abas usam texto de 14 px, fechamento de 32 × 32 px e borda superior
+  integrada de 3 px na cor do dispositivo. A aba ativa tem preenchimento
+  discreto; a faixa permite rolagem e revela a aba ativada sem rolar o editor.
+  O indicador abre o mesmo formulário do menu central Terminal settings,
+  selecionando o dispositivo correspondente. O Inspector não duplica as opções.
+  `TerminalSessionView` altera `term.options.fontSize` e `fontFamily` sem recriar sessões e
+  agenda o FitAddon novamente; abas ocultas ajustam colunas ao serem exibidas.
+  Após mudanças de colunas, a fila de entrada redesenha somente a linha
+  editável não vazia a partir do buffer lógico, evitando desalinhamento do
+  reflow em comandos longos Unicode. Não redesenha comandos em execução.
+- Os fundos CSS estáticos oferecem Diagonal e Dual Glow. O primeiro começa
+  a transição em 12% do percurso diagonal; o segundo combina duas fontes radiais,
+  com a inferior direita mais forte e o centro escuro. A intensidade escala a
+  faixa segura inteira, de 0 a 100%, com padrão 80%. A luminância relativa do
+  ponto mais claro é limitada a 0,032, preservando contraste de pelo menos 4,5:1
+  dos textos ANSI normais. Alterar cor, estilo ou intensidade muda somente
+  CSS e o indicador da aba, sem `term.write`, troca de tema ou recriação da sessão.
+- A [API do xterm](https://xtermjs.org/docs/api/terminal/interfaces/iterminaloptions/)
+  informa que `allowTransparency` deve ser habilitado antes de `open()` e pode
+  afetar o desempenho. A implementação mantém o renderizador DOM já utilizado,
+  sem Canvas/WebGL, filtros ou animações do fundo. A base RGB permanece no tema
+  transparente para contraste e texto invertido; `minimumContrastRatio: 4.5`,
+  paleta ANSI clara e seleção opaca com texto branco preservam a leitura.
+  Os testes verificam contraste de texto ANSI normal, cursor e seleção inclusive
+  contra o canto mais claro possível. Texto ANSI dim continua intencionalmente
+  atenuado e cores true-color arbitrárias dependem também do ajuste do xterm.
+- Validação em Chromium 155: inspeção visual, personalização/restauração,
+  recarga, foco e entrada preservados. A validação dos painéis abaixo inclui
+  quatro instâncias reais com pings ativos. Medições em hardware de laboratório
+  ainda são úteis para avaliar equipamentos menos potentes.
+
+### Painéis automáticos de terminal
+
+- `terminalPanels.ts` contém regras puras de distribuição, seleção, remoção e
+  pesos. O store mantém `terminals` como ordem global para atalhos e
+  `terminalPanels` com `{ id, tabs, active, weight }` para apresentação.
+  Os IDs dos painéis são independentes dos IDs de dispositivos. Os primeiros
+  quatro terminais criam colunas iguais; os excedentes entram no painel que
+  recebeu foco por último. Abas de outros painéis continuam selecionadas e
+  visíveis. A estrutura permite acrescentar movimentação entre painéis depois,
+  sem alterar o registro de sessões.
+- `TerminalPanelView` monta as abas e suas áreas xterm; `attachTerminalSession`
+  abre uma sessão uma única vez ou reanexa o mesmo elemento DOM. Desmontar a
+  apresentação e parar um ResizeObserver nunca descarta buffer nem cancela
+  comandos. Só fechamento definitivo, exclusão de dispositivo ou troca de
+  topologia descartam sessões. Todos os terminais visíveis usam FitAddon com
+  ResizeObserver coalescido por frame; abas ocultas continuam executando.
+- Flexbox distribui pesos proporcionais. `TerminalPanelSplitter` altera apenas
+  o par adjacente e oferece arraste, teclado e equalização. O mínimo de 280px
+  evita compressão excessiva; telas estreitas usam rolagem horizontal, trazendo
+  o painel ativado à vista. A altura salva permanece independente. Painéis,
+  abas e larguras são transitórios e não entram no JSON nem no autosave.
+- `terminalHasFocus` distingue foco real/solicitado de uma aba apenas visível;
+  eventos de foco não geram novos pedidos de foco. Escape é capturado somente
+  no xterm, libera o foco e foca a região do editor, sem enviar entrada ao shell.
+  A navegação continua global e circular. Ctrl+Tab mantém as limitações do
+  navegador já documentadas; Alt+Shift+Setas é a alternativa.
+- Regressões cobrem distribuição, exclusão, seleção local, pesos, reanexação,
+  input Unicode/histórico e quatro pings preservados em abas ocultas e após
+  redimensionamento. No Chromium 155 foram validados os quatro painéis reais,
+  ajustes por mouse/teclado, seis sessões, foco, Escape, copiar/colar, seleção,
+  fechamento e expansão, janela estreita e identidade de DOM/buffer/sessão.
+
+### Menus e personalização compacta
+
+O `overflow-x: auto` da toolbar também recorta seus menus descendentes no eixo
+vertical. Um z-index maior dentro desse ancestral não elimina o recorte.
+`FloatingPopover` usa um portal em `document.body` e posição fixa ancorada ao
+botão; `floatingPosition` limita largura/altura à janela e escolhe o lado com
+espaço. Scroll, resize e ResizeObserver atualizam a posição; um botão que sai
+da janela fecha seu popup. A rolagem horizontal da toolbar permanece intacta.
+O mesmo componente serve ao acesso pela bolinha da aba, sem botões aninhados e
+sem ativar/fechar a sessão. Há retorno de foco por Escape, fechamento por clique
+externo e navegação de menus por teclado. Janelas curtas usam rolagem interna.
+
+O dock oferece Terminal settings em uma faixa superior comum, sem ocupar a
+largura de nenhum painel. `TerminalSettingsControls` reúne Appearance e permite
+escolher qualquer dispositivo com shell, inclusive sem sessão aberta. Trocar o
+dispositivo do formulário não troca a sessão ativa nem abre terminais. O acesso
+pela aba usa o mesmo componente, com o dispositivo pré-selecionado. Não há
+seções Layout/Behavior sem opções implementadas.
+`resetTerminalAppearance` limpa cores individuais e restaura as preferências
+globais atomicamente, usando o debounce existente. Não altera motor, sessões,
+foco solicitado, dimensões dos painéis ou altura salva do dock. Repetir uma
+preferência ou restauração sem mudanças não dispara autosave.
+
 ## NetLab-FiSI — ideias futuras (fora da etapa 2)
 
 - Undo/Redo das alterações da topologia, inicialmente com histórico limitado a
@@ -120,6 +226,15 @@ paper's stated future work (outbound filtering, NAT, stateful).
   terminais, inputs, textareas e outros campos editáveis.
 - Perfis de terminal Windows e Linux por dispositivo, com comandos e saídas
   equivalentes sobre o mesmo motor. Manter explícito o subconjunto suportado.
+- Drag and drop de abas entre painéis. A estrutura atual separa o grupo,
+  o botão de ativação, o indicador e o fechamento.
+- Cadeado por painel para fixar sua largura; redistribuir automaticamente
+  somente os painéis destravados.
+- Recolher/expandir o dock sem encerrar sessões ou comandos.
+- Outros estilos de gradiente e controles avançados de aparência.
+- Avaliar uma linha colorida no topo do próprio painel, imediatamente abaixo
+  das abas. Nesta etapa existe apenas a borda integrada às abas, sem alternância
+  entre estilos de identificação.
 
 Estas ideias estão apenas registradas; não fazem parte da implementação atual.
 

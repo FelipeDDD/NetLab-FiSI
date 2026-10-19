@@ -3,6 +3,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Shell, type Running } from './commands/shell';
 import type { IpDevice } from './engine/ipdevice';
 import { serializeNetwork } from './engine/serialize';
+import { normalizeTerminalPaste, PASTE_END, PASTE_START, removeLastCodePoint } from './terminalInput';
+import { currentCommandRange, inputStartRow } from './terminalLine';
+import { LEGACY_TERMINAL_FONT_SIZE, TERMINAL_THEME } from './terminalAppearance';
 
 export interface SessionOpts {
   onAfterCommand?: (configurationChanged: boolean) => void;
@@ -23,30 +26,73 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
 
   const term = new Terminal({
     cursorBlink: true,
-    fontSize: 13,
+    // API-only sessions retain the original reference. The view applies the
+    // persisted preference before its first fit without recreating the terminal.
+    fontSize: LEGACY_TERMINAL_FONT_SIZE,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     scrollback: 2000,
-    theme: {
-      background: '#0b1220',
-      foreground: '#d6e2f0',
-      cursor: '#7dd3fc',
-      selectionBackground: '#274867',
-    },
+    // Set before open(). Keep the built-in DOM renderer and a static CSS
+    // background; changing a device color never recreates a session or its theme.
+    allowTransparency: true,
+    minimumContrastRatio: 4.5,
+    theme: { ...TERMINAL_THEME },
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  term.attachCustomKeyEventHandler((event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey &&
+      !event.isComposing && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === 'keydown') {
+        selectedCommand = !running;
+        enqueueInput('\x01');
+      }
+      return false;
+    }
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.isComposing &&
+      event.key.toLowerCase() === 'v') {
+      // Do not emit ^V or cancel the browser's native paste action. The paste
+      // event is handled once by xterm, without reading navigator.clipboard.
+      event.stopPropagation();
+      return false;
+    }
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey &&
+      !event.isComposing && event.key.toLowerCase() === 'c' && term.hasSelection()) {
+      // Let the browser's native copy event reach xterm's clipboard handler.
+      // With no selection, xterm still sends Ctrl-C to the running command.
+      event.stopPropagation();
+      return false;
+    }
+    return true;
+  });
 
   const shell = new Shell(device);
   const promptStr = () => `\x1b[1;32m${device.name}\x1b[0m:\x1b[1;34m~\x1b[0m$ `;
   let buf = '';
   let running: Running | null = null;
   let disposed = false;
+  let selectedCommand = false;
+  let paintingSelection = false;
+  let selectionRevision = 0;
+  let inputBusy = false;
+  let draining = false;
+  // null requests a redraw after xterm column reflow, serialized with input.
+  const inputQueue: { data: string | null; replace: boolean }[] = [];
   const history: string[] = [];
   let hIdx = 0;
 
-  const redrawLine = (next: string) => {
-    term.write(`\x1b[2K\r${promptStr()}${next}`);
+  const redrawLine = (next: string, done: () => void) => {
     buf = next;
+    term.clearSelection();
+    // Wait for pending writes/reflow before measuring wrapped input. Only
+    // editable viewport rows are erased; earlier output/scrollback is retained.
+    term.write('', () => {
+      if (disposed) return done();
+      const buffer = term.buffer.active;
+      const up = buffer.cursorY - Math.max(0, inputStartRow(buffer) - buffer.baseY);
+      term.write(`\r${up ? `\x1b[${up}A` : ''}\x1b[J${promptStr()}${next}`, done);
+    });
   };
 
   const submit = () => {
@@ -83,46 +129,130 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     running = completed ? null : command;
   };
 
-  const input = term.onData((data) => {
+  // An edit that needs rendered coordinates holds the queue until xterm has
+  // parsed it. Fast typing/paste/Enter cannot overtake a selection or redraw.
+  const drainInput = () => {
+    if (draining || disposed) return;
+    draining = true;
+    while (!inputBusy && inputQueue.length && !disposed) {
+      inputBusy = true;
+      const action = inputQueue.shift()!;
+      processInput(action.data, action.replace, () => {
+        inputBusy = false;
+        if (!draining) drainInput();
+      });
+    }
+    draining = false;
+  };
+
+  const enqueueInput = (data: string) => {
     if (disposed) return;
+    const atomic = data.startsWith(PASTE_START) || data.startsWith('\x1b[');
+    for (const part of atomic ? [data] : Array.from(data)) {
+      const replace = selectedCommand;
+      if (part !== '\x01') selectedCommand = false;
+      inputQueue.push({ data: part, replace });
+    }
+    drainInput();
+  };
+
+  const processInput = (data: string | null, replace: boolean, done: () => void) => {
+    if (data === null) {
+      // Reflow can leave wide Unicode cells inconsistent with the line buffer.
+      // Repaint editable input from the authoritative text, never command output.
+      selectedCommand = false;
+      if (!running && buf) return redrawLine(buf, done);
+      return done();
+    }
+    if (data === '\x01') {
+      if (running || !buf) {
+        selectedCommand = false;
+        term.clearSelection();
+        return done();
+      }
+      term.write('', () => {
+        if (disposed) return done();
+        const range = currentCommandRange(term.buffer.active, term.cols, buf);
+        paintingSelection = true;
+        term.clearSelection();
+        if (range) term.select(range.column, range.row, range.length);
+        else selectedCommand = false;
+        paintingSelection = false;
+        done();
+      });
+      return;
+    }
+    if (data.startsWith(PASTE_START) && data.endsWith(PASTE_END)) {
+      if (running) {
+        term.write('\r\n\x1b[90mStop the running command with Ctrl+C before pasting.\x1b[0m\r\n');
+        return done();
+      }
+      const text = normalizeTerminalPaste(data.slice(PASTE_START.length, -PASTE_END.length));
+      if (replace) return redrawLine(text, done);
+      buf += text;
+      term.write(text);
+      return done();
+    }
     if (running) {
       if (data === '\x03') {
         term.write('^C\r\n');
         running.cancel();
       }
-      return;
+      return done();
     }
     if (data === '\x1b[A') {
-      if (history.length && hIdx > 0) redrawLine(history[--hIdx]);
-      return;
+      if (history.length && hIdx > 0) return redrawLine(history[--hIdx], done);
+      return done();
     }
     if (data === '\x1b[B') {
-      if (hIdx < history.length - 1) redrawLine(history[++hIdx]);
+      if (hIdx < history.length - 1) return redrawLine(history[++hIdx], done);
       else {
         hIdx = history.length;
-        redrawLine('');
-      }
-      return;
-    }
-    for (const ch of data) {
-      if (ch === '\r') {
-        submit();
-      } else if (ch === '\x7f') {
-        if (buf.length) {
-          buf = buf.slice(0, -1);
-          term.write('\b \b');
-        }
-      } else if (ch === '\x03') {
-        term.write('^C\r\n');
-        buf = '';
-        term.write(promptStr());
-      } else if (ch >= ' ' && ch <= '~') {
-        buf += ch;
-        term.write(ch);
+        return redrawLine('', done);
       }
     }
+    if (data === '\r') {
+      term.clearSelection();
+      submit();
+    } else if (data === '\x7f' || data === '\x1b[3~') {
+      if (replace) return redrawLine('', done);
+      if (data === '\x7f' && buf.length) return redrawLine(removeLastCodePoint(buf), done);
+    } else if (data === '\x03') {
+      term.clearSelection();
+      term.write('^C\r\n');
+      buf = '';
+      term.write(promptStr());
+    } else if (data >= ' ' && (data < '\x7f' || data >= '\xa0')) {
+      if (replace) return redrawLine(data, done);
+      buf += data;
+      term.write(data);
+    }
+    done();
+  };
+
+  const input = term.onData(enqueueInput);
+  let editColumns = term.cols;
+  const resize = term.onResize(({ cols }) => {
+    const changed = cols !== editColumns;
+    editColumns = cols;
+    if (!changed || disposed || running || !buf) return;
+    if (!inputQueue.some((action) => action.data === null)) inputQueue.push({ data: null, replace: false });
+    drainInput();
+  });
+  const selection = term.onSelectionChange(() => {
+    if (paintingSelection) return;
+    const revision = ++selectionRevision;
+    // xterm clears native selection immediately before onData. Let that input
+    // capture the replacement intent first; mouse deselection clears it later.
+    queueMicrotask(() => {
+      if (!disposed && revision === selectionRevision && selectedCommand &&
+        (!term.hasSelection() || term.getSelection() !== buf)) selectedCommand = false;
+    });
   });
 
+  // xterm marks both native paste events and term.paste() as a single payload,
+  // so even a clipboard containing only CR cannot be mistaken for Enter.
+  term.write('\x1b[?2004h');
   term.writeln(`\x1b[90mNetSim — ${device.name} (${device.kind}). Type 'help' for commands.\x1b[0m`);
   term.write(promptStr());
 
@@ -134,6 +264,9 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       disposed = true;
       if (sessions.get(device.id) === session) sessions.delete(device.id);
       input.dispose();
+      resize.dispose();
+      selection.dispose();
+      inputQueue.length = 0;
       const command = running;
       running = null;
       try {

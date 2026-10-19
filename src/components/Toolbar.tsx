@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { useStore } from '../store';
 import { LABS } from '../labs/library';
 import { EXAMPLES } from '../labs/examples';
+import { FloatingPopover } from './FloatingPopover';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 
@@ -29,6 +31,7 @@ function ExportItem({
   return (
     <button
       className="labs-menu-item"
+      role="menuitem"
       onClick={() => {
         fn();
         close(false);
@@ -43,6 +46,9 @@ function ExportItem({
 export function Toolbar() {
   const [labsOpen, setLabsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [menuFocus, setMenuFocus] = useState<'first' | 'last'>('first');
+  const labsRef = useRef<HTMLButtonElement>(null);
+  const exportRef = useRef<HTMLButtonElement>(null);
   const loadBundledLab = useStore((s) => s.loadBundledLab);
   const loadExample = useStore((s) => s.loadExample);
   const clock = useStore((s) => s.clock);
@@ -57,6 +63,17 @@ export function Toolbar() {
   const shareUrl = useStore((s) => s.shareUrl);
   const setNotice = useStore((s) => s.setNotice);
   const fileRef = useRef<HTMLInputElement>(null);
+  const closeExport = (open: boolean) => {
+    setExportOpen(open);
+    if (!open) exportRef.current?.focus({ preventScroll: true });
+  };
+  const menuKeys = (event: KeyboardEvent, menu: 'labs' | 'export') => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    setMenuFocus(event.key === 'ArrowUp' ? 'last' : 'first');
+    setLabsOpen(menu === 'labs');
+    setExportOpen(menu === 'export');
+  };
 
   const onFile = async (f: File | undefined) => {
     if (!f) return;
@@ -80,18 +97,23 @@ export function Toolbar() {
           Demo
         </button>
         <div className="labs-menu-wrap">
-          <button className="btn" onClick={() => setLabsOpen((v) => !v)}>
+          <button ref={labsRef} className="btn" aria-haspopup="menu" aria-expanded={labsOpen} aria-controls={labsOpen ? 'toolbar-labs-menu' : undefined}
+            onKeyDown={(e) => menuKeys(e, 'labs')}
+            onClick={() => { setMenuFocus('first'); setLabsOpen(!labsOpen); setExportOpen(false); }}>
             Labs ▾
           </button>
           {labsOpen && (
-            <div className="labs-menu" onMouseLeave={() => setLabsOpen(false)}>
+            <FloatingPopover anchor={labsRef} id="toolbar-labs-menu" label="Labs and example networks" role="menu" width={360}
+              initialFocus={menuFocus} className="labs-menu" onClose={() => setLabsOpen(false)}>
               {LABS.map((l, i) => (
                 <button
                   key={l.lab!.id}
                   className="labs-menu-item"
+                  role="menuitem"
                   onClick={() => {
                     loadBundledLab(i);
                     setLabsOpen(false);
+                    labsRef.current?.focus();
                   }}
                 >
                   <span className="labs-menu-title">{l.lab!.title}</span>
@@ -103,9 +125,11 @@ export function Toolbar() {
                 <button
                   key={ex.title}
                   className="labs-menu-item"
+                  role="menuitem"
                   onClick={() => {
                     loadExample(i);
                     setLabsOpen(false);
+                    labsRef.current?.focus();
                   }}
                 >
                   <span className="labs-menu-title">{ex.title}</span>
@@ -113,26 +137,29 @@ export function Toolbar() {
                 </button>
               ))}
               <div className="labs-menu-note">Loading a lab or example replaces the current canvas.</div>
-            </div>
+            </FloatingPopover>
           )}
         </div>
         <button className="btn" onClick={() => fileRef.current?.click()}>
           Import
         </button>
         <div className="labs-menu-wrap">
-          <button className="btn" onClick={() => setExportOpen((v) => !v)}>
+          <button ref={exportRef} className="btn" aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportOpen ? 'toolbar-export-menu' : undefined}
+            onKeyDown={(e) => menuKeys(e, 'export')}
+            onClick={() => { setMenuFocus('first'); setExportOpen(!exportOpen); setLabsOpen(false); }}>
             Export ▾
           </button>
           {exportOpen && (
-            <div className="labs-menu export-menu" onMouseLeave={() => setExportOpen(false)}>
-              <ExportItem label="Topology (.json)" hint="save/share/import in NetSim" action="exportJson" close={setExportOpen} />
-              <ExportItem label="Device configs (.zip)" hint="real setup.sh, nftables.conf, dnsmasq.conf per device" action="exportConfigs" close={setExportOpen} />
-              <ExportItem label="containerlab (.clab.yml)" hint="deploy the design with real containers" action="exportContainerlab" close={setExportOpen} />
-              <ExportItem label="docker-compose (.yml)" hint="approximate L2 — see file header" action="exportCompose" close={setExportOpen} />
-              <ExportItem label="Diagram (.svg)" hint="documentation-grade topology drawing" action="exportSvg" close={setExportOpen} />
-              <ExportItem label="Diagram (.png)" hint="same drawing, rasterised 2×" action="exportPng" close={setExportOpen} />
-              <ExportItem label="Network report (.html)" hint="printable design document with tables + diagram" action="exportReport" close={setExportOpen} />
-            </div>
+            <FloatingPopover anchor={exportRef} id="toolbar-export-menu" label="Export topology" role="menu" width={345}
+              initialFocus={menuFocus} className="labs-menu export-menu" onClose={() => setExportOpen(false)}>
+              <ExportItem label="Topology (.json)" hint="save/share/import in NetSim" action="exportJson" close={closeExport} />
+              <ExportItem label="Device configs (.zip)" hint="real setup.sh, nftables.conf, dnsmasq.conf per device" action="exportConfigs" close={closeExport} />
+              <ExportItem label="containerlab (.clab.yml)" hint="deploy the design with real containers" action="exportContainerlab" close={closeExport} />
+              <ExportItem label="docker-compose (.yml)" hint="approximate L2 — see file header" action="exportCompose" close={closeExport} />
+              <ExportItem label="Diagram (.svg)" hint="documentation-grade topology drawing" action="exportSvg" close={closeExport} />
+              <ExportItem label="Diagram (.png)" hint="same drawing, rasterised 2×" action="exportPng" close={closeExport} />
+              <ExportItem label="Network report (.html)" hint="printable design document with tables + diagram" action="exportReport" close={closeExport} />
+            </FloatingPopover>
           )}
         </div>
         <button className="btn" onClick={() => shareUrl()}>

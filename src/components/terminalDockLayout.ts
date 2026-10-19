@@ -1,3 +1,5 @@
+import type { Session } from '../terminals';
+
 export const DOCK_HEIGHT_KEY = 'netlab:terminal-dock-height:v1';
 export const DEFAULT_DOCK_HEIGHT = 280;
 
@@ -29,6 +31,16 @@ export function saveDockHeight(height: number): void {
     localStorage.setItem(DOCK_HEIGHT_KEY, String(height));
   } catch {
     // Resizing still works when storage is blocked or full.
+  }
+}
+
+// Mounting or moving presentation must never dispose/recreate its session.
+export function attachTerminalSession(session: Session, host: HTMLElement): void {
+  if (!session.opened) {
+    session.term.open(host);
+    session.opened = true;
+  } else if (session.term.element && session.term.element.parentElement !== host) {
+    host.appendChild(session.term.element);
   }
 }
 

@@ -1,7 +1,34 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clampDockHeight, DEFAULT_DOCK_HEIGHT, DOCK_HEIGHT_KEY, dockHeightBounds, observeTerminalSize, readDockHeight, saveDockHeight } from './terminalDockLayout';
+import { attachTerminalSession, clampDockHeight, DEFAULT_DOCK_HEIGHT, DOCK_HEIGHT_KEY, dockHeightBounds, observeTerminalSize, readDockHeight, saveDockHeight } from './terminalDockLayout';
+import type { Session } from '../terminals';
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('terminal presentation attachment', () => {
+  it('opens once and moves the existing DOM element without replacing its buffer or disposing', () => {
+    const buffer = { history: ['hostname', 'pc1'], input: 'ping ' };
+    const element = { parentElement: null as unknown };
+    const host = () => ({ appendChild: vi.fn((node: typeof element) => { node.parentElement = nodeHost; }) });
+    let nodeHost: unknown;
+    const first = host();
+    const second = host();
+    const open = vi.fn((parent: unknown) => { element.parentElement = parent; });
+    const dispose = vi.fn();
+    const session = { opened: false, term: { element, buffer, open, dispose } } as unknown as Session;
+    attachTerminalSession(session, first as unknown as HTMLElement);
+    attachTerminalSession(session, first as unknown as HTMLElement);
+    nodeHost = second;
+    attachTerminalSession(session, second as unknown as HTMLElement);
+    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith(first);
+    expect(first.appendChild).not.toHaveBeenCalled();
+    expect(second.appendChild).toHaveBeenCalledOnce();
+    expect(second.appendChild).toHaveBeenCalledWith(element);
+    expect(element.parentElement).toBe(second);
+    expect(session.term.buffer).toBe(buffer);
+    expect(dispose).not.toHaveBeenCalled();
+  });
+});
 
 describe('terminal dock height', () => {
   it('clamps height and reserves topology space below the toolbar', () => {
