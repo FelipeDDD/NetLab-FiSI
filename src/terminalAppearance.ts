@@ -1,6 +1,7 @@
 import type { ITheme } from '@xterm/xterm';
 import type { DeviceKind } from './engine/device';
 import type { SaveFile } from './engine/serialize';
+import type { TerminalLayoutMode } from './terminalPanels';
 
 export type TerminalKind = 'host' | 'server' | 'router' | 'firewall';
 export const DEFAULT_TERMINAL_COLORS: Readonly<Record<TerminalKind, string>> = {
@@ -38,7 +39,7 @@ export function normalizeTerminalAppearance(value: unknown, fallbackFontSize = D
 
 // UI metadata extends the existing v1 file; the engine never reads these fields.
 export interface AppearanceSaveFile extends SaveFile {
-  ui?: { terminalColors?: Record<string, string>; terminalAppearance?: Partial<TerminalAppearance> };
+  ui?: { terminalColors?: Record<string, string>; terminalAppearance?: Partial<TerminalAppearance>; terminalLayoutMode?: TerminalLayoutMode };
 }
 
 export function readTerminalAppearance(data: AppearanceSaveFile): TerminalAppearance {

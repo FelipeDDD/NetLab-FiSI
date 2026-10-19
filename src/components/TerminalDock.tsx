@@ -113,7 +113,7 @@ export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
         onPointerCancel={finishResize}
         onLostPointerCapture={finishResize}
       />
-      <div className="terminal-dock-toolbar"><TerminalSettingsButton /></div>
+      <TerminalSettingsButton />
       <div className="terminal-body" id="terminal-body">
         <div className="terminal-panels">
           {panels.map((panel, index) => <Fragment key={panel.id}>

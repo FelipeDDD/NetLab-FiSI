@@ -799,6 +799,106 @@ describe('split terminal sessions', () => {
   });
 });
 
+describe('switching terminal organization modes', () => {
+  it('regroups live sessions without disposing buffers, partial input, focus or commands', () => {
+    const { a, b, net } = pair();
+    const store = useStore.getState();
+    for (const kind of ['router', 'firewall', 'host'] as const) store.addDeviceAt(kind, { x: 300, y: 200 });
+    const devices = useStore.getState().nodes.map((n) => sim.net.devices.get(n.id) as IpDevice);
+    const sessions = devices.map(open);
+    input(sessions[0], 'host');
+    input(sessions[1], 'ping 10.0.0.2\r');
+    store.setActiveTerminal(a.id);
+    const request = useStore.getState().terminalFocusRequest;
+    const before = serializeNetwork(net, {});
+    const off = vi.spyOn(b, 'offIcmp');
+    store.setTerminalLayoutMode('by-type');
+    expect(useStore.getState().terminalPanels.map((p) => p.kind)).toEqual(['host', 'server', 'router', 'firewall']);
+    expect(useStore.getState().terminalPanels[0].tabs).toEqual([a.id, devices[4].id]);
+    expect(useStore.getState().terminalPanels[0].active).toBe(a.id);
+    expect(useStore.getState().activeTerminal).toBe(a.id);
+    expect(useStore.getState().terminalFocusRequest).toBe(request);
+    expect(useStore.getState().terminalHasFocus).toBe(true);
+    for (const device of devices) {
+      store.cycleTerminal(1);
+      expect(useStore.getState().activeTerminal).toBe(devices[(devices.indexOf(device) + 1) % devices.length].id);
+      expect(useStore.getState().terminalPanels.find((p) => p.tabs.includes(useStore.getState().activeTerminal!))?.active).toBe(useStore.getState().activeTerminal);
+    }
+    store.setTerminalLayoutMode('free');
+    expect(useStore.getState().terminalPanels).toHaveLength(4);
+    expect(useStore.getState().terminalPanels.every((p) => !p.kind)).toBe(true);
+    expect(useStore.getState().terminalPanels.flatMap((p) => p.tabs).sort()).toEqual(devices.map((d) => d.id).sort());
+    devices.forEach((device, i) => {
+      expect(getSession(device)).toBe(sessions[i]);
+      expect(sessions[i].term.dispose).not.toHaveBeenCalled();
+    });
+    const exec = vi.spyOn(Shell.prototype, 'exec');
+    input(sessions[0], 'name\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('hostname');
+    net.scheduler.advanceTo(1100);
+    expect(output(sessions[1])).toContain('icmp_seq=1');
+    expect(off).not.toHaveBeenCalled();
+    expect(serializeNetwork(net, {})).toEqual(before);
+  });
+
+  it.each(['closeTerminal', 'deleteDevice', 'onNodesChange'] as const)('removes tabs and empty groups through %s without closing other types', (method) => {
+    const { a, b } = pair();
+    const store = useStore.getState();
+    store.addDeviceAt('host', { x: 300, y: 200 });
+    const other = sim.net.devices.get(useStore.getState().nodes[2].id) as IpDevice;
+    store.setTerminalLayoutMode('by-type');
+    const first = open(a), server = open(b), second = open(other);
+    expect(useStore.getState().terminalPanels).toHaveLength(2);
+    const remove = (id: string) => method === 'onNodesChange' ? store.onNodesChange([{ type: 'remove', id }]) : store[method](id);
+    remove(other.id);
+    expect(second.term.dispose).toHaveBeenCalledOnce();
+    expect(useStore.getState().terminalPanels[0]).toMatchObject({ tabs: [a.id], active: a.id, kind: 'host' });
+    remove(a.id);
+    expect(first.term.dispose).toHaveBeenCalledOnce();
+    expect(useStore.getState().terminalPanels.map((p) => p.kind)).toEqual(['server']);
+    expect(server.term.dispose).not.toHaveBeenCalled();
+    expect(getSession(b)).toBe(server);
+    store.closeTerminal(b.id);
+    expect(useStore.getState().terminalPanels).toEqual([]);
+    expect(useStore.getState().terminalLayoutMode).toBe('by-type');
+    store.openTerminal(b.id);
+    expect(useStore.getState().terminalPanels[0].kind).toBe('server');
+  });
+
+  it('debounces mode persistence, ignores no-op changes and restores legacy files as free panels', () => {
+    const { a, net } = pair();
+    const store = useStore.getState();
+    const before = serializeNetwork(net, {});
+    store.setTerminalLayoutMode('free');
+    vi.advanceTimersByTime(500);
+    expect(setItem).not.toHaveBeenCalled();
+    const session = open(a);
+    input(session, 'ping 10.0.0.1\r');
+    store.setTerminalLayoutMode('by-type');
+    store.setTerminalLayoutMode('by-type');
+    vi.advanceTimersByTime(500);
+    expect(setItem).toHaveBeenCalledOnce();
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!).ui.terminalLayoutMode).toBe('by-type');
+    setItem.mockClear();
+    net.scheduler.advanceTo(2100);
+    vi.advanceTimersByTime(1000);
+    expect(setItem).not.toHaveBeenCalled();
+    store.boot();
+    expect(useStore.getState().terminalLayoutMode).toBe('by-type');
+    expect(useStore.getState().terminalPanels).toEqual([]);
+    expect(serializeNetwork(sim.net, {})).toEqual(before);
+    store.openTerminal(a.id);
+    expect(useStore.getState().terminalPanels[0].kind).toBe('host');
+    store.importJson(JSON.stringify(before));
+    expect(useStore.getState().terminalLayoutMode).toBe('free');
+    store.importJson(JSON.stringify({ ...before, ui: { terminalLayoutMode: 'invalid' } }));
+    expect(useStore.getState().terminalLayoutMode).toBe('free');
+    store.setTerminalLayoutMode('by-type');
+    store.newTopology();
+    expect(useStore.getState().terminalLayoutMode).toBe('free');
+  });
+});
+
 describe('per-device terminal appearance persistence', () => {
   it('debounces colors into autosave, restores them on boot and leaves network configuration unchanged', () => {
     const { a, b, net } = pair();
@@ -823,6 +923,7 @@ describe('per-device terminal appearance persistence', () => {
     const { a } = pair();
     useStore.getState().setTerminalColor(a.id, '#123456');
     useStore.getState().setTerminalAppearance({ style: 'dual-glow', intensity: 63, fontFamily: 'cascadia' });
+    useStore.getState().setTerminalLayoutMode('by-type');
     let downloaded!: Blob;
     const click = vi.fn();
     vi.stubGlobal('document', { createElement: () => ({ click }) });
@@ -837,6 +938,7 @@ describe('per-device terminal appearance persistence', () => {
     expect(useStore.getState().importJson(json)).toBeNull();
     expect(useStore.getState().terminalColors).toEqual({ [a.id]: '#123456' });
     expect(useStore.getState().terminalAppearance).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style: 'dual-glow', intensity: 63, fontFamily: 'cascadia' });
+    expect(useStore.getState().terminalLayoutMode).toBe('by-type');
   });
 
   it('restores the default without persisting redundant overrides and ignores invalid/no-op changes', () => {

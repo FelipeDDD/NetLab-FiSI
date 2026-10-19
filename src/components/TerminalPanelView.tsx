@@ -4,7 +4,7 @@ import { useStore } from '../store';
 import { sim } from '../sim';
 import { IpDevice } from '../engine/ipdevice';
 import { getSession } from '../terminals';
-import { MIN_TERMINAL_PANEL_WIDTH, type TerminalPanel } from '../terminalPanels';
+import { MIN_TERMINAL_PANEL_WIDTH, TERMINAL_GROUP_LABELS, type TerminalPanel } from '../terminalPanels';
 import { terminalBackground, terminalColor, terminalFontFamily, terminalTint } from '../terminalAppearance';
 import { TerminalColorButton } from './TerminalAppearanceControls';
 import { attachTerminalSession, observeTerminalSize } from './terminalDockLayout';
@@ -113,9 +113,10 @@ export function TerminalPanelView({ panel, index, focused }: { panel: TerminalPa
   return <section ref={ref} id={panel.id} data-terminal-pane="" role="group" aria-label={`Terminal panel ${index + 1}`}
     className={`terminal-pane${focused ? ' is-focused' : ''}`} style={{ flexGrow: panel.weight, minWidth: MIN_TERMINAL_PANEL_WIDTH }}>
     <div className="terminal-panel-header">
+      {panel.kind && <div className="terminal-panel-type">{TERMINAL_GROUP_LABELS[panel.kind]}</div>}
       <div className="terminal-tabs" role="tablist" aria-label={`Terminal panel ${index + 1} tabs`}
-        aria-keyshortcuts="Alt+Shift+ArrowRight Alt+Shift+ArrowLeft Control+Tab Control+Shift+Tab"
-        title="Switch all terminals: Alt+Shift+Left/Right. Ctrl+Tab where the browser allows it.">
+        aria-keyshortcuts="Alt+Shift+ArrowRight Alt+Shift+ArrowLeft Control+Tab Control+Shift+Tab Control+PageDown Control+PageUp"
+        title="Switch all terminals: Alt+Shift+Left/Right. Ctrl+Tab or Ctrl+PageUp/PageDown where the browser allows it.">
         {panel.tabs.map((id) => <TerminalTab key={id} id={id} panel={panel} />)}
       </div>
     </div>

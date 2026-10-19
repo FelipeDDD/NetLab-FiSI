@@ -182,11 +182,25 @@ paper's stated future work (outbound filtering, NAT, stateful).
   evita compressão excessiva; telas estreitas usam rolagem horizontal, trazendo
   o painel ativado à vista. A altura salva permanece independente. Painéis,
   abas e larguras são transitórios e não entram no JSON nem no autosave.
+- `terminalLayoutMode` escolhe `free` (comportamento original) ou `by-type`.
+  `groupPanelSessions` cria somente os grupos ocupados, na ordem fixa host,
+  server, router, firewall, com IDs estáveis por tipo e seleção independente.
+  Abas mantêm a ordem de abertura dentro do grupo. Abertura/fechamento usam
+  as ações existentes; grupos vazios desaparecem via `prunePanelSessions`.
+  A troca de modo reconstrói apenas a apresentação em larguras iguais, mantém
+  a sessão global ativa e reanexa os mesmos elementos xterm. Não há cache das
+  larguras de cada modo. A lista global de sessões e sua ordem não mudam.
+  A extensão opcional `ui.terminalLayoutMode` persiste `by-type`; ausência ou
+  valor inválido corresponde a `free`. Não há alteração no serializador do
+  motor. Importação/autosave preservam a escolha, mas não reabrem sessões.
 - `terminalHasFocus` distingue foco real/solicitado de uma aba apenas visível;
   eventos de foco não geram novos pedidos de foco. Escape é capturado somente
   no xterm, libera o foco e foca a região do editor, sem enviar entrada ao shell.
   A navegação continua global e circular. Ctrl+Tab mantém as limitações do
-  navegador já documentadas; Alt+Shift+Setas é a alternativa.
+  navegador já documentadas; Ctrl+PageDown/PageUp também só funcionam quando
+  entregues à página. Alt+Shift+Setas é a alternativa. Tab/Shift+Tab puros não
+  são usados para navegar entre sessões. O escopo é sempre a lista global de
+  sessões abertas, tanto em Free panels quanto em Group by type.
 - Regressões cobrem distribuição, exclusão, seleção local, pesos, reanexação,
   input Unicode/histórico e quatro pings preservados em abas ocultas e após
   redimensionamento. No Chromium 155 foram validados os quatro painéis reais,
@@ -205,16 +219,20 @@ O mesmo componente serve ao acesso pela bolinha da aba, sem botões aninhados e
 sem ativar/fechar a sessão. Há retorno de foco por Escape, fechamento por clique
 externo e navegação de menus por teclado. Janelas curtas usam rolagem interna.
 
-O dock oferece Terminal settings em uma faixa superior comum, sem ocupar a
-largura de nenhum painel. `TerminalSettingsControls` reúne Appearance e permite
+O dock oferece um chip Settings posicionado na margem superior esquerda, sem
+uma barra horizontal adicional nem espaço reservado nas colunas. O centro da
+borda continua disponível para redimensionamento vertical. O popover central
+reúne Layout (organização) e Appearance. `TerminalSettingsControls` permite
 escolher qualquer dispositivo com shell, inclusive sem sessão aberta. Trocar o
 dispositivo do formulário não troca a sessão ativa nem abre terminais. O acesso
-pela aba usa o mesmo componente, com o dispositivo pré-selecionado. Não há
-seções Layout/Behavior sem opções implementadas.
+pela aba usa a seção Appearance do mesmo componente, com o dispositivo
+pré-selecionado. Layout fica no menu central, cuja âncora estável evita fechar
+o formulário quando os grupos e abas são remontados. Não há opções provisórias.
 `resetTerminalAppearance` limpa cores individuais e restaura as preferências
 globais atomicamente, usando o debounce existente. Não altera motor, sessões,
 foco solicitado, dimensões dos painéis ou altura salva do dock. Repetir uma
 preferência ou restauração sem mudanças não dispara autosave.
+A restauração da aparência também preserva o modo de organização escolhido.
 
 ## NetLab-FiSI — ideias futuras (fora da etapa 2)
 
@@ -226,8 +244,9 @@ preferência ou restauração sem mudanças não dispara autosave.
   terminais, inputs, textareas e outros campos editáveis.
 - Perfis de terminal Windows e Linux por dispositivo, com comandos e saídas
   equivalentes sobre o mesmo motor. Manter explícito o subconjunto suportado.
-- Drag and drop de abas entre painéis. A estrutura atual separa o grupo,
-  o botão de ativação, o indicador e o fechamento.
+- Drag and drop para mover sessões entre painéis ou adicioná-las manualmente
+  como abas secundárias. A estrutura atual separa o grupo, o botão de ativação,
+  o indicador e o fechamento.
 - Cadeado por painel para fixar sua largura; redistribuir automaticamente
   somente os painéis destravados.
 - Recolher/expandir o dock sem encerrar sessões ou comandos.

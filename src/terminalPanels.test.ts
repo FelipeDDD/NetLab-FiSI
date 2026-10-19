@@ -1,9 +1,59 @@
 import { describe, expect, it } from 'vitest';
-import { activatePanelSession, openPanelSession, prunePanelSessions, resizePanelPair, type TerminalPanel } from './terminalPanels';
+import { activatePanelSession, openPanelSession, prunePanelSessions, resizePanelPair, groupPanelSessions, freePanelSessions, normalizeTerminalLayoutMode, type TerminalPanel } from './terminalPanels';
 
 function four(): TerminalPanel[] {
   return ['a', 'b', 'c', 'd'].reduce<TerminalPanel[]>((panels, id) => openPanelSession(panels, id, null), []);
 }
+
+describe('terminal groups by device type', () => {
+  const sessions = [
+    { id: 'fw1', kind: 'firewall' }, { id: 'host1', kind: 'host' }, { id: 'host2', kind: 'host' },
+    { id: 'router1', kind: 'router' }, { id: 'server1', kind: 'server' }, { id: 'host3', kind: 'host' },
+  ];
+  it('uses only occupied groups in type order, retaining tab order and the focused session', () => {
+    const panels = groupPanelSessions(sessions, 'host2');
+    expect(panels.map((panel) => panel.kind)).toEqual(['host', 'server', 'router', 'firewall']);
+    expect(panels[0].tabs).toEqual(['host1', 'host2', 'host3']);
+    expect(panels[0].active).toBe('host2');
+    expect(panels.flatMap((panel) => panel.tabs).sort()).toEqual(sessions.map((s) => s.id).sort());
+    expect(groupPanelSessions(sessions.filter((s) => s.kind === 'host'), 'host2')).toHaveLength(1);
+    expect(groupPanelSessions([], null)).toEqual([]);
+  });
+  it('retains each other group selection and widths when adding a tab', () => {
+    const previous = groupPanelSessions(sessions, 'host2').map((panel, i) => ({ ...panel, weight: i + 1 }));
+    const result = groupPanelSessions([...sessions, { id: 'server2', kind: 'server' }], 'server2', previous);
+    expect(result[0]).toEqual(previous[0]);
+    expect(result[1]).toMatchObject({ tabs: ['server1', 'server2'], active: 'server2', weight: 2 });
+    expect(previous[1].tabs).toEqual(['server1']);
+  });
+  it('adds a new type as an equal column without mixing devices', () => {
+    const previous = groupPanelSessions(sessions.filter((s) => s.kind === 'host'), 'host2');
+    const result = groupPanelSessions(sessions.filter((s) => ['host', 'server'].includes(s.kind)), 'server1', previous);
+    expect(result.map((panel) => panel.weight)).toEqual([1, 1]);
+    expect(result[0].active).toBe('host2');
+  });
+  it('closes local tabs and empty groups using the existing pruning rules', () => {
+    const previous = groupPanelSessions(sessions, 'host2');
+    const next = prunePanelSessions(previous, ['host1', 'host3', 'fw1'], 'host2');
+    expect(next.terminalPanels.map((p) => p.kind)).toEqual(['host', 'firewall']);
+    expect(next.activeTerminal).toBe('host3');
+    expect(next.terminalPanels[0].id).toBe(previous[0].id);
+  });
+  it('rebuilds free panels with every session exactly once and keeps the active excess tab', () => {
+    const ids = sessions.map((s) => s.id);
+    const panels = freePanelSessions(ids, 'host3');
+    expect(panels).toHaveLength(4);
+    expect(panels.flatMap((p) => p.tabs).sort()).toEqual([...ids].sort());
+    expect(panels.find((p) => p.tabs.includes('host3'))?.active).toBe('host3');
+    expect(panels.map((p) => p.weight)).toEqual([1, 1, 1, 1]);
+  });
+  it.each([undefined, null, 'free', 'bogus', {}, 1])('uses free panels for missing or invalid layout mode %j', (value) => {
+    expect(normalizeTerminalLayoutMode(value)).toBe('free');
+  });
+  it('accepts only the implemented grouped mode', () => {
+    expect(normalizeTerminalLayoutMode('by-type')).toBe('by-type');
+  });
+});
 
 describe('automatic terminal panel distribution', () => {
   it('creates one to four equal columns with stable panel identities', () => {

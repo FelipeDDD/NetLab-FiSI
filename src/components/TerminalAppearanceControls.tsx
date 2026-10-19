@@ -4,8 +4,9 @@ import { sim } from '../sim';
 import { useStore } from '../store';
 import { terminalColor, TERMINAL_FONTS, type TerminalFont } from '../terminalAppearance';
 import { FloatingPopover } from './FloatingPopover';
+import type { TerminalLayoutMode } from '../terminalPanels';
 
-export function TerminalSettingsControls({ initialDeviceId }: { initialDeviceId?: string }) {
+export function TerminalSettingsControls({ initialDeviceId, includeLayout = false }: { initialDeviceId?: string; includeLayout?: boolean }) {
   const intensityId = useId();
   const nodes = useStore((s) => s.nodes);
   useStore((s) => s.uiPulse); // Keep device names current without subscribing to every tick.
@@ -16,9 +17,22 @@ export function TerminalSettingsControls({ initialDeviceId }: { initialDeviceId?
   const setColor = useStore((s) => s.setTerminalColor);
   const preference = useStore((s) => s.terminalAppearance);
   const setPreference = useStore((s) => s.setTerminalAppearance);
+  const layoutMode = useStore((s) => s.terminalLayoutMode);
   const color = device ? terminalColor(device.kind, custom) : '';
   return (
-    <section className="terminal-appearance">
+    <div className="terminal-appearance">
+      {includeLayout && <section className="terminal-settings-layout">
+        <h3>Layout</h3>
+        <label className="terminal-style-label">
+          Organization
+          <select value={layoutMode} onChange={(e) => useStore.getState().setTerminalLayoutMode(e.target.value as TerminalLayoutMode)}>
+            <option value="free">Free panels</option>
+            <option value="by-type">Group by type</option>
+          </select>
+        </label>
+        <span className="hint">Switching modes redistributes widths equally. Sessions keep running.</span>
+      </section>}
+      <section>
       <h3>Appearance</h3>
       {device && <>
       <label className="terminal-style-label">
@@ -68,7 +82,8 @@ export function TerminalSettingsControls({ initialDeviceId }: { initialDeviceId?
         <button type="button" className="btn" onClick={() => useStore.getState().resetTerminalAppearance()}>Restore defaults</button>
         <span className="hint">Resets appearance and all device colors in this topology. Sessions stay open.</span>
       </div>
-    </section>
+      </section>
+    </div>
   );
 }
 export function TerminalColorButton({ device, color }: { device: IpDevice; color: string }) {
@@ -94,13 +109,14 @@ export function TerminalSettingsButton() {
   const anchor = useRef<HTMLButtonElement>(null);
   return <>
     <button ref={anchor} type="button" className="terminal-settings-trigger"
+      aria-label="Terminal settings" title="Terminal settings"
       aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? 'terminal-settings' : undefined}
       onClick={() => setOpen(!open)}>
-      <span aria-hidden="true">⚙</span> Terminal settings
+      <span aria-hidden="true">⚙</span> Settings
     </button>
     {open && <FloatingPopover anchor={anchor} id="terminal-settings" label="Terminal settings"
       className="terminal-appearance-popup" width={320} onClose={() => setOpen(false)}>
-      <TerminalSettingsControls />
+      <TerminalSettingsControls includeLayout />
     </FloatingPopover>}
   </>;
 }

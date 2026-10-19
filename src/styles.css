@@ -1046,22 +1046,20 @@ a.btn {
 .terminal-appearance .hint { display: block; margin-top: 6px; }
 .terminal-appearance .terminal-color-controls { margin-top: 8px; }
 .terminal-settings-reset { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
-.terminal-dock-toolbar {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  padding: 0 8px 3px;
-  background: var(--bg-panel);
-}
+.terminal-settings-layout { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
 .terminal-settings-trigger {
+  position: absolute;
+  top: -13px;
+  left: 8px;
+  z-index: 5;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 4px 7px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-dim);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  color: var(--text);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -1095,6 +1093,7 @@ a.btn {
 .terminal-intensity-label input { width: 100%; margin: 0; accent-color: var(--accent); }
 
 .terminal-dock {
+  position: relative;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border);
@@ -1137,6 +1136,7 @@ a.btn {
 }
 
 .terminal-panel-header { flex-shrink: 0; min-width: 0; background: #0c1322; border-bottom: 1px solid var(--border); }
+.terminal-panel-type { padding: 3px 8px 0; color: var(--text-dim); font-size: 11px; line-height: 14px; }
 .terminal-panels {
   display: flex;
   height: 100%;

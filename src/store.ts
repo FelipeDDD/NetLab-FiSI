@@ -23,7 +23,7 @@ import { composeYaml } from './export/compose';
 import { svgToPngBlob, topologySvg } from './export/diagram';
 import { networkReport } from './export/report';
 import { adjacentTerminal, type TerminalDirection } from './terminalShortcuts';
-import { activatePanelSession, openPanelSession, prunePanelSessions, type TerminalPanel } from './terminalPanels';
+import { activatePanelSession, openPanelSession, prunePanelSessions, groupPanelSessions, freePanelSessions, normalizeTerminalLayoutMode, type TerminalPanel, type TerminalLayoutMode } from './terminalPanels';
 import { DEFAULT_TERMINAL_COLORS, DEFAULT_TERMINAL_APPEARANCE, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, type AppearanceSaveFile, type TerminalAppearance } from './terminalAppearance';
 
 export interface DevNodeData extends Record<string, unknown> {
@@ -82,6 +82,7 @@ interface NetsimState {
   terminals: string[];
   activeTerminal: string | null;
   terminalPanels: TerminalPanel[];
+  terminalLayoutMode: TerminalLayoutMode;
   terminalHasFocus: boolean;
   terminalFocusRequest: number;
   terminalColors: Record<string, string>;
@@ -125,6 +126,7 @@ interface NetsimState {
   noteTerminalPanelFocus(id: string): void;
   releaseTerminalFocus(): void;
   setTerminalPanels(panels: TerminalPanel[]): void;
+  setTerminalLayoutMode(mode: TerminalLayoutMode): void;
   cycleTerminal(direction: TerminalDirection, origin?: string): void;
   setTerminalColor(id: string, color: string | null): void;
   setTerminalAppearance(preference: Partial<TerminalAppearance>): void;
@@ -190,6 +192,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     const appearance = get().terminalAppearance;
     // An explicit size distinguishes new defaults from the legacy 13px files.
     save.ui = { ...save.ui, terminalAppearance: { ...appearance } };
+    if (get().terminalLayoutMode !== 'free') save.ui.terminalLayoutMode = get().terminalLayoutMode;
     const lab = get().lab;
     if (lab) {
       save.lab = lab;
@@ -249,6 +252,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       terminalHasFocus: false,
       terminalColors: readTerminalColors(data),
       terminalAppearance: readTerminalAppearance(data),
+      terminalLayoutMode: normalizeTerminalLayoutMode(data.ui?.terminalLayoutMode),
       lab: data.lab ?? null,
       labStep: data.labProgress?.step ?? 0,
       labResults: data.labProgress?.results ?? {},
@@ -271,6 +275,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     terminalPanels: [],
     terminalHasFocus: false,
     terminalFocusRequest: 0,
+    terminalLayoutMode: 'free',
     terminalColors: {},
     terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE },
     paused: false,
@@ -574,7 +579,10 @@ export const useStore = create<NetsimState>()((set, get) => {
         },
       });
       const terminals = get().terminals.includes(id) ? get().terminals : [...get().terminals, id];
-      set({ terminals, terminalPanels: openPanelSession(get().terminalPanels, id, get().activeTerminal),
+      const terminalPanels = get().terminalLayoutMode === 'by-type'
+        ? groupPanelSessions(terminals.map((id) => ({ id, kind: sim.net.devices.get(id)!.kind })), id, get().terminalPanels)
+        : openPanelSession(get().terminalPanels, id, get().activeTerminal);
+      set({ terminals, terminalPanels,
         activeTerminal: id, terminalHasFocus: true, terminalFocusRequest: get().terminalFocusRequest + 1 });
     },
 
@@ -618,6 +626,18 @@ export const useStore = create<NetsimState>()((set, get) => {
         const weight = panels.find((item) => item.id === panel.id)?.weight;
         return weight && Number.isFinite(weight) && weight > 0 ? { ...panel, weight } : panel;
       }) });
+    },
+
+    setTerminalLayoutMode(value) {
+      const mode = normalizeTerminalLayoutMode(value);
+      if (mode === get().terminalLayoutMode) return;
+      const ids = get().terminals;
+      const active = get().activeTerminal;
+      const terminalPanels = mode === 'by-type'
+        ? groupPanelSessions(ids.map((id) => ({ id, kind: sim.net.devices.get(id)!.kind })), active)
+        : freePanelSessions(ids, active);
+      set({ terminalLayoutMode: mode, terminalPanels });
+      saveSoon();
     },
 
     cycleTerminal(direction, origin) {
@@ -719,6 +739,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         terminalHasFocus: false,
         terminalColors: {},
         terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE },
+        terminalLayoutMode: 'free',
         lab: null,
         labStep: 0,
         labResults: {},

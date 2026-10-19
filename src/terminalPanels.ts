@@ -1,5 +1,14 @@
 export const MAX_TERMINAL_PANELS = 4;
 export const MIN_TERMINAL_PANEL_WIDTH = 280;
+export type TerminalLayoutMode = 'free' | 'by-type';
+export const TERMINAL_PANEL_TYPES = ['host', 'server', 'router', 'firewall'] as const;
+export type TerminalPanelType = typeof TERMINAL_PANEL_TYPES[number];
+export const TERMINAL_GROUP_LABELS: Record<TerminalPanelType, string> = {
+  host: 'Hosts', server: 'Servers', router: 'Routers', firewall: 'Firewalls',
+};
+export function normalizeTerminalLayoutMode(value: unknown): TerminalLayoutMode {
+  return value === 'by-type' ? 'by-type' : 'free';
+}
 
 // Presentation owns tab membership/selection/width, never an xterm instance.
 // Stable panel IDs allow future tab movement without tying a panel to a device.
@@ -8,6 +17,26 @@ export interface TerminalPanel {
   tabs: string[];
   active: string;
   weight: number;
+  kind?: TerminalPanelType;
+}
+
+export function groupPanelSessions(sessions: readonly { id: string; kind: string }[], focused: string | null, previous: readonly TerminalPanel[] = []): TerminalPanel[] {
+  const groups = TERMINAL_PANEL_TYPES.flatMap((kind) => {
+    const tabs = sessions.filter((session) => session.kind === kind).map((session) => session.id);
+    if (!tabs.length) return [];
+    const old = previous.find((panel) => panel.kind === kind);
+    const visible = previous.find((panel) => tabs.includes(panel.active))?.active;
+    const active = focused && tabs.includes(focused) ? focused
+      : old && tabs.includes(old.active) ? old.active : visible ?? tabs[0];
+    return [{ id: `terminal-group-${kind}`, kind, tabs, active, weight: old?.weight ?? 1 }];
+  });
+  // As with free panels, adding a column starts an equal distribution.
+  return groups.length > previous.length ? groups.map((panel) => ({ ...panel, weight: 1 })) : groups;
+}
+
+export function freePanelSessions(ids: readonly string[], focused: string | null): TerminalPanel[] {
+  const panels = ids.reduce<TerminalPanel[]>((current, id) => openPanelSession(current, id, focused), []);
+  return focused ? activatePanelSession(panels, focused) : panels;
 }
 
 export function activatePanelSession(panels: readonly TerminalPanel[], id: string): TerminalPanel[] {

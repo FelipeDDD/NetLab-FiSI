@@ -7,6 +7,10 @@ export function terminalEscapeToEditor(event: Pick<KeyboardEvent, 'key' | 'ctrlK
 export function terminalNavigationDirection(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey' | 'isComposing'>): TerminalDirection | null {
   if (event.isComposing || event.metaKey) return null;
   if (event.ctrlKey && !event.altKey && event.key === 'Tab') return event.shiftKey ? -1 : 1;
+  if (event.ctrlKey && !event.altKey && !event.shiftKey) {
+    if (event.key === 'PageDown') return 1;
+    if (event.key === 'PageUp') return -1;
+  }
   if (event.altKey && event.shiftKey && !event.ctrlKey) {
     if (event.key === 'ArrowRight') return 1;
     if (event.key === 'ArrowLeft') return -1;

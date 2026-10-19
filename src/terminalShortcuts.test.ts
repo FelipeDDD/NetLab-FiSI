@@ -14,6 +14,8 @@ describe('terminal navigation keys', () => {
   it.each([
     [{ key: 'Tab', ctrlKey: true }, 1],
     [{ key: 'Tab', ctrlKey: true, shiftKey: true }, -1],
+    [{ key: 'PageDown', ctrlKey: true }, 1],
+    [{ key: 'PageUp', ctrlKey: true }, -1],
     [{ key: 'ArrowRight', altKey: true, shiftKey: true }, 1],
     [{ key: 'ArrowLeft', altKey: true, shiftKey: true }, -1],
   ] as const)('recognizes %j', (keys, direction) => {
@@ -25,6 +27,11 @@ describe('terminal navigation keys', () => {
     { key: 'Tab', ctrlKey: true, altKey: true },
     { key: 'Tab', ctrlKey: true, metaKey: true },
     { key: 'Tab', ctrlKey: true, isComposing: true },
+    { key: 'PageDown' }, { key: 'PageUp', shiftKey: true },
+    { key: 'PageDown', ctrlKey: true, shiftKey: true },
+    { key: 'PageDown', ctrlKey: true, altKey: true },
+    { key: 'PageUp', ctrlKey: true, metaKey: true },
+    { key: 'PageUp', ctrlKey: true, isComposing: true },
     { key: 'ArrowRight', altKey: true },
     { key: 'ArrowLeft', shiftKey: true },
     { key: 'ArrowLeft', altKey: true, shiftKey: true, ctrlKey: true },

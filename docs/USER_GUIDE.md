@@ -28,12 +28,25 @@ Live app: <https://netsim.borck.education/>
   service editors (DHCP/DNS/web, VLANs, SSID, RIP).
 - **Terminal dock** (bottom): double-click a host/router/server/firewall to
   open its terminal, or use the small terminal button revealed when hovering
-  or keyboard-focusing the device. The first four sessions automatically create
+  or keyboard-focusing the device. In the default **Free panels** mode, the first four sessions automatically create
   equal side-by-side panels. Each panel has its own selected tab, device label
   and close buttons. Further sessions open as tabs in the last focused panel.
   Opening an existing session activates its tab and focuses its input.
   Switching tabs keeps history and running commands. Closing a tab ends only
   that session; an empty panel disappears and the other panels expand.
+
+Use the compact **⚙ Settings** chip at the dock's upper-left edge (accessible
+name: **Terminal settings**). It floats at the edge instead of using a toolbar
+row or taking width from a terminal. Under **Layout → Organization**, choose
+**Group by type** to use one panel per occupied type: Hosts, Servers, Routers,
+then Firewalls. Sessions of the same type become tabs within that panel;
+switching a tab changes only that panel. Empty groups disappear.
+Changing modes keeps the same sessions, buffers, history, pending input and
+running commands. It starts an equal width distribution; the previous mode's
+manual proportions are not retained. The organization mode is saved with the
+topology (autosave and JSON export/import). Old files default to Free panels.
+Opening a new topology also starts with Free panels. Sessions themselves are
+not restored after reloading the page.
 
 Drag the dock's top border to resize it. You can also focus that border and
 use Up/Down (10 pixels), Shift+Up/Down (50 pixels), Home (minimum) or End
@@ -54,8 +67,8 @@ Press Escape while typing in a terminal to return focus to the topology editor.
 The command continues running. Click a terminal or activate its tab to resume
 typing. Escape inside an appearance popover only closes that popover.
 
-Use **⚙ Terminal settings** at the upper left of the dock to open the compact
-**Appearance** menu. Choose a device under **Device color**, including devices
+Use **⚙ Settings** at the upper left of the dock and its **Appearance** section.
+Choose a device under **Device color**, including devices
 whose terminals are closed, then change its color or use **Restore color** to
 return to the type's color: blue for hosts,
 green for servers, amber for routers and rose for firewalls. The color appears
@@ -91,9 +104,9 @@ the defaults. A color change does not restart the terminal or its commands.
 
 **Restore defaults** resets all device colors and the shared appearance in the
 current topology: Diagonal, 80% intensity, System font and 14 px. It preserves
-open sessions, panel widths, dock height, history and running commands. Only
-implemented appearance options are shown; there are no placeholder Layout or
-Behavior sections.
+open sessions, organization mode, panel widths, dock height, history and running
+commands. The color indicator remains a shortcut to Appearance; organization
+is available in the central Settings menu. There are no placeholder options.
 
 The **Labs** and **Export** menus stay above the editor and scroll internally
 when the window is too short. Open them with a click, Enter/Space, or Up/Down
@@ -131,6 +144,8 @@ all panels**, in opening order. The activated terminal
 receives focus; its input, history and running commands are retained. These keys
 do not switch terminals while editing a field elsewhere in the app.
 Ctrl+Tab / Ctrl+Shift+Tab also work **if the browser delivers them to the page**.
+Ctrl+PageDown / Ctrl+PageUp are additional next/previous shortcuts under the
+same browser restriction. Plain Tab and Shift+Tab do not switch sessions.
 [Chrome reserves these combinations for its own tabs](https://support.google.com/chrome/answer/157179?hl=en),
 so use Alt+Shift+Right/Left when they are intercepted. No browser settings or
 keyboard-lock permissions are required; OS shortcuts and extensions can still
@@ -139,8 +154,9 @@ take precedence.
 Browser validation: automated checks in Chromium 155 covered wrapped Unicode
 selection, replacement/deletion, safe native-event paste, circular navigation,
 focus restoration and isolation from other fields. Ctrl+Tab was also delivered
-through automation; this does not prove that a physical key press bypasses the
-browser's own tab shortcut. Vivaldi-specific handling is not required or assumed.
+through automation, as were Ctrl+PageDown/PageUp in both organization modes;
+this does not prove that a physical key press bypasses the browser's own tab
+shortcuts. Vivaldi-specific handling is not required or assumed.
 
 ## Building a network
 
