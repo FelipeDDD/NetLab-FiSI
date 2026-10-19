@@ -31,12 +31,13 @@ body,
 
 .app {
   display: grid;
-  grid-template-rows: 52px 1fr;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 52px minmax(0, 1fr);
   height: 100%;
 }
 
 .app.with-dock {
-  grid-template-rows: 52px 1fr 280px;
+  grid-template-rows: 52px minmax(0, 1fr) auto;
 }
 
 /* ---------- toolbar ---------- */
@@ -48,6 +49,12 @@ body,
   padding: 0 14px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.toolbar > * {
+  flex-shrink: 0;
 }
 
 .brand-name {
@@ -130,6 +137,7 @@ body,
 .main {
   display: flex;
   min-height: 0;
+  min-width: 0;
 }
 
 .canvas {
@@ -148,6 +156,7 @@ body,
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-y: auto;
 }
 
 .palette-title {
@@ -242,6 +251,42 @@ body,
 
 .device-node.selected {
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+}
+
+.device-terminal {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.device-node:hover .device-terminal,
+.react-flow__node:focus-within .device-terminal {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.device-terminal:focus-visible,
+.terminal-resizer:focus-visible,
+.terminal-tab:focus-visible,
+.terminal-tab-group .tab-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (hover: none) {
+  .device-terminal { opacity: 1; pointer-events: auto; }
 }
 
 .device-node.kind-host {
@@ -927,6 +972,31 @@ a.btn {
   border-top: 1px solid var(--border);
   background: #0b1220;
   min-height: 0;
+  min-width: 0;
+}
+
+.terminal-resizer {
+  height: 8px;
+  flex-shrink: 0;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  background: var(--bg-panel);
+}
+
+.terminal-resizer::after {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 2px;
+  margin: 3px auto;
+  border-radius: 2px;
+  background: var(--text-dim);
+}
+
+.terminal-resizer:hover::after,
+.terminal-resizer:focus-visible::after {
+  background: var(--accent);
 }
 
 .terminal-tabs {
@@ -934,6 +1004,18 @@ a.btn {
   gap: 2px;
   padding: 6px 8px 0;
   background: var(--bg-panel);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.terminal-tab-group {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.terminal-tab-group .tab-close {
+  padding: 4px 6px;
 }
 
 .terminal-tab {
@@ -948,6 +1030,7 @@ a.btn {
   border-bottom: none;
   border-radius: 8px 8px 0 0;
   cursor: pointer;
+  font-family: inherit;
 }
 
 .terminal-tab.active {
@@ -974,6 +1057,7 @@ a.btn {
   flex: 1;
   min-height: 0;
   padding: 6px 8px 8px;
+  overflow: hidden;
 }
 
 .term-host {

@@ -27,7 +27,16 @@ Live app: <https://netsim.borck.education/>
   addresses, routing/ARP/MAC/conntrack tables, firewall ruleset and log, and
   service editors (DHCP/DNS/web, VLANs, SSID, RIP).
 - **Terminal dock** (bottom): double-click a host/router/server/firewall to
-  open its terminal. Multiple terminals live in tabs.
+  open its terminal, or use the small terminal button revealed when hovering
+  or keyboard-focusing the device. Multiple terminals live in tabs. Opening
+  a terminal focuses its input; switching tabs keeps its history and commands.
+  Closing a tab ends that session.
+
+Drag the dock's top border to resize it. You can also focus that border and
+use Up/Down (10 pixels), Shift+Up/Down (50 pixels), Home (minimum) or End
+(maximum). The preferred height is remembered in this browser when storage is
+available and adapts temporarily to smaller windows. In the tab bar, Left/Right
+or Home/End moves keyboard focus; Enter/Space activates the focused terminal.
 
 ## Building a network
 

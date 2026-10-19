@@ -110,6 +110,19 @@ paper's stated future work (outbound filtering, NAT, stateful).
 6. **Kitchen sink** — RIPv1/v2 (iNetwork parity) then OSPF; VLANs/802.1Q on switches;
    wireless AP/client (SSID association model). Optional: v86 real-VM node type.
 
+## NetLab-FiSI — ideias futuras (fora da etapa 2)
+
+- Undo/Redo das alterações da topologia, inicialmente com histórico limitado a
+  5 estados, botões visíveis e atalhos Ctrl+Z/Ctrl+Shift+Z. Definir quais ações
+  entram no histórico e como restaurar a configuração sem reutilizar sessões
+  ou eventos de simulação obsoletos.
+- Proteger os atalhos globais para não interceptar digitação ou comandos em
+  terminais, inputs, textareas e outros campos editáveis.
+- Perfis de terminal Windows e Linux por dispositivo, com comandos e saídas
+  equivalentes sobre o mesmo motor. Manter explícito o subconjunto suportado.
+
+Estas ideias estão apenas registradas; não fazem parte da implementação atual.
+
 ## 7. References
 
 - Ye, M. & Sandrasegaran, K. (2006). *Teaching about Firewall Concepts using the iNetwork

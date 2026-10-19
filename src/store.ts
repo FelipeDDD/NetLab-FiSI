@@ -78,6 +78,7 @@ interface NetsimState {
   selected: string | null;
   terminals: string[];
   activeTerminal: string | null;
+  terminalFocusRequest: number;
   paused: boolean;
   speed: number;
   notice: string | null;
@@ -242,6 +243,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     selected: null,
     terminals: [],
     activeTerminal: null,
+    terminalFocusRequest: 0,
     paused: false,
     speed: 1,
     notice: null,
@@ -540,7 +542,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         },
       });
       const terminals = get().terminals.includes(id) ? get().terminals : [...get().terminals, id];
-      set({ terminals, activeTerminal: id });
+      set({ terminals, activeTerminal: id, terminalFocusRequest: get().terminalFocusRequest + 1 });
     },
 
     closeTerminal(id) {
@@ -554,7 +556,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     setActiveTerminal(id) {
-      set({ activeTerminal: id });
+      set({ activeTerminal: id, terminalFocusRequest: get().terminalFocusRequest + 1 });
     },
 
     flushAutosave() {

@@ -77,6 +77,19 @@ afterEach(() => {
 });
 
 describe('terminal session lifetime', () => {
+  it('requests focus when reopening the active session without replacing it or saving', () => {
+    const { a } = pair();
+    const session = open(a);
+    const request = useStore.getState().terminalFocusRequest;
+    expect(open(a)).toBe(session);
+    expect(useStore.getState().terminalFocusRequest).toBe(request + 1);
+    useStore.getState().setActiveTerminal(a.id);
+    expect(useStore.getState().terminalFocusRequest).toBe(request + 2);
+    expect(session.term.dispose).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
   it('preserves session, output, history and partially typed input across tab switches', () => {
     const { a, b } = pair();
     const session = open(a);

@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
-import type { DevNode } from '../store';
+import { useStore, type DevNode } from '../store';
 import type { DeviceKind } from '../engine/device';
 
 export const NODE_W = 96;
@@ -70,13 +70,35 @@ export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: numbe
   );
 }
 
-function DeviceNodeInner({ data, selected }: NodeProps<DevNode>) {
+function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
+  const openTerminal = useStore((s) => s.openTerminal);
+  const hasShell = data.kind !== 'switch' && data.kind !== 'ap';
   return (
     <div className={`device-node kind-${data.kind}${selected ? ' selected' : ''}`}>
       <Handle type="source" position={Position.Top} id="t" />
       <Handle type="source" position={Position.Right} id="r" />
       <Handle type="source" position={Position.Bottom} id="b" />
       <Handle type="source" position={Position.Left} id="l" />
+      {hasShell && (
+        <button
+          type="button"
+          className="device-terminal nodrag nopan nowheel"
+          aria-label={`Open terminal for ${data.label}`}
+          title={`Open terminal for ${data.label}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          onKeyUp={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            openTerminal(id);
+          }}
+        >
+          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+            <path d="m4 5 4 4-4 4m7 0h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
       <div className="dev-icon">
         <DeviceIcon kind={data.kind} />
       </div>
