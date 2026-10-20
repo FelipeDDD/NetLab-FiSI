@@ -68,7 +68,7 @@ export function runPing(
   let finished = false;
   const timers = new Set<ScheduledEvent>();
   const schedule = (delay: number, fn: () => void) => {
-    const timer = sched.schedule(delay, () => {
+    const timer = device.schedule(delay, () => {
       timers.delete(timer);
       fn();
     });

@@ -42,10 +42,14 @@ export class Network {
   }
 
   nextMac(): string {
-    const n = ++this.macCounter;
-    const b1 = ((n >> 8) & 0xff).toString(16).padStart(2, '0');
-    const b0 = (n & 0xff).toString(16).padStart(2, '0');
-    return `02:00:00:00:${b1}:${b0}`;
+    let mac: string;
+    do {
+      const n = ++this.macCounter;
+      const b1 = ((n >> 8) & 0xff).toString(16).padStart(2, '0');
+      const b0 = (n & 0xff).toString(16).padStart(2, '0');
+      mac = `02:00:00:00:${b1}:${b0}`;
+    } while ([...this.devices.values()].some((d) => d.interfaces.some((i) => i.mac.toLowerCase() === mac)));
+    return mac;
   }
 
   allocId(prefix: string): string {
@@ -80,6 +84,7 @@ export class Network {
         this.disconnect(iface.link.id);
       }
     }
+    d.dispose();
     this.devices.delete(id);
     return removedLinks;
   }
@@ -92,6 +97,7 @@ export class Network {
     const a = this.devices.get(aId);
     const b = this.devices.get(bId);
     if (!a || !b) throw new Error('unknown device');
+    if (opts.id && this.links.has(opts.id)) throw new Error('link ID already exists');
     if (aId === bId) throw new Error('cannot connect a device to itself');
     const ia = opts.aIface ? a.getInterface(opts.aIface) : a.freeInterface();
     const ib = opts.bIface ? b.getInterface(opts.bIface) : b.freeInterface();

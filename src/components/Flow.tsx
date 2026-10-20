@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   Background,
   ConnectionMode,
@@ -14,6 +14,7 @@ import type { DeviceKind } from '../engine/device';
 import { DeviceNode } from './DeviceNode';
 import { FloatingEdge } from './FloatingEdge';
 import { PacketLayer } from './PacketLayer';
+import { protectsTopologyKeys, topologyHistoryDirection } from '../topologyShortcuts';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { floating: FloatingEdge };
@@ -40,6 +41,38 @@ export function Flow() {
   const tick = useStore((s) => s.tick);
   const addDeviceAt = useStore((s) => s.addDeviceAt);
   const { screenToFlowPosition } = useReactFlow();
+  const keyboardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyboardMoving = useRef(false);
+  const finishKeyboard = () => {
+    if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
+    keyboardTimer.current = null;
+    if (keyboardMoving.current) { keyboardMoving.current = false; useStore.getState().finishNodeMovement(); }
+  };
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const direction = topologyHistoryDirection(event, target, document.activeElement);
+      if (direction) {
+        event.preventDefault();
+        finishKeyboard();
+        if (direction === 'undo') useStore.getState().undoTopology();
+        else useStore.getState().redoTopology();
+      } else if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing && !protectsTopologyKeys(target) && !protectsTopologyKeys(document.activeElement)) {
+        if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
+        keyboardTimer.current = null;
+        keyboardMoving.current = false;
+        useStore.getState().cancelNodeMovement();
+      }
+    };
+    const blur = () => {
+      finishKeyboard();
+      useStore.getState().cancelNodeMovement();
+    };
+    // Bubble phase respects controls which already handled the event.
+    window.addEventListener('keydown', shortcut);
+    window.addEventListener('blur', blur);
+    return () => { window.removeEventListener('keydown', shortcut); window.removeEventListener('blur', blur); finishKeyboard(); };
+  }, []);
 
   // Advance the virtual clock in real time; the engine itself is
   // deterministic and only moves when we push it. rAF drives smooth
@@ -88,6 +121,35 @@ export function Flow() {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      onBeforeDelete={async ({ nodes, edges }) => {
+        // Own the entire transaction before React Flow emits edge removals
+        // followed by node removals. Returning false prevents duplicate edits.
+        useStore.getState().deleteTopologyElements(nodes.map((n) => n.id), edges.map((e) => e.id));
+        return false;
+      }}
+      onNodeDragStart={() => { finishKeyboard(); useStore.getState().beginNodeMovement('drag'); }}
+      onNodeDragStop={() => useStore.getState().finishNodeMovement()}
+      onSelectionDragStart={() => { finishKeyboard(); useStore.getState().beginNodeMovement('drag'); }}
+      onSelectionDragStop={() => useStore.getState().finishNodeMovement()}
+      onPointerDownCapture={finishKeyboard}
+      onPointerCancelCapture={() => useStore.getState().cancelNodeMovement()}
+      onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) finishKeyboard(); }}
+      onKeyDownCapture={(event) => {
+        const target = event.target as Element;
+        if (!event.defaultPrevented && !event.nativeEvent.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey
+          && /^Arrow(Left|Right|Up|Down)$/.test(event.key) && !protectsTopologyKeys(target)
+          && !protectsTopologyKeys(document.activeElement) && target.closest('.react-flow__node, .react-flow__nodesselection')) {
+          if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
+          keyboardTimer.current = null;
+          useStore.getState().beginNodeMovement('keyboard');
+          keyboardMoving.current = true;
+        } else finishKeyboard();
+      }}
+      onKeyUpCapture={(event) => {
+        if (!keyboardMoving.current || !/^Arrow(Left|Right|Up|Down)$/.test(event.key)) return;
+        if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
+        keyboardTimer.current = setTimeout(finishKeyboard, 350);
+      }}
       onNodeClick={(_, n) => select(n.id)}
       onPaneClick={() => select(null)}
       onNodeDoubleClick={(_, n: DevNode) => {

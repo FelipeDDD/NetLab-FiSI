@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IpDevice } from './engine/ipdevice';
+import { SwitchDevice } from './engine/switch';
 import { parseCidr, parseIp } from './engine/ip';
 import { Shell, type TermIO } from './commands/shell';
 import { sim } from './sim';
@@ -11,6 +12,8 @@ import { restoreNetwork, serializeNetwork } from './engine/serialize';
 import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, type AppearanceSaveFile } from './terminalAppearance';
 import { resizePanelPair } from './terminalPanels';
 import { PANEL_LAYOUT_KEY } from './terminalPanelPreferences';
+import type { MoveOperation } from './topologyHistory';
+import { captureCreation, captureLink } from './topologyEdits';
 import { TAB_LAYOUT_KEY } from './terminalTabPreferences';
 
 // Only the browser renderer is replaced. Commands, engine, store and persistence
@@ -1589,5 +1592,347 @@ describe('autosave from terminal commands', () => {
     expect(setItem).toHaveBeenCalledTimes(1);
     useStore.getState().boot();
     expect((sim.net.devices.get(a.id) as IpDevice).forwarding).toBe(true);
+  });
+});
+
+
+describe('topology movement history', () => {
+  function move(ids: string[], x: number, dragging = false) {
+    useStore.getState().onNodesChange(ids.map((id) => ({ id, type: 'position' as const, position: { x, y: 30 }, dragging })));
+  }
+  it('groups continuous multi-device drags, autosaves undo/redo, and ignores derived/UI state', () => {
+    const { a, b, net } = pair();
+    const store = useStore.getState();
+    const start = store.nodes.map((n) => ({ ...n.position }));
+    store.beginNodeMovement('drag');
+    move([a.id, b.id], 50, true); move([a.id, b.id], 90, true); move([a.id, b.id], 100);
+    store.finishNodeMovement();
+    expect(useStore.getState().topologyHistory.past).toHaveLength(1);
+    expect((useStore.getState().topologyHistory.past[0] as MoveOperation).changes).toHaveLength(2);
+    store.tick(20); store.refresh(); store.select(a.id); store.setSpeed(2);
+    expect(useStore.getState().topologyHistory.past).toHaveLength(1);
+    store.undoTopology();
+    expect(useStore.getState().nodes.map((n) => n.position)).toEqual(start);
+    vi.advanceTimersByTime(500);
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!).devices.map((d: { x: number; y: number }) => ({ x: d.x, y: d.y }))).toEqual(start);
+    expect(storage.get('netsim:autosave:v1')).not.toContain('topologyHistory');
+    store.redoTopology(); vi.advanceTimersByTime(500);
+    expect(useStore.getState().nodes.map((n) => n.position.x)).toEqual([100, 100]);
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!).devices.map((d: { x: number }) => d.x)).toEqual([100, 100]);
+    expect(sim.net).toBe(net); expect(sim.net.devices.get(a.id)).toBe(a);
+  });
+  it('groups keyboard repeats, supports successive undo/redo, and clears redo on a new move', () => {
+    const { a } = pair(); const store = useStore.getState();
+    store.beginNodeMovement('keyboard'); move([a.id], 25); store.beginNodeMovement('keyboard'); move([a.id], 30); store.finishNodeMovement();
+    move([a.id], 40); expect(useStore.getState().topologyHistory.past).toHaveLength(2);
+    store.undoTopology(); store.undoTopology(); expect(useStore.getState().nodes[0].position.x).toBe(20);
+    store.redoTopology(); store.redoTopology(); expect(useStore.getState().nodes[0].position.x).toBe(40);
+    store.undoTopology(); move([a.id], 45);
+    expect(useStore.getState().topologyHistory.future).toEqual([]);
+  });
+  it('does not record unchanged/cancelled gestures or selection/dimension changes', () => {
+    const { a } = pair(); const store = useStore.getState();
+    move([a.id], 20); store.beginNodeMovement('drag'); move([a.id], 60, true); store.cancelNodeMovement();
+    move([a.id], 70, true); move([a.id], 80); store.finishNodeMovement();
+    expect(useStore.getState().nodes[0].position.x).toBe(20);
+    store.onNodesChange([{ type: 'select', id: a.id, selected: true }, { type: 'dimensions', id: a.id, dimensions: { width: 120, height: 80 } }]);
+    expect(useStore.getState().topologyHistory).toEqual({ past: [], future: [] });
+  });
+  it('preserves live sessions, partial Unicode, buffers and running pings through moves and undo/redo', () => {
+    const { a, b, net } = pair(); const first = open(a), second = open(b), store = useStore.getState();
+    input(first, 'Olá 東京 '); input(second, 'ping 10.0.0.2\r'); const cancel = vi.spyOn(b, 'offIcmp');
+    move([a.id, b.id], 80); store.undoTopology(); store.redoTopology(); net.scheduler.advanceTo(2200);
+    expect(getSession(a)).toBe(first); expect(getSession(b)).toBe(second); expect(sim.net).toBe(net);
+    expect(first.term.dispose).not.toHaveBeenCalled(); expect(first.term.clearSelection).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled(); expect(output(second)).toContain('icmp_seq=2');
+    const exec = vi.spyOn(Shell.prototype, 'exec'); input(first, '🌐\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('Olá 東京 🌐');
+  });
+  it('invalidates on incompatible structure/configuration but not failed edits or non-mutating commands', () => {
+    const { a, b } = pair(); const store = useStore.getState(); const first = open(a), second = open(b);
+    const seed = () => { move([a.id], useStore.getState().nodes[0].position.x + 5); expect(useStore.getState().topologyHistory.past.length).toBeGreaterThan(0); };
+    seed(); expect(store.setIfaceIp(a.id, 'eth0', 'bad')).not.toBeNull(); input(first, 'hostname\r');
+    expect(useStore.getState().topologyHistory.past).toHaveLength(1);
+    store.setIfaceIp(a.id, 'eth0', '10.0.0.9/24'); expect(useStore.getState().topologyHistory.past).toEqual([]);
+    seed(); store.renameDevice(a.id, 'pc-new'); expect(useStore.getState().topologyHistory.past).toEqual([]);
+    seed(); input(first, 'ip link set eth0 down\r'); expect(useStore.getState().topologyHistory.past).toEqual([]);
+    input(second, 'ping 10.0.0.2\r'); store.setNameserver(a.id, '10.0.0.2'); seed(); input(second, '\x03');
+    expect(useStore.getState().topologyHistory.past).toHaveLength(1);
+    store.onEdgesChange([{ type: 'remove', id: useStore.getState().edges[0].id }]); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('remove-links');
+    seed(); store.onConnect({ source: a.id, target: b.id, sourceHandle: null, targetHandle: null }); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('add-links');
+    seed(); store.addDeviceAt('host', { x: 1, y: 1 }); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('create-device');
+    seed(); store.deleteDevice(b.id); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('delete-devices');
+  });
+  it('guards unreported configuration changes before undo and clears history only on successful loads', () => {
+    const { a } = pair(); const store = useStore.getState();
+    move([a.id], 80); store.undoTopology(); a.nameserver = parseIp('10.0.0.2'); store.redoTopology();
+    expect(useStore.getState().nodes[0].position.x).toBe(20); expect(useStore.getState().topologyHistory.future).toEqual([]);
+    move([a.id], 85); const history = useStore.getState().topologyHistory;
+    for (const invalid of ['{', '{}', '{"app":"netsim","version":99,"devices":[],"links":[]}']) {
+      expect(store.importJson(invalid)).not.toBeNull(); expect(useStore.getState().topologyHistory).toBe(history);
+    }
+    const save = serializeNetwork(sim.net, {}); expect(store.importJson(JSON.stringify(save))).toBeNull();
+    expect(useStore.getState().topologyHistory.past).toEqual([]);
+    move([a.id], 48); store.flushAutosave(); store.boot();
+    expect(useStore.getState().topologyHistory).toEqual({ past: [], future: [] });
+    expect(useStore.getState().terminals).toEqual([]);
+    expect(useStore.getState().nodes[0].position.x).toBe(48);
+    move([a.id], 50); store.loadDemo(); expect(useStore.getState().topologyHistory.past).toEqual([]);
+    move([useStore.getState().nodes[0].id], 60); store.loadExample(0); expect(useStore.getState().topologyHistory.past).toEqual([]);
+    move([useStore.getState().nodes[0].id], 70); store.loadBundledLab(0); expect(useStore.getState().topologyHistory.past).toEqual([]);
+    move([useStore.getState().nodes[0].id], 80); store.newTopology(); expect(useStore.getState().topologyHistory.past).toEqual([]);
+  });
+});
+
+describe('topology creation and cable history', () => {
+  const store = () => useStore.getState();
+  const add = (kind: 'host' | 'switch' | 'router') => {
+    store().addDeviceAt(kind, { x: 90, y: 40 });
+    return sim.net.devices.get(store().nodes.at(-1)!.id)!;
+  };
+  const connect = (a: string, b: string) => store().onConnect({ source: a, target: b, sourceHandle: null, targetHandle: null });
+
+  it('replays interleaved creation, movement, connection and disconnection without rebuilding the network', () => {
+    const net = sim.net, a = add('switch'), b = add('router');
+    const initial = captureCreation(net, b, { x: 90, y: 40 }, 1);
+    connect(a.id, b.id);
+    const link = captureLink([...net.links.values()][0]);
+    store().onNodesChange([{ type: 'position', id: b.id, position: { x: 150, y: 40 }, dragging: false }]);
+    store().onEdgesChange([{ type: 'remove', id: link.id }]);
+    expect(store().topologyHistory.past.map((o) => o.type)).toEqual(['create-device', 'create-device', 'add-links', 'move-nodes', 'remove-links']);
+    store().undoTopology(); expect(captureLink(net.links.get(link.id)!)).toEqual(link);
+    store().undoTopology(); expect(store().nodes[1].position).toEqual({ x: 90, y: 40 });
+    store().undoTopology(); expect(net.links.size).toBe(0);
+    store().undoTopology(); expect(net.devices.get(a.id)).toBe(a); expect(net.devices.has(b.id)).toBe(false);
+    store().undoTopology(); expect(net.devices.size).toBe(0);
+    for (let i = 0; i < 5; i++) store().redoTopology();
+    expect(sim.net).toBe(net); expect(net.links.size).toBe(0);
+    expect(store().nodes[1].position).toEqual({ x: 150, y: 40 });
+    expect(captureCreation(net, net.devices.get(b.id)!, { x: 90, y: 40 }, 1)).toEqual(initial);
+    store().undoTopology(); expect(captureLink(net.links.get(link.id)!)).toEqual(link);
+    for (let i = 0; i < 3; i++) { store().redoTopology(); store().undoTopology(); }
+    expect(net.links.size).toBe(1); expect(store().edges.map((e) => e.id)).toEqual([link.id]);
+    vi.advanceTimersByTime(500);
+    const saved = JSON.parse(storage.get('netsim:autosave:v1')!);
+    expect(saved.links).toEqual([link]);
+    expect(saved.devices[1].x).toBe(150);
+  });
+
+  it('undoes a batch of removed cables as one action with the exact original interfaces', () => {
+    const a = add('switch'), b = add('router'), c = add('host');
+    // Load a baseline with deliberately non-first-free interfaces.
+    sim.net.connect(a.id, b.id, { aIface: 'eth4', bIface: 'eth2' });
+    sim.net.connect(a.id, c.id, { aIface: 'eth6', bIface: 'eth0' });
+    const saved = serializeNetwork(sim.net, {});
+    expect(store().importJson(JSON.stringify(saved))).toBeNull();
+    const links = [...sim.net.links.values()].map(captureLink);
+    store().onEdgesChange(links.map((l) => ({ type: 'remove', id: l.id })));
+    expect(store().topologyHistory.past).toHaveLength(1); expect(sim.net.links.size).toBe(0);
+    store().undoTopology(); expect([...sim.net.links.values()].map(captureLink)).toEqual(links);
+    store().redoTopology(); expect(sim.net.links.size).toBe(0);
+    store().undoTopology();
+    const history = store().topologyHistory;
+    store().onEdgesChange([{ type: 'remove', id: 'missing' }]);
+    connect(a.id, a.id); // Failed edits must leave Redo intact.
+    expect(store().topologyHistory).toBe(history);
+    store().onEdgesChange([{ type: 'remove', id: links[0].id }]);
+    expect(store().topologyHistory.future).toEqual([]);
+  });
+
+  it('keeps simultaneous pings, terminal identity and input through cable removal/restoration and creation undo', () => {
+    const { a, b, net } = pair();
+    const left = add('switch'), right = add('switch');
+    store().onEdgesChange([{ type: 'remove', id: store().edges[0].id }]);
+    connect(a.id, left.id); connect(left.id, right.id); connect(right.id, b.id);
+    const first = open(a), second = open(b);
+    input(first, 'ping 10.0.0.2\r'); input(second, 'ping 10.0.0.1\r');
+    vi.mocked(first.term.clearSelection).mockClear();
+    net.scheduler.advanceTo(1000);
+    const link = captureLink([...net.links.values()][1]);
+    store().onEdgesChange([{ type: 'remove', id: link.id }]);
+    net.scheduler.advanceTo(3600);
+    expect(output(first)).toContain('no answer yet');
+    store().undoTopology(); net.scheduler.advanceTo(6500);
+    expect(output(first)).toContain('icmp_seq=6'); expect(output(second)).toContain('icmp_seq=6');
+    const extra = add('host') as IpDevice, transient = open(extra);
+    input(transient, 'nc -l 9000\r'); expect(extra.ncTcp.has(9000)).toBe(true);
+    store().setActiveTerminal(a.id); store().noteTerminalFocus(a.id);
+    const stale = vi.fn(); extra.schedule(1000, stale);
+    store().undoTopology();
+    expect(transient.term.dispose).toHaveBeenCalledOnce(); expect(extra.disposed).toBe(true);
+    expect(extra.ncTcp.size).toBe(0); expect(store().terminals).toEqual([a.id, b.id]);
+    expect(store().activeTerminal).toBe(a.id); expect(store().terminalHasFocus).toBe(true);
+    store().redoTopology(); expect(store().terminals).toEqual([a.id, b.id]);
+    net.scheduler.advanceTo(9500); expect(stale).not.toHaveBeenCalled();
+    expect(output(first)).toContain('icmp_seq=9'); expect(output(second)).toContain('icmp_seq=9');
+    expect(getSession(a)).toBe(first); expect(getSession(b)).toBe(second);
+    expect(first.term.dispose).not.toHaveBeenCalled(); expect(second.term.dispose).not.toHaveBeenCalled();
+    expect(first.term.clearSelection).not.toHaveBeenCalled();
+    expect(store().topologyHistory.past.at(-1)?.type).toBe('create-device');
+    store().tick(100); store().refresh();
+    expect(store().topologyHistory.past.at(-1)?.type).toBe('create-device');
+    store().undoTopology();
+    vi.advanceTimersByTime(500);
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!).devices.map((d: { id: string }) => d.id)).toEqual([a.id, b.id, left.id, right.id]);
+  });
+
+  it('invalidates redo on a new creation, keeps the 50-operation limit and clears on unsupported configuration/load', () => {
+    const survivor = add('host');
+    for (let i = 0; i < 54; i++) add('host');
+    expect(store().topologyHistory.past).toHaveLength(50);
+    store().undoTopology(); expect(store().topologyHistory.future).toHaveLength(1);
+    add('switch'); expect(store().topologyHistory.future).toHaveLength(0);
+    store().deleteDevice(survivor.id); expect(store().topologyHistory.past).toHaveLength(50); expect(store().topologyHistory.past.at(-1)?.type).toBe('delete-devices');
+    const next = add('host'); store().setIfaceIp(next.id, 'eth0', '192.0.2.1/24');
+    expect(store().topologyHistory.past).toEqual([]);
+    add('host'); expect(store().importJson('{')).not.toBeNull(); expect(store().topologyHistory.past).toHaveLength(1);
+    store().flushAutosave(); store().boot();
+    expect(store().topologyHistory).toEqual({ past: [], future: [] }); expect(store().terminals).toEqual([]);
+  });
+
+  it('cancels DHCP on undoing creation without letting old callbacks affect the same-ID replacement', () => {
+    const device = add('host') as IpDevice, session = open(device), net = sim.net;
+    input(session, 'dhclient eth0\r');
+    expect(device.dhcpListeners.size).toBe(1); expect(net.scheduler.pending).toBeGreaterThan(0);
+    store().undoTopology(); store().redoTopology();
+    const restored = net.devices.get(device.id) as IpDevice;
+    expect(restored).not.toBe(device); expect(store().terminals).toEqual([]);
+    expect(device.dhcpListeners.size).toBe(0); expect(net.scheduler.pending).toBe(0);
+    const text = output(session); net.scheduler.advanceTo(60_000);
+    expect(output(session)).toBe(text); expect(restored.interfaces[0].ip).toBeNull();
+    expect(session.term.dispose).toHaveBeenCalledOnce();
+    expect(store().topologyHistory.past).toHaveLength(1);
+  });
+
+  it('captures a React Flow delete before edge/node callbacks and ignores duplicate removal notifications', () => {
+    const a = add('switch'), b = add('host'); connect(a.id, b.id);
+    const link = captureLink([...sim.net.links.values()][0]), count = store().topologyHistory.past.length;
+    store().deleteTopologyElements([b.id], [link.id]); // onBeforeDelete owns the transaction.
+    store().onEdgesChange([{ type: 'remove', id: link.id }]);
+    store().onNodesChange([{ type: 'remove', id: b.id }]);
+    expect(store().topologyHistory.past).toHaveLength(count + 1);
+    store().undoTopology(); expect(sim.net.devices.has(b.id)).toBe(true);
+    expect(sim.net.devices.get(a.id)).toBe(a); expect(captureLink(sim.net.links.get(link.id)!)).toEqual(link);
+  });
+});
+
+describe('device deletion history', () => {
+  const store = () => useStore.getState();
+  function add(kind: 'host' | 'switch' | 'router' | 'firewall', x = 100) {
+    store().addDeviceAt(kind, { x, y: 80 });
+    return sim.net.devices.get(store().nodes.at(-1)!.id)!;
+  }
+
+  it.each(['host', 'switch', 'router', 'firewall'] as const)('restores existing %s configuration, MACs, position, colors and exact incident cables', (kind) => {
+    const device = add(kind), survivor = add('switch', 350), net = sim.net;
+    const iface = device.interfaces.at(-1)!;
+    const link = net.connect(device.id, survivor.id, { aIface: iface.name, bIface: 'eth6' }); link.latency = 147;
+    device.name = `custom-${kind}`; iface.up = false;
+    if (device instanceof IpDevice) {
+      iface.ip = parseCidr('192.0.2.1/24'); device.nameserver = parseIp('192.0.2.53');
+      device.staticRoutes.push({ dest: parseIp('203.0.113.0')!, prefix: 24, via: parseIp('192.0.2.254'), ifaceName: iface.name, kind: 'static' });
+      device.services.tcp.add(443); device.httpServer = { enabled: true, port: 8080, body: 'Hello Unicode 🌐' };
+      if (kind === 'firewall') new Shell(device).exec('iptables -A FORWARD -p tcp --dport 23 -j DROP', { write: () => {} }, () => {});
+      if (kind === 'router') device.enableRip(true);
+      store().setTerminalColor(device.id, '#123456');
+    } else if (device instanceof SwitchDevice) device.vlans.set(iface.name, 12);
+    store().refresh(); store().invalidateTopologyHistory();
+    const expected = captureCreation(net, device, { x: 100, y: 80 }, 0), cable = captureLink(link);
+    store().deleteDevice(device.id);
+    expect(device.disposed).toBe(true); expect(store().topologyHistory.past).toHaveLength(1);
+    store().undoTopology();
+    const restored = net.devices.get(device.id)!;
+    expect(restored).not.toBe(device); expect(captureCreation(net, restored, { x: 100, y: 80 }, 0)).toEqual(expected);
+    expect(store().nodes[0].position).toEqual({ x: 100, y: 80 }); expect(store().nodes[0].data.label).toBe(device.name);
+    expect(captureLink(net.links.get(link.id)!)).toEqual(cable);
+    expect(net.devices.get(survivor.id)).toBe(survivor); expect(sim.net).toBe(net);
+    if (device instanceof IpDevice) expect(store().terminalColors[device.id]).toBe('#123456');
+    store().redoTopology(); expect(restored.disposed).toBe(true); expect(net.devices.has(device.id)).toBe(false);
+    store().undoTopology(); expect(captureCreation(net, net.devices.get(device.id)!, { x: 100, y: 80 }, 0)).toEqual(expected);
+    expect(net.links.size).toBe(1); expect(store().terminals).toEqual([]);
+  });
+
+  it('deletes multiple devices and shared cables once, including separately selected survivor cables', () => {
+    const a = add('host'), sw = add('switch'), r = add('router'), other = add('host'), net = sim.net;
+    const links = [net.connect(a.id, sw.id), net.connect(sw.id, r.id), net.connect(r.id, other.id)].map(captureLink);
+    const order = store().nodes.map((n) => n.id); store().invalidateTopologyHistory();
+    store().deleteTopologyElements([a.id, sw.id, a.id], [links[2].id, links[0].id]);
+    const operation = store().topologyHistory.past[0]; expect(operation.type).toBe('delete-devices');
+    if (operation.type !== 'delete-devices') throw new Error('wrong operation');
+    expect(operation.devices).toHaveLength(2); expect(operation.links).toHaveLength(3); expect(net.links.size).toBe(0);
+    store().undoTopology();
+    expect(store().nodes.map((n) => n.id)).toEqual(order);
+    expect([...net.links.values()].map(captureLink)).toEqual(links);
+    expect(net.devices.get(r.id)).toBe(r); expect(net.devices.get(other.id)).toBe(other);
+    store().redoTopology(); store().undoTopology(); expect(net.links.size).toBe(3);
+    expect(store().edges.map((e) => e.id)).toEqual(links.map((l) => l.id));
+    store().onNodesChange([{ type: 'position', id: a.id, position: { x: 70, y: 80 }, dragging: false }]);
+    expect(store().topologyHistory.future).toEqual([]);
+  });
+
+  it('replays creation, movement, connection and multi-device deletion in the same sequence', () => {
+    const a = add('host'), sw = add('switch'), net = sim.net;
+    store().onConnect({ source: a.id, target: sw.id, sourceHandle: null, targetHandle: null });
+    const cable = captureLink([...net.links.values()][0]);
+    store().onNodesChange([a.id, sw.id].map((id) => ({ type: 'position', id, position: { x: 250, y: 80 }, dragging: false })));
+    store().deleteTopologyElements([a.id, sw.id]);
+    expect(store().topologyHistory.past.map((o) => o.type)).toEqual(['create-device', 'create-device', 'add-links', 'move-nodes', 'delete-devices']);
+    for (let cycle = 0; cycle < 3; cycle++) {
+      store().undoTopology(); expect(captureLink(net.links.get(cable.id)!)).toEqual(cable);
+      expect(store().nodes.map((n) => n.position.x)).toEqual([250, 250]);
+      for (let i = 0; i < 4; i++) store().undoTopology();
+      expect(net.devices.size).toBe(0); expect(net.links.size).toBe(0);
+      for (let i = 0; i < 5; i++) store().redoTopology();
+      expect(net.devices.size).toBe(0); expect(net.links.size).toBe(0); expect(sim.net).toBe(net);
+    }
+  });
+
+  it('disposes removed sessions, RIP and async commands while preserving other pings, input and sessions', () => {
+    const { a, b, net } = pair(), first = open(a), second = open(b);
+    const router = add('router') as IpDevice, dhcp = add('host') as IpDevice;
+    router.interfaces[0].ip = parseCidr('192.0.2.1/24'); router.enableRip(true);
+    const ping = open(router), client = open(dhcp);
+    input(first, 'Unicode 🌐'); input(second, 'ping 10.0.0.1\r'); input(ping, 'ping 192.0.2.1\r'); input(client, 'dhclient eth0\r');
+    net.scheduler.advanceTo(500); store().invalidateTopologyHistory(); store().setActiveTerminal(a.id); store().noteTerminalFocus(a.id);
+    const stale = vi.fn(), event = router.schedule(1000, stale), cancel = vi.spyOn(b, 'offIcmp');
+    store().deleteTopologyElements([router.id, dhcp.id]);
+    const ended = [output(ping), output(client)];
+    store().undoTopology(); event.fn(); net.scheduler.advanceTo(10_500);
+    expect(stale).not.toHaveBeenCalled(); expect(output(ping)).toBe(ended[0]); expect(output(client)).toBe(ended[1]);
+    expect(ping.term.dispose).toHaveBeenCalledOnce(); expect(client.term.dispose).toHaveBeenCalledOnce();
+    expect(router.disposed).toBe(true); expect(router.ripEnabled).toBe(false); expect(dhcp.dhcpListeners.size).toBe(0);
+    expect((net.devices.get(router.id) as IpDevice).ripEnabled).toBe(true);
+    expect(store().terminals).toEqual([a.id, b.id]); expect(store().activeTerminal).toBe(a.id); expect(store().terminalHasFocus).toBe(true);
+    expect(getSession(a)).toBe(first); expect(getSession(b)).toBe(second); expect(cancel).not.toHaveBeenCalled();
+    expect(output(second)).toContain('icmp_seq=10'); expect(first.term.dispose).not.toHaveBeenCalled();
+    const exec = vi.spyOn(Shell.prototype, 'exec'); input(first, '\r'); expect(exec.mock.calls.at(-1)?.[0]).toBe('Unicode 🌐');
+    store().redoTopology(); net.scheduler.advanceTo(20_500); expect(output(second)).toContain('icmp_seq=20');
+  });
+
+  it('autosaves deletion and restoration and boots with exact MACs, ports and latency but no sessions/history', () => {
+    const { a, b, net } = pair(), session = open(a), link = [...net.links.values()][0]; link.latency = 211;
+    const macs = a.interfaces.map((i) => i.mac), cable = captureLink(link);
+    store().deleteDevice(a.id); vi.advanceTimersByTime(500);
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!).devices.map((d: { id: string }) => d.id)).toEqual([b.id]);
+    store().undoTopology(); vi.advanceTimersByTime(500);
+    const saved = JSON.parse(storage.get('netsim:autosave:v1')!);
+    expect(saved.links).toEqual([cable]); expect(saved.devices.find((d: { id: string }) => d.id === a.id).ifaces.map((i: { mac: string }) => i.mac)).toEqual(macs);
+    store().boot(); expect(sim.net.devices.get(a.id)?.interfaces.map((i) => i.mac)).toEqual(macs);
+    expect(captureLink(sim.net.links.get(link.id)!)).toEqual(cable);
+    expect(store().terminals).toEqual([]); expect(store().topologyHistory).toEqual({ past: [], future: [] });
+    expect(session.term.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('ignores old asynchronous lab results after deletion and same-ID restoration', () => {
+    const { a, b, net } = pair();
+    useStore.setState({ lab: { id: 'deletion-check', title: 'Check', blurb: '', steps: [{ title: 'Step', body: '', objectives: [
+      { id: 'ping', label: 'Ping', check: { type: 'ping', from: a.name, toDevice: b.name, expect: 'success' } },
+      { id: 'next', label: 'Address', check: { type: 'iface-ip', device: b.name, iface: 'eth0' } },
+    ] }] } });
+    store().checkStep(); expect(store().labChecking).toBe(true);
+    store().deleteDevice(a.id); store().undoTopology(); net.scheduler.advanceTo(5000);
+    expect(store().labChecking).toBe(false); expect(store().labResults).toEqual({});
+    store().checkStep(); net.scheduler.advanceTo(10_000);
+    expect(store().labResults.ping.pass).toBe(true); expect(store().labResults.next.pass).toBe(true);
   });
 });

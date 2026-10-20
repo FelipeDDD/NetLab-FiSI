@@ -308,14 +308,105 @@ foco solicitado, dimensões dos painéis ou altura salva do dock. Repetir uma
 preferência ou restauração sem mudanças não dispara autosave.
 A restauração da aparência também preserva o modo de organização escolhido.
 
-## NetLab-FiSI — ideias futuras (fora da etapa 2)
+### Undo/Redo — primeira etapa: posições
 
-- Undo/Redo das alterações da topologia, inicialmente com histórico limitado a
-  5 estados, botões visíveis e atalhos Ctrl+Z/Ctrl+Shift+Z. Definir quais ações
-  entram no histórico e como restaurar a configuração sem reutilizar sessões
-  ou eventos de simulação obsoletos.
-- Proteger os atalhos globais para não interceptar digitação ou comandos em
-  terminais, inputs, textareas e outros campos editáveis.
+`topologyHistory.ts` define operações tipadas `move-nodes` com IDs e posições
+antes/depois, pilhas past/future e limite de 50 operações em memória. Transações
+de arraste guardam posições antes do primeiro movimento e registram apenas nós
+efetivamente alterados ao terminar. Seleções múltiplas geram uma operação. Setas
+repetidas ficam agrupadas até 350 ms após keyup; mudança de foco, nova interação
+ou Undo/Redo confirma o grupo. Escape/pointercancel cancela e restaura posições,
+ignorando eventos restantes do arraste. Uma edição real limpa Redo; no-ops não.
+
+O store aplica posições diretamente aos nós controlados, sem substituir Network,
+Device, sessões xterm ou configuração. A aplicação valida todos os IDs/posições
+esperados antes de alterar qualquer nó e agenda o autosave existente. Histórico
+não entra em JSON, autosave, links de compartilhamento ou preferências locais.
+Tick, refresh, pacotes, relógio e estado visual não participam do histórico.
+
+Configurações ainda não têm operações inversas: são
+barreiras que limpam as duas pilhas e descartam uma transação incompatível.
+Para configuração, a comparação usa somente a serialização persistível sem
+posições; essa assinatura serve à invalidação, nunca à restauração. É verificada
+nos setters, ao iniciar/concluir movimentações, antes de Undo/Redo e ao terminar
+comandos que sinalizam mudança. Isso evita atribuir a um ping longo alterações
+já tratadas em outro local e detecta configurações assíncronas antes de aplicar
+histórico antigo. Não observa cada tick nem caches/saídas de comandos.
+
+New, Demo, carregamento/importação bem-sucedida, exemplos, labs e boot iniciam
+histórico vazio. Falhas de importação não limpam as pilhas. Permanece fora desta
+etapa o problema existente de `adoptSave` descartar sessões antes de validar toda
+a restauração. O descarte mínimo de timers de dispositivos foi tratado na etapa 2.
+
+`topologyShortcuts.ts` protege origem do evento e foco real: xterm/dock, inputs,
+textareas, selects, contenteditable, textboxes e popovers. Ctrl/Cmd+Z e Shift+Z
+usam listener em bubble, respeitando defaultPrevented e composição. A toolbar
+oferece botões desabilitados quando vazios e tooltips com a próxima operação.
+
+### Undo/Redo — etapa 2: cabos e criação
+
+O mesmo histórico limitado recebe `add-links`, `remove-links` e `create-device`.
+Cabos guardam ID, interfaces exatas em ambas as extremidades e latência. O
+adaptador `topologyEdits.ts` valida todos os links/portas antes de aplicar um
+lote, sem escolher interfaces alternativas, duplicar links ou alterar a Network.
+Uma exclusão múltipla de cabos é uma operação. Movimentos, conexões e criações
+compartilham a mesma sequência; novas edições confirmadas limpam Redo.
+
+Uma criação guarda somente a configuração inicial do dispositivo, posição,
+índice visual e MACs. Undo fecha apenas sua sessão e remove esse dispositivo;
+Redo usa `restoreDevice` (também reutilizado pela importação) para criar uma
+instância nova com a identidade original. Nenhum dispositivo sobrevivente é
+reconstruído, nem há restauração de snapshot global. Terminais fechados pelo
+Undo não reabrem no Redo. Alterações posteriores de configuração continuam
+invalidando as pilhas, pois ainda não possuem inversa segura.
+
+O scheduler permite associar eventos a um proprietário. Dispositivos e links
+cancelam apenas seus eventos ao serem descartados. ARP, RIP, callbacks locais,
+timeouts de serviços e timers de ping/traceroute/dhclient usam essa associação;
+as sessões cancelam seus comandos antes da remoção. A entrega de quadros também
+confere a identidade da instância do link, evitando entregar quadros antigos
+mesmo quando o mesmo ID é restaurado. Protocolos, temporização e algoritmos de
+rede permanecem iguais; a mudança no motor se limita ao ciclo de descarte e à
+reutilização da restauração individual. Caches, relógio e resultados de comandos
+não são revertidos. Se a perda de rota encerrar um ping normalmente, o Redo/Undo
+do cabo não reinicia esse comando.
+
+Continua fora do escopo a validação transacional completa da importação. O
+histórico não tenta restaurar resultados de verificações de laboratórios.
+
+### Undo/Redo — etapa 3: exclusão de dispositivos
+
+`delete-devices` guarda registros dos dispositivos removidos, cores individuais
+e cabos (incidentes ou explicitamente selecionados), deduplicados pelo ID.
+Inspector, mudanças de nós por API e exclusões do editor usam a mesma ação
+`deleteTopologyElements`. O `onBeforeDelete` do React Flow assume a transação
+completa e retorna false, impedindo que os callbacks separados removam primeiro
+os cabos e dividam o gesto em entradas diferentes. Notificações redundantes de
+remoção não criam novas entradas. A ordem visual original é restaurada pelos
+índices dos nós. Comandos e configurações do Inspector seguem fora do histórico.
+
+O Undo prepara apenas os dispositivos excluídos numa rede temporária isolada,
+confere configurações restauradas, MACs, IDs, portas e latências de todo o lote
+contra a rede ativa e só então registra as instâncias na Network existente.
+Falhas de preparação não alteram o motor ativo nem suas sessões. Não há snapshot
+global aplicado à simulação. RIP é iniciado depois que todos os cabos estão
+restaurados. Redo valida novamente os dispositivos/cabos e usa o descarte seguro
+da etapa anterior. Sessões encerradas não ressuscitam; dispositivos sobreviventes,
+seus buffers e comandos mantêm identidade e estado. Caches e relógio não voltam
+no tempo. Verificações assíncronas de labs usam uma geração: excluir dispositivos
+ou carregar uma topologia invalida a execução anterior, evitando resultados e
+próximos passos obsoletos. Após excluir, uma nova verificação pode ser iniciada.
+
+O formato v1 recebe campos opcionais `ifaces[].mac` e `links[].latency` para
+preservar os valores também após autosave/F5/exportação. Arquivos antigos geram
+MACs como antes e usam 80 ms quando a latência não estiver presente. O alocador
+de MACs evita valores já restaurados, inclusive quando há lacunas ou outra ordem
+de inserção. Histórico e sessões continuam apenas em memória.
+
+## NetLab-FiSI — ideias futuras
+
+- Expandir Undo/Redo para Inspector e comandos, com
+  transações próprias e tratamento seguro de timers e referências do motor.
 - Perfis de terminal Windows e Linux por dispositivo, com comandos e saídas
   equivalentes sobre o mesmo motor. Manter explícito o subconjunto suportado.
 - Outros estilos de gradiente e controles avançados de aparência.

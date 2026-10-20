@@ -95,6 +95,8 @@ body,
   border-color: var(--accent);
 }
 
+.btn.topology-history-action:disabled { opacity: 0.45; cursor: default; background: var(--bg-raised); }
+
 .btn.danger {
   color: var(--danger);
 }

@@ -29,6 +29,8 @@ import { applyPanelPreferences, readPanelPreferences, rememberPanelPreferences, 
 import { forgetSavedTabs, insertSavedTab, mergeTabLayouts, readTabLayouts, TAB_LAYOUT_KEY, writeTabLayouts, type TerminalTabLayouts } from './terminalTabPreferences';
 import { capturePresentationSelection } from './terminalPresentationSelection';
 import { moveTerminalPanel } from './terminalPanels';
+import { applyMovement, emptyTopologyHistory, recordMovement, recordOperation, type Point, type TopologyHistory, type TopologyOperation } from './topologyHistory';
+import { applyLinkEdit, canApplyLinkEdit, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -76,6 +78,13 @@ function deviceIps(id: string): string[] {
 }
 
 interface NetsimState {
+  topologyHistory: TopologyHistory;
+  beginNodeMovement(source: 'drag' | 'keyboard'): void;
+  finishNodeMovement(): void;
+  cancelNodeMovement(): void;
+  invalidateTopologyHistory(): void;
+  undoTopology(): void;
+  redoTopology(): void;
   nodes: DevNode[];
   edges: Edge[];
   packets: WireTransfer[];
@@ -108,6 +117,7 @@ interface NetsimState {
   onConnect(c: Connection): void;
   select(id: string | null): void;
   deleteDevice(id: string): void;
+  deleteTopologyElements(nodeIds: string[], edgeIds?: string[]): void;
   renameDevice(id: string, name: string): void;
   setIfaceIp(deviceId: string, ifaceName: string, value: string): string | null;
   toggleIface(deviceId: string, ifaceName: string): void;
@@ -173,6 +183,88 @@ let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 let lastPulse = 0;
 
 export const useStore = create<NetsimState>()((set, get) => {
+  let movement: { source: 'drag' | 'keyboard'; before: Map<string, Point> } | null = null;
+  let ignoreDrag = false;
+  let labCheckGeneration = 0;
+  // Detection only: no serialized snapshot is ever applied to the live engine.
+  const configuration = () => JSON.stringify(serializeNetwork(sim.net, {}));
+  let historyConfiguration = '';
+  const checkHistoryConfiguration = () => {
+    const current = configuration();
+    if (historyConfiguration && current !== historyConfiguration) get().invalidateTopologyHistory();
+    historyConfiguration = current;
+  };
+  const prepareEdit = () => { get().finishNodeMovement(); checkHistoryConfiguration(); };
+  const commitEdit = (operation: TopologyOperation) => {
+    historyConfiguration = configuration();
+    set({ topologyHistory: recordOperation(get().topologyHistory, operation) });
+  };
+  const navigateHistory = (direction: 'undo' | 'redo') => {
+    if (movement?.source === 'drag' || ignoreDrag) return;
+    get().finishNodeMovement();
+    checkHistoryConfiguration();
+    const history = get().topologyHistory;
+    const stack = direction === 'undo' ? history.past : history.future;
+    const operation = stack.at(-1);
+    if (!operation) return;
+    if (operation.type === 'move-nodes') {
+      const nodes = applyMovement(get().nodes, operation, direction);
+      if (!nodes) { get().invalidateTopologyHistory(); return; }
+      set({ nodes });
+    } else if (operation.type === 'create-device') {
+      const { device: creation } = operation, { saved } = creation;
+      if (direction === 'undo') {
+        const device = sim.net.devices.get(saved.id);
+        const node = get().nodes.find((n) => n.id === saved.id);
+        if (!device || !node || node.position.x !== saved.x || node.position.y !== saved.y ||
+            device.interfaces.some((i) => i.link || i.mac !== creation.macs[i.name])) {
+          get().invalidateTopologyHistory(); return;
+        }
+        removeElements([saved.id], []);
+      } else {
+        if (sim.net.devices.has(saved.id) || get().nodes.some((n) => n.id === saved.id)) { get().invalidateTopologyHistory(); return; }
+        const device = restoreCreation(sim.net, creation);
+        const nodes = [...get().nodes];
+        nodes.splice(creation.index, 0, deviceNode(device.id, device.kind, device.name, saved.x, saved.y));
+        set({ nodes });
+        get().refresh();
+        if (Object.keys(tabLayouts).length) saveTabs();
+      }
+    } else if (operation.type === 'delete-devices') {
+      const ids = operation.devices.map((d) => d.saved.id);
+      if (direction === 'undo') {
+        if (get().nodes.some((n) => ids.includes(n.id)) || !restoreDeletedDevices(sim.net, operation.devices, operation.links)) {
+          get().invalidateTopologyHistory(); get().setNotice('Cannot restore devices: topology conflicts with this operation.'); return;
+        }
+        const nodes = [...get().nodes];
+        for (const { saved, index } of [...operation.devices].sort((a, b) => a.index - b.index)) {
+          nodes.splice(index, 0, deviceNode(saved.id, saved.kind, saved.name, saved.x, saved.y));
+        }
+        set({ nodes, edges: edgesFromEngine(), terminalColors: { ...get().terminalColors, ...operation.colors } });
+        get().refresh();
+        if (Object.keys(tabLayouts).length) saveTabs();
+      } else {
+        const linkIds = operation.links.map((l) => l.id);
+        const valid = operation.devices.every((snapshot) => {
+          const device = sim.net.devices.get(snapshot.saved.id), node = get().nodes.find((n) => n.id === snapshot.saved.id);
+          return device && node && !device.disposed &&
+            device.interfaces.every((i) => !i.link || linkIds.includes(i.link.id)) &&
+            JSON.stringify(captureCreation(sim.net, device, node.position, snapshot.index)) === JSON.stringify(snapshot);
+        });
+        if (!valid || !canApplyLinkEdit(sim.net, operation.links, false)) { get().invalidateTopologyHistory(); return; }
+        removeElements(ids, linkIds);
+      }
+    } else {
+      const add = (operation.type === 'add-links') === (direction === 'redo');
+      if (!applyLinkEdit(sim.net, operation.links, add)) { get().invalidateTopologyHistory(); return; }
+      set({ edges: edgesFromEngine(), packets: get().packets.filter((p) => !operation.links.some((l) => l.id === p.linkId)) });
+    }
+    historyConfiguration = configuration();
+    set({ topologyHistory: direction === 'undo'
+      ? { past: history.past.slice(0, -1), future: [...history.future, operation] }
+      : { past: [...history.past, operation], future: history.future.slice(0, -1) } });
+    saveSoon();
+  };
   let panelPreferences = readPanelPreferences();
   let tabLayouts: TerminalTabLayouts = {};
   const tabDevices = () => [...sim.net.devices.values()].map(({ id, kind }) => ({ id, kind }));
@@ -261,9 +353,32 @@ export const useStore = create<NetsimState>()((set, get) => {
     saveTimer = setTimeout(saveNow, 500);
   };
 
+  const removeElements = (nodeIds: string[], edgeIds: string[]) => {
+    const ids = new Set(nodeIds), links = new Set(edgeIds), oldPanels = get().terminalPanels;
+    if (ids.size) { labCheckGeneration++; set({ labChecking: false }); }
+    for (const id of ids) disposeSession(id);
+    for (const id of links) sim.net.disconnect(id);
+    for (const id of ids) sim.net.removeDevice(id);
+    const terminals = get().terminals.filter((id) => !ids.has(id));
+    forgetTabs(nodeIds);
+    set({
+      nodes: get().nodes.filter((n) => !ids.has(n.id)), edges: edgesFromEngine(),
+      packets: get().packets.filter((p) => !ids.has(p.fromDeviceId) && !ids.has(p.toDeviceId) && !links.has(p.linkId)),
+      dropFlashes: get().dropFlashes.filter((f) => !ids.has(f.deviceId)),
+      terminals, terminalDockCollapsed: get().terminalDockCollapsed && terminals.length > 0,
+      ...prunePanelSessions(get().terminalPanels, terminals, get().activeTerminal),
+      terminalHasFocus: get().terminalHasFocus && !ids.has(get().activeTerminal ?? ''),
+      selected: ids.has(get().selected ?? '') ? null : get().selected,
+      terminalColors: Object.fromEntries(Object.entries(get().terminalColors).filter(([id]) => !ids.has(id))),
+    });
+    rememberPanels(get().terminalPanels, oldPanels.filter((p) => !get().terminalPanels.some((next) => next.id === p.id)).map((p) => p.id));
+    saveSoon();
+  };
+
   const adoptSave = (data: AppearanceSaveFile) => {
     disposeAllSessions();
     sim.net = restoreNetwork(data);
+    labCheckGeneration++;
     tabLayouts = readTabLayouts(tabDevices());
     wireNet(sim.net);
     const nodes = data.devices.map((d) => deviceNode(d.id, d.kind, d.name, d.x, d.y));
@@ -288,9 +403,48 @@ export const useStore = create<NetsimState>()((set, get) => {
       quizAnswers: data.labProgress?.quiz ?? {},
     });
     get().refresh();
+    get().invalidateTopologyHistory();
+    ignoreDrag = false;
   };
 
   return {
+    topologyHistory: emptyTopologyHistory(),
+    beginNodeMovement(source) {
+      checkHistoryConfiguration();
+      if (movement?.source === source) return;
+      get().finishNodeMovement();
+      ignoreDrag = false;
+      movement = { source, before: new Map(get().nodes.map((n) => [n.id, { ...n.position }])) };
+    },
+    finishNodeMovement() {
+      checkHistoryConfiguration();
+      const pending = movement;
+      movement = null;
+      ignoreDrag = false;
+      if (!pending) return;
+      const changes = get().nodes.flatMap((n) => {
+        const before = pending.before.get(n.id);
+        return before ? [{ id: n.id, before, after: n.position }] : [];
+      });
+      const history = recordMovement(get().topologyHistory, changes);
+      if (history !== get().topologyHistory) { set({ topologyHistory: history }); saveSoon(); }
+    },
+    cancelNodeMovement() {
+      if (!movement) return;
+      const pending = movement;
+      movement = null;
+      ignoreDrag = pending.source === 'drag';
+      set({ nodes: get().nodes.map((n) => pending.before.has(n.id) ? { ...n, position: { ...pending.before.get(n.id)! } } : n) });
+      saveSoon();
+    },
+    invalidateTopologyHistory() {
+      if (movement?.source === 'drag') ignoreDrag = true;
+      movement = null;
+      historyConfiguration = '';
+      if (get().topologyHistory.past.length || get().topologyHistory.future.length) set({ topologyHistory: emptyTopologyHistory() });
+    },
+    undoTopology() { navigateHistory('undo'); },
+    redoTopology() { navigateHistory('redo'); },
     nodes: [],
     edges: [],
     packets: [],
@@ -318,55 +472,50 @@ export const useStore = create<NetsimState>()((set, get) => {
     quizAnswers: {},
 
     addDeviceAt(kind, pos) {
+      prepareEdit();
       const d = createDevice(sim.net, kind);
+      const creation = captureCreation(sim.net, d, pos, get().nodes.length);
       set({ nodes: [...get().nodes, deviceNode(d.id, kind, d.name, pos.x, pos.y)] });
+      commitEdit({ type: 'create-device', label: `Create ${d.name}`, device: creation });
       if (Object.keys(tabLayouts).length) saveTabs();
       saveSoon();
     },
 
     onNodesChange(changes) {
-      const oldPanels = get().terminalPanels;
-      for (const ch of changes) {
-        if (ch.type === 'remove') {
-          disposeSession(ch.id);
-          sim.net.removeDevice(ch.id);
-        }
-      }
-      const removed = changes.some((c) => c.type === 'remove');
-      set({
-        nodes: applyNodeChanges(changes, get().nodes),
-        ...(removed
-          ? {
-              edges: edgesFromEngine(),
-              terminals: get().terminals.filter((t) => sim.net.devices.has(t)),
-              terminalDockCollapsed: get().terminalDockCollapsed && get().terminals.some((t) => sim.net.devices.has(t)),
-              ...prunePanelSessions(get().terminalPanels, get().terminals.filter((id) => sim.net.devices.has(id)), get().activeTerminal),
-              terminalHasFocus: false,
-              selected: get().selected && sim.net.devices.has(get().selected!) ? get().selected : null,
-            }
-          : {}),
-      });
-      if (removed) {
-        forgetTabs(changes.filter((change) => change.type === 'remove').map((change) => change.id));
-        rememberPanels(get().terminalPanels, oldPanels.filter((p) => !get().terminalPanels.some((next) => next.id === p.id)).map((p) => p.id));
-        set({ terminalColors: Object.fromEntries(Object.entries(get().terminalColors).filter(([id]) => sim.net.devices.has(id))) });
-      }
-      if (removed || changes.some((c) => c.type === 'position' && !c.dragging)) saveSoon();
+      const removed = changes.filter((c) => c.type === 'remove').map((c) => c.id);
+      if (removed.length) get().deleteTopologyElements(removed);
+      changes = changes.filter((c) => c.type !== 'remove');
+      const structural = changes.some((c) => c.type === 'add' || c.type === 'replace');
+      if (structural) get().invalidateTopologyHistory();
+      if (ignoreDrag) changes = changes.filter((c) => c.type !== 'position');
+      const positions = changes.filter((c) => c.type === 'position');
+      if (!structural && positions.length && !ignoreDrag && !movement) get().beginNodeMovement('drag');
+      set({ nodes: applyNodeChanges(changes, get().nodes) });
+      if (changes.some((c) => c.type === 'position' && !c.dragging)) saveSoon();
+      if (!structural && movement?.source === 'drag' && positions.length && !positions.some((c) => c.dragging)) get().finishNodeMovement();
     },
 
     onEdgesChange(changes) {
+      const unsupported = changes.some((c) => c.type === 'add' || c.type === 'replace');
+      if (changes.some((c) => c.type === 'remove')) prepareEdit();
+      if (unsupported) get().invalidateTopologyHistory();
+      const removed = [...new Set(changes.filter((c) => c.type === 'remove').map((c) => c.id))]
+        .flatMap((id) => { const link = sim.net.links.get(id); return link ? [captureLink(link)] : []; });
       for (const ch of changes) {
         if (ch.type === 'remove') sim.net.disconnect(ch.id);
       }
-      set({ edges: applyEdgeChanges(changes, get().edges) });
+      set({ edges: applyEdgeChanges(changes, get().edges), packets: get().packets.filter((p) => !removed.some((l) => l.id === p.linkId)) });
+      if (removed.length && !unsupported) commitEdit({ type: 'remove-links', label: removed.length === 1 ? 'Remove cable' : `Remove ${removed.length} cables`, links: removed });
       if (changes.some((c) => c.type === 'remove')) saveSoon();
     },
 
     onConnect(c) {
       if (!c.source || !c.target) return;
+      prepareEdit();
       try {
-        sim.net.connect(c.source, c.target);
+        const link = sim.net.connect(c.source, c.target);
         set({ edges: edgesFromEngine() });
+        commitEdit({ type: 'add-links', label: 'Connect devices', links: [captureLink(link)] });
         saveSoon();
       } catch (e) {
         get().setNotice(e instanceof Error ? e.message : String(e));
@@ -377,23 +526,22 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({ selected: id });
     },
 
-    deleteDevice(id) {
-      const oldPanels = get().terminalPanels;
-      disposeSession(id);
-      sim.net.removeDevice(id);
-      forgetTabs([id]);
-      set({
-        nodes: get().nodes.filter((n) => n.id !== id),
-        edges: edgesFromEngine(),
-        terminals: get().terminals.filter((t) => t !== id),
-        terminalDockCollapsed: get().terminalDockCollapsed && get().terminals.some((t) => t !== id),
-        ...prunePanelSessions(get().terminalPanels, get().terminals.filter((t) => t !== id), get().activeTerminal),
-        terminalHasFocus: false,
-        selected: get().selected === id ? null : get().selected,
-        terminalColors: Object.fromEntries(Object.entries(get().terminalColors).filter(([key]) => key !== id)),
-      });
-      rememberPanels(get().terminalPanels, oldPanels.filter((p) => !get().terminalPanels.some((next) => next.id === p.id)).map((p) => p.id));
-      saveSoon();
+    deleteDevice(id) { get().deleteTopologyElements([id]); },
+
+    deleteTopologyElements(nodeIds, edgeIds = []) {
+      prepareEdit();
+      const ids = new Set(nodeIds.filter((id) => sim.net.devices.has(id)));
+      const devices = get().nodes.flatMap((n, index) => ids.has(n.id)
+        ? [captureCreation(sim.net, sim.net.devices.get(n.id)!, n.position, index)] : []);
+      // Include explicitly selected cables as well as every incident cable;
+      // iterating the engine map deduplicates shared links in multi-node deletes.
+      const links = [...sim.net.links.values()].filter((l) => edgeIds.includes(l.id) || ids.has(l.a.device.id) || ids.has(l.b.device.id)).map(captureLink);
+      if (!devices.length && !links.length) return;
+      const colors = Object.fromEntries(Object.entries(get().terminalColors).filter(([id]) => ids.has(id)));
+      removeElements([...ids], links.map((l) => l.id));
+      commitEdit(devices.length ? {
+        type: 'delete-devices', label: devices.length === 1 ? 'Delete device' : `Delete ${devices.length} devices`, devices, links, colors,
+      } : { type: 'remove-links', label: links.length === 1 ? 'Remove cable' : `Remove ${links.length} cables`, links });
     },
 
     renameDevice(id, name) {
@@ -401,6 +549,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!d || !name.trim()) return;
       d.name = name.trim();
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
     },
 
@@ -418,6 +567,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         iface.ip = cidr;
       }
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
       return null;
     },
@@ -428,6 +578,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!iface) return;
       iface.up = !iface.up;
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
     },
 
@@ -442,6 +593,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       }
       d.services[proto] = ports;
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
       return null;
     },
@@ -468,6 +620,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         d.nameserver = ip;
       }
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
       return null;
     },
@@ -491,6 +644,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         d.dhcpServer.enabled = !d.dhcpServer.enabled;
       }
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
     },
 
@@ -512,6 +666,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         d.dhcpServer[field] = ip;
       }
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
       return null;
     },
@@ -522,6 +677,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!d.dnsServer) d.dnsServer = { enabled: true, records: new Map() };
       else d.dnsServer.enabled = !d.dnsServer.enabled;
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
     },
 
@@ -539,6 +695,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       }
       d.dnsServer.records = records;
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
       return null;
     },
@@ -556,6 +713,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         d.httpServer.enabled = !d.httpServer.enabled;
       }
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
     },
 
@@ -566,6 +724,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!Number.isInteger(port) || port < 1 || port > 65535) return 'invalid port';
       d.httpServer.port = port;
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
       return null;
     },
@@ -574,6 +733,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       const d = sim.net.devices.get(deviceId);
       if (!(d instanceof IpDevice) || !d.httpServer) return;
       d.httpServer.body = text;
+      checkHistoryConfiguration();
       saveSoon();
     },
 
@@ -582,6 +742,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!(d instanceof IpDevice)) return;
       d.enableRip(!d.ripEnabled);
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
     },
 
@@ -593,6 +754,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (vlan === 1) d.vlans.delete(port);
       else d.vlans.set(port, vlan);
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
       return null;
     },
@@ -603,6 +765,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!text.trim()) return 'SSID cannot be empty';
       d.ssid = text.trim();
       get().refresh();
+      checkHistoryConfiguration();
       saveSoon();
       return null;
     },
@@ -612,6 +775,9 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!d || !(d instanceof IpDevice)) return;
       getSession(d, {
         onAfterCommand: (configurationChanged) => {
+          // A completed ping must not invalidate newer movement history just
+          // because another editor action changed configuration while it ran.
+          if (configurationChanged) checkHistoryConfiguration();
           get().refresh();
           if (configurationChanged) saveSoon();
         },
@@ -828,6 +994,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     newTopology() {
+      labCheckGeneration++;
+      get().invalidateTopologyHistory();
+      ignoreDrag = false;
       tabLayouts = {};
       try { if (localStorage.getItem(TAB_LAYOUT_KEY)) writeTabLayouts([], {}); } catch { /* Optional persistence. */ }
       panelPreferences = readPanelPreferences();
@@ -1029,6 +1198,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       const step = lab.steps[get().labStep];
       if (!step || step.objectives.length === 0) return;
       set({ labChecking: true, paused: false });
+      const generation = ++labCheckGeneration;
       runChecks(
         sim.net,
         step.objectives,
@@ -1042,6 +1212,7 @@ export const useStore = create<NetsimState>()((set, get) => {
           get().refresh();
           saveSoon();
         },
+        () => generation === labCheckGeneration,
       );
     },
 

@@ -50,7 +50,7 @@ export function runDhclient(
     tries++;
     write(`DHCPDISCOVER on ${ifname} to 255.255.255.255 port 67 interval ${STEP_TIMEOUT_MS / 1000}\n`);
     device.sendDhcpClient(iface, { kind: 'dhcp', op: 'discover', xid, clientMac: iface.mac });
-    timer = sched.schedule(STEP_TIMEOUT_MS, sendDiscover);
+    timer = device.schedule(STEP_TIMEOUT_MS, sendDiscover);
   };
 
   const onDhcp = (app: DhcpApp) => {
@@ -67,7 +67,7 @@ export function runDhclient(
         clientMac: iface.mac,
         yourIp: app.yourIp,
       });
-      timer = sched.schedule(STEP_TIMEOUT_MS, () =>
+      timer = device.schedule(STEP_TIMEOUT_MS, () =>
         fail('No DHCPACK received - giving up.\n'),
       );
       return;

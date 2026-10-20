@@ -14,7 +14,7 @@ Live app: <https://netsim.borck.education/>
 
 ## The interface
 
-- **Toolbar** (top): New, Demo, Labs ▾ (labs + example networks), Import,
+- **Toolbar** (top): Undo, Redo, New, Demo, Labs ▾ (labs + example networks), Import,
   Export ▾, Share link, Help; on the right, the simulation clock with
   Pause and a speed selector.
 - **Device palette** (left): drag Host, Server, Switch, Router, Firewall or
@@ -36,6 +36,38 @@ Live app: <https://netsim.borck.education/>
   Opening an existing session activates its tab and focuses its input.
   Switching tabs keeps history and running commands. Closing a tab ends only
   that session; an empty panel disappears and the other panels expand.
+
+**Undo / Redo covers device movement, creation/deletion and cable creation/removal.** Use the toolbar buttons
+or Ctrl+Z / Ctrl+Shift+Z (Cmd on macOS). Each drag, including a multi-device
+selection, is one operation. Repeated arrow-key moves are grouped until 350 ms
+after the last key release, or until focus/interaction changes. Escape cancels
+an ongoing move; unchanged gestures do not add history. Tooltips name the next
+operation, and unavailable actions are disabled.
+
+The last 50 operations stay in memory; F5 starts a fresh history. New edits
+clear Redo. Changing network configuration clears both stacks.
+Appearance, dock layout, ordinary traffic,
+selection and simulation updates do not clear history. A valid import, New,
+Demo, example or lab starts with empty history; invalid imports retain it.
+Undo/Redo autosaves the resulting topology. Cables retain their IDs and exact
+interface endpoints. Undoing device creation closes only that device's terminal
+and discards its pending events; Redo restores its initial configuration, ID,
+name, MAC addresses and position, without reopening its terminal. Other devices
+and sessions remain running. Disconnecting a cable discards frames in flight;
+Undo does not rewind simulation time, packets, caches or command output. A ping
+can stop normally if its source loses its only route; restoring the cable does
+not restart a command that has already ended.
+Deleting selected devices is one operation, including all incident cables and
+any separately selected cables. Undo restores their configurations, IDs, MACs,
+names, positions, colors and exact cable interfaces/latencies. Restored devices
+are fresh instances; their former terminals and commands stay closed. Unaffected
+devices and sessions keep running. RIP restarts only after cabling is restored.
+MACs and cable latencies are now also saved in autosave and exported JSON; older
+files remain compatible. F5 restores the topology, without restoring history or
+opening terminal sessions. A running lab check is cancelled on device deletion;
+use Check again after restoration to obtain fresh results.
+The shortcuts leave terminals, text inputs, editable areas and settings controls
+alone. Network configuration and terminal commands themselves are not undoable.
 
 Use the compact **⚙ Settings** chip at the dock's upper-left edge (accessible
 name: **Terminal settings**). It floats at the edge instead of using a toolbar

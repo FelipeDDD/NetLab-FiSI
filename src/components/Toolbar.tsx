@@ -63,6 +63,7 @@ export function Toolbar() {
   const shareUrl = useStore((s) => s.shareUrl);
   const setNotice = useStore((s) => s.setNotice);
   const fileRef = useRef<HTMLInputElement>(null);
+  const history = useStore((s) => s.topologyHistory);
   const closeExport = (open: boolean) => {
     setExportOpen(open);
     if (!open) exportRef.current?.focus({ preventScroll: true });
@@ -90,6 +91,12 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar-group">
+        <button className="btn topology-history-action" disabled={!history.past.length} aria-label="Undo"
+          title={history.past.length ? `Undo: ${history.past.at(-1)!.label} (Ctrl/Cmd+Z)` : 'Undo (Ctrl/Cmd+Z)'}
+          onClick={() => useStore.getState().undoTopology()}>↶ Undo</button>
+        <button className="btn topology-history-action" disabled={!history.future.length} aria-label="Redo"
+          title={history.future.length ? `Redo: ${history.future.at(-1)!.label} (Ctrl/Cmd+Shift+Z)` : 'Redo (Ctrl/Cmd+Shift+Z)'}
+          onClick={() => useStore.getState().redoTopology()}>↷ Redo</button>
         <button className="btn" onClick={() => newTopology()}>
           New
         </button>

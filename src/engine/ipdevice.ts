@@ -183,6 +183,21 @@ export abstract class IpDevice extends Device {
   private dnsQidSeq = 0;
   private dhcpXidSeq = 0;
 
+  override dispose(): void {
+    super.dispose();
+    this.ripEnabled = false;
+    this.ripScheduled = false;
+    this.ripRoutes = [];
+    this.pendingArp.clear();
+    this.icmpListeners.clear();
+    this.tcpSessions.clear();
+    this.udpSessions.clear();
+    this.dnsPending.clear();
+    this.dhcpListeners.clear();
+    this.ncTcp.clear();
+    this.ncUdp.clear();
+  }
+
   allocIcmpId(): number {
     return ++this.icmpIdSeq;
   }
@@ -250,7 +265,7 @@ export abstract class IpDevice extends Device {
     for (const iface of this.interfaces) {
       if (iface.up && iface.link && iface.ip) this.advertiseRip(iface);
     }
-    this.network.scheduler.schedule(RIP_INTERVAL_MS, () => this.ripTick());
+    this.schedule(RIP_INTERVAL_MS, () => this.ripTick());
   }
 
   private advertiseRip(iface: NetInterface): void {
@@ -371,7 +386,7 @@ export abstract class IpDevice extends Device {
         ttl: opts.ttl ?? DEFAULT_TTL,
         l4,
       };
-      this.network.scheduler.schedule(1, () => this.deliverLocal(pkt));
+      this.schedule(1, () => this.deliverLocal(pkt));
       return null;
     }
     const route = this.lookupRoute(dst);
@@ -479,7 +494,7 @@ export abstract class IpDevice extends Device {
       else if (ev.type === 'unreachable') finish('unreachable');
     });
     if (conn.error) return conn.error;
-    this.network.scheduler.schedule(timeoutMs, () => finish('timeout'));
+    this.schedule(timeoutMs, () => finish('timeout'));
     return null;
   }
 
@@ -500,7 +515,7 @@ export abstract class IpDevice extends Device {
       return err;
     }
     // No ICMP error within the window ⇒ open|filtered, like a real UDP probe.
-    this.network.scheduler.schedule(timeoutMs, () => finish('open'));
+    this.schedule(timeoutMs, () => finish('open'));
     return null;
   }
 
@@ -548,7 +563,7 @@ export abstract class IpDevice extends Device {
       }
     });
     if (conn.error) return conn.error;
-    this.network.scheduler.schedule(timeoutMs, () =>
+    this.schedule(timeoutMs, () =>
       finish({ ok: false, error: connected ? 'empty' : 'timeout' }),
     );
     return null;
@@ -579,7 +594,7 @@ export abstract class IpDevice extends Device {
       finish('timeout');
       return;
     }
-    this.network.scheduler.schedule(DNS_TIMEOUT_MS, () => finish('timeout'));
+    this.schedule(DNS_TIMEOUT_MS, () => finish('timeout'));
   }
 
   // ---------- receive path ----------
@@ -779,7 +794,7 @@ export abstract class IpDevice extends Device {
     const entry: PendingArp = { iface, queue: [pkt], tries: 1, timer: null };
     this.pendingArp.set(nextHop, entry);
     this.sendArpRequest(iface, nextHop);
-    entry.timer = this.network.scheduler.schedule(ARP_RETRY_MS, () => this.arpRetry(nextHop, entry));
+    entry.timer = this.schedule(ARP_RETRY_MS, () => this.arpRetry(nextHop, entry));
   }
 
   private arpRetry(nextHop: U32, entry: PendingArp): void {
@@ -790,7 +805,7 @@ export abstract class IpDevice extends Device {
     }
     entry.tries++;
     this.sendArpRequest(entry.iface, nextHop);
-    entry.timer = this.network.scheduler.schedule(ARP_RETRY_MS, () => this.arpRetry(nextHop, entry));
+    entry.timer = this.schedule(ARP_RETRY_MS, () => this.arpRetry(nextHop, entry));
   }
 
   private failDelivery(pkt: Ipv4Packet): void {

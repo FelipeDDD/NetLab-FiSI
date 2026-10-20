@@ -5,6 +5,7 @@ export interface ScheduledEvent {
   t: number;
   seq: number;
   fn: () => void;
+  owner?: object;
 }
 
 export class Scheduler {
@@ -12,8 +13,8 @@ export class Scheduler {
   private seq = 0;
   private queue: ScheduledEvent[] = [];
 
-  schedule(delay: number, fn: () => void): ScheduledEvent {
-    const ev: ScheduledEvent = { t: this.now + Math.max(0, delay), seq: this.seq++, fn };
+  schedule(delay: number, fn: () => void, owner?: object): ScheduledEvent {
+    const ev: ScheduledEvent = { t: this.now + Math.max(0, delay), seq: this.seq++, fn, owner };
     let lo = 0;
     let hi = this.queue.length;
     while (lo < hi) {
@@ -29,6 +30,10 @@ export class Scheduler {
   cancel(ev: ScheduledEvent): void {
     const i = this.queue.indexOf(ev);
     if (i >= 0) this.queue.splice(i, 1);
+  }
+
+  cancelOwner(owner: object): void {
+    this.queue = this.queue.filter((event) => event.owner !== owner);
   }
 
   advanceTo(t: number): void {

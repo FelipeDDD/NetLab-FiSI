@@ -33,7 +33,8 @@ function targetAddr(net: Network, toDevice?: string, toAddr?: string): U32 | nul
   return null;
 }
 
-function runOne(net: Network, check: Check, done: (pass: boolean, detail: string) => void): void {
+function runOne(net: Network, check: Check, onDone: (pass: boolean, detail: string) => void, isActive: () => boolean): void {
+  const done = (pass: boolean, detail: string) => { if (isActive()) onDone(pass, detail); };
   switch (check.type) {
     case 'iface-ip': {
       const d = findDevice(net, check.device);
@@ -141,6 +142,7 @@ function runOne(net: Network, check: Check, done: (pass: boolean, detail: string
       const port = colon < 0 ? 80 : Number(hostPort.slice(colon + 1));
       const wantOk = check.expect === 'ok';
       const withIp = (ip: U32) => {
+        if (!isActive() || from.disposed) return;
         const err = from.httpGet(ip, port, path, host, HTTP_TIMEOUT_MS, (r) => {
           if (r.ok) {
             if (!wantOk) return done(false, `got HTTP ${r.status}`);
@@ -170,9 +172,11 @@ export function runChecks(
   objectives: Objective[],
   onResult: (r: CheckResult) => void,
   onDone: () => void,
+  isActive: () => boolean = () => true,
 ): void {
   let i = 0;
   const next = () => {
+    if (!isActive()) return;
     if (i >= objectives.length) {
       onDone();
       return;
@@ -181,7 +185,7 @@ export function runChecks(
     runOne(net, obj.check, (pass, detail) => {
       onResult({ id: obj.id, pass, detail });
       net.scheduler.schedule(150, next);
-    });
+    }, isActive);
   };
   next();
 }

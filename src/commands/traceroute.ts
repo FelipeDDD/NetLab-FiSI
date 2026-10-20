@@ -148,7 +148,7 @@ export function runTraceroute(
       cleanup();
       return;
     }
-    pendingTimer = sched.schedule(PROBE_TIMEOUT_MS, () => {
+    pendingTimer = device.schedule(PROBE_TIMEOUT_MS, () => {
       pendingTimer = null;
       pendingSeq = null;
       hopRtts.push(null);

@@ -9,6 +9,7 @@ import type { LabDef, LabProgress } from '../labs/types';
 
 export interface SavedIface {
   name: string;
+  mac?: string;
   ip: string | null; // CIDR, e.g. "192.168.1.10/24"
   up: boolean;
 }
@@ -47,6 +48,7 @@ export interface SavedDevice {
 
 export interface SavedLink {
   id: string;
+  latency?: number;
   a: [deviceId: string, ifaceName: string];
   b: [deviceId: string, ifaceName: string];
 }
@@ -77,6 +79,7 @@ export function serializeNetwork(
       forwarding: ipd?.forwarding ?? false,
       ifaces: d.interfaces.map((i) => ({
         name: i.name,
+        mac: i.mac,
         ip: i.ip ? cidrToString(i.ip.addr, i.ip.prefix) : null,
         up: i.up,
       })),
@@ -127,78 +130,86 @@ export function serializeNetwork(
   });
   const links: SavedLink[] = [...net.links.values()].map((l) => ({
     id: l.id,
+    latency: l.latency,
     a: [l.a.device.id, l.a.name],
     b: [l.b.device.id, l.b.name],
   }));
   return { app: 'netsim', version: 1, devices, links };
 }
 
+// Restore one fresh device into an existing network, without replacing survivors.
+export function restoreDevice(net: Network, sd: SavedDevice) {
+  if (net.devices.has(sd.id)) throw new Error('device ID already exists');
+  const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name });
+  for (const si of sd.ifaces) {
+    const iface = d.getInterface(si.name);
+    if (!iface) continue;
+    if (typeof si.mac === 'string' && /^([\da-f]{2}:){5}[\da-f]{2}$/i.test(si.mac)) iface.mac = si.mac;
+    iface.up = si.up;
+    if (si.ip) {
+      const cidr = parseCidr(si.ip);
+      if (cidr) iface.ip = cidr;
+    }
+  }
+  if (d instanceof IpDevice) {
+    d.forwarding = sd.forwarding;
+    if (sd.services) {
+      d.services.tcp = new Set(sd.services.tcp);
+      d.services.udp = new Set(sd.services.udp);
+    }
+    if (sd.firewall) firewallFromJSON(d.fw, sd.firewall);
+    if (sd.nameserver) d.nameserver = parseIp(sd.nameserver);
+    if (sd.dhcpServer) {
+      const start = parseIp(sd.dhcpServer.rangeStart);
+      const end = parseIp(sd.dhcpServer.rangeEnd);
+      if (start !== null && end !== null) {
+        d.dhcpServer = {
+          enabled: sd.dhcpServer.enabled,
+          rangeStart: start,
+          rangeEnd: end,
+          router: sd.dhcpServer.router !== null ? parseIp(sd.dhcpServer.router) : null,
+          dns: sd.dhcpServer.dns !== null ? parseIp(sd.dhcpServer.dns) : null,
+          leases: new Map(),
+        };
+      }
+    }
+    if (sd.dnsServer) {
+      const records = new Map<string, number>();
+      for (const [name, addr] of sd.dnsServer.records) {
+        const ip = parseIp(addr);
+        if (ip !== null) records.set(name.toLowerCase(), ip);
+      }
+      d.dnsServer = { enabled: sd.dnsServer.enabled, records };
+    }
+    if (sd.httpServer) d.httpServer = { ...sd.httpServer };
+    for (const sr of sd.routes) {
+      const dest = parseCidr(sr.dest);
+      const via = sr.via !== null ? parseIp(sr.via) : null;
+      if (!dest || !d.getInterface(sr.dev)) continue;
+      d.staticRoutes.push({
+        dest: networkOf(dest.addr, dest.prefix),
+        prefix: dest.prefix,
+        via,
+        ifaceName: sr.dev,
+        kind: 'static',
+      });
+    }
+  }
+  if (d instanceof SwitchDevice) {
+    if (sd.vlans) for (const [port, vlan] of Object.entries(sd.vlans)) d.vlans.set(port, vlan);
+    if (d instanceof ApDevice && sd.ssid) d.ssid = sd.ssid;
+  }
+  return d;
+}
+
 export function restoreNetwork(data: SaveFile): Network {
   if (data.app !== 'netsim' || data.version !== 1) throw new Error('not a NetSim v1 topology file');
   const net = new Network();
-  for (const sd of data.devices) {
-    const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name });
-    for (const si of sd.ifaces) {
-      const iface = d.getInterface(si.name);
-      if (!iface) continue;
-      iface.up = si.up;
-      if (si.ip) {
-        const cidr = parseCidr(si.ip);
-        if (cidr) iface.ip = cidr;
-      }
-    }
-    if (d instanceof IpDevice) {
-      d.forwarding = sd.forwarding;
-      if (sd.services) {
-        d.services.tcp = new Set(sd.services.tcp);
-        d.services.udp = new Set(sd.services.udp);
-      }
-      if (sd.firewall) firewallFromJSON(d.fw, sd.firewall);
-      if (sd.nameserver) d.nameserver = parseIp(sd.nameserver);
-      if (sd.dhcpServer) {
-        const start = parseIp(sd.dhcpServer.rangeStart);
-        const end = parseIp(sd.dhcpServer.rangeEnd);
-        if (start !== null && end !== null) {
-          d.dhcpServer = {
-            enabled: sd.dhcpServer.enabled,
-            rangeStart: start,
-            rangeEnd: end,
-            router: sd.dhcpServer.router !== null ? parseIp(sd.dhcpServer.router) : null,
-            dns: sd.dhcpServer.dns !== null ? parseIp(sd.dhcpServer.dns) : null,
-            leases: new Map(),
-          };
-        }
-      }
-      if (sd.dnsServer) {
-        const records = new Map<string, number>();
-        for (const [name, addr] of sd.dnsServer.records) {
-          const ip = parseIp(addr);
-          if (ip !== null) records.set(name.toLowerCase(), ip);
-        }
-        d.dnsServer = { enabled: sd.dnsServer.enabled, records };
-      }
-      if (sd.httpServer) d.httpServer = { ...sd.httpServer };
-      for (const sr of sd.routes) {
-        const dest = parseCidr(sr.dest);
-        const via = sr.via !== null ? parseIp(sr.via) : null;
-        if (!dest || !d.getInterface(sr.dev)) continue;
-        d.staticRoutes.push({
-          dest: networkOf(dest.addr, dest.prefix),
-          prefix: dest.prefix,
-          via,
-          ifaceName: sr.dev,
-          kind: 'static',
-        });
-      }
-    }
-    if (d instanceof SwitchDevice) {
-      if (sd.vlans) for (const [port, vlan] of Object.entries(sd.vlans)) d.vlans.set(port, vlan);
-      if (d instanceof ApDevice && sd.ssid) d.ssid = sd.ssid;
-    }
-  }
+  for (const sd of data.devices) restoreDevice(net, sd);
   for (const sl of data.links) {
     try {
-      net.connect(sl.a[0], sl.b[0], { id: sl.id, aIface: sl.a[1], bIface: sl.b[1] });
+      const link = net.connect(sl.a[0], sl.b[0], { id: sl.id, aIface: sl.a[1], bIface: sl.b[1] });
+      if (typeof sl.latency === 'number' && Number.isFinite(sl.latency) && sl.latency >= 0) link.latency = sl.latency;
     } catch {
       // Skip malformed links rather than failing the whole import.
     }
