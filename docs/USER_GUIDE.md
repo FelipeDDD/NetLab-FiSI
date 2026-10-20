@@ -37,7 +37,7 @@ Live app: <https://netsim.borck.education/>
   Switching tabs keeps history and running commands. Closing a tab ends only
   that session; an empty panel disappears and the other panels expand.
 
-**Undo / Redo covers device movement, creation/deletion and cable creation/removal.** Use the toolbar buttons
+**Undo / Redo covers device movement, creation/deletion, cables and supported Inspector settings.** Use the toolbar buttons
 or Ctrl+Z / Ctrl+Shift+Z (Cmd on macOS). Each drag, including a multi-device
 selection, is one operation. Repeated arrow-key moves are grouped until 350 ms
 after the last key release, or until focus/interaction changes. Escape cancels
@@ -45,7 +45,11 @@ an ongoing move; unchanged gestures do not add history. Tooltips name the next
 operation, and unavailable actions are disabled.
 
 The last 50 operations stay in memory; F5 starts a fresh history. New edits
-clear Redo. Changing network configuration clears both stacks.
+clear Redo. Inspector name, IPv4/CIDR (including removal) and interface UP/DOWN
+changes each count as one operation, as do DNS client nameserver, additional
+TCP/UDP ports, AP SSID and switch access VLAN changes. Invalid or unchanged
+values keep Redo; reordering or repeating the same ports is unchanged.
+Other network configuration changes clear both stacks.
 Appearance, dock layout, ordinary traffic,
 selection and simulation updates do not clear history. A valid import, New,
 Demo, example or lab starts with empty history; invalid imports retain it.
@@ -67,7 +71,19 @@ files remain compatible. F5 restores the topology, without restoring history or
 opening terminal sessions. A running lab check is cancelled on device deletion;
 use Check again after restoration to obtain fresh results.
 The shortcuts leave terminals, text inputs, editable areas and settings controls
-alone. Network configuration and terminal commands themselves are not undoable.
+alone. DHCP/DNS/HTTP server configuration, RIP, firewall and routes
+remain outside history, as do terminal commands. Changing configuration through
+a command still clears incompatible history.
+
+Inspector name/address fields follow Undo/Redo and external changes without
+remounting or losing focus. Unfinished text stays visible during normal traffic.
+If a confirmed value changes externally while you are editing, blur/Enter discards
+the outdated draft and shows the current value instead of overwriting it. Typing
+again after that external change starts an intentional edit against the new value.
+Nameserver, extra ports, SSID and VLAN fields use the same draft protection.
+Changing an access VLAN (including Undo/Redo) discards MAC entries learned on
+that port and lets traffic relearn them; unrelated entries are retained. It
+does not restore an old MAC table or rewind packets or the simulation clock.
 
 Use the compact **⚙ Settings** chip at the dock's upper-left edge (accessible
 name: **Terminal settings**). It floats at the edge instead of using a toolbar

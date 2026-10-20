@@ -1,8 +1,52 @@
 import type { Device, Link } from './engine/device';
 import { Network } from './engine/network';
 import { IpDevice } from './engine/ipdevice';
+import { ApDevice, SwitchDevice } from './engine/switch';
 import { restoreDevice, serializeNetwork } from './engine/serialize';
-import type { CreatedDevice, HistoryLink, Point } from './topologyHistory';
+import { sameInterfaceIp, sameServicePorts, type CreatedDevice, type HistoryLink, type InspectorOperation, type Point } from './topologyHistory';
+
+export function applyAccessVlan(device: SwitchDevice, port: string, vlan: number): void {
+  if (device.vlanOf(port) === vlan) return;
+  if (vlan === 1) device.vlans.delete(port); else device.vlans.set(port, vlan);
+  // Entries learned on the moved port no longer describe its broadcast domain.
+  // Keep unrelated learning; never restore historical MAC-table snapshots.
+  const iface = device.getInterface(port);
+  for (const [key, learnedPort] of device.macTable) if (learnedPort === iface) device.macTable.delete(key);
+}
+
+export function applyInspectorEdit(net: Network, operation: InspectorOperation, direction: 'undo' | 'redo'): boolean {
+  const device = net.devices.get(operation.deviceId);
+  if (!device || device.disposed) return false;
+  const from = direction === 'undo' ? 'after' : 'before', to = direction === 'undo' ? 'before' : 'after';
+  if (operation.type === 'rename-device') {
+    if (device.name !== operation[from]) return false;
+    device.name = operation[to];
+  } else if (operation.type === 'set-nameserver') {
+    if (!(device instanceof IpDevice) || device.nameserver !== operation[from]) return false;
+    device.nameserver = operation[to];
+  } else if (operation.type === 'set-services') {
+    if (!(device instanceof IpDevice) || !sameServicePorts(device.services[operation.proto], operation[from])) return false;
+    device.services[operation.proto] = new Set(operation[to]);
+  } else if (operation.type === 'set-ssid') {
+    if (!(device instanceof ApDevice) || device.ssid !== operation[from]) return false;
+    device.ssid = operation[to];
+  } else if (operation.type === 'set-port-vlan') {
+    if (!(device instanceof SwitchDevice) || !device.getInterface(operation.port) || device.vlanOf(operation.port) !== operation[from]) return false;
+    applyAccessVlan(device, operation.port, operation[to]);
+  } else {
+    const iface = device.getInterface(operation.ifaceName);
+    if (!iface) return false;
+    if (operation.type === 'set-iface-ip') {
+      if (!(device instanceof IpDevice) || !sameInterfaceIp(iface.ip, operation[from])) return false;
+      const value = operation[to];
+      iface.ip = value ? { ...value } : null;
+    } else {
+      if (iface.up !== operation[from]) return false;
+      iface.up = operation[to];
+    }
+  }
+  return true;
+}
 
 export const captureLink = (link: Link): HistoryLink => ({
   id: link.id, a: [link.a.device.id, link.a.name], b: [link.b.device.id, link.b.name], latency: link.latency,

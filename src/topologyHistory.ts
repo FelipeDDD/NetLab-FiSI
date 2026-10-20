@@ -7,7 +7,23 @@ export interface NodeMovement { id: string; before: Point; after: Point }
 export type MoveOperation = { type: 'move-nodes'; label: string; changes: NodeMovement[] };
 export type HistoryLink = SavedLink & { latency: number };
 export type CreatedDevice = { saved: SavedDevice; macs: Record<string, string>; index: number };
+export type InterfaceIp = { addr: number; prefix: number } | null;
+export type InspectorOperation =
+  | { type: 'rename-device'; label: string; deviceId: string; before: string; after: string }
+  | { type: 'set-iface-ip'; label: string; deviceId: string; ifaceName: string; before: InterfaceIp; after: InterfaceIp }
+  | { type: 'set-nameserver'; label: string; deviceId: string; before: number | null; after: number | null }
+  | { type: 'set-services'; label: string; deviceId: string; proto: 'tcp' | 'udp'; before: number[]; after: number[] }
+  | { type: 'set-ssid'; label: string; deviceId: string; before: string; after: string }
+  | { type: 'set-port-vlan'; label: string; deviceId: string; port: string; before: number; after: number }
+  | { type: 'set-iface-state'; label: string; deviceId: string; ifaceName: string; before: boolean; after: boolean };
+export const sameInterfaceIp = (a: InterfaceIp, b: InterfaceIp) => a === b || (!!a && !!b && a.addr === b.addr && a.prefix === b.prefix);
+export const sortedServicePorts = (ports: Iterable<number>): number[] => [...new Set(ports)].sort((a, b) => a - b);
+export function sameServicePorts(a: Iterable<number>, b: Iterable<number>): boolean {
+  const left = sortedServicePorts(a), right = sortedServicePorts(b);
+  return left.length === right.length && left.every((port, i) => port === right[i]);
+}
 export type TopologyOperation = MoveOperation
+  | InspectorOperation
   | { type: 'add-links' | 'remove-links'; label: string; links: HistoryLink[] }
   | { type: 'delete-devices'; label: string; devices: CreatedDevice[]; links: HistoryLink[]; colors: Record<string, string> }
   | { type: 'create-device'; label: string; device: CreatedDevice };

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IpDevice } from './engine/ipdevice';
-import { SwitchDevice } from './engine/switch';
+import { ApDevice, SwitchDevice } from './engine/switch';
 import { parseCidr, parseIp } from './engine/ip';
 import { Shell, type TermIO } from './commands/shell';
 import { sim } from './sim';
@@ -1653,10 +1653,10 @@ describe('topology movement history', () => {
     const seed = () => { move([a.id], useStore.getState().nodes[0].position.x + 5); expect(useStore.getState().topologyHistory.past.length).toBeGreaterThan(0); };
     seed(); expect(store.setIfaceIp(a.id, 'eth0', 'bad')).not.toBeNull(); input(first, 'hostname\r');
     expect(useStore.getState().topologyHistory.past).toHaveLength(1);
-    store.setIfaceIp(a.id, 'eth0', '10.0.0.9/24'); expect(useStore.getState().topologyHistory.past).toEqual([]);
-    seed(); store.renameDevice(a.id, 'pc-new'); expect(useStore.getState().topologyHistory.past).toEqual([]);
+    store.setIfaceIp(a.id, 'eth0', '10.0.0.9/24'); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('set-iface-ip');
+    seed(); store.renameDevice(a.id, 'pc-new'); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('rename-device');
     seed(); input(first, 'ip link set eth0 down\r'); expect(useStore.getState().topologyHistory.past).toEqual([]);
-    input(second, 'ping 10.0.0.2\r'); store.setNameserver(a.id, '10.0.0.2'); seed(); input(second, '\x03');
+    input(second, 'ping 10.0.0.2\r'); store.toggleDhcpServer(a.id); seed(); input(second, '\x03');
     expect(useStore.getState().topologyHistory.past).toHaveLength(1);
     store.onEdgesChange([{ type: 'remove', id: useStore.getState().edges[0].id }]); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('remove-links');
     seed(); store.onConnect({ source: a.id, target: b.id, sourceHandle: null, targetHandle: null }); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('add-links');
@@ -1784,7 +1784,8 @@ describe('topology creation and cable history', () => {
     add('switch'); expect(store().topologyHistory.future).toHaveLength(0);
     store().deleteDevice(survivor.id); expect(store().topologyHistory.past).toHaveLength(50); expect(store().topologyHistory.past.at(-1)?.type).toBe('delete-devices');
     const next = add('host'); store().setIfaceIp(next.id, 'eth0', '192.0.2.1/24');
-    expect(store().topologyHistory.past).toEqual([]);
+    expect(store().topologyHistory.past.at(-1)?.type).toBe('set-iface-ip');
+    store().toggleHttpServer(next.id); expect(store().topologyHistory.past).toEqual([]);
     add('host'); expect(store().importJson('{')).not.toBeNull(); expect(store().topologyHistory.past).toHaveLength(1);
     store().flushAutosave(); store().boot();
     expect(store().topologyHistory).toEqual({ past: [], future: [] }); expect(store().terminals).toEqual([]);
@@ -1934,5 +1935,218 @@ describe('device deletion history', () => {
     expect(store().labChecking).toBe(false); expect(store().labResults).toEqual({});
     store().checkStep(); net.scheduler.advanceTo(10_000);
     expect(store().labResults.ping.pass).toBe(true); expect(store().labResults.next.pass).toBe(true);
+  });
+});
+
+describe('basic Inspector history', () => {
+  const store = () => useStore.getState();
+  const setup = () => { const result = pair(); store().invalidateTopologyHistory(); return result; };
+
+  it('renames, undoes and redoes without replacing devices or sessions and updates node labels', () => {
+    const { a, b, net } = setup(), session = open(a), before = a.name;
+    store().renameDevice(a.id, '  PC-Lab  ');
+    expect(store().topologyHistory.past.at(-1)?.type).toBe('rename-device'); expect(a.name).toBe('PC-Lab');
+    expect(store().nodes.find((n) => n.id === a.id)?.data.label).toBe('PC-Lab');
+    store().undoTopology(); expect(a.name).toBe(before);
+    store().redoTopology(); expect(a.name).toBe('PC-Lab');
+    expect(net.devices.get(a.id)).toBe(a); expect(net.devices.get(b.id)).toBe(b); expect(sim.net).toBe(net);
+    expect(getSession(a)).toBe(session); expect(session.term.dispose).not.toHaveBeenCalled();
+  });
+
+  it('copies IPv4 values, changes prefixes, removes addresses and restores successive edits', () => {
+    const { a } = setup(), iface = a.interfaces[0], initial = iface.ip!;
+    store().setIfaceIp(a.id, 'eth0', '192.0.2.20/25');
+    initial.addr = 0; // The history must not retain the previous mutable object.
+    expect(store().nodes.find((n) => n.id === a.id)?.data.ips).toEqual(['192.0.2.20/25']);
+    store().setIfaceIp(a.id, 'eth0', '192.0.2.20/26'); store().setIfaceIp(a.id, 'eth0', '');
+    expect(iface.ip).toBeNull(); store().undoTopology(); expect(iface.ip).toEqual(parseCidr('192.0.2.20/26'));
+    store().undoTopology(); expect(iface.ip).toEqual(parseCidr('192.0.2.20/25'));
+    store().undoTopology(); expect(iface.ip).toEqual(parseCidr('10.0.0.1/24'));
+    for (let i = 0; i < 3; i++) store().redoTopology(); expect(iface.ip).toBeNull();
+    expect(a.interfaces[0]).toBe(iface);
+  });
+
+  it('toggles exact interfaces on hosts and switches', () => {
+    const { a } = setup(); store().addDeviceAt('switch', { x: 0, y: 0 });
+    const sw = sim.net.devices.get(store().nodes.at(-1)!.id)!;
+    store().invalidateTopologyHistory(); store().toggleIface(a.id, 'eth0'); store().toggleIface(sw.id, 'eth7');
+    expect(a.interfaces[0].up).toBe(false); expect(sw.interfaces[7].up).toBe(false);
+    store().undoTopology(); expect(sw.interfaces[7].up).toBe(true); expect(a.interfaces[0].up).toBe(false);
+    store().undoTopology(); expect(a.interfaces[0].up).toBe(true);
+    store().redoTopology(); store().redoTopology(); expect(sw.interfaces[7].up).toBe(false);
+  });
+
+  it('leaves Redo and autosave untouched for invalid, identical, canonical-equivalent or missing-target edits', () => {
+    const { a } = setup(); store().renameDevice(a.id, 'changed'); store().undoTopology();
+    vi.advanceTimersByTime(500); setItem.mockClear(); const history = store().topologyHistory;
+    store().renameDevice(a.id, ''); store().renameDevice(a.id, `  ${a.name}  `); store().renameDevice('missing', 'PC');
+    for (const value of ['bad', '10.0.0.1/33', '10.0.0.999/24']) expect(store().setIfaceIp(a.id, 'eth0', value)).not.toBeNull();
+    expect(store().setIfaceIp(a.id, 'eth0', ' 010.000.000.001/24 ')).toBeNull();
+    expect(store().setIfaceIp(a.id, 'missing', '')).not.toBeNull();
+    store().toggleIface('missing', 'eth0'); store().toggleIface(a.id, 'missing');
+    expect(store().topologyHistory).toBe(history); vi.advanceTimersByTime(500); expect(setItem).not.toHaveBeenCalled();
+    store().redoTopology(); expect(a.name).toBe('changed'); store().undoTopology();
+    store().setIfaceIp(a.id, 'eth0', '10.0.0.1/25'); expect(store().topologyHistory.future).toEqual([]);
+  });
+
+  it('interleaves edits with movement, cables, creation and deletion in the same history', () => {
+    const { a, b, net } = setup(), originalName = a.name, link = [...net.links.values()][0];
+    store().renameDevice(a.id, 'PC-Lab'); store().setIfaceIp(a.id, 'eth0', '10.0.0.9/25');
+    store().onNodesChange([{ type: 'position', id: a.id, position: { x: 77, y: 30 }, dragging: false }]);
+    store().toggleIface(a.id, 'eth0'); store().onEdgesChange([{ type: 'remove', id: link.id }]);
+    store().addDeviceAt('switch', { x: 300, y: 40 }); store().deleteDevice(a.id);
+    expect(store().topologyHistory.past).toHaveLength(7);
+    for (let i = 0; i < 7; i++) store().undoTopology();
+    const restored = net.devices.get(a.id)!;
+    expect(restored.name).toBe(originalName); expect(restored.interfaces[0].ip).toEqual(parseCidr('10.0.0.1/24'));
+    expect(restored.interfaces[0].up).toBe(true); expect(store().nodes[0].position).toEqual({ x: 20, y: 30 });
+    expect(net.links.has(link.id)).toBe(true); expect(net.devices.get(b.id)).toBe(b);
+    for (let i = 0; i < 7; i++) store().redoTopology(); expect(net.devices.has(a.id)).toBe(false);
+  });
+
+  it('keeps external commands and unsupported settings as barriers, but not output or completion of older pings', () => {
+    const { a, b, net } = setup(), terminal = open(a), second = open(b);
+    input(second, 'ping 10.0.0.1\r'); store().renameDevice(a.id, 'PC-Lab'); net.scheduler.advanceTo(2500); input(second, '\x03');
+    expect(store().topologyHistory.past).toHaveLength(1);
+    input(terminal, 'hostname\r'); expect(store().topologyHistory.past).toHaveLength(1);
+    input(terminal, 'ip link set eth0 down\r'); expect(store().topologyHistory.past).toEqual([]);
+    store().setIfaceIp(a.id, 'eth0', '10.0.0.9/24'); input(terminal, 'ip addr del 10.0.0.9/24 dev eth0\r');
+    input(terminal, 'ip addr add 10.0.0.7/24 dev eth0\r');
+    expect(store().topologyHistory.past).toEqual([]);
+    store().toggleIface(a.id, 'eth0'); store().toggleDnsServer(a.id); expect(store().topologyHistory.past).toEqual([]);
+    store().renameDevice(a.id, 'Another'); a.nameserver = parseIp('10.0.0.54'); store().undoTopology();
+    expect(a.name).toBe('Another'); expect(store().topologyHistory.past).toEqual([]);
+  });
+
+  it('keeps four running pings and sessions through basic edits, Undo/Redo and normal refreshes', () => {
+    const { a, b, net } = setup();
+    for (const kind of ['router', 'firewall'] as const) store().addDeviceAt(kind, { x: 0, y: 0 });
+    const extra = [...net.devices.values()].slice(2) as IpDevice[];
+    extra.forEach((d, i) => { d.interfaces[0].ip = parseCidr(`192.0.2.${i + 1}/24`); });
+    store().invalidateTopologyHistory(); const devices = [a, b, ...extra], sessions = devices.map(open);
+    sessions.forEach((session, i) => input(session, `ping ${i === 0 ? '10.0.0.2' : i === 1 ? '10.0.0.1' : `192.0.2.${i - 1}`}\r`));
+    net.scheduler.advanceTo(1000);
+    store().renameDevice(b.id, 'Server-Lab'); store().setIfaceIp(a.id, 'eth0', '10.0.0.1/25'); store().toggleIface(extra[0].id, 'eth3');
+    for (let i = 0; i < 3; i++) store().undoTopology(); for (let i = 0; i < 3; i++) store().redoTopology();
+    net.scheduler.advanceTo(8500); store().tick(10); store().refresh();
+    expect(store().topologyHistory.past).toHaveLength(3);
+    sessions.forEach((session, i) => {
+      expect(getSession(devices[i])).toBe(session); expect(session.term.dispose).not.toHaveBeenCalled();
+      expect(output(session)).toContain('icmp_seq=8');
+    });
+    expect(sim.net).toBe(net);
+  });
+
+  it('limits basic edits to 50 operations and autosaves restored values without persisting history or sessions', () => {
+    const { a } = setup(); for (let i = 0; i < 55; i++) store().renameDevice(a.id, `PC-${i}`);
+    expect(store().topologyHistory.past).toHaveLength(50);
+    store().setIfaceIp(a.id, 'eth0', '192.0.2.1/25'); store().toggleIface(a.id, 'eth0'); store().undoTopology();
+    vi.advanceTimersByTime(500);
+    const saved = JSON.parse(storage.get('netsim:autosave:v1')!), device = saved.devices.find((d: { id: string }) => d.id === a.id);
+    expect(device.name).toBe('PC-54'); expect(device.ifaces[0].ip).toBe('192.0.2.1/25'); expect(device.ifaces[0].up).toBe(true);
+    store().boot(); expect(store().topologyHistory).toEqual({ past: [], future: [] }); expect(store().terminals).toEqual([]);
+    const reloaded = sim.net.devices.get(a.id)!; expect(reloaded.name).toBe('PC-54'); expect(reloaded.interfaces[0].ip).toEqual(parseCidr('192.0.2.1/25'));
+  });
+});
+
+describe('additional Inspector history', () => {
+  const store = () => useStore.getState();
+  function setup() {
+    const result = pair();
+    store().addDeviceAt('ap', { x: 400, y: 60 });
+    const ap = sim.net.devices.get(store().nodes.at(-1)!.id) as ApDevice;
+    store().invalidateTopologyHistory(); return { ...result, ap };
+  }
+
+  it('does not invalidate history when the same service ports have a different insertion order', () => {
+    const { a } = setup(); a.services.tcp = new Set([443, 22]);
+    store().setNameserver(a.id, '192.0.2.53');
+    a.services.tcp = new Set([22, 443]);
+    store().undoTopology(); expect(a.nameserver).toBeNull(); expect(store().topologyHistory.future).toHaveLength(1);
+    store().redoTopology(); expect(a.nameserver).toBe(parseIp('192.0.2.53'));
+  });
+
+  it('sets and removes nameservers, orders TCP/UDP ports and restores empty sets with independent snapshots', () => {
+    const { a } = setup(), old = a.services.tcp;
+    store().setNameserver(a.id, '192.0.2.53'); store().setNameserver(a.id, '');
+    store().setServices(a.id, 'tcp', '443, 22, 443'); store().setServices(a.id, 'udp', '161, 53');
+    old.add(9000);
+    expect([...a.services.tcp]).toEqual([22, 443]); expect([...a.services.udp]).toEqual([53, 161]);
+    const operation = store().topologyHistory.past[2];
+    expect(operation.type).toBe('set-services');
+    store().undoTopology(); expect(a.services.udp.size).toBe(0);
+    store().undoTopology(); expect(a.services.tcp.size).toBe(0);
+    store().undoTopology(); expect(a.nameserver).toBe(parseIp('192.0.2.53'));
+    store().undoTopology(); expect(a.nameserver).toBeNull();
+    for (let i = 0; i < 4; i++) store().redoTopology();
+    expect([...a.services.tcp]).toEqual([22, 443]); expect(a.nameserver).toBeNull();
+    store().setServices(a.id, 'tcp', ''); store().undoTopology(); expect([...a.services.tcp]).toEqual([22, 443]);
+  });
+
+  it('preserves Redo, MAC learning and autosave on invalid or equivalent inputs for all new fields', () => {
+    const { a, ap } = setup();
+    store().setNameserver(a.id, '192.0.2.53'); store().setServices(a.id, 'tcp', '80,22'); store().setPortVlan(ap.id, 'eth0', '20');
+    store().setSsid(ap.id, 'Changed'); store().undoTopology(); vi.advanceTimersByTime(500); setItem.mockClear();
+    const history = store().topologyHistory;
+    expect(store().setNameserver(a.id, ' 192.000.002.053 ')).toBeNull();
+    expect(store().setServices(a.id, 'tcp', '22, 80,22')).toBeNull();
+    expect(store().setSsid(ap.id, ' netsim-wifi ')).toBeNull();
+    const key = '20|sample'; ap.macTable.set(key, ap.interfaces[0]);
+    expect(store().setPortVlan(ap.id, 'eth0', '020')).toBeNull(); expect(ap.macTable.has(key)).toBe(true);
+    for (const text of ['bad', '256.0.0.1']) expect(store().setNameserver(a.id, text)).not.toBeNull();
+    for (const text of ['0', '65536', '80,wrong']) expect(store().setServices(a.id, 'udp', text)).not.toBeNull();
+    expect(store().setSsid(ap.id, ' ')).not.toBeNull(); expect(store().setSsid(a.id, 'Lab')).not.toBeNull();
+    for (const text of ['', '0', '4095', '1.5']) expect(store().setPortVlan(ap.id, 'eth0', text)).not.toBeNull();
+    expect(store().setPortVlan(ap.id, 'missing', '20')).not.toBeNull(); expect(store().setNameserver(ap.id, '1.1.1.1')).not.toBeNull();
+    expect(store().topologyHistory).toBe(history); vi.advanceTimersByTime(500); expect(setItem).not.toHaveBeenCalled();
+    store().redoTopology(); expect(ap.ssid).toBe('Changed');
+  });
+
+  it('relearns the changed VLAN port, keeps unrelated MAC entries and resumes continuous pings after Undo', () => {
+    const { a, b, ap, net } = setup();
+    store().onEdgesChange([{ type: 'remove', id: store().edges[0].id }]);
+    for (const d of [a, b]) store().onConnect({ source: d.id, target: ap.id, sourceHandle: null, targetHandle: null });
+    store().invalidateTopologyHistory(); const first = open(a), second = open(b);
+    input(first, 'ping 10.0.0.2\r'); input(second, 'ping 10.0.0.1\r'); net.scheduler.advanceTo(1000);
+    const changed = ap.interfaces[1], other = ap.interfaces[0];
+    expect([...ap.macTable.values()]).toContain(changed); expect([...ap.macTable.values()]).toContain(other);
+    store().setPortVlan(ap.id, changed.name, '20');
+    expect([...ap.macTable.values()]).not.toContain(changed); expect([...ap.macTable.values()]).toContain(other);
+    net.scheduler.advanceTo(4300); expect(output(first)).toContain('no answer yet');
+    expect([...ap.macTable.keys()]).toContain(`20|${b.interfaces[0].mac}`);
+    store().undoTopology(); expect(ap.vlanOf(changed.name)).toBe(1); expect(ap.vlans.has(changed.name)).toBe(false);
+    expect(ap.macTable.has(`20|${b.interfaces[0].mac}`)).toBe(false);
+    net.scheduler.advanceTo(8500); expect(output(first)).toContain('icmp_seq=8'); expect(output(second)).toContain('icmp_seq=8');
+    store().redoTopology(); expect(ap.vlanOf(changed.name)).toBe(20);
+    expect(getSession(a)).toBe(first); expect(getSession(b)).toBe(second); expect(first.term.dispose).not.toHaveBeenCalled();
+  });
+
+  it('interleaves all four settings with basic edits, movement and cables, and persists them on boot', () => {
+    const { a, ap, net } = setup(), original = a.name, session = open(a), cable = store().edges[0].id;
+    store().renameDevice(a.id, 'PC-Lab'); store().setNameserver(a.id, '192.0.2.53'); store().setServices(a.id, 'udp', '53,161');
+    store().setSsid(ap.id, 'NetLab 🌐'); store().setPortVlan(ap.id, 'eth7', '20');
+    store().onNodesChange([{ type: 'position', id: a.id, position: { x: 90, y: 30 }, dragging: false }]);
+    store().onEdgesChange([{ type: 'remove', id: cable }]);
+    for (let i = 0; i < 7; i++) store().undoTopology();
+    expect(a.name).toBe(original); expect(a.nameserver).toBeNull(); expect(a.services.udp.size).toBe(0);
+    expect(ap.ssid).toBe('netsim-wifi'); expect(ap.vlanOf('eth7')).toBe(1); expect(net.links.has(cable)).toBe(true);
+    for (let i = 0; i < 7; i++) store().redoTopology();
+    expect(sim.net).toBe(net); expect(getSession(a)).toBe(session);
+    vi.advanceTimersByTime(500); store().boot();
+    const restored = sim.net.devices.get(a.id) as IpDevice, restoredAp = sim.net.devices.get(ap.id) as ApDevice;
+    expect(restored.name).toBe('PC-Lab'); expect(restored.nameserver).toBe(parseIp('192.0.2.53'));
+    expect([...restored.services.udp]).toEqual([53, 161]); expect(restoredAp.ssid).toBe('NetLab 🌐'); expect(restoredAp.vlanOf('eth7')).toBe(20);
+    expect(store().terminals).toEqual([]); expect(store().topologyHistory).toEqual({ past: [], future: [] });
+  });
+
+  it('keeps unsupported changes and terminal configuration as barriers, but not live nc listeners or ping output', () => {
+    const { a, b, ap, net } = setup(), first = open(a), second = open(b);
+    input(second, 'ping 10.0.0.1\r'); store().setNameserver(a.id, '192.0.2.53'); store().setSsid(ap.id, 'Lab');
+    input(first, 'nc -l 9000\r'); net.scheduler.advanceTo(2200); input(first, '\x03'); input(second, '\x03');
+    expect(store().topologyHistory.past).toHaveLength(2);
+    input(first, 'ip link set eth0 down\r'); expect(store().topologyHistory.past).toEqual([]);
+    store().setServices(a.id, 'tcp', '22'); store().toggleRip(a.id); expect(store().topologyHistory.past).toEqual([]);
+    store().setSsid(ap.id, 'New'); a.services.udp.add(5000); store().undoTopology();
+    expect(ap.ssid).toBe('New'); expect(store().topologyHistory.past).toEqual([]);
   });
 });

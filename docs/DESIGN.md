@@ -324,7 +324,7 @@ esperados antes de alterar qualquer nó e agenda o autosave existente. Históric
 não entra em JSON, autosave, links de compartilhamento ou preferências locais.
 Tick, refresh, pacotes, relógio e estado visual não participam do histórico.
 
-Configurações ainda não têm operações inversas: são
+Configurações ainda não integradas ao histórico são
 barreiras que limpam as duas pilhas e descartam uma transação incompatível.
 Para configuração, a comparação usa somente a serialização persistível sem
 posições; essa assinatura serve à invalidação, nunca à restauração. É verificada
@@ -357,7 +357,7 @@ Uma criação guarda somente a configuração inicial do dispositivo, posição,
 Redo usa `restoreDevice` (também reutilizado pela importação) para criar uma
 instância nova com a identidade original. Nenhum dispositivo sobrevivente é
 reconstruído, nem há restauração de snapshot global. Terminais fechados pelo
-Undo não reabrem no Redo. Alterações posteriores de configuração continuam
+Undo não reabrem no Redo. Alterações de configuração ainda não integradas continuam
 invalidando as pilhas, pois ainda não possuem inversa segura.
 
 O scheduler permite associar eventos a um proprietário. Dispositivos e links
@@ -383,7 +383,7 @@ Inspector, mudanças de nós por API e exclusões do editor usam a mesma ação
 completa e retorna false, impedindo que os callbacks separados removam primeiro
 os cabos e dividam o gesto em entradas diferentes. Notificações redundantes de
 remoção não criam novas entradas. A ordem visual original é restaurada pelos
-índices dos nós. Comandos e configurações do Inspector seguem fora do histórico.
+índices dos nós. Comandos e configurações avançadas do Inspector seguem fora do histórico.
 
 O Undo prepara apenas os dispositivos excluídos numa rede temporária isolada,
 confere configurações restauradas, MACs, IDs, portas e latências de todo o lote
@@ -403,9 +403,56 @@ MACs como antes e usam 80 ms quando a latência não estiver presente. O alocado
 de MACs evita valores já restaurados, inclusive quando há lacunas ou outra ordem
 de inserção. Histórico e sessões continuam apenas em memória.
 
+### Undo/Redo — etapa 4: configurações básicas do Inspector
+
+`rename-device`, `set-iface-ip` e `set-iface-state` carregam IDs, valor anterior
+e posterior; o IP é copiado como addr/prefix ou null. Os setters validam e
+descartam no-ops antes de preparar a edição. Uma alteração efetiva confirma
+movimentos pendentes, detecta mudanças externas, altera somente o objeto vivo
+e registra a operação no mesmo histórico de 50 entradas. `commitEdit` atualiza
+a assinatura de configuração, evitando invalidar as próprias alterações.
+Undo/Redo compara o valor atual esperado, usa cópias dos valores restaurados,
+atualiza a apresentação e agenda o autosave existente. Não recria Network,
+dispositivos, interfaces ou sessões. Configurações não suportadas e comandos
+continuam sujeitos à invalidação; não há histórico de comandos nesta etapa.
+Histórico de comandos não está previsto e requer nova solicitação explícita.
+
+Nome e IP usam identidade estável por dispositivo/interface e rascunhos locais
+com valor confirmado e marca de conflito (`inspectorDraft.ts`). Valores externos
+atualizam campos limpos; texto em edição não é substituído por ticks/refresh.
+Uma mudança externa conflitante mantém o texto visível até blur/Enter, mas
+descarta esse rascunho em vez de reaplicá-lo silenciosamente. Uma nova digitação
+assume o valor confirmado mais recente como base. O commit também consulta o
+motor diretamente para proteger o intervalo anterior ao próximo render do React.
+Trocar de dispositivo reinicia somente seus campos; mudar nome/IP não remonta
+os inputs nem remove o foco. A proteção de atalhos em campos e xterm é mantida.
+
+### Undo/Redo — etapa 5: nameserver, portas, SSID e VLAN
+
+`set-nameserver`, `set-services`, `set-ssid` e `set-port-vlan` seguem o mesmo
+caminho prepareEdit/commitEdit e validação de estado em topologyEdits. Nameserver
+pode ser null; serviços guardam arrays próprios, sem duplicatas e ordenados
+numericamente, restaurados como novos Sets somente no protocolo envolvido.
+A serialização também ordena esses conjuntos para que mudanças apenas na ordem
+de inserção não invalidem a assinatura de configuração. Portas inexistentes,
+entradas inválidas e no-ops não alteram histórico, caches ou autosave.
+
+VLAN usa seu valor efetivo (padrão 1) e restaura a representação canônica,
+removendo a entrada do mapa para VLAN 1. Tanto a edição quanto Undo/Redo removem
+apenas entradas MAC aprendidas na porta modificada, em qualquer VLAN. Não se
+restaura uma tabela antiga: o tráfego reaprende os destinos, mantendo as demais
+entradas e sem retroceder pacotes, eventos ou relógio. O encaminhamento continua
+isolado por VLAN. A mesma lógica atende portas de APs, que também são bridges.
+
+Os quatro campos usam useInspectorDraft com identidade estável por dispositivo
+e campo/porta. O valor atual é consultado no motor antes do commit, preservando
+a política da etapa 4 para foco, conflitos externos e rascunhos. Configurações
+de servidores DHCP/DNS/HTTP, RIP, firewall, rotas e comandos continuam fora do
+histórico. As preferências e o formato de arquivo permanecem compatíveis.
+
 ## NetLab-FiSI — ideias futuras
 
-- Expandir Undo/Redo para Inspector e comandos, com
+- Expandir Undo/Redo para as demais configurações do Inspector, com
   transações próprias e tratamento seguro de timers e referências do motor.
 - Perfis de terminal Windows e Linux por dispositivo, com comandos e saídas
   equivalentes sobre o mesmo motor. Manter explícito o subconjunto suportado.

@@ -8,6 +8,57 @@ import { formatNeigh, formatRoutes } from '../commands/ip-cmd';
 import { formatConntrack } from '../commands/shell';
 import { listRuleset } from '../engine/firewall-fmt';
 import { CopyIpButton } from './CopyIpButton';
+import { newInspectorDraft, syncInspectorDraft } from '../inspectorDraft';
+import { sortedServicePorts } from '../topologyHistory';
+
+function useInspectorDraft(identity: string, value: string, readCurrent: () => string | undefined,
+  onCommit: (text: string) => string | null | void) {
+  const setNotice = useStore((s) => s.setNotice);
+  const [draft, setDraft] = useState(() => newInspectorDraft(identity, value));
+  const current = syncInspectorDraft(draft, identity, value);
+  if (current !== draft) setDraft(current);
+  return {
+    value: current.text,
+    onChange: (text: string) => setDraft({ ...newInspectorDraft(identity, readCurrent() ?? value), text }),
+    commit: () => {
+      // Read the engine too: a store edit can precede React's next render.
+      const latest = readCurrent(), checked = syncInspectorDraft(current, identity, latest ?? value);
+      if (latest === undefined || checked.stale) {
+        setDraft(newInspectorDraft(identity, latest ?? value));
+        if (checked.stale) setNotice('Value changed elsewhere; the outdated draft was not applied.');
+        return;
+      }
+      const err = checked.text === checked.source ? null : onCommit(checked.text);
+      setDraft(newInspectorDraft(identity, readCurrent() ?? value));
+      if (err) setNotice(err);
+    },
+  };
+}
+
+function DeviceName({ deviceId, name }: { deviceId: string; name: string }) {
+  const rename = useStore((s) => s.renameDevice);
+  const draft = useInspectorDraft(deviceId, name, () => sim.net.devices.get(deviceId)?.name, (text) => rename(deviceId, text));
+  return <input className="inspector-name" aria-label="Device name" value={draft.value}
+    onChange={(e) => draft.onChange(e.target.value)} onBlur={draft.commit}
+    onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur(); }} />;
+}
+
+function InspectorSettingInput({ identity, value, readCurrent, onCommit, label, placeholder, width, mono = true }: {
+  identity: string; value: string; readCurrent: () => string | undefined;
+  onCommit: (text: string) => string | null | void; label: string;
+  placeholder?: string; width?: number; mono?: boolean;
+}) {
+  const draft = useInspectorDraft(identity, value, readCurrent, onCommit);
+  return <input className="iface-ip" aria-label={label} placeholder={placeholder}
+    style={{ fontFamily: mono ? undefined : 'inherit', width }} value={draft.value}
+    onChange={(e) => draft.onChange(e.target.value)} onBlur={draft.commit}
+    onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur(); }} />;
+}
+
+function servicePortsValue(deviceId: string, proto: 'tcp' | 'udp'): string | undefined {
+  const device = sim.net.devices.get(deviceId);
+  return device instanceof IpDevice ? sortedServicePorts(device.services[proto]).join(', ') : undefined;
+}
 
 // A small controlled input that commits on blur/Enter and reverts on error.
 function CommitInput({
@@ -185,32 +236,16 @@ function HttpPanel({ device }: { device: IpDevice }) {
 
 function ServicesRow({ deviceId, proto }: { deviceId: string; proto: 'tcp' | 'udp' }) {
   const setServices = useStore((s) => s.setServices);
-  const setNotice = useStore((s) => s.setNotice);
-  const device = sim.net.devices.get(deviceId);
-  const current = device instanceof IpDevice ? [...device.services[proto]].sort((a, b) => a - b).join(', ') : '';
-  const [value, setValue] = useState(current);
-
-  const commit = () => {
-    if (value.trim() === current) return;
-    const err = setServices(deviceId, proto, value);
-    if (err) {
-      setNotice(err);
-      setValue(current);
-    }
-  };
 
   return (
     <div className="service-row">
       <span className="service-proto">{proto}</span>
-      <input
-        className="iface-ip"
+      <InspectorSettingInput
+        identity={`${deviceId}:${proto}`} label={`Additional ${proto.toUpperCase()} ports`}
+        value={servicePortsValue(deviceId, proto) ?? ''}
+        readCurrent={() => servicePortsValue(deviceId, proto)}
+        onCommit={(text) => setServices(deviceId, proto, text)}
         placeholder="open ports, e.g. 22, 80"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        }}
       />
     </div>
   );
@@ -219,22 +254,15 @@ function ServicesRow({ deviceId, proto }: { deviceId: string; proto: 'tcp' | 'ud
 function IfaceRow({ deviceId, ifaceName }: { deviceId: string; ifaceName: string }) {
   const setIfaceIp = useStore((s) => s.setIfaceIp);
   const toggleIface = useStore((s) => s.toggleIface);
-  const setNotice = useStore((s) => s.setNotice);
   const device = sim.net.devices.get(deviceId);
   const iface = device?.getInterface(ifaceName);
   const current = iface?.ip ? cidrToString(iface.ip.addr, iface.ip.prefix) : '';
-  const [value, setValue] = useState(current);
+  const draft = useInspectorDraft(`${deviceId}:${ifaceName}`, current, () => {
+    const latest = sim.net.devices.get(deviceId)?.getInterface(ifaceName);
+    return latest ? latest.ip ? cidrToString(latest.ip.addr, latest.ip.prefix) : '' : undefined;
+  }, (text) => setIfaceIp(deviceId, ifaceName, text));
 
   if (!iface) return null;
-
-  const commit = () => {
-    if (value.trim() === current) return;
-    const err = setIfaceIp(deviceId, ifaceName, value);
-    if (err) {
-      setNotice(err);
-      setValue(current);
-    }
-  };
 
   return (
     <div className="iface-row">
@@ -254,11 +282,11 @@ function IfaceRow({ deviceId, ifaceName }: { deviceId: string; ifaceName: string
         className="iface-ip"
         placeholder="no address (CIDR)"
         aria-label={`IPv4 address for ${device?.name} ${ifaceName}`}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={commit}
+        value={draft.value}
+        onChange={(e) => draft.onChange(e.target.value)}
+        onBlur={draft.commit}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur();
         }}
       />
       {iface.ip && <CopyIpButton address={ipToString(iface.ip.addr)} context={`${device?.name} ${ifaceName}`} />}
@@ -268,7 +296,6 @@ function IfaceRow({ deviceId, ifaceName }: { deviceId: string; ifaceName: string
 
 export function Inspector() {
   const selected = useStore((s) => s.selected);
-  const renameDevice = useStore((s) => s.renameDevice);
   const deleteDevice = useStore((s) => s.deleteDevice);
   const openTerminal = useStore((s) => s.openTerminal);
   useStore((s) => s.uiPulse); // live tables refresh a few times a second
@@ -284,15 +311,7 @@ export function Inspector() {
   return (
     <aside className="inspector">
       <div className="inspector-head">
-        <input
-          key={device.id + device.name}
-          className="inspector-name"
-          defaultValue={device.name}
-          onBlur={(e) => renameDevice(device.id, e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
-        />
+        <DeviceName key={device.id} deviceId={device.id} name={device.name} />
         <span className={`inspector-kind kind-${device.kind}`}>{device.kind}</span>
       </div>
 
@@ -318,9 +337,10 @@ export function Inspector() {
       {swd instanceof ApDevice && (
         <div className="svc-grid">
           <span>SSID</span>
-          <CommitInput
-            key={device.id + swd.ssid}
+          <InspectorSettingInput
+            key={device.id} identity={`${device.id}:ssid`} label="Access point SSID"
             value={swd.ssid}
+            readCurrent={() => { const d = sim.net.devices.get(device.id); return d instanceof ApDevice ? d.ssid : undefined; }}
             onCommit={(t) => useStore.getState().setSsid(device.id, t)}
             mono={false}
           />
@@ -330,10 +350,8 @@ export function Inspector() {
       <section>
         <h3>Interfaces</h3>
         {device.interfaces.map((i) => (
-          // Key includes the current address so the row re-seeds when a
-          // terminal command (ip addr add, dhclient) changes it underneath us.
           <IfaceRow
-            key={device.id + i.name + (i.ip ? cidrToString(i.ip.addr, i.ip.prefix) : '-')}
+            key={device.id + ':' + i.name}
             deviceId={device.id}
             ifaceName={i.name}
           />
@@ -354,9 +372,10 @@ export function Inspector() {
           <h3>DNS client</h3>
           <div className="svc-grid">
             <span>nameserver</span>
-            <CommitInput
-              key={ipd.id + (ipd.nameserver ?? 'ns')}
+            <InspectorSettingInput
+              key={ipd.id} identity={`${ipd.id}:nameserver`} label="DNS client nameserver"
               value={ipd.nameserver !== null ? ipToString(ipd.nameserver) : ''}
+              readCurrent={() => { const d = sim.net.devices.get(ipd.id); return d instanceof IpDevice ? d.nameserver === null ? '' : ipToString(d.nameserver) : undefined; }}
               placeholder="none (set by dhclient)"
               onCommit={(t) => useStore.getState().setNameserver(ipd.id, t)}
             />
@@ -415,13 +434,15 @@ export function Inspector() {
           {swd.interfaces
             .filter((i) => i.link)
             .map((i) => (
-              <div className="service-row" key={device.id + i.name + swd.vlanOf(i.name)}>
+              <div className="service-row" key={device.id + ':' + i.name}>
                 <span className="service-proto">{i.name}</span>
                 <span className="hint" style={{ width: 90 }}>
                   → {sim.net.links.get(i.link!.id) ? i.link!.other(i).device.name : '?'}
                 </span>
-                <CommitInput
+                <InspectorSettingInput
+                  identity={`${device.id}:${i.name}:vlan`} label={`Access VLAN for ${i.name}`}
                   value={String(swd.vlanOf(i.name))}
+                  readCurrent={() => { const d = sim.net.devices.get(device.id); return d instanceof SwitchDevice && d.getInterface(i.name) ? String(d.vlanOf(i.name)) : undefined; }}
                   onCommit={(t) => useStore.getState().setPortVlan(device.id, i.name, t)}
                   width={64}
                 />

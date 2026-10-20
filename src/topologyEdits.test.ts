@@ -5,7 +5,49 @@ import { IpDevice } from './engine/ipdevice';
 import { parseCidr, parseIp } from './engine/ip';
 import { restoreNetwork, serializeNetwork } from './engine/serialize';
 import { Shell } from './commands/shell';
-import { applyLinkEdit, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
+import { applyInspectorEdit, applyLinkEdit, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
+import type { InspectorOperation } from './topologyHistory';
+
+it.each(['set-nameserver', 'tcp', 'udp', 'set-ssid', 'set-port-vlan'] as const)('replays %s only against the expected state, without replacing devices', (type) => {
+  const net = new Network(), device = createDevice(net, type === 'set-ssid' ? 'ap' : type === 'set-port-vlan' ? 'switch' : 'host');
+  const operation: InspectorOperation = type === 'set-nameserver'
+    ? { type, label: 'DNS', deviceId: device.id, before: null, after: parseIp('192.0.2.53') }
+    : type === 'set-ssid' ? { type, label: 'SSID', deviceId: device.id, before: 'netsim-wifi', after: 'Lab 🌐' }
+      : type === 'set-port-vlan' ? { type, label: 'VLAN', deviceId: device.id, port: 'eth7', before: 1, after: 20 }
+        : { type: 'set-services', label: 'Ports', deviceId: device.id, proto: type, before: [], after: [22, 443] };
+  expect(applyInspectorEdit(net, operation, 'redo')).toBe(true);
+  const after = serializeNetwork(net, {});
+  expect(applyInspectorEdit(net, operation, 'redo')).toBe(false);
+  expect(serializeNetwork(net, {})).toEqual(after);
+  expect(applyInspectorEdit(net, { ...operation, deviceId: 'missing' }, 'undo')).toBe(false);
+  expect(applyInspectorEdit(net, operation, 'undo')).toBe(true);
+  expect(applyInspectorEdit(net, operation, 'redo')).toBe(true);
+  expect(net.devices.get(device.id)).toBe(device);
+  if (operation.type === 'set-services') {
+    const set = (device as IpDevice).services[operation.proto];
+    set.add(9000); expect(operation.after).toEqual([22, 443]);
+    expect(applyInspectorEdit(net, operation, 'undo')).toBe(false);
+  }
+});
+
+it.each(['rename-device', 'set-iface-ip', 'set-iface-state'] as const)('validates the current %s value before replay and keeps existing objects', (type) => {
+  const net = new Network(), device = createDevice(net, 'host') as IpDevice, iface = device.interfaces[0];
+  iface.ip = parseCidr('192.0.2.2/25'); iface.up = false; device.name = 'PC-Lab';
+  const operation: InspectorOperation = type === 'rename-device'
+    ? { type, label: 'Rename', deviceId: device.id, before: 'PC1', after: 'PC-Lab' }
+    : type === 'set-iface-ip'
+      ? { type, label: 'IP', deviceId: device.id, ifaceName: 'eth0', before: parseCidr('192.0.2.1/24'), after: parseCidr('192.0.2.2/25') }
+      : { type, label: 'State', deviceId: device.id, ifaceName: 'eth0', before: true, after: false };
+  expect(applyInspectorEdit(net, operation, 'undo')).toBe(true);
+  const before = serializeNetwork(net, {});
+  expect(applyInspectorEdit(net, operation, 'undo')).toBe(false);
+  expect(serializeNetwork(net, {})).toEqual(before);
+  expect(applyInspectorEdit(net, { ...operation, deviceId: 'missing' }, 'redo')).toBe(false);
+  if (operation.type !== 'rename-device') expect(applyInspectorEdit(net, { ...operation, ifaceName: 'missing' }, 'redo')).toBe(false);
+  expect(applyInspectorEdit(net, operation, 'redo')).toBe(true);
+  expect(net.devices.get(device.id)).toBe(device); expect(device.interfaces[0]).toBe(iface);
+  if (operation.type === 'set-iface-ip') expect(iface.ip).not.toBe(operation.after);
+});
 
 it.each(['host', 'server', 'switch', 'router', 'firewall', 'ap'] as const)('restores a fresh %s with its exact identity and initial configuration, leaving survivors intact', (kind) => {
   const net = new Network(), survivor = createDevice(net, 'host'), device = createDevice(net, kind);

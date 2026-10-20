@@ -29,8 +29,8 @@ import { applyPanelPreferences, readPanelPreferences, rememberPanelPreferences, 
 import { forgetSavedTabs, insertSavedTab, mergeTabLayouts, readTabLayouts, TAB_LAYOUT_KEY, writeTabLayouts, type TerminalTabLayouts } from './terminalTabPreferences';
 import { capturePresentationSelection } from './terminalPresentationSelection';
 import { moveTerminalPanel } from './terminalPanels';
-import { applyMovement, emptyTopologyHistory, recordMovement, recordOperation, type Point, type TopologyHistory, type TopologyOperation } from './topologyHistory';
-import { applyLinkEdit, canApplyLinkEdit, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
+import { applyMovement, emptyTopologyHistory, recordMovement, recordOperation, sameInterfaceIp, sameServicePorts, sortedServicePorts, type Point, type TopologyHistory, type TopologyOperation } from './topologyHistory';
+import { applyAccessVlan, applyInspectorEdit, applyLinkEdit, canApplyLinkEdit, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -211,6 +211,10 @@ export const useStore = create<NetsimState>()((set, get) => {
       const nodes = applyMovement(get().nodes, operation, direction);
       if (!nodes) { get().invalidateTopologyHistory(); return; }
       set({ nodes });
+    } else if (operation.type === 'rename-device' || operation.type === 'set-iface-ip' || operation.type === 'set-iface-state' ||
+        operation.type === 'set-nameserver' || operation.type === 'set-services' || operation.type === 'set-ssid' || operation.type === 'set-port-vlan') {
+      if (!applyInspectorEdit(sim.net, operation, direction)) { get().invalidateTopologyHistory(); return; }
+      get().refresh();
     } else if (operation.type === 'create-device') {
       const { device: creation } = operation, { saved } = creation;
       if (direction === 'undo') {
@@ -546,28 +550,30 @@ export const useStore = create<NetsimState>()((set, get) => {
 
     renameDevice(id, name) {
       const d = sim.net.devices.get(id);
-      if (!d || !name.trim()) return;
-      d.name = name.trim();
+      const after = name.trim();
+      if (!d || d.disposed || !after || d.name === after) return;
+      prepareEdit();
+      const before = d.name;
+      d.name = after;
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'rename-device', label: 'Rename device', deviceId: id, before, after });
       saveSoon();
     },
 
     setIfaceIp(deviceId, ifaceName, value) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice)) return 'not an IP device';
+      if (!(d instanceof IpDevice) || d.disposed) return 'not an IP device';
       const iface = d.getInterface(ifaceName);
       if (!iface) return 'no such interface';
       const trimmed = value.trim();
-      if (trimmed === '') {
-        iface.ip = null;
-      } else {
-        const cidr = parseCidr(trimmed);
-        if (!cidr) return 'use CIDR form, e.g. 192.168.1.10/24';
-        iface.ip = cidr;
-      }
+      const after = trimmed === '' ? null : parseCidr(trimmed);
+      if (trimmed && !after) return 'use CIDR form, e.g. 192.168.1.10/24';
+      if (sameInterfaceIp(iface.ip, after)) return null;
+      prepareEdit();
+      const before = iface.ip ? { ...iface.ip } : null;
+      iface.ip = after ? { ...after } : null;
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'set-iface-ip', label: after ? 'Set interface IPv4' : 'Remove interface IPv4', deviceId, ifaceName, before, after });
       saveSoon();
       return null;
     },
@@ -575,25 +581,31 @@ export const useStore = create<NetsimState>()((set, get) => {
     toggleIface(deviceId, ifaceName) {
       const d = sim.net.devices.get(deviceId);
       const iface = d?.getInterface(ifaceName);
-      if (!iface) return;
-      iface.up = !iface.up;
+      if (!d || d.disposed || !iface) return;
+      prepareEdit();
+      const before = iface.up, after = !before;
+      iface.up = after;
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'set-iface-state', label: `Set interface ${after ? 'UP' : 'DOWN'}`, deviceId, ifaceName, before, after });
       saveSoon();
     },
 
     setServices(deviceId, proto, text) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice)) return 'not an IP device';
+      if (!(d instanceof IpDevice) || d.disposed) return 'not an IP device';
       const ports = new Set<number>();
       for (const part of text.split(',').map((p) => p.trim()).filter(Boolean)) {
         const n = Number(part);
         if (!Number.isInteger(n) || n < 1 || n > 65535) return `invalid port "${part}"`;
         ports.add(n);
       }
-      d.services[proto] = ports;
+      const after = sortedServicePorts(ports);
+      if (sameServicePorts(d.services[proto], after)) return null;
+      prepareEdit();
+      const before = sortedServicePorts(d.services[proto]);
+      d.services[proto] = new Set(after);
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'set-services', label: `Set ${proto.toUpperCase()} ports`, deviceId, proto, before, after });
       saveSoon();
       return null;
     },
@@ -610,17 +622,16 @@ export const useStore = create<NetsimState>()((set, get) => {
 
     setNameserver(deviceId, text) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice)) return 'not an IP device';
+      if (!(d instanceof IpDevice) || d.disposed) return 'not an IP device';
       const trimmed = text.trim();
-      if (trimmed === '') {
-        d.nameserver = null;
-      } else {
-        const ip = parseIp(trimmed);
-        if (ip === null) return 'invalid nameserver address';
-        d.nameserver = ip;
-      }
+      const after = trimmed === '' ? null : parseIp(trimmed);
+      if (trimmed && after === null) return 'invalid nameserver address';
+      if (d.nameserver === after) return null;
+      prepareEdit();
+      const before = d.nameserver;
+      d.nameserver = after;
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'set-nameserver', label: after === null ? 'Remove nameserver' : 'Set nameserver', deviceId, before, after });
       saveSoon();
       return null;
     },
@@ -748,24 +759,31 @@ export const useStore = create<NetsimState>()((set, get) => {
 
     setPortVlan(deviceId, port, text) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof SwitchDevice)) return 'not a switch';
+      if (!(d instanceof SwitchDevice) || d.disposed) return 'not a switch';
+      if (!d.getInterface(port)) return 'no such interface';
       const vlan = Number(text.trim());
       if (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094) return 'VLAN must be 1–4094';
-      if (vlan === 1) d.vlans.delete(port);
-      else d.vlans.set(port, vlan);
+      if (d.vlanOf(port) === vlan) return null;
+      prepareEdit();
+      const before = d.vlanOf(port);
+      applyAccessVlan(d, port, vlan);
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'set-port-vlan', label: 'Set access VLAN', deviceId, port, before, after: vlan });
       saveSoon();
       return null;
     },
 
     setSsid(deviceId, text) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof ApDevice)) return 'not an access point';
-      if (!text.trim()) return 'SSID cannot be empty';
-      d.ssid = text.trim();
+      if (!(d instanceof ApDevice) || d.disposed) return 'not an access point';
+      const after = text.trim();
+      if (!after) return 'SSID cannot be empty';
+      if (d.ssid === after) return null;
+      prepareEdit();
+      const before = d.ssid;
+      d.ssid = after;
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'set-ssid', label: 'Set access point SSID', deviceId, before, after });
       saveSoon();
       return null;
     },

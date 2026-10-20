@@ -91,7 +91,7 @@ export function serializeNetwork(
     };
     if (ipd) {
       if (ipd.services.tcp.size || ipd.services.udp.size) {
-        saved.services = { tcp: [...ipd.services.tcp], udp: [...ipd.services.udp] };
+        saved.services = { tcp: [...ipd.services.tcp].sort((a, b) => a - b), udp: [...ipd.services.udp].sort((a, b) => a - b) };
       }
       const fwj = firewallToJSON(ipd.fw);
       if (fwj) saved.firewall = fwj;
