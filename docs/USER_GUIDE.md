@@ -121,9 +121,12 @@ and how many were discarded by the limit. Captures are in memory only and reset
 when a different topology is loaded or the page is refreshed.
 
 The table shows simulated time, protocol addresses and a summary, 50 rows per
-page. Select a row or activate its time button to inspect Ethernet, ARP/IPv4,
+page. The Link column shows the neighbours recorded at transmission time, even
+if they have since been renamed or removed. Select a row or activate its time button to inspect Ethernet, ARP/IPv4,
 transport and application fields. Link neighbours and interfaces appear in
-details, separately from IP/MAC addresses. HTTP bodies are inert text. Missing
+details, separately from IP/MAC addresses. Click the selected row again or use
+the details' × button to return to the list. Reopening the main panel also returns
+to the list, keeping captured records and the list position. HTTP bodies are inert text. Missing
 wire fields are not invented; truncated captured text is marked. These records
 describe transmissions, not guaranteed delivery. New records do not scroll the
 table to the end; expired selections show a notice. Cable capture controls and

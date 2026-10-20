@@ -556,7 +556,11 @@ O primeiro registro da página ancora a leitura durante lotes e descartes dos
 registros anteriores. Se a seleção expirar, detalhes mostram aviso; IDs iguais
 numa nova topologia não selecionam registros novos acidentalmente. Não há
 rolagem automática para o fim. Fechado, o conteúdo da tabela é desmontado e não
-assina lotes; a pequena camada externa conserva seleção/página para reabertura.
+assina lotes; a pequena camada externa conserva página/rolagem para reabertura,
+sempre sem detalhes selecionados. O botão × dos detalhes ou um novo clique na
+linha selecionada desmarca somente o pacote, sem modificar captura ou página.
+A coluna Link mostra os nomes capturados dos vizinhos em duas linhas compactas,
+com interfaces e ID do enlace no tooltip, sem consultar objetos atuais da rede.
 
 ## NetLab-FiSI — ideias futuras
 
