@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import { applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import type { Connection, Edge, EdgeChange, Node, NodeChange } from '@xyflow/react';
 import LZString from 'lz-string';
-import { Network, type WireTransfer } from './engine/network';
+import { Network } from './engine/network';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
+import { normalizePacketAnimationSpeed, readPacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { createDevice } from './engine/factory';
 import { IpDevice } from './engine/ipdevice';
 import type { DeviceKind } from './engine/device';
@@ -88,7 +89,10 @@ interface NetsimState {
   redoTopology(): void;
   nodes: DevNode[];
   edges: Edge[];
-  packets: WireTransfer[];
+  packets: AnimatedTransfer[];
+  packetAnimationClock: number;
+  packetAnimationSpeed: number;
+  setPacketAnimationSpeed(speed: number): void;
   packetCapture: PacketCaptureState;
   packetInspectorOpen: boolean;
   setPacketInspectorOpen(open: boolean): void;
@@ -193,6 +197,9 @@ let lastPulse = 0;
 
 export const useStore = create<NetsimState>()((set, get) => {
   const capture = new PacketCapture((packetCapture) => set({ packetCapture }));
+  // Set before advancing the scheduler so new emissions use this frame's
+  // presentation time, including after a long gap in browser callbacks.
+  let animationNow = 0;
   let movement: { source: 'drag' | 'keyboard'; before: Map<string, Point> } | null = null;
   let ignoreDrag = false;
   let labCheckGeneration = 0;
@@ -311,10 +318,11 @@ export const useStore = create<NetsimState>()((set, get) => {
       capture.reset();
     }
     wiredNetwork = net;
-    net.onWireTransfer = (t, context) => {
+    net.onWireTransfer = (t, context, trace) => {
       if (sim.net !== net) return;
       const packets = get().packets;
-      set({ packets: [...packets.slice(-(MAX_PACKETS - 1)), t] });
+      const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(get().packetAnimationSpeed));
+      if (visual) set({ packets: [...packets.slice(-(MAX_PACKETS - 1)), visual] });
       if (sim.net === net) capture.observe(t, context);
     };
     net.onFwDrop = (deviceId) => {
@@ -438,6 +446,14 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
 
   return {
+    packetAnimationClock: animationNow,
+    packetAnimationSpeed: readPacketAnimationSpeed(),
+    setPacketAnimationSpeed(value) {
+      const speed = normalizePacketAnimationSpeed(value);
+      if (speed === get().packetAnimationSpeed) return;
+      set({ packetAnimationSpeed: speed, packets: retimePacketAnimations(get().packets, animationNow, packetAnimationDuration(speed)) });
+      savePacketAnimationSpeed(speed);
+    },
     packetCapture: capture.state,
     packetInspectorOpen: false,
     setPacketInspectorOpen(packetInspectorOpen) { set({ packetInspectorOpen }); },
@@ -997,16 +1013,18 @@ export const useStore = create<NetsimState>()((set, get) => {
 
     tick(dtMs) {
       if (get().paused) return;
+      animationNow += Number.isFinite(dtMs) ? Math.max(0, dtMs) : 0;
       const dt = Math.min(dtMs, 100) * get().speed;
       sim.net.scheduler.advanceTo(sim.net.scheduler.now + dt);
       const now = sim.net.scheduler.now;
       const packets = get().packets;
-      const alive = packets.filter((p) => p.end > now - 120);
+      const alive = packets.filter((p) => p.visualStart + p.visualDuration > animationNow);
       const flashes = get().dropFlashes;
       const aliveFlashes = flashes.filter((f) => f.until > now);
       const pulse = Math.floor(now / 400);
       set({
         clock: now,
+        packetAnimationClock: animationNow,
         ...(alive.length !== packets.length ? { packets: alive } : {}),
         ...(aliveFlashes.length !== flashes.length ? { dropFlashes: aliveFlashes } : {}),
         ...(pulse !== lastPulse ? { uiPulse: pulse } : {}),
@@ -1176,6 +1194,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     boot() {
+      set({ packetAnimationSpeed: readPacketAnimationSpeed() });
       panelPreferences = readPanelPreferences();
       if (location.hash.startsWith('#t=')) {
         const json = LZString.decompressFromEncodedURIComponent(location.hash.slice(3));

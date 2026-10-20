@@ -25,6 +25,12 @@ it('renders nested details and truncation metadata while treating HTTP content a
   expect(html).not.toContain('<img'); expect(html).not.toContain('<script>');
   expect(html).not.toContain('checksum'); expect(html).not.toContain('Content-Length');
   expect(html).toContain('aria-label="Close packet details"');
+  const technical = html.match(/<details\b[^>]*>[\s\S]*?<\/details>/)?.[0];
+  expect(technical).toBeDefined();
+  expect(technical).toContain('<summary>Technical details</summary>');
+  expect(technical).toContain('<dt>Link ID</dt><dd>link</dd>');
+  expect(technical).toContain('<dt>Device IDs</dt><dd>srv → r</dd>');
+  expect(technical).not.toMatch(/<details\b[^>]*\bopen\b/);
 });
 
 it('shows historical link names in the list, reopening without details or changing capture data', () => {

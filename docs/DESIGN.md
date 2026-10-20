@@ -562,6 +562,49 @@ linha selecionada desmarca somente o pacote, sem modificar captura ou página.
 A coluna Link mostra os nomes capturados dos vizinhos em duas linhas compactas,
 com interfaces e ID do enlace no tooltip, sem consultar objetos atuais da rede.
 
+### Duração visual independente dos pacotes
+
+packetAnimation.ts define AnimatedTransfer, uma cópia de WireTransfer acrescida
+de visualStart/visualDuration. O motor e a captura continuam recebendo o evento
+original com start/end e latência reais. O store mantém packetAnimationClock,
+avançado pelo dt real do loop existente em Flow, sem multiplicador de simulação.
+O relógio visual é preparado antes de avançar o Scheduler, para que transmissões
+geradas após uma lacuna longa recebam o instante visual atual e não expirem
+imediatamente. Não existem timers novos por pacote.
+
+PacketLayer usa esse relógio apenas para as bolinhas; os anéis de descarte do
+firewall continuam no relógio da simulação. Pause congela ambos. O limite de
+150 eventos permanece, e tick descarta animações visualmente expiradas, inclusive
+após intervalos longos de callbacks em segundo plano. Trocas de topologia e
+remoções continuam limpando as mesmas listas de apresentação.
+
+O slider Packet animation oferece velocidades 0.25×, 0.5×, 1× (padrão), 1.5×,
+2×, 3× e 4×, com duração visual de 1.000 ms / velocidade por enlace. Mudanças
+preservam a posição das bolinhas ativas e reajustam os saltos visuais pendentes.
+netlab:packet-animation-speed:v1 migra a antiga duração para a velocidade mais
+próxima. Não integra autosave, exportações ou histórico.
+
+Network mantém em WeakMap a transmissão pela qual cada payload chegou a um
+dispositivo. Link registra a chegada antes da entrega; o encaminhamento IPv4
+transfere explicitamente essa associação para a cópia final após TTL/NAT.
+Switches preservam a identidade do payload. Um terceiro argumento opcional de
+onWireTransfer comunica somente o ID predecessor; os quadros, WireTransfer e
+contextos de captura não recebem metadados. O próximo salto visual aguarda seu
+próprio predecessor, sem fila global e sem atrasar a transmissão real. Broadcasts
+podem gerar ramos simultâneos. Respostas são pacotes independentes: não existe
+correlação visual artificial entre solicitação e resposta.
+
+O limite de 150 eventos permanece; uma espera visual superior a 12 segundos é
+omitida. Se o predecessor não estiver mais retido, o salto anima independentemente.
+Assim a apresentação é limitada, não um replay completo sob tráfego intenso.
+O WeakMap pertence à Network e não retém payloads já descartados.
+
+PacketAnimationControl começa na toolbar e usa somente o handle para arrastar;
+setas no handle movem o widget, Home ou o botão de restauração devolvem-no à
+toolbar. packetAnimationWidget.ts valida e limita a posição à janela e persiste
+em netlab:packet-animation-widget:v1. O fallback initialPlacement permite definir
+uma posição inicial futura, sem integração com exercícios nesta etapa.
+
 ## NetLab-FiSI — ideias futuras
 
 - Expandir Undo/Redo para as demais configurações do Inspector, com

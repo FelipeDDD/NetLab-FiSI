@@ -1,7 +1,7 @@
 import { Scheduler } from './scheduler';
 import { Link } from './device';
 import type { Device, DeviceKind, NetInterface } from './device';
-import type { EthernetFrame } from './types';
+import type { EthernetFrame, FramePayload } from './types';
 
 // Emitted for every frame that crosses a link; the UI turns these into
 // animated packets travelling along the corresponding edge.
@@ -25,6 +25,9 @@ export interface WireFrameContext {
   toDeviceName: string;
 }
 
+// Presentation side channel only: never part of protocol data or capture context.
+export interface WireVisualTrace { parentTransferId: number }
+
 const NAME_PREFIX: Record<DeviceKind, string> = {
   host: 'pc',
   switch: 'sw',
@@ -38,7 +41,8 @@ export class Network {
   scheduler = new Scheduler();
   devices = new Map<string, Device>();
   links = new Map<string, Link>();
-  onWireTransfer: ((t: WireTransfer, context: WireFrameContext) => void) | null = null;
+  onWireTransfer: ((t: WireTransfer, context: WireFrameContext, visual?: WireVisualTrace) => void) | null = null;
+  private visualArrivals = new WeakMap<FramePayload, Map<string, number>>();
   // Fired when a declared firewall chain drops or rejects a packet — the UI
   // flashes the device so students see *where* traffic died.
   onFwDrop: ((deviceId: string) => void) | null = null;
@@ -130,7 +134,18 @@ export class Network {
     return iface.device;
   }
 
-  emitWire(link: Link, from: Device, to: Device, frame: EthernetFrame): void {
+  recordVisualArrival(payload: FramePayload, deviceId: string, transferId: number | undefined): void {
+    if (transferId === undefined) return;
+    let arrivals = this.visualArrivals.get(payload);
+    if (!arrivals) { arrivals = new Map(); this.visualArrivals.set(payload, arrivals); }
+    arrivals.set(deviceId, transferId);
+  }
+
+  inheritVisualArrival(original: FramePayload, forwarded: FramePayload, deviceId: string): void {
+    this.recordVisualArrival(forwarded, deviceId, this.visualArrivals.get(original)?.get(deviceId));
+  }
+
+  emitWire(link: Link, from: Device, to: Device, frame: EthernetFrame): number | undefined {
     if (!this.onWireTransfer) return;
     const source = link.a.device === from ? link.a : link.b;
     const destination = link.other(source);
@@ -144,12 +159,16 @@ export class Network {
       end: this.scheduler.now + link.latency,
     };
     try {
-      this.onWireTransfer(transfer, {
+      const context = {
         frame, fromInterface: source.name, toInterface: destination.name,
         fromDeviceName: from.name, toDeviceName: to.name,
-      });
+      };
+      const parentTransferId = this.visualArrivals.get(frame.payload)?.get(from.id);
+      if (parentTransferId === undefined) this.onWireTransfer(transfer, context);
+      else this.onWireTransfer(transfer, context, { parentTransferId });
     } catch {
       // Observation must never prevent Link.transmit from scheduling delivery.
     }
+    return transfer.id;
   }
 }

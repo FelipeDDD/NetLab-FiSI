@@ -680,6 +680,7 @@ export abstract class IpDevice extends Device {
       const trans = tupleOf(pkt);
       if (origTuple && trans) this.ct.confirm(origTuple, trans, now);
     }
+    this.network.inheritVisualArrival(pktIn, pkt, this.id);
     this.routePacket(pkt, route);
   }
 

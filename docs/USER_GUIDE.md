@@ -107,6 +107,23 @@ again. Other routers and running terminals keep working. Packets already in
 flight, caches and simulation time are not rewound. External incompatible
 configuration changes still clear history.
 
+**Packet animation** controls visual speed: 0.25×, 0.5×, 1× (default), 1.5×,
+2×, 3× or 4×. At 1× a dot takes one second per link; 0.5× takes two seconds,
+and 4× takes 0.25 seconds. The browser remembers your choice and migrates the
+previous duration preference to the closest speed. This is independent of
+**Simulation speed**, link latency, ping times and capture timestamps. Changing
+speed preserves current dot positions. Pause also freezes the dots.
+
+Drag the dotted handle to place this widget over the topology; its restore
+button returns it to the toolbar. With the handle focused, arrow keys move it
+and Home restores it. Position is remembered and kept inside the window.
+
+Identified forwarding hops animate in sequence, including switches and routers.
+Separate packets and replies remain independent; replies can begin before a
+request's visual path finishes. The display retains at most 150 events and
+omits waits beyond 12 seconds. Missing predecessors animate independently, so
+this is a bounded teaching visualization rather than a complete traffic replay.
+
 Use **Packets** in the main toolbar to open or close the Packet Inspector in
 the device Inspector's side area. Opening or closing the panel does not change
 capture, device selection or running terminals. On smaller screens the panel

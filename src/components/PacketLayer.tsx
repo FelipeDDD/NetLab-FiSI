@@ -1,6 +1,7 @@
 import { useViewport } from '@xyflow/react';
 import { useStore } from '../store';
 import { NODE_H, NODE_W } from './DeviceNode';
+import { packetAnimationProgress } from '../packetAnimation';
 
 const COLORS: Record<string, string> = {
   arp: '#f59e0b',
@@ -9,13 +10,14 @@ const COLORS: Record<string, string> = {
   udp: '#c084fc',
 };
 
-// Animated dots for frames in flight. Packets travel the centre line
-// between devices — the same line the floating edges are drawn on.
+// Identified forwarding hops wait for their own visual predecessor only.
+// Responses and unrelated packets remain independent of this presentation.
 export function PacketLayer() {
   const { x, y, zoom } = useViewport();
   const packets = useStore((s) => s.packets);
   const dropFlashes = useStore((s) => s.dropFlashes);
   const clock = useStore((s) => s.clock);
+  const animationClock = useStore((s) => s.packetAnimationClock);
   const nodes = useStore((s) => s.nodes);
 
   if (!packets.length && !dropFlashes.length) return null;
@@ -29,12 +31,12 @@ export function PacketLayer() {
   }
 
   const dots = packets
-    .filter((p) => clock >= p.start && clock <= p.end)
     .map((p) => {
+      const t = packetAnimationProgress(p, animationClock);
+      if (t === null) return null;
       const a = centers.get(p.fromDeviceId);
       const b = centers.get(p.toDeviceId);
       if (!a || !b) return null;
-      const t = (clock - p.start) / (p.end - p.start || 1);
       const px = a.x + (b.x - a.x) * t;
       const py = a.y + (b.y - a.y) * t;
       return <circle key={p.id} cx={px} cy={py} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;

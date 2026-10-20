@@ -4,6 +4,7 @@ import { useStore } from '../store';
 import { LABS } from '../labs/library';
 import { EXAMPLES } from '../labs/examples';
 import { FloatingPopover } from './FloatingPopover';
+import { PacketAnimationControl } from './PacketAnimationControl';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 
@@ -190,11 +191,13 @@ export function Toolbar() {
         />
       </div>
 
+      <PacketAnimationControl />
+
       <div className="toolbar-group sim-controls">
         <button className="btn" onClick={() => setPaused(!paused)} title={paused ? 'Resume' : 'Pause'}>
           {paused ? '▶ Run' : '⏸ Pause'}
         </button>
-        <select className="speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
+        <select className="speed" aria-label="Simulation speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
           <option value={0.25}>0.25×</option>
           <option value={0.5}>0.5×</option>
           <option value={1}>1×</option>

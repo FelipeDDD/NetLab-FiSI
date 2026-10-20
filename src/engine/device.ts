@@ -79,9 +79,12 @@ export class Link {
   transmit(from: NetInterface, frame: EthernetFrame): void {
     if (this.network.links.get(this.id) !== this || this.a.link !== this || this.b.link !== this) return;
     const to = this.other(from);
-    this.network.emitWire(this, from.device, to.device, frame);
+    const transferId = this.network.emitWire(this, from.device, to.device, frame);
     this.network.scheduler.schedule(this.latency, () => {
-      if (this.network.links.get(this.id) === this && to.link === this && to.up && !to.device.disposed) to.device.receiveFrame(to, frame);
+      if (this.network.links.get(this.id) === this && to.link === this && to.up && !to.device.disposed) {
+        this.network.recordVisualArrival(frame.payload, to.device.id, transferId);
+        to.device.receiveFrame(to, frame);
+      }
     }, this);
   }
 

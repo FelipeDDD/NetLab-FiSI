@@ -28,7 +28,13 @@ export const PacketDetails = memo(function PacketDetails({ packet, onClose }: { 
       <button type="button" className="mini-btn" aria-label="Close packet details" title="Close packet details" onClick={onClose}>×</button>
     </header>
     <p className="packet-hop">{packet.fromDeviceName} / {packet.fromInterface} → {packet.toDeviceName} / {packet.toInterface}</p>
-    <p className="hint">Link: {packet.linkId} · Devices: {packet.fromDeviceId} → {packet.toDeviceId}</p>
+    <details className="packet-technical">
+      <summary>Technical details</summary>
+      <dl>
+        <dt>Link ID</dt><dd>{packet.linkId}</dd>
+        <dt>Device IDs</dt><dd>{packet.fromDeviceId} → {packet.toDeviceId}</dd>
+      </dl>
+    </details>
     {packet.truncatedFields.length > 0 && <p className="packet-warning">Some captured text was truncated:
       {packet.truncatedFields.map((field) => <span key={field.path}>{field.path}: {field.capturedLength} of {field.originalLength} UTF-16 units</span>)}
     </p>}

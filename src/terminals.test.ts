@@ -16,6 +16,7 @@ import type { MoveOperation } from './topologyHistory';
 import { captureCreation, captureLink, dhcpSettings, sortedDnsRecords } from './topologyEdits';
 import { TAB_LAYOUT_KEY } from './terminalTabPreferences';
 import { PacketCapture } from './packetCapture';
+import { PACKET_ANIMATION_SPEED_KEY, packetAnimationDuration, packetAnimationProgress } from './packetAnimation';
 
 // Only the browser renderer is replaced. Commands, engine, store and persistence
 // run together so these tests cover the actual terminal-to-autosave path.
@@ -2269,6 +2270,86 @@ describe('Inspector server configuration history', () => {
     expect(b.dnsServer).not.toBeNull(); expect(store().topologyHistory.past).toEqual([]);
     store().setDnsRecords(b.id, '10.0.0.2 web.lan'); input(terminal, 'ip link set eth0 down\r'); expect(store().topologyHistory.past).toEqual([]);
     store().toggleDhcpServer(b.id); input(terminal, 'sysctl -w net.ipv4.ip_forward=1\r'); expect(store().topologyHistory.past).toEqual([]);
+  });
+});
+
+describe('independent packet animation', () => {
+  const store = () => useStore.getState();
+
+  it('uses the engine predecessor in the store while preserving concurrent sessions, capture and topology resets', () => {
+    const { a, b, net } = pair(), first = open(a), second = open(b);
+    store().onEdgesChange([{ type: 'remove', id: store().edges[0].id }]);
+    store().addDeviceAt('switch', { x: 100, y: 100 });
+    const relay = store().nodes.find((n) => n.data.kind === 'switch')!;
+    store().onConnect({ source: a.id, target: relay.id, sourceHandle: null, targetHandle: null });
+    store().onConnect({ source: b.id, target: relay.id, sourceHandle: null, targetHandle: null });
+    store().setPacketAnimationSpeed(1); store().startPacketCapture();
+    input(first, 'ping 10.0.0.2\r'); input(second, 'ping 10.0.0.1\r');
+    net.scheduler.advanceTo(800); vi.advanceTimersByTime(100);
+    const records = store().packetCapture.records;
+    const requests = records.filter((r) => r.frame.payload.kind === 'ipv4' && r.frame.payload.l4.kind === 'icmp' && r.frame.payload.l4.msg.type === 'echo-request');
+    expect(requests).toHaveLength(4);
+    for (const source of [a.id, b.id]) {
+      const start = requests.find((r) => r.fromDeviceId === source)!;
+      const parent = store().packets.find((p) => p.id === start.id)!;
+      const child = store().packets.find((p) => p.parentTransferId === parent.id)!;
+      expect(child.visualStart).toBe(parent.visualStart + parent.visualDuration);
+      expect(child.fromDeviceId).toBe(relay.id);
+    }
+    expect(getSession(a)).toBe(first); expect(getSession(b)).toBe(second);
+    expect(first.term.dispose).not.toHaveBeenCalled(); expect(second.term.dispose).not.toHaveBeenCalled();
+    const oldCallback = net.onWireTransfer!, oldPacket = store().packets[0];
+    store().newTopology();
+    oldCallback(oldPacket, { frame: records[0].frame, fromInterface: 'eth0', toInterface: 'eth0', fromDeviceName: a.name, toDeviceName: b.name });
+    expect(store().packets).toEqual([]);
+  });
+
+  it.each([0.5, 1, 4])('keeps ping and captured 80 ms link timing unchanged at %s× visual speed', (speed) => {
+    const { a, net } = pair(), session = open(a);
+    store().setPaused(false); store().setSpeed(1); store().setPacketAnimationSpeed(speed);
+    const history = store().topologyHistory; store().startPacketCapture();
+    input(session, 'ping -c 1 10.0.0.2\r');
+    for (let i = 0; i < 16; i++) store().tick(20);
+    expect(net.now).toBe(320); expect([...net.links.values()][0].latency).toBe(80);
+    expect(output(session)).toContain('time=320.0 ms'); expect(getSession(a)).toBe(session);
+    vi.advanceTimersByTime(100);
+    expect(store().packetCapture.records.map((r) => [r.start, r.end])).toEqual([[0, 80], [80, 160], [160, 240], [240, 320]]);
+    for (const captured of store().packetCapture.records) expect(captured).not.toHaveProperty('visualDuration');
+    expect(store().packets.length).toBeGreaterThan(0);
+    expect(store().packets.every((p) => p.visualDuration === packetAnimationDuration(speed))).toBe(true);
+    expect(store().topologyHistory).toBe(history);
+    expect(setItem.mock.calls.filter(([key]) => key === 'netsim:autosave:v1')).toHaveLength(0);
+  });
+
+  it('freezes on pause, keeps position during changes, ignores simulation speed and expires a bounded queue after background gaps', () => {
+    const { a, b, net } = pair(); store().setPaused(false); store().setSpeed(1); store().setPacketAnimationSpeed(1);
+    a.sendEcho(parseIp('10.0.0.2')!, 1, 1); net.onFwDrop!(a.id); store().tick(100);
+    const packet = store().packets[0], visualClock = store().packetAnimationClock, clock = net.now;
+    const progress = packetAnimationProgress(packet, visualClock), flashes = store().dropFlashes;
+    store().setPaused(true); store().tick(60000);
+    expect(net.now).toBe(clock); expect(store().packetAnimationClock).toBe(visualClock);
+    store().setPacketAnimationSpeed(0.5);
+    expect(packetAnimationProgress(store().packets[0], visualClock)).toBeCloseTo(progress!);
+    expect(store().dropFlashes).toBe(flashes); expect(flashes[0].until - flashes[0].start).toBe(700);
+    store().setPaused(false); store().setSpeed(4); store().tick(100);
+    expect(net.now - clock).toBe(400); expect(store().packetAnimationClock - visualClock).toBe(100);
+    const timers = vi.getTimerCount(), link = [...net.links.values()][0];
+    const frame = { srcMac: a.interfaces[0].mac, dstMac: b.interfaces[0].mac,
+      payload: { kind: 'arp' as const, op: 'request' as const, senderIp: 1, targetIp: 2, senderMac: a.interfaces[0].mac, targetMac: null } };
+    for (let i = 0; i < 200; i++) net.emitWire(link, a, b, frame);
+    expect(store().packets).toHaveLength(150); expect(vi.getTimerCount()).toBe(timers);
+    store().tick(60000); expect(store().packets).toEqual([]);
+    net.scheduler.schedule(50, () => net.emitWire(link, a, b, frame));
+    store().tick(60000);
+    expect(store().packets).toHaveLength(1);
+    expect(store().packets[0].visualStart).toBe(store().packetAnimationClock);
+    expect(packetAnimationProgress(store().packets[0], store().packetAnimationClock)).toBe(0);
+    store().tick(3000); expect(store().packets).toEqual([]);
+    store().setPacketAnimationSpeed(4); expect(store().packets).toEqual([]);
+    expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('4');
+    store().flushAutosave();
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!)).not.toHaveProperty('packetAnimationSpeed');
+    store().boot(); expect(store().packetAnimationSpeed).toBe(4);
   });
 });
 
