@@ -171,7 +171,8 @@ export abstract class IpDevice extends Device {
   dhcpListeners = new Set<(app: DhcpApp) => void>();
   ripEnabled = false;
   private ripRoutes: RipRoute[] = [];
-  private ripScheduled = false;
+  private ripTimer: ScheduledEvent | null = null;
+  private ripGeneration = 0;
 
   private pendingArp = new Map<U32, PendingArp>();
   private icmpListeners = new Map<number, (ev: IcmpEvent) => void>();
@@ -186,7 +187,8 @@ export abstract class IpDevice extends Device {
   override dispose(): void {
     super.dispose();
     this.ripEnabled = false;
-    this.ripScheduled = false;
+    this.ripTimer = null;
+    this.ripGeneration++;
     this.ripRoutes = [];
     this.pendingArp.clear();
     this.icmpListeners.clear();
@@ -251,21 +253,26 @@ export abstract class IpDevice extends Device {
   // ---------- RIP ----------
 
   enableRip(on: boolean): void {
+    if (this.disposed || this.ripEnabled === on) return;
     this.ripEnabled = on;
-    if (on && !this.ripScheduled) this.ripTick();
-    if (!on) this.ripRoutes = [];
+    const generation = ++this.ripGeneration;
+    if (this.ripTimer) this.network.scheduler.cancel(this.ripTimer);
+    this.ripTimer = null;
+    if (on) this.ripTick(generation);
+    else this.ripRoutes = [];
   }
 
-  private ripTick(): void {
-    if (!this.ripEnabled) {
-      this.ripScheduled = false;
-      return;
-    }
-    this.ripScheduled = true;
+  private ripTick(generation: number): void {
+    // A cancelled callback must not restart RIP or replace a newer timer.
+    if (this.disposed || !this.ripEnabled || generation !== this.ripGeneration) return;
+    this.ripTimer = null;
     for (const iface of this.interfaces) {
+      if (!this.ripEnabled || generation !== this.ripGeneration) return;
       if (iface.up && iface.link && iface.ip) this.advertiseRip(iface);
     }
-    this.schedule(RIP_INTERVAL_MS, () => this.ripTick());
+    if (this.ripEnabled && generation === this.ripGeneration) {
+      this.ripTimer = this.schedule(RIP_INTERVAL_MS, () => this.ripTick(generation));
+    }
   }
 
   private advertiseRip(iface: NetInterface): void {

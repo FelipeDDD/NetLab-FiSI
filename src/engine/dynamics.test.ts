@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Network } from './network';
 import { createDevice } from './factory';
 import { Host, RouterDevice, type IcmpEvent } from './ipdevice';
@@ -44,6 +44,45 @@ function ripChain(net: Network) {
 }
 
 describe('RIP', () => {
+  it('keeps one periodic timer and rejects stale callbacks across disable/re-enable cycles', () => {
+    const net = new Network(), router = createDevice(net, 'router') as RouterDevice;
+    const schedule = vi.spyOn(net.scheduler, 'schedule'), unrelated = vi.fn();
+    router.schedule(500, unrelated);
+    for (let i = 0; i < 5; i++) {
+      router.enableRip(true);
+      const stale = schedule.mock.results.at(-1)!.value;
+      router.enableRip(true); expect(net.scheduler.pending).toBe(2);
+      router.enableRip(false); expect(net.scheduler.pending).toBe(1);
+      stale.fn(); expect(net.scheduler.pending).toBe(1);
+      router.enableRip(true);
+      stale.fn(); expect(net.scheduler.pending).toBe(2);
+    }
+    net.scheduler.advanceTo(30_000);
+    expect(unrelated).toHaveBeenCalledOnce(); expect(net.scheduler.pending).toBe(1);
+    router.enableRip(false); expect(net.scheduler.pending).toBe(0);
+    router.dispose(); router.enableRip(true);
+    expect(router.ripEnabled).toBe(false); expect(net.scheduler.pending).toBe(0);
+    schedule.mockRestore();
+  });
+
+  it('ignores queued advertisements while disabled and reconverges without restarting its neighbour', () => {
+    const net = new Network(), { pc1, r1, r2 } = ripChain(net);
+    r1.enableRip(true); r2.enableRip(true);
+    // Both routers have advertisements in flight. Disabling one must not cancel
+    // the other router's events or allow an incoming packet to learn routes.
+    r1.enableRip(false); net.scheduler.advanceTo(30_000);
+    expect(r1.routes().some((r) => r.kind === 'rip')).toBe(false);
+    expect(r2.ripEnabled).toBe(true);
+    expect(r2.routes().some((r) => r.kind === 'rip')).toBe(true);
+    r1.enableRip(true);
+    expect(r1.routes().some((r) => r.kind === 'rip')).toBe(false);
+    net.scheduler.advanceTo(50_000);
+    expect(pingWorks(net, pc1, '172.16.0.20')).toBe(true);
+    r1.enableRip(false); net.scheduler.advanceTo(net.now + 60_000);
+    expect(r2.ripEnabled).toBe(true);
+    expect(r2.routes().some((r) => r.kind === 'rip')).toBe(false);
+  });
+
   it('learns remote networks and enables end-to-end ping', () => {
     const net = new Network();
     const { pc1, r1, r2 } = ripChain(net);

@@ -8,6 +8,37 @@ import { Shell } from './commands/shell';
 import { applyInspectorEdit, applyLinkEdit, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
 import type { InspectorOperation } from './topologyHistory';
 
+it('validates RIP state before replay, without replacing devices or touching other routers', () => {
+  const net = new Network(), router = createDevice(net, 'router') as IpDevice;
+  const neighbour = createDevice(net, 'router') as IpDevice, sw = createDevice(net, 'switch');
+  neighbour.enableRip(true);
+  const operation: InspectorOperation = { type: 'set-rip-enabled', label: 'Enable RIP', deviceId: router.id, before: false, after: true };
+  expect(applyInspectorEdit(net, operation, 'undo')).toBe(false);
+  expect(applyInspectorEdit(net, operation, 'redo')).toBe(true);
+  expect(applyInspectorEdit(net, operation, 'redo')).toBe(false);
+  expect(applyInspectorEdit(net, operation, 'undo')).toBe(true);
+  expect(net.scheduler.pending).toBe(1); expect(neighbour.ripEnabled).toBe(true);
+  expect(applyInspectorEdit(net, { ...operation, deviceId: sw.id }, 'redo')).toBe(false);
+  expect(applyInspectorEdit(net, { ...operation, deviceId: 'missing' }, 'redo')).toBe(false);
+  expect(net.devices.get(router.id)).toBe(router); expect(router.network).toBe(net);
+  router.dispose(); expect(applyInspectorEdit(net, operation, 'redo')).toBe(false);
+});
+
+it('validates HTTP creation against editable values rather than object property order', () => {
+  const net = new Network(), device = createDevice(net, 'server') as IpDevice;
+  const operation: InspectorOperation = { type: 'create-http-server', label: 'HTTP', deviceId: device.id,
+    after: { enabled: true, port: 80, body: 'Hello' } };
+  expect(applyInspectorEdit(net, operation, 'redo')).toBe(true);
+  device.httpServer = { body: 'Hello', port: 80, enabled: true };
+  expect(applyInspectorEdit(net, operation, 'undo')).toBe(true);
+  expect(device.httpServer).toBeNull();
+  expect(applyInspectorEdit(net, operation, 'undo')).toBe(false);
+  expect(applyInspectorEdit(net, operation, 'redo')).toBe(true);
+  device.httpServer!.body = 'Changed externally';
+  expect(applyInspectorEdit(net, operation, 'undo')).toBe(false);
+  expect(device.httpServer!.body).toBe('Changed externally');
+});
+
 it.each(['set-nameserver', 'tcp', 'udp', 'set-ssid', 'set-port-vlan'] as const)('replays %s only against the expected state, without replacing devices', (type) => {
   const net = new Network(), device = createDevice(net, type === 'set-ssid' ? 'ap' : type === 'set-port-vlan' ? 'switch' : 'host');
   const operation: InspectorOperation = type === 'set-nameserver'

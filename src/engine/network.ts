@@ -15,6 +15,16 @@ export interface WireTransfer {
   end: number;
 }
 
+// Borrowed protocol data at transmission time. Observers must not mutate frame;
+// consumers retaining it must take their own snapshot. No engine instances here.
+export interface WireFrameContext {
+  frame: EthernetFrame;
+  fromInterface: string;
+  toInterface: string;
+  fromDeviceName: string;
+  toDeviceName: string;
+}
+
 const NAME_PREFIX: Record<DeviceKind, string> = {
   host: 'pc',
   switch: 'sw',
@@ -28,7 +38,7 @@ export class Network {
   scheduler = new Scheduler();
   devices = new Map<string, Device>();
   links = new Map<string, Link>();
-  onWireTransfer: ((t: WireTransfer) => void) | null = null;
+  onWireTransfer: ((t: WireTransfer, context: WireFrameContext) => void) | null = null;
   // Fired when a declared firewall chain drops or rejects a packet — the UI
   // flashes the device so students see *where* traffic died.
   onFwDrop: ((deviceId: string) => void) | null = null;
@@ -122,7 +132,9 @@ export class Network {
 
   emitWire(link: Link, from: Device, to: Device, frame: EthernetFrame): void {
     if (!this.onWireTransfer) return;
-    this.onWireTransfer({
+    const source = link.a.device === from ? link.a : link.b;
+    const destination = link.other(source);
+    const transfer: WireTransfer = {
       id: ++this.wireCounter,
       linkId: link.id,
       fromDeviceId: from.id,
@@ -130,6 +142,14 @@ export class Network {
       kind: frame.payload.kind === 'arp' ? 'arp' : frame.payload.l4.kind,
       start: this.scheduler.now,
       end: this.scheduler.now + link.latency,
-    });
+    };
+    try {
+      this.onWireTransfer(transfer, {
+        frame, fromInterface: source.name, toInterface: destination.name,
+        fromDeviceName: from.name, toDeviceName: to.name,
+      });
+    } catch {
+      // Observation must never prevent Link.transmit from scheduling delivery.
+    }
   }
 }

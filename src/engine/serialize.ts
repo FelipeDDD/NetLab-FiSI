@@ -108,7 +108,7 @@ export function serializeNetwork(
       if (ipd.dnsServer) {
         saved.dnsServer = {
           enabled: ipd.dnsServer.enabled,
-          records: [...ipd.dnsServer.records.entries()].map(([n, a]) => [n, ipToString(a)]),
+          records: [...ipd.dnsServer.records.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([n, a]) => [n, ipToString(a)]),
         };
       }
       if (ipd.httpServer) {

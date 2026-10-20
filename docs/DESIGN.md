@@ -383,7 +383,7 @@ Inspector, mudanças de nós por API e exclusões do editor usam a mesma ação
 completa e retorna false, impedindo que os callbacks separados removam primeiro
 os cabos e dividam o gesto em entradas diferentes. Notificações redundantes de
 remoção não criam novas entradas. A ordem visual original é restaurada pelos
-índices dos nós. Comandos e configurações avançadas do Inspector seguem fora do histórico.
+índices dos nós. Comandos e configurações ainda não integradas seguem fora do histórico.
 
 O Undo prepara apenas os dispositivos excluídos numa rede temporária isolada,
 confere configurações restauradas, MACs, IDs, portas e latências de todo o lote
@@ -447,8 +447,116 @@ isolado por VLAN. A mesma lógica atende portas de APs, que também são bridges
 Os quatro campos usam useInspectorDraft com identidade estável por dispositivo
 e campo/porta. O valor atual é consultado no motor antes do commit, preservando
 a política da etapa 4 para foco, conflitos externos e rascunhos. Configurações
-de servidores DHCP/DNS/HTTP, RIP, firewall, rotas e comandos continuam fora do
+de firewall, rotas e comandos continuam fora do
 histórico. As preferências e o formato de arquivo permanecem compatíveis.
+
+### Undo/Redo — etapa 6: servidores DHCP, DNS e HTTP
+
+Criação de configuração tem entradas próprias (`create-dhcp-server`,
+`create-dns-server`, `create-http-server`): ausência é implícita e somente os
+defaults editáveis são guardados. Undo valida todos esses campos e remove a
+configuração; Redo requer ausência e a recria com dados independentes. Não são
+snapshots do dispositivo ou da Network. DHCP recriado usa leases vazios.
+
+`set-server-enabled` guarda apenas os dois booleanos e o serviço envolvido,
+preservando o objeto de configuração e seu estado dinâmico. Edições DHCP guardam
+somente o campo e valores escalares; router/DNS admitem null, ranges exigem IPv4.
+Os leases atuais não participam da validação ou restauração desses campos.
+Registros DNS são arrays independentes ordenados por nome; case e duplicatas
+seguem a validação existente (minúsculas, último valor vence). Ordenação,
+comentários e espaços equivalentes não limpam Redo. A serialização também ordena
+os registros para evitar invalidações provocadas apenas pela ordem do Map.
+HTTP porta e corpo têm entradas separadas; o corpo preserva exatamente espaços,
+Unicode e quebras de linha. Nenhuma alteração agenda ou reproduz tráfego.
+
+`isInspectorOperation` identifica as operações tipadas do Inspector no histórico
+único; replay valida existência e valor esperado antes de alterar somente o campo
+alvo. Comandos permanecem fora do histórico, com invalidação segura para
+mudanças incompatíveis. Sessões, conexões, caches e relógio não são restaurados.
+Inputs DHCP/HTTP e textareas DNS/HTTP reutilizam useInspectorDraft, com chaves
+estáveis por serviço/campo e leitura do motor antes do commit. Textareas confirmam
+somente no blur; Enter é uma nova linha. Remover a configuração remove seus
+campos; em alterações de valores com campos presentes, o foco é preservado.
+
+### Undo/Redo — etapa 7: RIP
+
+`set-rip-enabled` guarda dispositivo e booleanos anterior/posterior no histórico
+existente de 50 operações. Inspector usa prepareEdit/commitEdit; replay valida
+o valor atual e chama enableRip no mesmo objeto, seguido de refresh e autosave.
+O checkbox já é controlado pelo estado do motor e acompanha esse refresh.
+Não há snapshots de rotas dinâmicas, caches, tráfego ou relógio. Mudanças externas
+incompatíveis continuam invalidando o histórico; comandos não ganham Undo/Redo.
+
+Antes desta etapa, desativar RIP deixava seu tick pendente e uma reativação rápida
+esperava esse evento antigo para anunciar. Agora cada dispositivo mantém um único
+timer cancelável de RIP e uma geração para rejeitar callbacks obsoletos, inclusive
+após reativação ou descarte. Desativar cancela apenas esse timer e limpa as rotas
+aprendidas, preservando outros eventos e roteadores. Reativar anuncia imediatamente
+e agenda o próximo tick, mantendo intervalo, split horizon, métricas e expiração
+existentes. Chamadas sem mudança de estado não reagendam anúncios. Quadros já
+transmitidos não são cancelados: o receptor os trata conforme seu estado atual;
+um roteador com RIP desativado não aprende esses anúncios. A convergência ocorre
+normalmente, sem restaurar artificialmente tabelas antigas.
+
+### Packet Inspector — etapa 1: observação e captura em memória
+
+Network.onWireTransfer mantém WireTransfer para as animações e recebe também
+WireFrameContext: quadro completo emprestado, nomes dos dispositivos e interfaces
+de origem/destino. Observadores não devem alterar o quadro. Há uma observação
+por transmissão em Link.transmit, antes da entrega agendada; não é confirmação
+de recebimento. Exceções do observador não impedem o agendamento da entrega.
+
+PacketCapture é independente de sistema operacional, componentes React e motor:
+retém somente dados copiados, sem instâncias de dispositivos, interfaces ou cabos.
+O store expõe packetCapture e start/pause/resume/stop/clearPacketCapture. Start
+inicia um trace vazio (todos os enlaces ou linkId); pause e stop publicam o lote
+pendente e mantêm registros; resume só retoma pausa; clear mantém estado e escopo.
+Um enlace inexistente no início é ignorado pelo store, sem apagar o trace atual.
+
+Há até 1.000 registros publicados e até 1.000 pendentes; descartes por ambos os
+limites são contabilizados sem duplicação. O snapshot publicado é compartilhado
+com Zustand; o buffer pendente contém somente observações ainda não publicadas.
+Um único setTimeout real de 100 ms por lote publica as mudanças, independente do
+relógio virtual. Captura parada/pausada ou enlace fora do escopo não clona quadros.
+Textos são limitados a 16.384 unidades UTF-16 por campo sem dividir pares surrogate;
+truncatedFields informa caminho, tamanho original e capturado. Não são bytes de
+rede. Arrays de protocolo não têm truncamento adicional nesta etapa.
+
+Remover objetos não remove registros históricos. Trocar efetivamente de Network
+reinicia a captura parada, cancela lotes e desconecta os callbacks anteriores;
+callbacks retidos também verificam a identidade da rede. Animações continuam
+usando seu limite e expiração próprios. Capturas não integram currentSave,
+serializeNetwork ou topologyHistory e não disparam autosave. Nenhuma interface
+visual ou classificação/filtro de protocolos foi adicionada nesta etapa.
+
+### Packet Inspector — etapa 2: painel lateral
+
+O botão Packets alterna packetInspectorOpen (estado somente de interface, fora
+do autosave). App mantém Flow e TerminalDock na mesma posição na árvore React;
+o Inspector de dispositivo permanece montado com hidden enquanto os pacotes
+ocupam sua região lateral. Seleções de nós e cabos não são alteradas. Em telas
+até 1.000 px, o painel sobrepõe a área principal, sem cobrir o dock de terminais.
+Ao abrir, o título recebe foco; Escape ou fechar devolvem foco ao botão Packets.
+
+PacketInspector usa somente packetCapture e as ações existentes; abrir/fechar
+não inicia nem interrompe captura. Start inicia captura global nova; Pause e
+Resume conservam registros; Stop conserva registros e habilita novo Start;
+Clear limpa registros sem mudar o estado da captura. O estado da simulação é
+independente. Não há seleção de cabo nem filtros nesta interface.
+
+packetPresentation interpreta as uniões reais do motor para resumos e camadas,
+com endereços numéricos formatados como IPv4. Endereços de protocolo na tabela
+são separados dos vizinhos e interfaces do enlace nos detalhes. HTTP é texto
+escapado pelo React; objetos aninhados são JSON formatado. Não são inferidos
+bytes, checksums, sequência TCP nem headers ausentes. Truncamentos são indicados.
+
+Somente 50 linhas são montadas por página; PacketRow e PacketDetails usam memo.
+Página e seleção referenciam os próprios registros, sem cópia do histórico.
+O primeiro registro da página ancora a leitura durante lotes e descartes dos
+registros anteriores. Se a seleção expirar, detalhes mostram aviso; IDs iguais
+numa nova topologia não selecionam registros novos acidentalmente. Não há
+rolagem automática para o fim. Fechado, o conteúdo da tabela é desmontado e não
+assina lotes; a pequena camada externa conserva seleção/página para reabertura.
 
 ## NetLab-FiSI — ideias futuras
 

@@ -71,8 +71,7 @@ files remain compatible. F5 restores the topology, without restoring history or
 opening terminal sessions. A running lab check is cancelled on device deletion;
 use Check again after restoration to obtain fresh results.
 The shortcuts leave terminals, text inputs, editable areas and settings controls
-alone. DHCP/DNS/HTTP server configuration, RIP, firewall and routes
-remain outside history, as do terminal commands. Changing configuration through
+alone. Firewall and route edits remain outside history, as do terminal commands. Changing configuration through
 a command still clears incompatible history.
 
 Inspector name/address fields follow Undo/Redo and external changes without
@@ -84,6 +83,51 @@ Nameserver, extra ports, SSID and VLAN fields use the same draft protection.
 Changing an access VLAN (including Undo/Redo) discards MAC entries learned on
 that port and lets traffic relearn them; unrelated entries are retained. It
 does not restore an old MAC table or rewind packets or the simulation clock.
+
+DHCP, DNS and HTTP server settings also support Undo/Redo. Enabling an absent
+server creates its defaults; Undo removes that configuration, and Redo recreates
+the same defaults. Existing servers keep their configuration when enabled or
+disabled. DHCP range, advertised router/DNS, DNS A records, HTTP port and response
+body each commit as one edit. Multiline textareas commit on blur, allowing Enter
+to add lines. DNS names are case insensitive; record order, comments and spacing
+do not create edits when the resulting records are unchanged. Duplicate names
+retain the last value, matching the existing editor validation.
+
+DHCP leases are runtime state: editing fields or enabling/disabling an existing
+server preserves current leases. Removing a newly created configuration discards
+its leases; Redo starts a fresh empty lease table. Client addresses, cached
+answers, open connections, transmitted packets and pending traffic are not
+rewound or replayed. Service inputs and textareas use the same stale-draft
+protection as the basic Inspector fields.
+
+The Inspector's RIP checkbox also supports Undo/Redo. Only the enabled setting
+is restored: disabling RIP cancels its periodic announcement and clears learned
+RIP routes; enabling it starts one announcement cycle and lets routes converge
+again. Other routers and running terminals keep working. Packets already in
+flight, caches and simulation time are not rewound. External incompatible
+configuration changes still clear history.
+
+Use **Packets** in the main toolbar to open or close the Packet Inspector in
+the device Inspector's side area. Opening or closing the panel does not change
+capture, device selection or running terminals. On smaller screens the panel
+overlays the main editor area; the terminal dock stays accessible. Close it
+with its × button, the toolbar button or Escape while focused inside the panel.
+
+**Start capture** begins a new global trace; **Pause capture** freezes collection
+without pausing the simulation, and **Resume capture** continues it. **Stop capture**
+retains the trace; starting again clears it. **Clear records** removes the trace
+without changing capture status. The counter shows up to 1,000 retained records
+and how many were discarded by the limit. Captures are in memory only and reset
+when a different topology is loaded or the page is refreshed.
+
+The table shows simulated time, protocol addresses and a summary, 50 rows per
+page. Select a row or activate its time button to inspect Ethernet, ARP/IPv4,
+transport and application fields. Link neighbours and interfaces appear in
+details, separately from IP/MAC addresses. HTTP bodies are inert text. Missing
+wire fields are not invented; truncated captured text is marked. These records
+describe transmissions, not guaranteed delivery. New records do not scroll the
+table to the end; expired selections show a notice. Cable capture controls and
+protocol filters are not part of this first interface.
 
 Use the compact **⚙ Settings** chip at the dock's upper-left edge (accessible
 name: **Terminal settings**). It floats at the edge instead of using a toolbar

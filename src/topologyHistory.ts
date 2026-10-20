@@ -1,4 +1,5 @@
 import type { SavedDevice, SavedLink } from './engine/serialize';
+import type { DhcpServerConfig, HttpServerConfig } from './engine/ipdevice';
 
 export const TOPOLOGY_HISTORY_LIMIT = 50;
 export type Point = { x: number; y: number };
@@ -8,6 +9,11 @@ export type MoveOperation = { type: 'move-nodes'; label: string; changes: NodeMo
 export type HistoryLink = SavedLink & { latency: number };
 export type CreatedDevice = { saved: SavedDevice; macs: Record<string, string>; index: number };
 export type InterfaceIp = { addr: number; prefix: number } | null;
+export type DhcpSettings = Omit<DhcpServerConfig, 'leases'>;
+export type DnsRecords = [string, number][];
+export type DhcpFieldEdit =
+  | { field: 'rangeStart' | 'rangeEnd'; before: number; after: number }
+  | { field: 'router' | 'dns'; before: number | null; after: number | null };
 export type InspectorOperation =
   | { type: 'rename-device'; label: string; deviceId: string; before: string; after: string }
   | { type: 'set-iface-ip'; label: string; deviceId: string; ifaceName: string; before: InterfaceIp; after: InterfaceIp }
@@ -15,6 +21,15 @@ export type InspectorOperation =
   | { type: 'set-services'; label: string; deviceId: string; proto: 'tcp' | 'udp'; before: number[]; after: number[] }
   | { type: 'set-ssid'; label: string; deviceId: string; before: string; after: string }
   | { type: 'set-port-vlan'; label: string; deviceId: string; port: string; before: number; after: number }
+  | { type: 'create-dhcp-server'; label: string; deviceId: string; after: DhcpSettings }
+  | { type: 'create-dns-server'; label: string; deviceId: string; after: { enabled: boolean; records: DnsRecords } }
+  | { type: 'create-http-server'; label: string; deviceId: string; after: HttpServerConfig }
+  | { type: 'set-server-enabled'; label: string; deviceId: string; server: 'dhcpServer' | 'dnsServer' | 'httpServer'; before: boolean; after: boolean }
+  | ({ type: 'set-dhcp-field'; label: string; deviceId: string } & DhcpFieldEdit)
+  | { type: 'set-dns-records'; label: string; deviceId: string; before: DnsRecords; after: DnsRecords }
+  | { type: 'set-http-port'; label: string; deviceId: string; before: number; after: number }
+  | { type: 'set-http-body'; label: string; deviceId: string; before: string; after: string }
+  | { type: 'set-rip-enabled'; label: string; deviceId: string; before: boolean; after: boolean }
   | { type: 'set-iface-state'; label: string; deviceId: string; ifaceName: string; before: boolean; after: boolean };
 export const sameInterfaceIp = (a: InterfaceIp, b: InterfaceIp) => a === b || (!!a && !!b && a.addr === b.addr && a.prefix === b.prefix);
 export const sortedServicePorts = (ports: Iterable<number>): number[] => [...new Set(ports)].sort((a, b) => a - b);
@@ -27,6 +42,7 @@ export type TopologyOperation = MoveOperation
   | { type: 'add-links' | 'remove-links'; label: string; links: HistoryLink[] }
   | { type: 'delete-devices'; label: string; devices: CreatedDevice[]; links: HistoryLink[]; colors: Record<string, string> }
   | { type: 'create-device'; label: string; device: CreatedDevice };
+export const isInspectorOperation = (operation: TopologyOperation): operation is InspectorOperation => 'deviceId' in operation;
 export interface TopologyHistory { past: TopologyOperation[]; future: TopologyOperation[] }
 export const emptyTopologyHistory = (): TopologyHistory => ({ past: [], future: [] });
 export const samePoint = (a: Point, b: Point) => a.x === b.x && a.y === b.y;

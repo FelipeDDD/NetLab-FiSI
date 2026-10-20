@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useStore } from '../store';
 import { sim } from '../sim';
 import { IpDevice } from '../engine/ipdevice';
@@ -9,6 +9,7 @@ import { formatConntrack } from '../commands/shell';
 import { listRuleset } from '../engine/firewall-fmt';
 import { CopyIpButton } from './CopyIpButton';
 import { newInspectorDraft, syncInspectorDraft } from '../inspectorDraft';
+import { sortedDnsRecords } from '../topologyEdits';
 import { sortedServicePorts } from '../topologyHistory';
 
 function useInspectorDraft(identity: string, value: string, readCurrent: () => string | undefined,
@@ -60,176 +61,95 @@ function servicePortsValue(deviceId: string, proto: 'tcp' | 'udp'): string | und
   return device instanceof IpDevice ? sortedServicePorts(device.services[proto]).join(', ') : undefined;
 }
 
-// A small controlled input that commits on blur/Enter and reverts on error.
-function CommitInput({
-  value,
-  placeholder,
-  onCommit,
-  mono = true,
-  width,
-}: {
-  value: string;
-  placeholder?: string;
-  onCommit: (text: string) => string | null | void;
-  mono?: boolean;
-  width?: number | string;
+function InspectorSettingTextarea({ identity, value, readCurrent, onCommit, label, placeholder }: {
+  identity: string; value: string; readCurrent: () => string | undefined;
+  onCommit: (text: string) => string | null | void; label: string; placeholder?: string;
 }) {
-  const setNotice = useStore((s) => s.setNotice);
-  const [text, setText] = useState(value);
-  const commit = () => {
-    if (text.trim() === value) return;
-    const err = onCommit(text) ?? null;
-    if (err) {
-      setNotice(err);
-      setText(value);
-    }
-  };
-  return (
-    <input
-      className="iface-ip"
-      style={{ fontFamily: mono ? undefined : 'inherit', width }}
-      placeholder={placeholder}
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-      }}
-    />
-  );
+  const draft = useInspectorDraft(identity, value, readCurrent, onCommit);
+  return <textarea className="svc-textarea" aria-label={label} placeholder={placeholder}
+    value={draft.value} onChange={(e) => draft.onChange(e.target.value)} onBlur={draft.commit} />;
+}
+
+function dhcpFieldValue(id: string, field: 'rangeStart' | 'rangeEnd' | 'router' | 'dns'): string | undefined {
+  const d = sim.net.devices.get(id), c = d instanceof IpDevice ? d.dhcpServer : null;
+  return c ? c[field] === null ? '' : ipToString(c[field]) : undefined;
+}
+function dnsRecordsValue(id: string): string | undefined {
+  const d = sim.net.devices.get(id), c = d instanceof IpDevice ? d.dnsServer : null;
+  return c ? sortedDnsRecords(c.records).map(([name, addr]) => ipToString(addr) + ' ' + name).join('\n') : undefined;
 }
 
 function DhcpPanel({ device }: { device: IpDevice }) {
-  const toggle = useStore((s) => s.toggleDhcpServer);
-  const setField = useStore((s) => s.setDhcpField);
+  const toggle = useStore((s) => s.toggleDhcpServer), setField = useStore((s) => s.setDhcpField);
   const cfg = device.dhcpServer;
   return (
     <details className="svc" open={cfg?.enabled}>
-      <summary>
-        DHCP server <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{cfg?.enabled ? 'on' : 'off'}</span>
-      </summary>
+      <summary>DHCP server <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{cfg?.enabled ? 'on' : 'off'}</span></summary>
       <label className="svc-toggle">
         <input type="checkbox" checked={cfg?.enabled ?? false} onChange={() => toggle(device.id)} />
         serve leases on this device
       </label>
-      {cfg && (
-        <>
-          <div className="svc-grid">
-            <span>range</span>
-            <CommitInput
-              key={device.id + ipToString(cfg.rangeStart)}
-              value={ipToString(cfg.rangeStart)}
-              onCommit={(t) => setField(device.id, 'rangeStart', t)}
-            />
-            <span>to</span>
-            <CommitInput
-              key={device.id + ipToString(cfg.rangeEnd)}
-              value={ipToString(cfg.rangeEnd)}
-              onCommit={(t) => setField(device.id, 'rangeEnd', t)}
-            />
-            <span>router</span>
-            <CommitInput
-              key={device.id + (cfg.router ?? 'r')}
-              value={cfg.router !== null ? ipToString(cfg.router) : ''}
-              placeholder="none advertised"
-              onCommit={(t) => setField(device.id, 'router', t)}
-            />
-            <span>dns</span>
-            <CommitInput
-              key={device.id + (cfg.dns ?? 'd')}
-              value={cfg.dns !== null ? ipToString(cfg.dns) : ''}
-              placeholder="none advertised"
-              onCommit={(t) => setField(device.id, 'dns', t)}
-            />
-          </div>
-          {cfg.leases.size > 0 && (
-            <pre className="table-pre">
-              {[...cfg.leases.entries()].map(([mac, ip]) => `${ipToString(ip)}  ${mac}\n`).join('')}
-            </pre>
-          )}
-          <span className="hint">Clients run `dhclient` to get a lease.</span>
-        </>
-      )}
+      {cfg && <>
+        <div className="svc-grid">
+          {(['rangeStart', 'rangeEnd', 'router', 'dns'] as const).map((field) => <Fragment key={field}>
+            <span>{field === 'rangeStart' ? 'range' : field === 'rangeEnd' ? 'to' : field}</span>
+            <InspectorSettingInput identity={device.id + ':dhcp:' + field} label={'DHCP ' + field}
+              value={dhcpFieldValue(device.id, field) ?? ''}
+              readCurrent={() => dhcpFieldValue(device.id, field)}
+              placeholder={field === 'router' || field === 'dns' ? 'none advertised' : undefined}
+              onCommit={(text) => setField(device.id, field, text)} />
+          </Fragment>)}
+        </div>
+        {cfg.leases.size > 0 && <pre className="table-pre">{[...cfg.leases.entries()].map(([mac, ip]) => mac + '  ' + ipToString(ip) + '\n').join('')}</pre>}
+        <span className="hint">Clients run &#96;dhclient&#96; to get a lease.</span>
+      </>}
     </details>
   );
 }
 
 function DnsPanel({ device }: { device: IpDevice }) {
-  const toggle = useStore((s) => s.toggleDnsServer);
-  const setRecords = useStore((s) => s.setDnsRecords);
-  const setNotice = useStore((s) => s.setNotice);
+  const toggle = useStore((s) => s.toggleDnsServer), setRecords = useStore((s) => s.setDnsRecords);
   const cfg = device.dnsServer;
-  const current = cfg
-    ? [...cfg.records.entries()].map(([n, a]) => `${ipToString(a)} ${n}`).join('\n')
-    : '';
-  const [text, setText] = useState(current);
   return (
     <details className="svc" open={cfg?.enabled}>
-      <summary>
-        DNS server <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{cfg?.enabled ? 'on' : 'off'}</span>
-      </summary>
+      <summary>DNS server <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{cfg?.enabled ? 'on' : 'off'}</span></summary>
       <label className="svc-toggle">
         <input type="checkbox" checked={cfg?.enabled ?? false} onChange={() => toggle(device.id)} />
         answer A-record queries on udp/53
       </label>
-      {cfg && (
-        <>
-          <textarea
-            className="svc-textarea"
-            placeholder={'records, /etc/hosts style:\n10.0.0.20 web.lan'}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onBlur={() => {
-              if (text === current) return;
-              const err = setRecords(device.id, text);
-              if (err) {
-                setNotice(err);
-                setText(current);
-              }
-            }}
-          />
-          <span className="hint">One record per line: &lt;ip&gt; &lt;name&gt; — query with `dig`.</span>
-        </>
-      )}
+      {cfg && <>
+        <InspectorSettingTextarea identity={device.id + ':dns:records'} label="DNS A records"
+          placeholder={'records, /etc/hosts style:\n10.0.0.20 web.lan'}
+          value={dnsRecordsValue(device.id) ?? ''} readCurrent={() => dnsRecordsValue(device.id)}
+          onCommit={(text) => setRecords(device.id, text)} />
+        <span className="hint">One record per line: &lt;ip&gt; &lt;name&gt; ? query with &#96;dig&#96;.</span>
+      </>}
     </details>
   );
 }
 
 function HttpPanel({ device }: { device: IpDevice }) {
-  const toggle = useStore((s) => s.toggleHttpServer);
-  const setPort = useStore((s) => s.setHttpPort);
-  const setBody = useStore((s) => s.setHttpBody);
+  const toggle = useStore((s) => s.toggleHttpServer), setPort = useStore((s) => s.setHttpPort), setBody = useStore((s) => s.setHttpBody);
   const cfg = device.httpServer;
-  const [body, setBodyText] = useState(cfg?.body ?? '');
   return (
     <details className="svc" open={cfg?.enabled}>
-      <summary>
-        Web server <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{cfg?.enabled ? 'on' : 'off'}</span>
-      </summary>
+      <summary>Web server <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{cfg?.enabled ? 'on' : 'off'}</span></summary>
       <label className="svc-toggle">
         <input type="checkbox" checked={cfg?.enabled ?? false} onChange={() => toggle(device.id)} />
         serve HTTP
       </label>
-      {cfg && (
-        <>
-          <div className="svc-grid">
-            <span>port</span>
-            <CommitInput
-              key={device.id + cfg.port}
-              value={String(cfg.port)}
-              onCommit={(t) => setPort(device.id, t)}
-              width={70}
-            />
-          </div>
-          <textarea
-            className="svc-textarea"
-            value={body}
-            onChange={(e) => setBodyText(e.target.value)}
-            onBlur={() => setBody(device.id, body)}
-          />
-          <span className="hint">Fetch it with `curl http://&lt;address&gt;/`.</span>
-        </>
-      )}
+      {cfg && <>
+        <div className="svc-grid">
+          <span>port</span>
+          <InspectorSettingInput identity={device.id + ':http:port'} label="HTTP port" value={String(cfg.port)} width={70}
+            readCurrent={() => { const d = sim.net.devices.get(device.id); return d instanceof IpDevice && d.httpServer ? String(d.httpServer.port) : undefined; }}
+            onCommit={(text) => setPort(device.id, text)} />
+        </div>
+        <InspectorSettingTextarea identity={device.id + ':http:body'} label="HTTP response body" value={cfg.body}
+          readCurrent={() => { const d = sim.net.devices.get(device.id); return d instanceof IpDevice ? d.httpServer?.body : undefined; }}
+          onCommit={(text) => setBody(device.id, text)} />
+        <span className="hint">Fetch it with &#96;curl http://&lt;address&gt;/&#96;.</span>
+      </>}
     </details>
   );
 }
@@ -294,7 +214,7 @@ function IfaceRow({ deviceId, ifaceName }: { deviceId: string; ifaceName: string
   );
 }
 
-export function Inspector() {
+export function Inspector({ hidden = false }: { hidden?: boolean }) {
   const selected = useStore((s) => s.selected);
   const deleteDevice = useStore((s) => s.deleteDevice);
   const openTerminal = useStore((s) => s.openTerminal);
@@ -309,7 +229,7 @@ export function Inspector() {
   const swd = device instanceof SwitchDevice ? device : null;
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" hidden={hidden}>
       <div className="inspector-head">
         <DeviceName key={device.id} deviceId={device.id} name={device.name} />
         <span className={`inspector-kind kind-${device.kind}`}>{device.kind}</span>

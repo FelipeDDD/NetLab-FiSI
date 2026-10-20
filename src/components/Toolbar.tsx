@@ -64,6 +64,7 @@ export function Toolbar() {
   const setNotice = useStore((s) => s.setNotice);
   const fileRef = useRef<HTMLInputElement>(null);
   const history = useStore((s) => s.topologyHistory);
+  const packetInspectorOpen = useStore((s) => s.packetInspectorOpen);
   const closeExport = (open: boolean) => {
     setExportOpen(open);
     if (!open) exportRef.current?.focus({ preventScroll: true });
@@ -102,6 +103,11 @@ export function Toolbar() {
         </button>
         <button className="btn" onClick={() => loadDemo()}>
           Demo
+        </button>
+        <button id="packets-toggle" className="btn packets-toggle" aria-expanded={packetInspectorOpen}
+          aria-controls={packetInspectorOpen ? 'packet-inspector' : undefined}
+          onClick={() => useStore.getState().setPacketInspectorOpen(!packetInspectorOpen)}>
+          Packets
         </button>
         <div className="labs-menu-wrap">
           <button ref={labsRef} className="btn" aria-haspopup="menu" aria-expanded={labsOpen} aria-controls={labsOpen ? 'toolbar-labs-menu' : undefined}

@@ -33,3 +33,13 @@ it.each([['nameserver', '192.0.2.53', ''], ['tcp', '22, 443', '80'], ['ssid', 'L
     expect(syncInspectorDraft(external, 'other-device:' + field, after)).toEqual(newInspectorDraft('other-device:' + field, after));
   },
 );
+
+it.each(['dns:records', 'http:body'])('preserves multiline %s drafts and detects conflicting confirmed changes', (field) => {
+  const identity = `server:${field}`, source = 'first line\nsecond line\n';
+  const dirty = { ...newInspectorDraft(identity, source), text: '  editing 🌐\n\nmore text\n' };
+  expect(syncInspectorDraft(dirty, identity, source)).toBe(dirty);
+  const changed = syncInspectorDraft(dirty, identity, 'restored value\n');
+  expect(changed.text).toBe(dirty.text); expect(changed.stale).toBe(true);
+  expect(syncInspectorDraft(newInspectorDraft(identity, source), identity, '')).toEqual(newInspectorDraft(identity, ''));
+  expect(syncInspectorDraft(dirty, `other-server:${field}`, 'other body')).toEqual(newInspectorDraft(`other-server:${field}`, 'other body'));
+});

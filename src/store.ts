@@ -3,6 +3,7 @@ import { applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import type { Connection, Edge, EdgeChange, Node, NodeChange } from '@xyflow/react';
 import LZString from 'lz-string';
 import { Network, type WireTransfer } from './engine/network';
+import { PacketCapture, type PacketCaptureState } from './packetCapture';
 import { createDevice } from './engine/factory';
 import { IpDevice } from './engine/ipdevice';
 import type { DeviceKind } from './engine/device';
@@ -29,8 +30,8 @@ import { applyPanelPreferences, readPanelPreferences, rememberPanelPreferences, 
 import { forgetSavedTabs, insertSavedTab, mergeTabLayouts, readTabLayouts, TAB_LAYOUT_KEY, writeTabLayouts, type TerminalTabLayouts } from './terminalTabPreferences';
 import { capturePresentationSelection } from './terminalPresentationSelection';
 import { moveTerminalPanel } from './terminalPanels';
-import { applyMovement, emptyTopologyHistory, recordMovement, recordOperation, sameInterfaceIp, sameServicePorts, sortedServicePorts, type Point, type TopologyHistory, type TopologyOperation } from './topologyHistory';
-import { applyAccessVlan, applyInspectorEdit, applyLinkEdit, canApplyLinkEdit, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
+import { applyMovement, emptyTopologyHistory, recordMovement, recordOperation, isInspectorOperation, sameInterfaceIp, sameServicePorts, sortedServicePorts, type Point, type TopologyHistory, type TopologyOperation } from './topologyHistory';
+import { applyAccessVlan, applyInspectorEdit, applyLinkEdit, canApplyLinkEdit, dhcpSettings, sortedDnsRecords, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -88,6 +89,14 @@ interface NetsimState {
   nodes: DevNode[];
   edges: Edge[];
   packets: WireTransfer[];
+  packetCapture: PacketCaptureState;
+  packetInspectorOpen: boolean;
+  setPacketInspectorOpen(open: boolean): void;
+  startPacketCapture(linkId?: string | null): void;
+  pausePacketCapture(): void;
+  resumePacketCapture(): void;
+  stopPacketCapture(): void;
+  clearPacketCapture(): void;
   dropFlashes: DropFlash[];
   clock: number;
   uiPulse: number;
@@ -183,6 +192,7 @@ let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 let lastPulse = 0;
 
 export const useStore = create<NetsimState>()((set, get) => {
+  const capture = new PacketCapture((packetCapture) => set({ packetCapture }));
   let movement: { source: 'drag' | 'keyboard'; before: Map<string, Point> } | null = null;
   let ignoreDrag = false;
   let labCheckGeneration = 0;
@@ -199,6 +209,13 @@ export const useStore = create<NetsimState>()((set, get) => {
     historyConfiguration = configuration();
     set({ topologyHistory: recordOperation(get().topologyHistory, operation) });
   };
+  const toggleExistingServer = (device: IpDevice, server: 'dhcpServer' | 'dnsServer' | 'httpServer'): boolean => {
+    const config = device[server]; if (!config) return false;
+    prepareEdit(); const before = config.enabled; config.enabled = !before;
+    get().refresh();
+    commitEdit({ type: 'set-server-enabled', label: (config.enabled ? 'Enable ' : 'Disable ') + server.replace('Server', '').toUpperCase() + ' server', deviceId: device.id, server, before, after: config.enabled });
+    saveSoon(); return true;
+  };
   const navigateHistory = (direction: 'undo' | 'redo') => {
     if (movement?.source === 'drag' || ignoreDrag) return;
     get().finishNodeMovement();
@@ -211,8 +228,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       const nodes = applyMovement(get().nodes, operation, direction);
       if (!nodes) { get().invalidateTopologyHistory(); return; }
       set({ nodes });
-    } else if (operation.type === 'rename-device' || operation.type === 'set-iface-ip' || operation.type === 'set-iface-state' ||
-        operation.type === 'set-nameserver' || operation.type === 'set-services' || operation.type === 'set-ssid' || operation.type === 'set-port-vlan') {
+    } else if (isInspectorOperation(operation)) {
       if (!applyInspectorEdit(sim.net, operation, direction)) { get().invalidateTopologyHistory(); return; }
       get().refresh();
     } else if (operation.type === 'create-device') {
@@ -287,12 +303,22 @@ export const useStore = create<NetsimState>()((set, get) => {
     writePanelPreferences(next);
   };
   let flashSeq = 0;
+  let wiredNetwork: Network | null = null;
   const wireNet = (net: Network) => {
-    net.onWireTransfer = (t) => {
+    if (wiredNetwork && wiredNetwork !== net) {
+      wiredNetwork.onWireTransfer = null;
+      wiredNetwork.onFwDrop = null;
+      capture.reset();
+    }
+    wiredNetwork = net;
+    net.onWireTransfer = (t, context) => {
+      if (sim.net !== net) return;
       const packets = get().packets;
       set({ packets: [...packets.slice(-(MAX_PACKETS - 1)), t] });
+      if (sim.net === net) capture.observe(t, context);
     };
     net.onFwDrop = (deviceId) => {
+      if (sim.net !== net) return;
       const now = net.scheduler.now;
       set({
         dropFlashes: [
@@ -412,6 +438,17 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
 
   return {
+    packetCapture: capture.state,
+    packetInspectorOpen: false,
+    setPacketInspectorOpen(packetInspectorOpen) { set({ packetInspectorOpen }); },
+    startPacketCapture(linkId = null) {
+      if (linkId !== null && !sim.net.links.has(linkId)) return;
+      capture.start(linkId);
+    },
+    pausePacketCapture() { capture.pause(); },
+    resumePacketCapture() { capture.resume(); },
+    stopPacketCapture() { capture.stop(); },
+    clearPacketCapture() { capture.clear(); },
     topologyHistory: emptyTopologyHistory(),
     beginNodeMovement(source) {
       checkHistoryConfiguration();
@@ -638,122 +675,102 @@ export const useStore = create<NetsimState>()((set, get) => {
 
     toggleDhcpServer(deviceId) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice)) return;
-      if (!d.dhcpServer) {
-        // Sensible defaults derived from the first addressed interface.
-        const iface = d.interfaces.find((i) => i.ip);
-        const base = iface?.ip ? (iface.ip.addr & 0xffffff00) >>> 0 : parseIp('192.168.0.0')!;
-        d.dhcpServer = {
-          enabled: true,
-          rangeStart: (base | 100) >>> 0,
-          rangeEnd: (base | 150) >>> 0,
-          router: iface?.ip?.addr ?? null,
-          dns: d.nameserver,
-          leases: new Map(),
-        };
-      } else {
-        d.dhcpServer.enabled = !d.dhcpServer.enabled;
-      }
+      if (!(d instanceof IpDevice) || d.disposed) return;
+      if (toggleExistingServer(d, 'dhcpServer')) return;
+      prepareEdit();
+      const iface = d.interfaces.find((i) => i.ip);
+      const base = iface?.ip ? (iface.ip.addr & 0xffffff00) >>> 0 : parseIp('192.168.0.0')!;
+      d.dhcpServer = { enabled: true, rangeStart: (base | 100) >>> 0, rangeEnd: (base | 150) >>> 0,
+        router: iface?.ip?.addr ?? null, dns: d.nameserver, leases: new Map() };
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'create-dhcp-server', label: 'Create DHCP server', deviceId, after: dhcpSettings(d)! });
       saveSoon();
     },
 
     setDhcpField(deviceId, field, text) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice) || !d.dhcpServer) return 'DHCP server not enabled';
-      const trimmed = text.trim();
+      if (!(d instanceof IpDevice) || d.disposed || !d.dhcpServer) return 'DHCP server not enabled';
+      const trimmed = text.trim(), after = trimmed === '' ? null : parseIp(trimmed);
+      if ((field === 'rangeStart' || field === 'rangeEnd' || trimmed !== '') && after === null) return 'invalid address';
+      const c = d.dhcpServer;
+      if (c[field] === after) return null;
+      prepareEdit();
       if (field === 'router' || field === 'dns') {
-        if (trimmed === '') {
-          d.dhcpServer[field] = null;
-        } else {
-          const ip = parseIp(trimmed);
-          if (ip === null) return 'invalid address';
-          d.dhcpServer[field] = ip;
-        }
+        const before = c[field]; c[field] = after;
+        commitEdit({ type: 'set-dhcp-field', label: 'Set DHCP ' + field, deviceId, field, before, after });
       } else {
-        const ip = parseIp(trimmed);
-        if (ip === null) return 'invalid address';
-        d.dhcpServer[field] = ip;
+        if (after === null) return 'invalid address';
+        const before = c[field]; c[field] = after;
+        commitEdit({ type: 'set-dhcp-field', label: 'Set DHCP ' + field, deviceId, field, before, after });
       }
-      get().refresh();
-      checkHistoryConfiguration();
-      saveSoon();
-      return null;
+      get().refresh(); saveSoon(); return null;
     },
 
     toggleDnsServer(deviceId) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice)) return;
-      if (!d.dnsServer) d.dnsServer = { enabled: true, records: new Map() };
-      else d.dnsServer.enabled = !d.dnsServer.enabled;
+      if (!(d instanceof IpDevice) || d.disposed) return;
+      if (toggleExistingServer(d, 'dnsServer')) return;
+      prepareEdit(); d.dnsServer = { enabled: true, records: new Map() };
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'create-dns-server', label: 'Create DNS server', deviceId, after: { enabled: true, records: [] } });
       saveSoon();
     },
 
     setDnsRecords(deviceId, text) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice) || !d.dnsServer) return 'DNS server not enabled';
+      if (!(d instanceof IpDevice) || d.disposed || !d.dnsServer) return 'DNS server not enabled';
       const records = new Map<string, number>();
       for (const line of text.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        const [addr, name] = trimmed.split(/\s+/);
-        const ip = parseIp(addr ?? '');
-        if (ip === null || !name) return `invalid hosts line: "${trimmed}" (use: <ip> <name>)`;
+        const trimmed = line.trim(); if (!trimmed || trimmed.startsWith('#')) continue;
+        const [addr, name] = trimmed.split(/\s+/), ip = parseIp(addr ?? '');
+        if (ip === null || !name) return 'invalid hosts line: "' + trimmed + '" (use: <ip> <name>)';
         records.set(name.toLowerCase(), ip);
       }
-      d.dnsServer.records = records;
-      get().refresh();
-      checkHistoryConfiguration();
-      saveSoon();
-      return null;
+      const before = sortedDnsRecords(d.dnsServer.records), after = sortedDnsRecords(records);
+      if (JSON.stringify(before) === JSON.stringify(after)) return null;
+      prepareEdit(); d.dnsServer.records = new Map(after);
+      get().refresh(); commitEdit({ type: 'set-dns-records', label: 'Set DNS A records', deviceId, before, after });
+      saveSoon(); return null;
     },
 
     toggleHttpServer(deviceId) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice)) return;
-      if (!d.httpServer) {
-        d.httpServer = {
-          enabled: true,
-          port: 80,
-          body: `<html><body><h1>Hello from ${d.name}</h1></body></html>`,
-        };
-      } else {
-        d.httpServer.enabled = !d.httpServer.enabled;
-      }
+      if (!(d instanceof IpDevice) || d.disposed) return;
+      if (toggleExistingServer(d, 'httpServer')) return;
+      prepareEdit();
+      d.httpServer = { enabled: true, port: 80, body: '<html><body><h1>Hello from ' + d.name + '</h1></body></html>' };
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'create-http-server', label: 'Create HTTP server', deviceId, after: { ...d.httpServer } });
       saveSoon();
     },
 
     setHttpPort(deviceId, text) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice) || !d.httpServer) return 'web server not enabled';
-      const port = Number(text.trim());
-      if (!Number.isInteger(port) || port < 1 || port > 65535) return 'invalid port';
-      d.httpServer.port = port;
-      get().refresh();
-      checkHistoryConfiguration();
-      saveSoon();
-      return null;
+      if (!(d instanceof IpDevice) || d.disposed || !d.httpServer) return 'web server not enabled';
+      const after = Number(text.trim());
+      if (!Number.isInteger(after) || after < 1 || after > 65535) return 'invalid port';
+      if (d.httpServer.port === after) return null;
+      prepareEdit(); const before = d.httpServer.port; d.httpServer.port = after;
+      get().refresh(); commitEdit({ type: 'set-http-port', label: 'Set HTTP port', deviceId, before, after });
+      saveSoon(); return null;
     },
 
     setHttpBody(deviceId, text) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice) || !d.httpServer) return;
-      d.httpServer.body = text;
-      checkHistoryConfiguration();
+      if (!(d instanceof IpDevice) || d.disposed || !d.httpServer || d.httpServer.body === text) return;
+      prepareEdit(); const before = d.httpServer.body; d.httpServer.body = text;
+      get().refresh(); commitEdit({ type: 'set-http-body', label: 'Set HTTP response', deviceId, before, after: text });
       saveSoon();
     },
 
     toggleRip(deviceId) {
       const d = sim.net.devices.get(deviceId);
-      if (!(d instanceof IpDevice)) return;
-      d.enableRip(!d.ripEnabled);
+      if (!(d instanceof IpDevice) || d.disposed) return;
+      prepareEdit();
+      const before = d.ripEnabled, after = !before;
+      d.enableRip(after);
       get().refresh();
-      checkHistoryConfiguration();
+      commitEdit({ type: 'set-rip-enabled', label: after ? 'Enable RIP' : 'Disable RIP', deviceId, before, after });
       saveSoon();
     },
 

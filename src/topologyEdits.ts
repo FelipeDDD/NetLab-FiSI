@@ -3,7 +3,15 @@ import { Network } from './engine/network';
 import { IpDevice } from './engine/ipdevice';
 import { ApDevice, SwitchDevice } from './engine/switch';
 import { restoreDevice, serializeNetwork } from './engine/serialize';
-import { sameInterfaceIp, sameServicePorts, type CreatedDevice, type HistoryLink, type InspectorOperation, type Point } from './topologyHistory';
+import { sameInterfaceIp, sameServicePorts, type CreatedDevice, type DhcpSettings, type DnsRecords, type HistoryLink, type InspectorOperation, type Point } from './topologyHistory';
+
+export function dhcpSettings(device: IpDevice): DhcpSettings | null {
+  const c = device.dhcpServer;
+  return c ? { enabled: c.enabled, rangeStart: c.rangeStart, rangeEnd: c.rangeEnd, router: c.router, dns: c.dns } : null;
+}
+export const sortedDnsRecords = (records: Iterable<[string, number]>): DnsRecords =>
+  [...new Map(records)].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([name, addr]) => [name, addr]);
+const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 export function applyAccessVlan(device: SwitchDevice, port: string, vlan: number): void {
   if (device.vlanOf(port) === vlan) return;
@@ -21,6 +29,9 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   if (operation.type === 'rename-device') {
     if (device.name !== operation[from]) return false;
     device.name = operation[to];
+  } else if (operation.type === 'set-rip-enabled') {
+    if (!(device instanceof IpDevice) || device.ripEnabled !== operation[from]) return false;
+    device.enableRip(operation[to]);
   } else if (operation.type === 'set-nameserver') {
     if (!(device instanceof IpDevice) || device.nameserver !== operation[from]) return false;
     device.nameserver = operation[to];
@@ -33,6 +44,53 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   } else if (operation.type === 'set-port-vlan') {
     if (!(device instanceof SwitchDevice) || !device.getInterface(operation.port) || device.vlanOf(operation.port) !== operation[from]) return false;
     applyAccessVlan(device, operation.port, operation[to]);
+  } else if (operation.type === 'create-dhcp-server') {
+    if (!(device instanceof IpDevice)) return false;
+    if (direction === 'undo') {
+      if (!sameValue(dhcpSettings(device), operation.after)) return false;
+      device.dhcpServer = null;
+    } else {
+      if (device.dhcpServer) return false;
+      device.dhcpServer = { ...operation.after, leases: new Map() };
+    }
+  } else if (operation.type === 'create-dns-server') {
+    if (!(device instanceof IpDevice)) return false;
+    if (direction === 'undo') {
+      const c = device.dnsServer;
+      if (!c || !sameValue({ enabled: c.enabled, records: sortedDnsRecords(c.records) }, operation.after)) return false;
+      device.dnsServer = null;
+    } else {
+      if (device.dnsServer) return false;
+      device.dnsServer = { enabled: operation.after.enabled, records: new Map(operation.after.records) };
+    }
+  } else if (operation.type === 'create-http-server') {
+    if (!(device instanceof IpDevice)) return false;
+    if (direction === 'undo') {
+      const c = device.httpServer, expected = operation.after;
+      if (!c || c.enabled !== expected.enabled || c.port !== expected.port || c.body !== expected.body) return false;
+      device.httpServer = null;
+    } else {
+      if (device.httpServer) return false;
+      device.httpServer = { ...operation.after };
+    }
+  } else if (operation.type === 'set-server-enabled') {
+    const c = device instanceof IpDevice ? device[operation.server] : null;
+    if (!c || c.enabled !== operation[from]) return false;
+    c.enabled = operation[to];
+  } else if (operation.type === 'set-dhcp-field') {
+    const c = device instanceof IpDevice ? device.dhcpServer : null;
+    if (!c || c[operation.field] !== operation[from]) return false;
+    if (operation.field === 'router' || operation.field === 'dns') c[operation.field] = operation[to];
+    else { const value = operation[to]; if (value === null) return false; c[operation.field] = value; }
+  } else if (operation.type === 'set-dns-records') {
+    const c = device instanceof IpDevice ? device.dnsServer : null;
+    if (!c || !sameValue(sortedDnsRecords(c.records), operation[from])) return false;
+    c.records = new Map(operation[to]);
+  } else if (operation.type === 'set-http-port' || operation.type === 'set-http-body') {
+    const c = device instanceof IpDevice ? device.httpServer : null;
+    if (!c) return false;
+    if (operation.type === 'set-http-port') { if (c.port !== operation[from]) return false; c.port = operation[to]; }
+    else { if (c.body !== operation[from]) return false; c.body = operation[to]; }
   } else {
     const iface = device.getInterface(operation.ifaceName);
     if (!iface) return false;

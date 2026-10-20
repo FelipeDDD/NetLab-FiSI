@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { Flow } from './components/Flow';
 import { Palette } from './components/Palette';
 import { Inspector } from './components/Inspector';
+import { PacketInspector } from './components/PacketInspector';
 import { TerminalDock } from './components/TerminalDock';
 import { Toolbar } from './components/Toolbar';
 import { LabPanel } from './components/LabPanel';
@@ -11,6 +12,7 @@ import { useStore } from './store';
 export default function App() {
   const editor = useRef<HTMLDivElement>(null);
   const selected = useStore((s) => s.selected);
+  const packetInspectorOpen = useStore((s) => s.packetInspectorOpen);
   const hasTerminals = useStore((s) => s.terminals.length > 0);
 
   return (
@@ -23,7 +25,8 @@ export default function App() {
             <Flow />
             <LabPanel />
           </div>
-          {selected && <Inspector />}
+          {selected && <Inspector hidden={packetInspectorOpen} />}
+          <PacketInspector />
         </div>
         <TerminalDock onFocusEditor={() => editor.current?.focus({ preventScroll: true })} />
       </div>
