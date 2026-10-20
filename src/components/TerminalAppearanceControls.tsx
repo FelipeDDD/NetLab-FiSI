@@ -30,7 +30,7 @@ export function TerminalSettingsControls({ initialDeviceId, includeLayout = fals
             <option value="by-type">Group by type</option>
           </select>
         </label>
-        <span className="hint">Switching modes redistributes widths equally. Sessions keep running.</span>
+        <span className="hint">Widths and locks are remembered separately for each mode. Sessions keep running.</span>
       </section>}
       <section>
       <h3>Appearance</h3>
@@ -115,7 +115,7 @@ export function TerminalSettingsButton() {
       <span aria-hidden="true">⚙</span> Settings
     </button>
     {open && <FloatingPopover anchor={anchor} id="terminal-settings" label="Terminal settings"
-      className="terminal-appearance-popup" width={320} onClose={() => setOpen(false)}>
+      className="terminal-appearance-popup" width={320} preferredSide="above" onClose={() => setOpen(false)}>
       <TerminalSettingsControls includeLayout />
     </FloatingPopover>}
   </>;

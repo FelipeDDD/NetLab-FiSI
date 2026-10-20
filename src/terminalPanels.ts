@@ -1,5 +1,5 @@
-export const MAX_TERMINAL_PANELS = 4;
 export const MIN_TERMINAL_PANEL_WIDTH = 280;
+export const TERMINAL_PANEL_SEPARATOR_WIDTH = 6;
 export type TerminalLayoutMode = 'free' | 'by-type';
 export const TERMINAL_PANEL_TYPES = ['host', 'server', 'router', 'firewall'] as const;
 export type TerminalPanelType = typeof TERMINAL_PANEL_TYPES[number];
@@ -11,27 +11,63 @@ export function normalizeTerminalLayoutMode(value: unknown): TerminalLayoutMode 
 }
 
 // Presentation owns tab membership/selection/width, never an xterm instance.
-// Stable panel IDs allow future tab movement without tying a panel to a device.
+// Stable panel IDs keep widths/locks independent of the devices in their tabs.
 export interface TerminalPanel {
   id: string;
   tabs: string[];
   active: string;
   weight: number;
   kind?: TerminalPanelType;
+  lockedWidth?: number;
 }
 
 export function groupPanelSessions(sessions: readonly { id: string; kind: string }[], focused: string | null, previous: readonly TerminalPanel[] = []): TerminalPanel[] {
   const groups = TERMINAL_PANEL_TYPES.flatMap((kind) => {
-    const tabs = sessions.filter((session) => session.kind === kind).map((session) => session.id);
-    if (!tabs.length) return [];
+    const available = sessions.filter((session) => session.kind === kind).map((session) => session.id);
     const old = previous.find((panel) => panel.kind === kind);
+    const tabs = [...(old?.tabs.filter((id) => available.includes(id)) ?? []), ...available.filter((id) => !old?.tabs.includes(id))];
+    if (!tabs.length) return [];
     const visible = previous.find((panel) => tabs.includes(panel.active))?.active;
     const active = focused && tabs.includes(focused) ? focused
       : old && tabs.includes(old.active) ? old.active : visible ?? tabs[0];
-    return [{ id: `terminal-group-${kind}`, kind, tabs, active, weight: old?.weight ?? 1 }];
+    return [{ id: `terminal-group-${kind}`, kind, tabs, active, weight: old?.weight ?? 1,
+      ...(old?.lockedWidth !== undefined ? { lockedWidth: old.lockedWidth } : {}) }];
   });
   // As with free panels, adding a column starts an equal distribution.
   return groups.length > previous.length ? groups.map((panel) => ({ ...panel, weight: 1 })) : groups;
+}
+
+export interface TerminalTabDestination { panelId: string | null; beforeId?: string | null }
+
+export function canMovePanelSession(panels: readonly TerminalPanel[], id: string, destination: TerminalTabDestination, mode: TerminalLayoutMode): boolean {
+  const source = panels.find((panel) => panel.tabs.includes(id));
+  if (!source) return false;
+  if (destination.panelId === null) return mode === 'free' && source.tabs.length > 1;
+  const target = panels.find((panel) => panel.id === destination.panelId);
+  return !!target && (mode === 'free' || target.id === source.id)
+    && (!destination.beforeId || target.tabs.includes(destination.beforeId));
+}
+
+// Move membership only. The session registry and opening order are untouched.
+export function movePanelSession(panels: TerminalPanel[], id: string, destination: TerminalTabDestination, mode: TerminalLayoutMode, reserved: readonly string[] = []): TerminalPanel[] {
+  if (!canMovePanelSession(panels, id, destination, mode)) return panels;
+  const source = panels.find((panel) => panel.tabs.includes(id))!;
+  if (destination.beforeId === id) return panels;
+  const remaining = prunePanelSessions(panels, panels.flatMap((panel) => panel.tabs).filter((tab) => tab !== id), id).terminalPanels;
+  if (destination.panelId === null) {
+    let suffix = 1;
+    while (panels.some((panel) => panel.id === `terminal-pane-${suffix}`) || reserved.includes(`terminal-pane-${suffix}`)) suffix++;
+    return [...remaining.map((panel) => panel.lockedWidth === undefined ? { ...panel, weight: 1 } : panel),
+      { id: `terminal-pane-${suffix}`, tabs: [id], active: id, weight: 1 }];
+  }
+  // A single-tab source can be the target of a no-op reorder.
+  const target = remaining.find((panel) => panel.id === destination.panelId);
+  if (!target) return panels;
+  const tabs = [...target.tabs];
+  const index = destination.beforeId ? tabs.indexOf(destination.beforeId) : tabs.length;
+  tabs.splice(index, 0, id);
+  if (source.id === target.id && source.tabs.every((tab, i) => tab === tabs[i])) return panels;
+  return remaining.map((panel) => panel.id === target.id ? { ...panel, tabs, active: id } : panel);
 }
 
 export function freePanelSessions(ids: readonly string[], focused: string | null): TerminalPanel[] {
@@ -43,19 +79,24 @@ export function activatePanelSession(panels: readonly TerminalPanel[], id: strin
   return panels.map((panel) => panel.tabs.includes(id) && panel.active !== id ? { ...panel, active: id } : panel);
 }
 
-export function openPanelSession(panels: readonly TerminalPanel[], id: string, focused: string | null): TerminalPanel[] {
+export function openPanelSession(panels: readonly TerminalPanel[], id: string, _focused: string | null, reserved: readonly string[] = []): TerminalPanel[] {
   if (panels.some((panel) => panel.tabs.includes(id))) return activatePanelSession(panels, id);
-  if (panels.length < MAX_TERMINAL_PANELS) {
-    let suffix = 1;
-    while (panels.some((panel) => panel.id === `terminal-pane-${suffix}`)) suffix++;
-    // A newly split layout starts with equal columns; subsequent resizes only
-    // change weights. Existing tabs/sessions stay in their original panels.
-    return [...panels.map((panel) => ({ ...panel, weight: 1 })), {
-      id: `terminal-pane-${suffix}`, tabs: [id], active: id, weight: 1,
-    }];
-  }
-  const target = panels.find((panel) => panel.tabs.includes(focused ?? '')) ?? panels[panels.length - 1];
-  return panels.map((panel) => panel === target ? { ...panel, tabs: [...panel.tabs, id], active: id } : panel);
+  let suffix = 1;
+  while (panels.some((panel) => panel.id === `terminal-pane-${suffix}`) || reserved.includes(`terminal-pane-${suffix}`)) suffix++;
+  // A newly split layout starts with equal columns; subsequent resizes only
+  // change weights. Existing tabs/sessions stay in their original panels.
+  return [...panels.map((panel) => ({ ...panel, weight: 1 })), {
+    id: `terminal-pane-${suffix}`, tabs: [id], active: id, weight: 1,
+  }];
+}
+
+// Panel identity owns its width/lock; reordering changes no panel objects.
+export function moveTerminalPanel(panels: TerminalPanel[], id: string, beforeId: string | null): TerminalPanel[] {
+  const panel = panels.find((p) => p.id === id);
+  if (!panel || id === beforeId || (beforeId && !panels.some((p) => p.id === beforeId))) return panels;
+  const next = panels.filter((p) => p !== panel);
+  next.splice(beforeId ? next.findIndex((p) => p.id === beforeId) : next.length, 0, panel);
+  return next.every((p, i) => p === panels[i]) ? panels : next;
 }
 
 export function prunePanelSessions(panels: readonly TerminalPanel[], valid: readonly string[], focused: string | null) {
@@ -73,15 +114,48 @@ export function prunePanelSessions(panels: readonly TerminalPanel[], valid: read
   return { terminalPanels, activeTerminal: focused && allowed.has(focused) ? focused : fallback?.active ?? null };
 }
 
-// Pair resizing leaves every other panel untouched. The caller converts pointer
-// movement to a fraction of the pair's measured width, not of the whole dock.
-export function resizePanelPair(panels: readonly TerminalPanel[], leftId: string, rightId: string, fraction: number, minimumFraction: number): TerminalPanel[] {
+// A manual boundary always adjusts its immediate neighbors. Locks protect
+// against automatic redistribution, not an explicit user resize.
+export function resizablePanelPair(panels: readonly TerminalPanel[], leftId: string, rightId: string) {
   const left = panels.findIndex((panel) => panel.id === leftId);
   const right = panels.findIndex((panel) => panel.id === rightId);
-  if (left < 0 || right !== left + 1 || !Number.isFinite(fraction) || !Number.isFinite(minimumFraction)) return [...panels];
+  if (left < 0 || right !== left + 1) return null;
+  return { left, right };
+}
+
+export function resizePanelPair(panels: readonly TerminalPanel[], leftId: string, rightId: string, fraction: number, minimumFraction: number, widths?: readonly number[]): TerminalPanel[] {
+  const pair = resizablePanelPair(panels, leftId, rightId);
+  if (!pair || !Number.isFinite(fraction) || !Number.isFinite(minimumFraction)) return [...panels];
+  const { left, right } = pair;
   const min = Math.max(0.05, Math.min(0.5, minimumFraction));
   const share = Math.max(min, Math.min(1 - min, fraction));
-  const total = panels[left].weight + panels[right].weight;
-  return panels.map((panel, index) => index === left ? { ...panel, weight: total * share }
-    : index === right ? { ...panel, weight: total * (1 - share) } : panel);
+  // Pixel weights reflect the rendered minimum-width clamps. Normalizing from
+  // the current measurement keeps other free panels still during this drag.
+  const measured = panels.map((panel, index) => widths && panel.lockedWidth === undefined && Number.isFinite(widths[index])
+    ? { ...panel, weight: Math.max(MIN_TERMINAL_PANEL_WIDTH, widths[index]) } : panel);
+  const total = (measured[left].lockedWidth ?? measured[left].weight) + (measured[right].lockedWidth ?? measured[right].weight);
+  return measured.map((panel, index) => {
+    if (index !== left && index !== right) return panel;
+    const weight = total * (index === left ? share : 1 - share);
+    return { ...panel, weight, ...(panel.lockedWidth === undefined ? {} : { lockedWidth: Math.max(MIN_TERMINAL_PANEL_WIDTH, weight) }) };
+  });
+}
+
+// Water-fill the available pixels: fixed locks first, weighted free columns
+// next, pinning any small share at the readable minimum. Overflow is intentional.
+export function terminalPanelWidths(panels: readonly TerminalPanel[], available: number): number[] {
+  const widths = panels.map((panel) => panel.lockedWidth ?? 0);
+  let pending = panels.flatMap((panel, index) => panel.lockedWidth === undefined ? [index] : []);
+  let remaining = Math.max(pending.length * MIN_TERMINAL_PANEL_WIDTH, available - widths.reduce((a, b) => a + b, 0));
+  while (pending.length) {
+    const total = pending.reduce((sum, index) => sum + panels[index].weight, 0);
+    const small = pending.filter((index) => remaining * panels[index].weight / total < MIN_TERMINAL_PANEL_WIDTH);
+    if (!small.length) {
+      pending.forEach((index) => { widths[index] = remaining * panels[index].weight / total; });
+      break;
+    }
+    small.forEach((index) => { widths[index] = MIN_TERMINAL_PANEL_WIDTH; remaining -= MIN_TERMINAL_PANEL_WIDTH; });
+    pending = pending.filter((index) => !small.includes(index));
+  }
+  return widths;
 }

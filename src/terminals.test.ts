@@ -10,6 +10,8 @@ import * as terminalLine from './terminalLine';
 import { restoreNetwork, serializeNetwork } from './engine/serialize';
 import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, type AppearanceSaveFile } from './terminalAppearance';
 import { resizePanelPair } from './terminalPanels';
+import { PANEL_LAYOUT_KEY } from './terminalPanelPreferences';
+import { TAB_LAYOUT_KEY } from './terminalTabPreferences';
 
 // Only the browser renderer is replaced. Commands, engine, store and persistence
 // run together so these tests cover the actual terminal-to-autosave path.
@@ -663,6 +665,97 @@ describe('editable input after xterm reflow', () => {
 });
 
 describe('cycling terminal sessions', () => {
+  function createDevices() {
+    const store = useStore.getState();
+    for (const kind of ['host', 'server', 'router', 'firewall', 'host', 'server'] as const) {
+      store.addDeviceAt(kind, { x: 0, y: 0 });
+    }
+    return useStore.getState().nodes.map((node) => sim.net.devices.get(node.id) as IpDevice);
+  }
+
+  function assertVisualCycle(ids: string[]) {
+    const store = useStore.getState();
+    store.setActiveTerminal(ids[0]);
+    for (const id of [...ids.slice(1), ids[0]]) {
+      store.cycleTerminal(1);
+      expect(useStore.getState().activeTerminal).toBe(id);
+      expect(useStore.getState().terminalHasFocus).toBe(true);
+      expect(useStore.getState().terminalPanels.find((panel) => panel.tabs.includes(id))?.active).toBe(id);
+    }
+    for (const id of [...ids.slice(1).reverse(), ids[0]]) {
+      store.cycleTerminal(-1);
+      expect(useStore.getState().activeTerminal).toBe(id);
+    }
+    // A shortcut's DOM origin may differ from the globally active session.
+    store.cycleTerminal(1, ids[0]);
+    expect(useStore.getState().activeTerminal).toBe(ids[1] ?? ids[0]);
+  }
+
+  it.each([
+    { mode: 'free', opened: [0, 1, 2, 3, 4, 5], expected: [0, 1, 2, 3, 4, 5] },
+    { mode: 'free', opened: [3, 2, 1, 0, 5, 4], expected: [3, 2, 1, 0, 5, 4] },
+    { mode: 'by-type', opened: [0, 1, 2, 3, 4, 5], expected: [0, 4, 1, 5, 2, 3] },
+    { mode: 'by-type', opened: [4, 3, 5, 2, 1, 0], expected: [4, 0, 5, 1, 2, 3] },
+  ] as const)('follows panels and local tabs in both directions: %j', ({ mode, opened, expected }) => {
+    const devices = createDevices();
+    const store = useStore.getState();
+    store.setTerminalLayoutMode(mode);
+    opened.forEach((index, position) => {
+      if (position === 4 && mode === 'free') store.setActiveTerminal(devices[1].id);
+      open(devices[index]);
+    });
+    const openingOrder = opened.map((index) => devices[index].id);
+    assertVisualCycle(expected.map((index) => devices[index].id));
+    expect(useStore.getState().terminals).toEqual(openingOrder);
+    devices.forEach((device) => expect(getSession(device).term.dispose).not.toHaveBeenCalled());
+  });
+
+  it('recalculates order immediately after mode changes, opening, tab closure and empty-group removal', () => {
+    const devices = createDevices();
+    const store = useStore.getState();
+    devices.slice(0, 4).forEach(open);
+    store.setActiveTerminal(devices[1].id);
+    open(devices[4]);
+    assertVisualCycle([0, 1, 2, 3, 4].map((i) => devices[i].id));
+    store.setTerminalLayoutMode('by-type');
+    assertVisualCycle([0, 4, 1, 2, 3].map((i) => devices[i].id));
+    open(devices[5]);
+    assertVisualCycle([0, 4, 1, 5, 2, 3].map((i) => devices[i].id));
+    store.closeTerminal(devices[4].id);
+    assertVisualCycle([0, 1, 5, 2, 3].map((i) => devices[i].id));
+    store.closeTerminal(devices[3].id);
+    assertVisualCycle([0, 1, 5, 2].map((i) => devices[i].id));
+    store.setTerminalLayoutMode('free');
+    assertVisualCycle([0, 1, 2, 5].map((i) => devices[i].id));
+  });
+
+  it('reads changed panel and tab positions directly without modifying the opening registry', () => {
+    const devices = createDevices();
+    const store = useStore.getState();
+    devices.slice(0, 4).forEach(open);
+    store.setActiveTerminal(devices[1].id);
+    devices.slice(4).forEach(open);
+    store.moveTerminalTab(devices[4].id, { panelId: 'terminal-pane-2' });
+    store.moveTerminalTab(devices[5].id, { panelId: 'terminal-pane-2' });
+    // Navigation reads the displayed order, including local tabs.
+    useStore.setState({ terminalPanels: [...useStore.getState().terminalPanels].reverse()
+      .map((panel) => ({ ...panel, tabs: [...panel.tabs].reverse() })) });
+    assertVisualCycle([3, 2, 5, 4, 1, 0].map((i) => devices[i].id));
+    expect(useStore.getState().terminals).toEqual(devices.map((device) => device.id));
+  });
+
+  it('handles an empty dock and a single session after closure', () => {
+    const store = useStore.getState();
+    store.cycleTerminal(1);
+    store.cycleTerminal(-1);
+    expect(useStore.getState().activeTerminal).toBeNull();
+    const { a, b } = pair();
+    open(a);
+    open(b);
+    store.closeTerminal(b.id);
+    assertVisualCycle([a.id]);
+  });
+
   it('wraps, requests focus and retains partial input, history and running commands without saving', () => {
     const { a, b, net } = pair();
     const first = open(a);
@@ -713,7 +806,7 @@ describe('split terminal sessions', () => {
     return { hosts, net };
   }
 
-  it('opens four equal panels and sends excess tabs to the last focused panel', () => {
+  it('opens six independent panels regardless of which panel was focused', () => {
     const { hosts } = devices();
     hosts.slice(0, 4).forEach(open);
     expect(useStore.getState().terminalPanels.map((panel) => panel.tabs)).toEqual(hosts.slice(0, 4).map((host) => [host.id]));
@@ -723,9 +816,8 @@ describe('split terminal sessions', () => {
     open(hosts[4]);
     open(hosts[5]);
     const panels = useStore.getState().terminalPanels;
-    expect(panels).toHaveLength(4);
-    expect(panels[1].tabs).toEqual([hosts[1].id, hosts[4].id, hosts[5].id]);
-    expect(panels[1].active).toBe(hosts[5].id);
+    expect(panels).toHaveLength(6);
+    expect(panels.map((p) => p.tabs)).toEqual(hosts.map((h) => [h.id]));
     useStore.getState().noteTerminalPanelFocus(panels[0].id);
     expect(useStore.getState().activeTerminal).toBe(hosts[0].id);
     expect(useStore.getState().terminalHasFocus).toBe(false);
@@ -755,7 +847,7 @@ describe('split terminal sessions', () => {
     });
     expect(useStore.getState().terminalHasFocus).toBe(false);
     vi.advanceTimersByTime(1000);
-    expect(setItem).not.toHaveBeenCalled();
+    expect(setItem.mock.calls.map(([key]) => key)).toEqual([PANEL_LAYOUT_KEY]);
     useStore.getState().closeTerminal(hosts[1].id);
     expect(off[1]).toHaveBeenCalledOnce();
     expect(sessions[1].term.dispose).toHaveBeenCalledOnce();
@@ -772,6 +864,7 @@ describe('split terminal sessions', () => {
     input(fifth, 'hostname\r');
     input(fifth, 'Olá 東京 ');
     open(hosts[5]);
+    useStore.getState().moveTerminalTab(hosts[5].id, { panelId: 'terminal-pane-5' });
     useStore.getState().setActiveTerminal(hosts[4].id);
     input(fifth, '🌐\r');
     expect(exec.mock.calls.at(-1)?.[0]).toBe('Olá 東京 🌐');
@@ -782,7 +875,7 @@ describe('split terminal sessions', () => {
     expect(exec.mock.calls.at(-1)?.[0]).toBe('Olá 東京 🌐');
     useStore.getState().closeTerminal(hosts[4].id);
     expect(useStore.getState().activeTerminal).toBe(hosts[5].id);
-    expect(useStore.getState().terminalPanels).toHaveLength(4);
+    expect(useStore.getState().terminalPanels).toHaveLength(5);
     expect(fifth.term.dispose).toHaveBeenCalledOnce();
   });
 
@@ -799,7 +892,294 @@ describe('split terminal sessions', () => {
   });
 });
 
+describe('manual terminal tab movement', () => {
+  it('restores panel order and locks independently in both modes after explicit reopening', () => {
+    pair();
+    const store = useStore.getState();
+    for (const kind of ['router', 'firewall', 'host', 'server', 'host', 'server'] as const) store.addDeviceAt(kind, { x: 300, y: 200 });
+    const ids = useStore.getState().nodes.map((n) => n.id);
+    ids.forEach(store.openTerminal);
+    store.toggleTerminalPanelLock('terminal-pane-6', Object.fromEntries(useStore.getState().terminalPanels.map((p) => [p.id, 350])));
+    store.reorderTerminalPanel('terminal-pane-6', 'terminal-pane-1');
+    store.moveTerminalTab(ids[7], { panelId: 'terminal-pane-6' });
+    const free = useStore.getState().terminalPanels.map(({ id, tabs, lockedWidth }) => ({ id, tabs, lockedWidth }));
+    store.setTerminalLayoutMode('by-type');
+    store.reorderTerminalPanel('terminal-group-firewall', 'terminal-group-host');
+    store.moveTerminalTab(ids[6], { panelId: 'terminal-group-host', beforeId: ids[0] });
+    const grouped = useStore.getState().terminalPanels.map(({ id, tabs }) => ({ id, tabs }));
+    store.flushAutosave();
+    store.boot();
+    expect(useStore.getState().terminals).toEqual([]);
+    [...ids].reverse().forEach(store.openTerminal);
+    expect(useStore.getState().terminalPanels.map(({ id, tabs }) => ({ id, tabs }))).toEqual(grouped);
+    store.setTerminalLayoutMode('free');
+    expect(useStore.getState().terminalPanels.map(({ id, tabs, lockedWidth }) => ({ id, tabs, lockedWidth }))).toEqual(free);
+    const visual = useStore.getState().terminalPanels.flatMap((p) => p.tabs);
+    store.setActiveTerminal(visual[0]);
+    for (const id of [...visual.slice(1), visual[0]]) { store.cycleTerminal(1); expect(useStore.getState().activeTerminal).toBe(id); }
+    expect(storage.get('netsim:autosave:v1')).not.toContain('terminal-pane-');
+  });
+
+  it('moves only presentation while four pings, partial input, locks, visual navigation and opening order survive', () => {
+    const { net } = pair();
+    const store = useStore.getState();
+    for (const kind of ['router', 'firewall', 'host', 'server'] as const) store.addDeviceAt(kind, { x: 300, y: 200 });
+    const devices = useStore.getState().nodes.map((n) => sim.net.devices.get(n.id) as IpDevice);
+    devices.forEach((d, i) => { d.getInterface('eth0')!.ip = parseCidr(`10.0.0.${i + 1}/24`); });
+    const sessions = devices.map(open);
+    sessions.slice(0, 4).forEach((session, i) => input(session, `ping 10.0.0.${i + 1}\r`));
+    input(sessions[4], 'host');
+    const off = devices.slice(0, 4).map((d) => vi.spyOn(d, 'offIcmp'));
+    const widths = Object.fromEntries(useStore.getState().terminalPanels.map((p) => [p.id, 350]));
+    store.toggleTerminalPanelLock('terminal-pane-1', widths);
+    vi.advanceTimersByTime(500); setItem.mockClear();
+    const before = serializeNetwork(net, {});
+    const focusRequest = useStore.getState().terminalFocusRequest;
+    const active = useStore.getState().activeTerminal;
+    store.reorderTerminalPanel('terminal-pane-6', 'terminal-pane-3');
+    expect(useStore.getState().activeTerminal).toBe(active);
+    expect(useStore.getState().terminalFocusRequest).toBe(focusRequest + 1);
+    store.moveTerminalTab(devices[2].id, { panelId: 'terminal-pane-4' });
+    expect(useStore.getState().terminalPanels).toHaveLength(5);
+    store.moveTerminalTab(devices[4].id, { panelId: 'terminal-pane-1' });
+    expect(useStore.getState().terminalPanels[0]).toMatchObject({ tabs: [devices[0].id, devices[4].id], lockedWidth: 350 });
+    store.cycleTerminal(-1);
+    expect(useStore.getState().activeTerminal).toBe(devices[0].id);
+    store.moveTerminalTab(devices[4].id, { panelId: null });
+    expect(useStore.getState().terminalPanels).toHaveLength(5);
+    expect(useStore.getState().terminals).toEqual(devices.map((d) => d.id));
+    store.setTerminalDockCollapsed(true); store.setTerminalDockCollapsed(false);
+    net.scheduler.advanceTo(2200);
+    off.forEach((cancel) => expect(cancel).not.toHaveBeenCalled());
+    sessions.forEach((session, i) => {
+      expect(getSession(devices[i])).toBe(session);
+      expect(session.term.dispose).not.toHaveBeenCalled();
+      if (i < 4) expect(output(session)).toContain('icmp_seq=2');
+    });
+    const exec = vi.spyOn(Shell.prototype, 'exec'); input(sessions[4], 'name\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('hostname');
+    expect(serializeNetwork(net, {})).toEqual(before);
+    vi.advanceTimersByTime(1000);
+    expect(setItem.mock.calls.every(([key]) => [PANEL_LAYOUT_KEY, TAB_LAYOUT_KEY].includes(key))).toBe(true);
+  });
+
+  it('restores independent manual layouts on explicit reopening after F5, and forgets definitive closures', () => {
+    const { a, b } = pair();
+    const store = useStore.getState();
+    store.addDeviceAt('host', { x: 300, y: 200 });
+    const c = sim.net.devices.get(useStore.getState().nodes[2].id) as IpDevice;
+    open(a); open(b); open(c);
+    store.moveTerminalTab(c.id, { panelId: 'terminal-pane-1', beforeId: a.id });
+    const free = useStore.getState().terminalPanels.map(({ id, tabs }) => ({ id, tabs }));
+    store.setTerminalLayoutMode('by-type');
+    store.moveTerminalTab(c.id, { panelId: 'terminal-group-host', beforeId: a.id });
+    store.flushAutosave();
+    expect(storage.get('netsim:autosave:v1')).not.toContain('terminal-pane-');
+    store.boot();
+    expect(useStore.getState().terminals).toEqual([]);
+    store.openTerminal(b.id); store.openTerminal(a.id); store.openTerminal(c.id);
+    expect(useStore.getState().terminalPanels.map((p) => p.tabs)).toEqual([[c.id, a.id], [b.id]]);
+    store.setTerminalLayoutMode('free');
+    expect(useStore.getState().terminalPanels.map(({ id, tabs }) => ({ id, tabs }))).toEqual(free);
+    expect(useStore.getState().terminals).toEqual([b.id, a.id, c.id]);
+    store.closeTerminal(c.id); store.openTerminal(c.id);
+    expect(useStore.getState().terminalPanels.find((p) => p.tabs.includes(c.id))?.tabs).toEqual([c.id]);
+    store.setTerminalLayoutMode('by-type');
+    expect(useStore.getState().terminalPanels[0].tabs).toEqual([a.id, c.id]);
+    store.newTopology();
+    expect(useStore.getState().terminals).toEqual([]);
+  });
+
+});
+
+describe('collapsing terminal presentation', () => {
+  it.each(['free', 'by-type'] as const)('keeps four pings, partial input and locked layout intact through repeated collapse/expand in %s', (mode) => {
+    const { net } = pair();
+    const store = useStore.getState();
+    for (const kind of ['router', 'firewall', 'host'] as const) store.addDeviceAt(kind, { x: 300, y: 200 });
+    const devices = useStore.getState().nodes.map((n) => sim.net.devices.get(n.id) as IpDevice);
+    devices.forEach((device, i) => { device.getInterface('eth0')!.ip = parseCidr(`10.0.0.${i + 1}/24`); });
+    store.setTerminalLayoutMode(mode);
+    const sessions = devices.map(open);
+    sessions.slice(0, 4).forEach((session, i) => input(session, `ping 10.0.0.${i + 1}\r`));
+    input(sessions[4], 'hostname\r');
+    input(sessions[4], 'host');
+    const off = devices.slice(0, 4).map((device) => vi.spyOn(device, 'offIcmp'));
+    const widths = Object.fromEntries(useStore.getState().terminalPanels.map((panel) => [panel.id, 350]));
+    store.toggleTerminalPanelLock(useStore.getState().terminalPanels[0].id, widths);
+    vi.advanceTimersByTime(500);
+    setItem.mockClear();
+    const panels = useStore.getState().terminalPanels;
+    const terminals = useStore.getState().terminals;
+    sessions.forEach((session) => vi.mocked(session.term.clearSelection).mockClear());
+    const exec = vi.spyOn(Shell.prototype, 'exec');
+    for (let step = 1; step <= 3; step++) {
+      const request = useStore.getState().terminalFocusRequest;
+      store.setTerminalDockCollapsed(true);
+      expect(useStore.getState().terminalHasFocus).toBe(false);
+      expect(useStore.getState().terminalFocusRequest).toBe(request);
+      expect(useStore.getState().terminalPanels).toBe(panels);
+      net.scheduler.advanceTo(step * 1100);
+      store.setTerminalDockCollapsed(false);
+      expect(useStore.getState().terminalHasFocus).toBe(true);
+      expect(useStore.getState().terminalFocusRequest).toBe(request + 1);
+      expect(useStore.getState().activeTerminal).toBe(devices[4].id);
+      expect(useStore.getState().terminals).toBe(terminals);
+    }
+    sessions.forEach((session, i) => {
+      expect(getSession(devices[i])).toBe(session);
+      expect(session.term.dispose).not.toHaveBeenCalled();
+      expect(session.term.clearSelection).not.toHaveBeenCalled();
+    });
+    off.forEach((cancel) => expect(cancel).not.toHaveBeenCalled());
+    sessions.slice(0, 4).forEach((session) => expect(output(session)).toContain('icmp_seq=3'));
+    input(sessions[4], 'name\r');
+    input(sessions[4], '\x1b[A');
+    input(sessions[4], '\r');
+    expect(exec.mock.calls.map(([line]) => line)).toEqual(['hostname', 'hostname']);
+    vi.advanceTimersByTime(1000);
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('expands on explicit session access and resets transient collapse on boot without reopening sessions', () => {
+    const { a, b } = pair();
+    const store = useStore.getState();
+    store.setTerminalDockCollapsed(true);
+    expect(useStore.getState().terminalDockCollapsed).toBe(false);
+    open(a); open(b);
+    store.setTerminalDockCollapsed(true);
+    store.openTerminal(a.id);
+    expect(useStore.getState().terminalDockCollapsed).toBe(false);
+    store.setTerminalDockCollapsed(true);
+    store.setActiveTerminal(b.id);
+    expect(useStore.getState().terminalDockCollapsed).toBe(false);
+    store.setTerminalDockCollapsed(true);
+    store.closeTerminal(b.id);
+    expect(useStore.getState().terminalDockCollapsed).toBe(true);
+    expect(useStore.getState().terminalHasFocus).toBe(false);
+    store.closeTerminal(a.id);
+    expect(useStore.getState().terminalDockCollapsed).toBe(false);
+    open(a);
+    store.setTerminalDockCollapsed(true);
+    const saved = storage.get('netsim:autosave:v1')!;
+    expect(saved).not.toContain('terminalDockCollapsed');
+    store.boot();
+    expect(useStore.getState().terminals).toEqual([]);
+    expect(useStore.getState().terminalDockCollapsed).toBe(false);
+  });
+});
+
 describe('switching terminal organization modes', () => {
+  it.each(['free', 'by-type'] as const)('persists manually resized locks in %s through redistribution and explicit reopening', (mode) => {
+    const { net } = pair();
+    const store = useStore.getState();
+    for (const kind of ['router', 'firewall', 'host', 'server'] as const) store.addDeviceAt(kind, { x: 300, y: 200 });
+    const devices = useStore.getState().nodes.map((n) => sim.net.devices.get(n.id) as IpDevice);
+    devices.forEach((device, i) => { device.getInterface('eth0')!.ip = parseCidr(`10.0.0.${i + 1}/24`); });
+    const sessions = devices.map(open);
+    sessions.slice(0, 4).forEach((session, i) => input(session, `ping 10.0.0.${i + 1}\r`));
+    input(sessions[4], 'host');
+    store.setTerminalLayoutMode(mode);
+    let panels = useStore.getState().terminalPanels;
+    store.toggleTerminalPanelLock(panels[0].id, Object.fromEntries(panels.map((p) => [p.id, 400])));
+    store.toggleTerminalPanelLock(panels[1].id, Object.fromEntries(panels.map((p) => [p.id, 400])));
+    store.toggleTerminalPanelLock(panels[2].id, Object.fromEntries(panels.map((p) => [p.id, 400])));
+    panels = useStore.getState().terminalPanels;
+    store.flushAutosave(); setItem.mockClear();
+    const before = serializeNetwork(net, {});
+    store.setTerminalPanels(resizePanelPair(panels, panels[0].id, panels[1].id, 0.625, 280 / 800, panels.map(() => 400)));
+    const expected = useStore.getState().terminalPanels;
+    expect(expected[0].lockedWidth).toBe(500);
+    expect(expected[1].lockedWidth).toBe(300);
+    expect(expected[2].lockedWidth).toBe(400);
+    expect(expected.map((p) => p.tabs)).toEqual(panels.map((p) => p.tabs));
+    store.addDeviceAt('host', { x: 300, y: 200 });
+    const extra = useStore.getState().nodes.at(-1)!.id;
+    store.openTerminal(extra);
+    expect(useStore.getState().terminalPanels.slice(0, 3).map((p) => p.lockedWidth)).toEqual([500, 300, 400]);
+    store.closeTerminal(extra);
+    expect(useStore.getState().terminalPanels.slice(0, 3).map((p) => p.lockedWidth)).toEqual([500, 300, 400]);
+    store.deleteDevice(extra);
+    net.scheduler.advanceTo(2200);
+    sessions.forEach((session, i) => {
+      expect(getSession(devices[i])).toBe(session);
+      expect(session.term.dispose).not.toHaveBeenCalled();
+      if (i < 4) expect(output(session)).toContain('icmp_seq=2');
+    });
+    input(sessions[4], 'name\r');
+    expect(output(sessions[4])).not.toContain('command not found');
+    expect(serializeNetwork(net, {})).toEqual(before);
+    store.flushAutosave();
+    expect(storage.get('netsim:autosave:v1')).not.toContain('lockedWidth');
+    const local = JSON.parse(storage.get(PANEL_LAYOUT_KEY)!);
+    expect(local[mode][panels[0].id].lockedWidth).toBe(500);
+    expect(local[mode][panels[1].id].lockedWidth).toBe(300);
+    store.boot();
+    expect(useStore.getState().terminals).toEqual([]);
+    devices.forEach((device) => store.openTerminal(device.id));
+    expect(useStore.getState().terminalPanels.slice(0, 3).map((p) => p.lockedWidth)).toEqual([500, 300, 400]);
+    store.setTerminalLayoutMode(mode === 'free' ? 'by-type' : 'free');
+    store.setTerminalLayoutMode(mode);
+    expect(useStore.getState().terminalPanels.slice(0, 3).map((p) => p.lockedWidth)).toEqual([500, 300, 400]);
+  });
+
+  it('keeps a panel lock through tab changes and redistribution while sessions keep running', () => {
+    const { a, b, net } = pair();
+    const store = useStore.getState();
+    store.addDeviceAt('host', { x: 300, y: 200 });
+    const c = sim.net.devices.get(useStore.getState().nodes[2].id) as IpDevice;
+    const first = open(a), second = open(b);
+    input(first, 'host');
+    input(second, 'ping 10.0.0.2\r');
+    const off = vi.spyOn(b, 'offIcmp');
+    const before = serializeNetwork(net, {});
+    store.toggleTerminalPanelLock('terminal-pane-1', { 'terminal-pane-1': 450, 'terminal-pane-2': 750 });
+    open(c);
+    expect(useStore.getState().terminalPanels[0].lockedWidth).toBe(450);
+    store.closeTerminal(c.id);
+    expect(useStore.getState().terminalPanels[0].lockedWidth).toBe(450);
+    store.setTerminalLayoutMode('by-type');
+    open(c);
+    store.toggleTerminalPanelLock('terminal-group-host', { 'terminal-group-host': 550, 'terminal-group-server': 650 });
+    store.setActiveTerminal(a.id);
+    expect(useStore.getState().terminalPanels[0]).toMatchObject({ tabs: [a.id, c.id], lockedWidth: 550 });
+    store.setTerminalLayoutMode('free');
+    expect(useStore.getState().terminalPanels[0].lockedWidth).toBe(450);
+    net.scheduler.advanceTo(1100);
+    expect(output(second)).toContain('icmp_seq=1');
+    expect(off).not.toHaveBeenCalled();
+    expect(getSession(a)).toBe(first);
+    expect(getSession(b)).toBe(second);
+    const exec = vi.spyOn(Shell.prototype, 'exec');
+    input(first, 'name\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('hostname');
+    expect(serializeNetwork(net, {})).toEqual(before);
+  });
+
+  it('restores local width preferences after boot by mode and panel slot, without restoring or reordering sessions', () => {
+    const { a, b } = pair();
+    const store = useStore.getState();
+    open(a); open(b);
+    store.toggleTerminalPanelLock('terminal-pane-1', { 'terminal-pane-1': 450, 'terminal-pane-2': 750 });
+    store.setTerminalLayoutMode('by-type');
+    store.toggleTerminalPanelLock('terminal-group-server', { 'terminal-group-host': 600, 'terminal-group-server': 350 });
+    store.setTerminalLayoutMode('free');
+    store.flushAutosave();
+    const saved = JSON.parse(storage.get('netsim:autosave:v1')!);
+    expect(JSON.stringify(saved)).not.toContain('lockedWidth');
+    store.boot();
+    expect(useStore.getState().terminals).toEqual([]);
+    store.openTerminal(b.id); store.openTerminal(a.id);
+    expect(useStore.getState().terminals).toEqual([b.id, a.id]);
+    expect(useStore.getState().terminalPanels[0]).toMatchObject({ tabs: [b.id], lockedWidth: 450 });
+    store.setTerminalLayoutMode('by-type');
+    expect(useStore.getState().terminalPanels.find((p) => p.kind === 'server')?.lockedWidth).toBe(350);
+    store.setTerminalLayoutMode('free');
+    store.closeTerminal(b.id);
+    store.openTerminal(b.id);
+    expect(useStore.getState().terminalPanels.find((p) => p.tabs.includes(b.id))?.lockedWidth).toBeUndefined();
+  });
+
   it('regroups live sessions without disposing buffers, partial input, focus or commands', () => {
     const { a, b, net } = pair();
     const store = useStore.getState();
@@ -819,13 +1199,14 @@ describe('switching terminal organization modes', () => {
     expect(useStore.getState().activeTerminal).toBe(a.id);
     expect(useStore.getState().terminalFocusRequest).toBe(request);
     expect(useStore.getState().terminalHasFocus).toBe(true);
-    for (const device of devices) {
+    const groupedOrder = [a.id, devices[4].id, b.id, devices[2].id, devices[3].id];
+    for (const expected of [...groupedOrder.slice(1), groupedOrder[0]]) {
       store.cycleTerminal(1);
-      expect(useStore.getState().activeTerminal).toBe(devices[(devices.indexOf(device) + 1) % devices.length].id);
+      expect(useStore.getState().activeTerminal).toBe(expected);
       expect(useStore.getState().terminalPanels.find((p) => p.tabs.includes(useStore.getState().activeTerminal!))?.active).toBe(useStore.getState().activeTerminal);
     }
     store.setTerminalLayoutMode('free');
-    expect(useStore.getState().terminalPanels).toHaveLength(4);
+    expect(useStore.getState().terminalPanels).toHaveLength(5);
     expect(useStore.getState().terminalPanels.every((p) => !p.kind)).toBe(true);
     expect(useStore.getState().terminalPanels.flatMap((p) => p.tabs).sort()).toEqual(devices.map((d) => d.id).sort());
     devices.forEach((device, i) => {

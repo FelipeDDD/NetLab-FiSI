@@ -28,9 +28,11 @@ Live app: <https://netsim.borck.education/>
   service editors (DHCP/DNS/web, VLANs, SSID, RIP).
 - **Terminal dock** (bottom): double-click a host/router/server/firewall to
   open its terminal, or use the small terminal button revealed when hovering
-  or keyboard-focusing the device. In the default **Free panels** mode, the first four sessions automatically create
-  equal side-by-side panels. Each panel has its own selected tab, device label
-  and close buttons. Further sessions open as tabs in the last focused panel.
+  or keyboard-focusing the device. In **Free panels**, each new session creates
+  an independent side-by-side panel, unless a saved manual arrangement specifies
+  its destination. There is no fixed panel limit: columns stay at least 280 px
+  wide and the dock scrolls horizontally. Each panel has its own selected tab,
+  device label and close buttons. Combine tabs manually when useful.
   Opening an existing session activates its tab and focuses its input.
   Switching tabs keeps history and running commands. Closing a tab ends only
   that session; an empty panel disappears and the other panels expand.
@@ -42,11 +44,65 @@ row or taking width from a terminal. Under **Layout → Organization**, choose
 then Firewalls. Sessions of the same type become tabs within that panel;
 switching a tab changes only that panel. Empty groups disappear.
 Changing modes keeps the same sessions, buffers, history, pending input and
-running commands. It starts an equal width distribution; the previous mode's
-manual proportions are not retained. The organization mode is saved with the
+running commands. Each mode remembers its own widths and locks in this browser;
+without saved preferences it starts with equal widths. The organization mode is saved with the
 topology (autosave and JSON export/import). Old files default to Free panels.
 Opening a new topology also starts with Free panels. Sessions themselves are
 not restored after reloading the page.
+
+In **Free panels**, drag a tab's device name to reorder it within the strip, or
+drop on another panel to append it there. The tab edge marker shows insertion
+position; a panel outline shows the target. An emptied panel disappears.
+During dragging, **+ New panel** appears at the right edge of the dock; drop
+there to separate a tab from a panel containing multiple tabs. No empty space
+is needed. Hold near a horizontal edge to scroll the dock or a crowded tab strip.
+Neighbors slide into the proposed order as the pointer crosses their midpoint;
+the order is committed only on drop. Escape cancels. Reduced motion disables
+the transition.
+Locks stay with panels; moving a tab does not transfer a lock. Free space is
+redistributed with the existing 280 px minimum and horizontal scrolling.
+
+In **Group by type**, tabs can only move within their own group. Initial group
+order is Hosts, Servers, Routers, Firewalls; new tabs append to their type.
+Red destination feedback means the drop is not permitted. Escape cancels a drag.
+
+To reorder a **whole panel**, drag the dotted handle at the left of its header.
+This works in both modes and moves all its tabs, width and lock together.
+Click the handle (or focus it and press Enter/Space or Shift+F10) for **Move panel
+left/right**. This is separate from moving an individual tab. Navigation shortcuts
+follow the resulting panel and tab order. After a keyboard move, focus returns
+to that panel's handle so you can continue navigating.
+
+For keyboard access, focus a tab and press **Shift+F10** (or the Context Menu key).
+The same move menu opens by right-clicking the tab name. Use Up/Down and
+Enter/Space to move left/right, move to another panel, or create a panel when
+allowed. Escape closes the menu and returns focus. Color and close buttons keep
+their usual actions. Mouse drag/drop is supported; touch drag and long-press
+context menus depend on the browser's native support. No touch-specific drag
+library is required.
+
+Manual membership and order are saved locally, separately for both modes,
+against the current topology's device IDs and types. After F5, no sessions open
+automatically: reopening matching devices restores their saved positions.
+Sessions that have not yet been reopened remain absent from the dock. A
+definitive close/delete forgets that session's saved placement in both modes;
+opening it again is a fresh insertion. A new topology clears this arrangement.
+These browser-local preferences are not part of the exported network JSON.
+
+Use the chevron button at the upper right of the dock to **Collapse terminals**
+or **Expand terminals** (also available with Enter/Space). Collapsing leaves a
+34 px control bar and gives the freed height to the topology editor. It returns
+keyboard focus to the editor; expanding restores focus to the active terminal
+and restores the previous dock height, temporarily clamped for smaller windows.
+Sessions stay mounted: commands, history, pending input, buffers and selection
+are retained. Both organization modes, tabs, widths and locks stay unchanged.
+Settings remains available on the collapsed bar.
+
+Opening or activating a terminal expands the dock automatically. Collapse state
+lasts while the current page has open sessions; it is not saved into topology
+files or browser preferences. F5 keeps sessions closed and the chosen height
+remains saved independently. No global Ctrl+backtick shortcut is installed;
+the button remains accessible from the keyboard.
 
 Drag the dock's top border to resize it. You can also focus that border and
 use Up/Down (10 pixels), Shift+Up/Down (50 pixels), Home (minimum) or End
@@ -54,14 +110,32 @@ use Up/Down (10 pixels), Shift+Up/Down (50 pixels), Home (minimum) or End
 available and adapts temporarily to smaller windows. In the tab bar, Left/Right
 or Home/End moves keyboard focus; Enter/Space activates the focused terminal.
 
-Drag a separator between panels to adjust the adjacent widths. With a separator
+Use the small padlock at the right of a panel's header to **Lock panel width**
+at its current pixel width, or **Unlock panel width**. Enter/Space also works.
+The lock belongs to the panel, so changing its active tab keeps the same lock.
+Opening or closing other terminals leaves locked widths fixed and redistributes
+only the remaining space among free panels. New columns start equal free shares;
+closing a column retains the surviving free proportions.
+
+Drag a separator to adjust its two adjacent panels, whether free or locked.
+The lock protects automatic sizing only: manual resizing updates the protected
+pixel width and keeps the padlock closed. Other locked panels stay unchanged.
+With a separator
 focused, Left/Right adjusts 10 pixels, Shift+Left/Right 50 pixels, and Home/End
-reaches the width limits. Double-click equalizes the adjacent pair. Creating a
-new panel resets all columns to equal widths; closing one retains the remaining
-proportions. Panels keep at least 280 pixels of width. Narrow screens scroll
+reaches the width limits. Double-click equalizes the adjacent pair, keeping their
+locks. With all panels locked, unused space stays empty.
+Panels keep at least 280 pixels of width. Narrow screens scroll
 the dock horizontally instead of squeezing the terminals; opening or navigating
-to a session brings its panel into view. Panel arrangement and width preferences
-last for the current session; the saved dock height is unchanged.
+to a session brings its panel into view. If locks plus free minima exceed the
+available width, locks remain unchanged and free panels keep their 280 px minimum.
+
+Widths and locks use local browser storage, separately for Free panels and Group
+by type; they are not exported with the network. After F5, sessions remain closed.
+Reopening them restores Free panel slots by panel number, and grouped panels by
+type, without changing the order in which you open devices. An empty panel loses
+its saved preference when its final tab is explicitly closed or deleted. Storage
+restrictions can prevent persistence; runtime locks still work. Dock height is
+saved independently.
 
 Press Escape while typing in a terminal to return focus to the topology editor.
 The command continues running. Click a terminal or activate its tab to resume
@@ -140,7 +214,10 @@ continues to copy a selection, or interrupt a command when nothing is selected.
 
 With focus in the terminal dock, Alt+Shift+Right moves to the next terminal and
 Alt+Shift+Left to the previous one, wrapping through **all open sessions across
-all panels**, in opening order. The activated terminal
+all panels**, following the current visual order: panels from left to right,
+then each panel's tabs from left to right. Reverse navigation follows the exact
+opposite order. Opening, closing, grouping or rearranging sessions updates this
+order immediately. The activated terminal
 receives focus; its input, history and running commands are retained. These keys
 do not switch terminals while editing a field elsewhere in the app.
 Ctrl+Tab / Ctrl+Shift+Tab also work **if the browser delivers them to the page**.

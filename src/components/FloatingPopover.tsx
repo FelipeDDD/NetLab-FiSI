@@ -5,7 +5,7 @@ import { floatingPosition } from './floatingPosition';
 
 const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]';
 
-export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', className = '' }: {
+export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', preferredSide = 'auto', className = '' }: {
   anchor: RefObject<HTMLElement>;
   children: ReactNode;
   onClose: () => void;
@@ -14,6 +14,7 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
   role?: 'menu' | 'dialog';
   width?: number;
   initialFocus?: 'first' | 'last';
+  preferredSide?: 'auto' | 'above';
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -32,7 +33,9 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
         close.current();
         return;
       }
-      const next = floatingPosition(rect, { width: window.innerWidth, height: window.innerHeight }, width, popup.scrollHeight);
+      // scrollHeight includes padding but not borders (or a horizontal scrollbar).
+      const contentHeight = popup.scrollHeight + popup.offsetHeight - popup.clientHeight;
+      const next = floatingPosition(rect, { width: window.innerWidth, height: window.innerHeight }, width, contentHeight, preferredSide);
       setPosition((previous) => previous && Object.entries(next).every(([key, value]) => previous[key as keyof typeof next] === value) ? previous : next);
     };
     update();
@@ -54,17 +57,17 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
       document.removeEventListener('pointerdown', outside, true);
       document.removeEventListener('focusin', outside);
     };
-  }, [anchor, width, initialFocus]);
+  }, [anchor, width, initialFocus, preferredSide]);
 
   useLayoutEffect(() => {
     if (!position || focused.current) return;
     focused.current = true;
     const items = ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    (initialFocus === 'last' ? items?.[items.length - 1] : items?.[0])?.focus({ preventScroll: true });
+    ((initialFocus === 'last' ? items?.[items.length - 1] : items?.[0]) ?? ref.current)?.focus({ preventScroll: true });
   }, [position, initialFocus]);
 
   return createPortal(
-    <div ref={ref} id={id} role={role} aria-label={label} className={`floating-popover ${className}`}
+    <div ref={ref} id={id} role={role} tabIndex={-1} aria-label={label} className={`floating-popover ${className}`}
       data-floating-popover="" style={position ?? { visibility: 'hidden', top: 0, left: 0, width }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {

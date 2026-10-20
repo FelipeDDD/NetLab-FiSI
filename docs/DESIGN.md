@@ -164,43 +164,117 @@ paper's stated future work (outbound filtering, NAT, stateful).
 ### Painéis automáticos de terminal
 
 - `terminalPanels.ts` contém regras puras de distribuição, seleção, remoção e
-  pesos. O store mantém `terminals` como ordem global para atalhos e
+  pesos. O store mantém `terminals` como registro de sessões abertas e
   `terminalPanels` com `{ id, tabs, active, weight }` para apresentação.
-  Os IDs dos painéis são independentes dos IDs de dispositivos. Os primeiros
-  quatro terminais criam colunas iguais; os excedentes entram no painel que
-  recebeu foco por último. Abas de outros painéis continuam selecionadas e
-  visíveis. A estrutura permite acrescentar movimentação entre painéis depois,
-  sem alterar o registro de sessões.
+  Os IDs dos painéis são independentes dos IDs de dispositivos. Novos terminais
+  criam painéis independentes, sem limite fixo, salvo organização manual salva.
+  Abas de outros painéis continuam selecionadas e
+  visíveis. `movePanelSession` valida destinos, reordena por âncora `beforeId`,
+  transfere abas, remove painéis vazios e cria colunas livres. `moveTerminalPanel`
+  reordena painéis completos mantendo seus objetos, pesos e cadeados.
+  Mover altera apenas a apresentação, sem mudar o registro de sessões.
 - `TerminalPanelView` monta as abas e suas áreas xterm; `attachTerminalSession`
   abre uma sessão uma única vez ou reanexa o mesmo elemento DOM. Desmontar a
   apresentação e parar um ResizeObserver nunca descarta buffer nem cancela
   comandos. Só fechamento definitivo, exclusão de dispositivo ou troca de
   topologia descartam sessões. Todos os terminais visíveis usam FitAddon com
   ResizeObserver coalescido por frame; abas ocultas continuam executando.
-- Flexbox distribui pesos proporcionais. `TerminalPanelSplitter` altera apenas
-  o par adjacente e oferece arraste, teclado e equalização. O mínimo de 280px
-  evita compressão excessiva; telas estreitas usam rolagem horizontal, trazendo
-  o painel ativado à vista. A altura salva permanece independente. Painéis,
-  abas e larguras são transitórios e não entram no JSON nem no autosave.
+- `terminalPanelWidths` calcula as larguras a partir do espaço medido por
+  ResizeObserver no dock: reserva `lockedWidth` em pixels e distribui o restante
+  pelos pesos livres, fixando em 280 px as parcelas pequenas e redistribuindo
+  novamente. O espaço mínimo pode exceder a janela; o contêiner flex permite
+  rolagem horizontal sem encolher os cadeados. Todos travados podem deixar
+  espaço vazio à direita. FitAddon segue as dimensões reais das áreas xterm.
+- `TerminalPanelSplitter` ajusta sempre os dois vizinhos imediatos do divisor,
+  inclusive com um ou ambos travados. O cadeado protege somente redistribuição
+  automática: arraste, teclado e equalização atualizam `lockedWidth` em pixels
+  sem destravar o painel. Medidas da dupla viram pesos em pixels, preservando
+  as demais larguras e o mínimo de 280 px. O store aceita somente dimensões
+  válidas e mantém o estado dos cadeados, abas e organização. Seleções xterm
+  são capturadas antes do ajuste e restauradas pela infraestrutura de reflow.
+- `terminalPanelPreferences.ts` mantém apenas pesos e `lockedWidth` por posição
+  lógica, sob `netlab:terminal-panel-layout:v1` no localStorage. Free usa slots
+  `terminal-pane-N`, com N inteiro positivo; Group by type usa slots por tipo. Não guarda IDs de
+  dispositivos, abas nem ordem de reabertura. Há validação de números/slots e
+  fallback para armazenamento ausente, bloqueado ou inválido. Fechar/excluir a
+  última aba de um painel remove sua preferência no modo atual. Trocar de modo
+  preserva o outro conjunto; F5 restaura preferências ao reabrir manualmente.
+  A altura salva permanece independente. Nada disso entra no JSON de topologia
+  ou aciona autosave do motor; escrita local ocorre nas mudanças de layout.
 - `terminalLayoutMode` escolhe `free` (comportamento original) ou `by-type`.
-  `groupPanelSessions` cria somente os grupos ocupados, na ordem fixa host,
+  `groupPanelSessions` cria somente os grupos ocupados, na ordem inicial host,
   server, router, firewall, com IDs estáveis por tipo e seleção independente.
-  Abas mantêm a ordem de abertura dentro do grupo. Abertura/fechamento usam
+  A restauração aplica a ordem manual de grupos salva para esse modo.
+  Abas mantêm a ordem manual dentro do grupo; novas abas entram no final.
+  Movimentos entre tipos ou para nova coluna são recusados. Abertura/fechamento usam
   as ações existentes; grupos vazios desaparecem via `prunePanelSessions`.
-  A troca de modo reconstrói apenas a apresentação em larguras iguais, mantém
-  a sessão global ativa e reanexa os mesmos elementos xterm. Não há cache das
-  larguras de cada modo. A lista global de sessões e sua ordem não mudam.
+  A troca de modo reconstrói apenas a apresentação, aplica as preferências
+  locais daquele modo, mantém a sessão global ativa e reanexa os mesmos
+  elementos xterm. Sem preferências, as colunas começam iguais. A lista global
+  de sessões e sua ordem não mudam.
   A extensão opcional `ui.terminalLayoutMode` persiste `by-type`; ausência ou
   valor inválido corresponde a `free`. Não há alteração no serializador do
   motor. Importação/autosave preservam a escolha, mas não reabrem sessões.
+- `TerminalTabMovement` usa drag/drop nativo no nome da aba e uma alça separada
+  para painéis completos, deixando indicador, fechamento, cadeados e divisores
+  independentes. O navegador fornece o limiar entre clique e arraste e a imagem
+  que acompanha o ponteiro. `terminalSortPreview` calcula destinos pelos pontos
+  médios das posições originais; transforms de 180 ms deslocam vizinhos sem
+  alterar o layout real nem remontar terminais. Reduced motion desliga a transição.
+  Uma superfície transparente temporária mantém estável o alvo de eventos mesmo
+  quando os elementos animados passam sob o ponteiro. Ela aparece após o primeiro
+  dragover, para não cobrir a origem enquanto o Chromium inicia o arraste nativo.
+  Cancelar descarta a prévia;
+  somente drop altera o store. RAF controla rolagem proporcional nas bordas.
+  Bordas/linhas mostram o destino, vermelho sinaliza recusa e `New panel` aparece
+  à direita, sem ocupar espaço permanente. O menu de contexto (Shift+F10/tecla Menu ou botão direito)
+  oferece as mesmas operações por teclado. Popovers sem ações habilitadas
+  recebem foco no próprio contêiner, mantendo Escape e Tab utilizáveis.
+- `terminalTabPreferences.ts` armazena a organização manual em uma chave própria,
+  `netlab:terminal-tab-layout:v1`, separada dos pesos/cadeados. Há templates por
+  modo associados a uma assinatura dos IDs/tipos da topologia, sem limite de
+  slots, duplicatas, referências desconhecidas ou grupos incompatíveis.
+  O formato v1 permanece compatível: layouts antigos de quatro painéis continuam
+  válidos. IDs de slots ainda não reabertos ficam reservados para impedir que
+  novos terminais herdem agrupamentos por coincidência de ID.
+  O loader nunca abre sessões: cada abertura explícita restaura apenas a aba
+  solicitada, conservando no template posições ainda não reabertas. Alterações
+  manuais reconciliam o layout vivo com essas referências pendentes. Sessões
+  novas usam a inserção normal; fechamento definitivo/exclusão remove a referência
+  de ambos os modos. Nova topologia limpa os templates. Metadados não entram no
+  motor, JSON de rede ou histórico de sessões fechadas. Armazenamento indisponível
+  afeta apenas a persistência, não a movimentação durante a página atual.
+- `terminalPresentationSelection.ts` captura seleções antes da movimentação e as
+  recompõe após FitAddon/reflow e a fila de pintura. Usa texto/células públicas
+  do buffer (incluindo Unicode, células largas e linhas quebradas), sem injetar
+  comandos. Novas entradas invalidam uma restauração pendente, e apresentações
+  já descartadas são ignoradas. Instâncias xterm e DOM continuam sendo reanexados.
 - `terminalHasFocus` distingue foco real/solicitado de uma aba apenas visível;
   eventos de foco não geram novos pedidos de foco. Escape é capturado somente
   no xterm, libera o foco e foca a região do editor, sem enviar entrada ao shell.
   A navegação continua global e circular. Ctrl+Tab mantém as limitações do
   navegador já documentadas; Ctrl+PageDown/PageUp também só funcionam quando
   entregues à página. Alt+Shift+Setas é a alternativa. Tab/Shift+Tab puros não
-  são usados para navegar entre sessões. O escopo é sempre a lista global de
-  sessões abertas, tanto em Free panels quanto em Group by type.
+  são usados para navegar entre sessões. A navegação deriva a ordem diretamente
+  de `terminalPanels.flatMap(panel => panel.tabs)` a cada atalho: painéis da
+  esquerda para a direita e abas na ordem visual local, em ambos os modos.
+  A direção inversa percorre a mesma ordem ao contrário. Não há lista paralela
+  persistida nem alteração no registro cronológico de sessões.
+- `terminalDockCollapsed` é estado transitório da apresentação, sem autosave.
+  O botão no canto superior direito oculta o corpo do dock com `hidden`, mantendo
+  a árvore de sessões montada. A barra fica em 34 px; a grade existente entrega
+  o espaço restante ao React Flow. A altura preferida permanece intacta, com
+  clamp normal para janelas menores ao expandir. Recolher libera o foco para o
+  editor; expandir pede foco ao terminal ativo. Abrir/ativar sessão expande o
+  dock, sem alterar sua ordem de abertura. Última sessão fechada, nova topologia
+  e boot limpam o estado recolhido; F5 não reabre terminais.
+  Observadores de largura, divisores e FitAddon ficam suspensos enquanto o corpo
+  está oculto. A última largura válida é mantida, e os observadores são retomados
+  ao expandir. Opções de fonte também aguardam a expansão antes de medir o xterm.
+  Não há resize com dimensões zero, desmontagem, cancelamento ou limpeza de
+  seleção causada pelo recolhimento. O menu Settings continua ancorado ao seu
+  botão na barra; há espaço para o link Home fixo existente. O controle funciona
+  por mouse e Enter/Espaço; nenhum atalho global opcional foi acrescentado.
 - Regressões cobrem distribuição, exclusão, seleção local, pesos, reanexação,
   input Unicode/histórico e quatro pings preservados em abas ocultas e após
   redimensionamento. No Chromium 155 foram validados os quatro painéis reais,
@@ -244,12 +318,6 @@ A restauração da aparência também preserva o modo de organização escolhido
   terminais, inputs, textareas e outros campos editáveis.
 - Perfis de terminal Windows e Linux por dispositivo, com comandos e saídas
   equivalentes sobre o mesmo motor. Manter explícito o subconjunto suportado.
-- Drag and drop para mover sessões entre painéis ou adicioná-las manualmente
-  como abas secundárias. A estrutura atual separa o grupo, o botão de ativação,
-  o indicador e o fechamento.
-- Cadeado por painel para fixar sua largura; redistribuir automaticamente
-  somente os painéis destravados.
-- Recolher/expandir o dock sem encerrar sessões ou comandos.
 - Outros estilos de gradiente e controles avançados de aparência.
 - Avaliar uma linha colorida no topo do próprio painel, imediatamente abaixo
   das abas. Nesta etapa existe apenas a borda integrada às abas, sem alternância

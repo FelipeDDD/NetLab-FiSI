@@ -2,6 +2,7 @@ import type { Session } from '../terminals';
 
 export const DOCK_HEIGHT_KEY = 'netlab:terminal-dock-height:v1';
 export const DEFAULT_DOCK_HEIGHT = 280;
+export const COLLAPSED_DOCK_HEIGHT = 34;
 
 export function dockHeightBounds(viewportHeight: number) {
   const available = Math.max(0, viewportHeight - 52); // toolbar

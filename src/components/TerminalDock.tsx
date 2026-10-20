@@ -1,19 +1,35 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { useStore } from '../store';
-import { clampDockHeight, dockHeightBounds, readDockHeight, saveDockHeight } from './terminalDockLayout';
+import { clampDockHeight, COLLAPSED_DOCK_HEIGHT, dockHeightBounds, readDockHeight, saveDockHeight } from './terminalDockLayout';
 import { terminalEscapeToEditor, terminalNavigationDirection } from '../terminalShortcuts';
 import { TerminalPanelView } from './TerminalPanelView';
 import { TerminalPanelSplitter } from './TerminalPanelSplitter';
 import { TerminalSettingsButton } from './TerminalAppearanceControls';
+import { terminalPanelWidths, TERMINAL_PANEL_SEPARATOR_WIDTH } from '../terminalPanels';
+import { TerminalNewPanelDrop, TerminalTabMovementProvider } from './TerminalTabMovement';
 
 export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
   const panels = useStore((s) => s.terminalPanels);
   const activeTerminal = useStore((s) => s.activeTerminal);
   const hasFocus = useStore((s) => s.terminalHasFocus);
+  const collapsed = useStore((s) => s.terminalDockCollapsed);
+  const count = useStore((s) => s.terminals.length);
   const [preferredHeight, setPreferredHeight] = useState(readDockHeight);
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
   const drag = useRef<{ pointerId: number; startY: number; startHeight: number; height: number } | null>(null);
+  const columns = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = columns.current;
+    if (!element || collapsed) return;
+    const update = () => { if (element.clientWidth > 0) setAvailableWidth(element.clientWidth); };
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    update();
+    return () => observer.disconnect();
+  }, [panels.length, collapsed]);
+  const widths = terminalPanelWidths(panels, Math.max(0, availableWidth - (panels.length - 1) * TERMINAL_PANEL_SEPARATOR_WIDTH));
   useStore((s) => s.uiPulse); // device renames in panel headers
 
   useEffect(() => {
@@ -51,7 +67,8 @@ export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
 
   if (!panels.length) return null;
   return (
-    <div className="terminal-dock" style={{ height }}
+    <TerminalTabMovementProvider>
+    <div className={`terminal-dock${collapsed ? ' is-collapsed' : ''}`} style={{ height: collapsed ? COLLAPSED_DOCK_HEIGHT : height }}
       onFocusCapture={(event) => {
         const target = event.target as HTMLElement;
         if (!target.closest('.xterm')) {
@@ -86,6 +103,7 @@ export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
       }}>
       <div
         className="terminal-resizer"
+        hidden={collapsed}
         role="separator"
         tabIndex={0}
         aria-label="Resize terminal dock"
@@ -114,14 +132,27 @@ export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
         onLostPointerCapture={finishResize}
       />
       <TerminalSettingsButton />
-      <div className="terminal-body" id="terminal-body">
-        <div className="terminal-panels">
+      <button type="button" className="terminal-dock-toggle" aria-expanded={!collapsed} aria-controls="terminal-body"
+        aria-label={collapsed ? 'Expand terminals' : 'Collapse terminals'} title={collapsed ? 'Expand terminals' : 'Collapse terminals'}
+        onClick={() => {
+          useStore.getState().setTerminalDockCollapsed(!collapsed);
+          if (!collapsed) onFocusEditor();
+        }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d={collapsed ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} />
+        </svg>
+      </button>
+      {collapsed && <span className="terminal-collapsed-label">{count} {count === 1 ? 'terminal' : 'terminals'}</span>}
+      <div className="terminal-body" id="terminal-body" hidden={collapsed}>
+        <div className="terminal-panels" ref={columns}>
           {panels.map((panel, index) => <Fragment key={panel.id}>
-            <TerminalPanelView panel={panel} index={index} focused={hasFocus && panel.tabs.includes(activeTerminal ?? '')} />
-            {panels[index + 1] && <TerminalPanelSplitter left={panel} right={panels[index + 1]} index={index} />}
+            <TerminalPanelView panel={panel} index={index} width={widths[index]} suspended={collapsed} focused={hasFocus && panel.tabs.includes(activeTerminal ?? '')} />
+            {panels[index + 1] && <TerminalPanelSplitter left={panel} right={panels[index + 1]} index={index} suspended={collapsed} />}
           </Fragment>)}
         </div>
       </div>
+      <TerminalNewPanelDrop />
     </div>
+    </TerminalTabMovementProvider>
   );
 }

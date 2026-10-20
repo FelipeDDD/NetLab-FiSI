@@ -23,8 +23,12 @@ import { composeYaml } from './export/compose';
 import { svgToPngBlob, topologySvg } from './export/diagram';
 import { networkReport } from './export/report';
 import { adjacentTerminal, type TerminalDirection } from './terminalShortcuts';
-import { activatePanelSession, openPanelSession, prunePanelSessions, groupPanelSessions, freePanelSessions, normalizeTerminalLayoutMode, type TerminalPanel, type TerminalLayoutMode } from './terminalPanels';
+import { activatePanelSession, prunePanelSessions, normalizeTerminalLayoutMode, MIN_TERMINAL_PANEL_WIDTH, movePanelSession, type TerminalTabDestination, type TerminalPanel, type TerminalLayoutMode } from './terminalPanels';
 import { DEFAULT_TERMINAL_COLORS, DEFAULT_TERMINAL_APPEARANCE, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, type AppearanceSaveFile, type TerminalAppearance } from './terminalAppearance';
+import { applyPanelPreferences, readPanelPreferences, rememberPanelPreferences, writePanelPreferences } from './terminalPanelPreferences';
+import { forgetSavedTabs, insertSavedTab, mergeTabLayouts, readTabLayouts, TAB_LAYOUT_KEY, writeTabLayouts, type TerminalTabLayouts } from './terminalTabPreferences';
+import { capturePresentationSelection } from './terminalPresentationSelection';
+import { moveTerminalPanel } from './terminalPanels';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -84,6 +88,7 @@ interface NetsimState {
   terminalPanels: TerminalPanel[];
   terminalLayoutMode: TerminalLayoutMode;
   terminalHasFocus: boolean;
+  terminalDockCollapsed: boolean;
   terminalFocusRequest: number;
   terminalColors: Record<string, string>;
   terminalAppearance: TerminalAppearance;
@@ -125,7 +130,11 @@ interface NetsimState {
   noteTerminalFocus(id: string): void;
   noteTerminalPanelFocus(id: string): void;
   releaseTerminalFocus(): void;
+  setTerminalDockCollapsed(collapsed: boolean): void;
   setTerminalPanels(panels: TerminalPanel[]): void;
+  toggleTerminalPanelLock(id: string, widths: Record<string, number>): void;
+  moveTerminalTab(id: string, destination: TerminalTabDestination): void;
+  reorderTerminalPanel(id: string, beforeId: string | null): void;
   setTerminalLayoutMode(mode: TerminalLayoutMode): void;
   cycleTerminal(direction: TerminalDirection, origin?: string): void;
   setTerminalColor(id: string, color: string | null): void;
@@ -164,6 +173,23 @@ let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 let lastPulse = 0;
 
 export const useStore = create<NetsimState>()((set, get) => {
+  let panelPreferences = readPanelPreferences();
+  let tabLayouts: TerminalTabLayouts = {};
+  const tabDevices = () => [...sim.net.devices.values()].map(({ id, kind }) => ({ id, kind }));
+  const saveTabs = () => writeTabLayouts(tabDevices(), tabLayouts);
+  const forgetTabs = (ids: string[]) => {
+    if (!Object.keys(tabLayouts).length) return;
+    tabLayouts = forgetSavedTabs(tabLayouts, ids);
+    saveTabs();
+  };
+  const rememberPanels = (panels: TerminalPanel[], removed: string[] = [], force = false) => {
+    const mode = get().terminalLayoutMode;
+    if (!force && !Object.keys(panelPreferences[mode]).length) return;
+    const next = rememberPanelPreferences(panelPreferences, mode, panels, removed);
+    if (JSON.stringify(next) === JSON.stringify(panelPreferences)) return;
+    panelPreferences = next;
+    writePanelPreferences(next);
+  };
   let flashSeq = 0;
   const wireNet = (net: Network) => {
     net.onWireTransfer = (t) => {
@@ -238,6 +264,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   const adoptSave = (data: AppearanceSaveFile) => {
     disposeAllSessions();
     sim.net = restoreNetwork(data);
+    tabLayouts = readTabLayouts(tabDevices());
     wireNet(sim.net);
     const nodes = data.devices.map((d) => deviceNode(d.id, d.kind, d.name, d.x, d.y));
     set({
@@ -250,6 +277,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       activeTerminal: null,
       terminalPanels: [],
       terminalHasFocus: false,
+      terminalDockCollapsed: false,
       terminalColors: readTerminalColors(data),
       terminalAppearance: readTerminalAppearance(data),
       terminalLayoutMode: normalizeTerminalLayoutMode(data.ui?.terminalLayoutMode),
@@ -275,6 +303,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     terminalPanels: [],
     terminalHasFocus: false,
     terminalFocusRequest: 0,
+    terminalDockCollapsed: false,
     terminalLayoutMode: 'free',
     terminalColors: {},
     terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE },
@@ -291,10 +320,12 @@ export const useStore = create<NetsimState>()((set, get) => {
     addDeviceAt(kind, pos) {
       const d = createDevice(sim.net, kind);
       set({ nodes: [...get().nodes, deviceNode(d.id, kind, d.name, pos.x, pos.y)] });
+      if (Object.keys(tabLayouts).length) saveTabs();
       saveSoon();
     },
 
     onNodesChange(changes) {
+      const oldPanels = get().terminalPanels;
       for (const ch of changes) {
         if (ch.type === 'remove') {
           disposeSession(ch.id);
@@ -308,6 +339,7 @@ export const useStore = create<NetsimState>()((set, get) => {
           ? {
               edges: edgesFromEngine(),
               terminals: get().terminals.filter((t) => sim.net.devices.has(t)),
+              terminalDockCollapsed: get().terminalDockCollapsed && get().terminals.some((t) => sim.net.devices.has(t)),
               ...prunePanelSessions(get().terminalPanels, get().terminals.filter((id) => sim.net.devices.has(id)), get().activeTerminal),
               terminalHasFocus: false,
               selected: get().selected && sim.net.devices.has(get().selected!) ? get().selected : null,
@@ -315,6 +347,8 @@ export const useStore = create<NetsimState>()((set, get) => {
           : {}),
       });
       if (removed) {
+        forgetTabs(changes.filter((change) => change.type === 'remove').map((change) => change.id));
+        rememberPanels(get().terminalPanels, oldPanels.filter((p) => !get().terminalPanels.some((next) => next.id === p.id)).map((p) => p.id));
         set({ terminalColors: Object.fromEntries(Object.entries(get().terminalColors).filter(([id]) => sim.net.devices.has(id))) });
       }
       if (removed || changes.some((c) => c.type === 'position' && !c.dragging)) saveSoon();
@@ -344,17 +378,21 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     deleteDevice(id) {
+      const oldPanels = get().terminalPanels;
       disposeSession(id);
       sim.net.removeDevice(id);
+      forgetTabs([id]);
       set({
         nodes: get().nodes.filter((n) => n.id !== id),
         edges: edgesFromEngine(),
         terminals: get().terminals.filter((t) => t !== id),
+        terminalDockCollapsed: get().terminalDockCollapsed && get().terminals.some((t) => t !== id),
         ...prunePanelSessions(get().terminalPanels, get().terminals.filter((t) => t !== id), get().activeTerminal),
         terminalHasFocus: false,
         selected: get().selected === id ? null : get().selected,
         terminalColors: Object.fromEntries(Object.entries(get().terminalColors).filter(([key]) => key !== id)),
       });
+      rememberPanels(get().terminalPanels, oldPanels.filter((p) => !get().terminalPanels.some((next) => next.id === p.id)).map((p) => p.id));
       saveSoon();
     },
 
@@ -579,21 +617,32 @@ export const useStore = create<NetsimState>()((set, get) => {
         },
       });
       const terminals = get().terminals.includes(id) ? get().terminals : [...get().terminals, id];
-      const terminalPanels = get().terminalLayoutMode === 'by-type'
-        ? groupPanelSessions(terminals.map((id) => ({ id, kind: sim.net.devices.get(id)!.kind })), id, get().terminalPanels)
-        : openPanelSession(get().terminalPanels, id, get().activeTerminal);
+      const mode = get().terminalLayoutMode;
+      let terminalPanels = insertSavedTab(get().terminalPanels, id, get().activeTerminal, mode, tabDevices(), tabLayouts[mode]);
+      if (terminalPanels.some((panel) => !get().terminalPanels.some((old) => old.id === panel.id) && panelPreferences[get().terminalLayoutMode][panel.id])) {
+        terminalPanels = applyPanelPreferences(terminalPanels, panelPreferences, get().terminalLayoutMode);
+      }
+      rememberPanels(terminalPanels);
+      if (tabLayouts[mode] && !tabLayouts[mode]!.some((panel) => panel.tabs.includes(id))) {
+        tabLayouts[mode] = mergeTabLayouts(tabLayouts[mode], terminalPanels, terminals);
+        saveTabs();
+      }
       set({ terminals, terminalPanels,
-        activeTerminal: id, terminalHasFocus: true, terminalFocusRequest: get().terminalFocusRequest + 1 });
+        activeTerminal: id, terminalHasFocus: true, terminalDockCollapsed: false, terminalFocusRequest: get().terminalFocusRequest + 1 });
     },
 
     closeTerminal(id) {
+      forgetTabs([id]);
+      const oldPanels = get().terminalPanels;
       disposeSession(id);
       const terminals = get().terminals.filter((t) => t !== id);
       const next = prunePanelSessions(get().terminalPanels, terminals, get().activeTerminal);
-      const refocus = id === get().activeTerminal && next.activeTerminal !== null;
+      const refocus = !get().terminalDockCollapsed && id === get().activeTerminal && next.activeTerminal !== null;
+      rememberPanels(next.terminalPanels, oldPanels.filter((p) => !next.terminalPanels.some((next) => next.id === p.id)).map((p) => p.id));
       set({
         terminals,
         ...next,
+        terminalDockCollapsed: terminals.length > 0 && get().terminalDockCollapsed,
         terminalHasFocus: refocus || (next.activeTerminal !== null && get().terminalHasFocus),
         terminalFocusRequest: get().terminalFocusRequest + (refocus ? 1 : 0),
       });
@@ -602,7 +651,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     setActiveTerminal(id) {
       if (!get().terminals.includes(id)) return;
       set({ terminalPanels: activatePanelSession(get().terminalPanels, id), activeTerminal: id,
-        terminalHasFocus: true, terminalFocusRequest: get().terminalFocusRequest + 1 });
+        terminalHasFocus: true, terminalDockCollapsed: false, terminalFocusRequest: get().terminalFocusRequest + 1 });
     },
 
     noteTerminalFocus(id) {
@@ -619,13 +668,67 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (get().terminalHasFocus) set({ terminalHasFocus: false });
     },
 
+    setTerminalDockCollapsed(collapsed) {
+      if (!get().terminals.length || collapsed === get().terminalDockCollapsed) return;
+      set({ terminalDockCollapsed: collapsed, terminalHasFocus: !collapsed && get().activeTerminal !== null,
+        terminalFocusRequest: get().terminalFocusRequest + (collapsed ? 0 : 1) });
+    },
+
     setTerminalPanels(panels) {
-      // Width changes only. Tab membership/selection stays owned by the actions
-      // above until explicit tab movement is implemented.
+      // Width changes only; membership and order have their own actions.
       set({ terminalPanels: get().terminalPanels.map((panel) => {
-        const weight = panels.find((item) => item.id === panel.id)?.weight;
-        return weight && Number.isFinite(weight) && weight > 0 ? { ...panel, weight } : panel;
+        const next = panels.find((item) => item.id === panel.id);
+        if (!next || !Number.isFinite(next.weight) || next.weight <= 0) return panel;
+        if (panel.lockedWidth === undefined) return { ...panel, weight: next.weight };
+        // An explicit resize updates the protected pixels without changing the lock.
+        const width = next.lockedWidth;
+        return width !== undefined && Number.isFinite(width) && width >= MIN_TERMINAL_PANEL_WIDTH && width <= 32768
+          ? { ...panel, weight: next.weight, lockedWidth: width } : panel;
       }) });
+      rememberPanels(get().terminalPanels, [], true);
+    },
+
+    toggleTerminalPanelLock(id, widths) {
+      const target = get().terminalPanels.find((panel) => panel.id === id);
+      if (!target || !Number.isFinite(widths[id]) || widths[id] < MIN_TERMINAL_PANEL_WIDTH) return;
+      const panels = get().terminalPanels.map((panel) => {
+        const width = Number.isFinite(widths[panel.id]) ? Math.max(MIN_TERMINAL_PANEL_WIDTH, widths[panel.id]) : panel.weight;
+        const next = panel.lockedWidth === undefined || panel.id === id ? { ...panel, weight: width } : panel;
+        if (panel.id !== id) return next;
+        if (panel.lockedWidth === undefined) return { ...next, lockedWidth: Math.min(32768, widths[id]) };
+        const { lockedWidth: _lockedWidth, ...unlocked } = next;
+        return unlocked;
+      });
+      set({ terminalPanels: panels });
+      rememberPanels(panels, [], true);
+    },
+
+    moveTerminalTab(id, destination) {
+      const previous = get().terminalPanels;
+      const mode = get().terminalLayoutMode;
+      const panels = movePanelSession(previous, id, destination, mode, tabLayouts[mode]?.map((p) => p.id));
+      if (panels === previous) return;
+      for (const openId of get().terminals) {
+        const device = sim.net.devices.get(openId);
+        if (device instanceof IpDevice) capturePresentationSelection(getSession(device).term);
+      }
+      tabLayouts[mode] = mergeTabLayouts(tabLayouts[mode], panels, get().terminals);
+      saveTabs();
+      rememberPanels(panels, previous.filter((old) => !panels.some((panel) => panel.id === old.id)).map((panel) => panel.id), true);
+      set({ terminalPanels: panels, activeTerminal: id, terminalHasFocus: true, terminalDockCollapsed: false,
+        terminalFocusRequest: get().terminalFocusRequest + 1 });
+    },
+
+    reorderTerminalPanel(id, beforeId) {
+      const panels = moveTerminalPanel(get().terminalPanels, id, beforeId);
+      if (panels === get().terminalPanels) return;
+      const mode = get().terminalLayoutMode;
+      tabLayouts[mode] = mergeTabLayouts(tabLayouts[mode], panels, get().terminals);
+      saveTabs();
+      rememberPanels(panels, [], true);
+      // Moving a focused DOM subtree can clear native focus even though React
+      // keeps its identity. Ask the existing active session to focus again.
+      set({ terminalPanels: panels, terminalFocusRequest: get().terminalFocusRequest + (get().terminalHasFocus ? 1 : 0) });
     },
 
     setTerminalLayoutMode(value) {
@@ -633,15 +736,16 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (mode === get().terminalLayoutMode) return;
       const ids = get().terminals;
       const active = get().activeTerminal;
-      const terminalPanels = mode === 'by-type'
-        ? groupPanelSessions(ids.map((id) => ({ id, kind: sim.net.devices.get(id)!.kind })), active)
-        : freePanelSessions(ids, active);
-      set({ terminalLayoutMode: mode, terminalPanels });
+      const terminalPanels = ids.reduce<TerminalPanel[]>((panels, id) => insertSavedTab(panels, id, active, mode, tabDevices(), tabLayouts[mode]), []);
+      const activated = active ? activatePanelSession(terminalPanels, active) : terminalPanels;
+      set({ terminalLayoutMode: mode, terminalPanels: applyPanelPreferences(activated, panelPreferences, mode) });
       saveSoon();
     },
 
     cycleTerminal(direction, origin) {
-      const next = adjacentTerminal(get().terminals, origin ?? get().activeTerminal, direction);
+      // Read the presentation order at navigation time; never cache a second list.
+      const order = get().terminalPanels.flatMap((panel) => panel.tabs);
+      const next = adjacentTerminal(order, origin ?? get().activeTerminal, direction);
       if (next !== null) get().setActiveTerminal(next);
     },
 
@@ -724,6 +828,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     newTopology() {
+      tabLayouts = {};
+      try { if (localStorage.getItem(TAB_LAYOUT_KEY)) writeTabLayouts([], {}); } catch { /* Optional persistence. */ }
+      panelPreferences = readPanelPreferences();
       disposeAllSessions();
       sim.net = new Network();
       wireNet(sim.net);
@@ -737,6 +844,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         activeTerminal: null,
         terminalPanels: [],
         terminalHasFocus: false,
+        terminalDockCollapsed: false,
         terminalColors: {},
         terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE },
         terminalLayoutMode: 'free',
@@ -864,6 +972,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     boot() {
+      panelPreferences = readPanelPreferences();
       if (location.hash.startsWith('#t=')) {
         const json = LZString.decompressFromEncodedURIComponent(location.hash.slice(3));
         if (json) {
