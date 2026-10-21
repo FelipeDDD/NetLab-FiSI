@@ -15,6 +15,7 @@ export interface Session {
   term: Terminal;
   fit: FitAddon;
   opened: boolean;
+  refreshProfile(): void;
   dispose(): void;
 }
 
@@ -68,7 +69,11 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   });
 
   const shell = new Shell(device);
-  const promptStr = () => `\x1b[1;32m${device.name}\x1b[0m:\x1b[1;34m~\x1b[0m$ `;
+  let promptOs = shell.os;
+  const promptStr = (adoptProfile = true) => {
+    if (adoptProfile) promptOs = shell.os;
+    return promptOs === 'windows' ? 'C:\\>' : `\x1b[1;32m${device.name}\x1b[0m:\x1b[1;34m~\x1b[0m$ `;
+  };
   let buf = '';
   let running: Running | null = null;
   let disposed = false;
@@ -78,7 +83,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   let inputBusy = false;
   let draining = false;
   // null requests a redraw after xterm column reflow, serialized with input.
-  const inputQueue: { data: string | null; replace: boolean }[] = [];
+  const inputQueue: { data: string | null; replace: boolean; refreshProfile?: boolean }[] = [];
   const history: string[] = [];
   let hIdx = 0;
 
@@ -91,7 +96,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       if (disposed) return done();
       const buffer = term.buffer.active;
       const up = buffer.cursorY - Math.max(0, inputStartRow(buffer) - buffer.baseY);
-      term.write(`\r${up ? `\x1b[${up}A` : ''}\x1b[J${promptStr()}${next}`, done);
+      term.write(`\r${up ? `\x1b[${up}A` : ''}\x1b[J${promptStr(false)}${next}`, done);
     });
   };
 
@@ -106,7 +111,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     }
     history.push(line);
     hIdx = history.length;
-    if (trimmed === 'clear') {
+    if (promptOs === 'linux' && trimmed === 'clear') {
       term.write('\x1b[2J\x1b[H');
       term.write(promptStr());
       return;
@@ -124,7 +129,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       running = null;
       opts.onAfterCommand?.(before !== JSON.stringify(serializeNetwork(device.network, {})));
       if (!disposed) term.write(promptStr());
-    });
+    }, promptOs);
     // Some commands call done synchronously and still return a cancel handle.
     running = completed ? null : command;
   };
@@ -140,7 +145,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       processInput(action.data, action.replace, () => {
         inputBusy = false;
         if (!draining) drainInput();
-      });
+      }, action.refreshProfile);
     }
     draining = false;
   };
@@ -156,7 +161,12 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     drainInput();
   };
 
-  const processInput = (data: string | null, replace: boolean, done: () => void) => {
+  const processInput = (data: string | null, replace: boolean, done: () => void, refreshProfile = false) => {
+    if (refreshProfile) {
+      if (running || buf || term.hasSelection() || promptOs === shell.os) return done();
+      promptOs = shell.os;
+      return redrawLine('', done);
+    }
     if (data === null) {
       // Reflow can leave wide Unicode cells inconsistent with the line buffer.
       // Repaint editable input from the authoritative text, never command output.
@@ -253,11 +263,20 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   // xterm marks both native paste events and term.paste() as a single payload,
   // so even a clipboard containing only CR cannot be mistaken for Enter.
   term.write('\x1b[?2004h');
-  term.writeln(`\x1b[90mNetSim — ${device.name} (${device.kind}). Type 'help' for commands.\x1b[0m`);
+  term.writeln(`\x1b[90mNetSim — ${device.name} (${device.kind}). ${shell.os === 'windows' ? 'Windows CMD simulation. ' : ''}Type 'help' for commands.\x1b[0m`);
   term.write(promptStr());
 
   const session: Session = {
     term, fit, opened: false,
+    refreshProfile() {
+      // Never disturb a running command, typed draft or selection. Their next
+      // prompt adopts the profile; the existing buffer and renderer stay intact.
+      if (disposed) return;
+      // Serialize the redraw with xterm writes/input so fast typing cannot be
+      // erased between measuring the old prompt and painting the new one.
+      inputQueue.push({ data: null, replace: false, refreshProfile: true });
+      drainInput();
+    },
     dispose() {
       if (disposed) return;
       // Invalidate callbacks before cancel(), which may synchronously call done.
@@ -284,6 +303,10 @@ export function disposeSession(deviceId: string): void {
   const s = sessions.get(deviceId);
   if (!s) return;
   s.dispose();
+}
+
+export function refreshSessionProfile(deviceId: string): void {
+  sessions.get(deviceId)?.refreshProfile();
 }
 
 export function disposeAllSessions(): void {

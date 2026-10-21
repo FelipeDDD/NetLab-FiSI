@@ -4,6 +4,9 @@ import { createDevice } from '../engine/factory';
 import { Host, IpDevice, RouterDevice, ServerDevice } from '../engine/ipdevice';
 import { parseCidr, parseIp } from '../engine/ip';
 import { Shell } from './shell';
+import { restoreNetwork, serializeNetwork } from '../engine/serialize';
+import { SwitchDevice } from '../engine/switch';
+import type { EthernetFrame } from '../engine/types';
 
 const ip = (s: string) => parseIp(s)!;
 
@@ -81,6 +84,97 @@ describe('DHCP', () => {
     run(net, pc3, 'dhclient eth0');
     expect(lab.pc2.getInterface('eth0')!.ip?.addr).toBe(ip('192.168.1.100'));
     expect(pc3.getInterface('eth0')!.ip?.addr).toBe(ip('192.168.1.101'));
+  });
+
+  it('reserves distinct offers for simultaneous Linux and Windows clients', () => {
+    const net = new Network(), { pc2, sw1, r1 } = servicesLab(net);
+    const windows = createDevice(net, 'host', { os: 'windows' }) as Host;
+    net.connect(windows.id, sw1.id); windows.interfaces[0].configureIpv4({ mode: 'dhcp', ip: null, gateway: null, dns: null });
+    const linuxDone: string[] = [], windowsDone: string[] = [];
+    new Shell(pc2).exec('dhclient', { write() {} }, () => linuxDone.push('done'));
+    new Shell(windows).exec('ipconfig /renew', { write() {} }, () => windowsDone.push('done'));
+    net.scheduler.advanceTo(10000);
+    expect(linuxDone).toEqual(['done']); expect(windowsDone).toEqual(['done']);
+    expect(pc2.interfaces[0].ip?.addr).toBe(ip('192.168.1.100'));
+    expect(windows.interfaces[0].ip?.addr).toBe(ip('192.168.1.101'));
+    expect(new Set(r1.dhcpServer!.leases.values()).size).toBe(2);
+    expect(run(net, windows, 'ipconfig /renew')).toContain('192.168.1.101');
+  });
+
+  it('does not acknowledge requests for another client address or an out-of-pool address', () => {
+    const net = new Network(), { pc2, sw1, r1 } = servicesLab(net);
+    run(net, pc2, 'dhclient');
+    const other = createDevice(net, 'host') as Host;
+    net.connect(other.id, sw1.id);
+    const iface = other.interfaces[0];
+    for (const address of ['192.168.1.100', '192.168.1.250', '192.168.1.1']) {
+      other.sendDhcpClient(iface, { kind: 'dhcp', op: 'request', xid: other.nextDhcpXid(), clientMac: iface.mac, yourIp: ip(address) });
+      net.scheduler.advanceTo(net.now + 1000);
+      expect(r1.dhcpServer!.leases.has(iface.mac)).toBe(false);
+    }
+    expect(run(net, other, 'dhclient')).toContain('bound to 192.168.1.101');
+  });
+
+  it('skips addresses retained by clients after save/restore even though leases were not saved', () => {
+    const net = new Network(), lab = servicesLab(net);
+    run(net, lab.pc2, 'dhclient');
+    const restored = restoreNetwork(serializeNetwork(net, {}));
+    const client = restored.devices.get(lab.pc2.id) as Host;
+    const server = restored.devices.get(lab.r1.id) as IpDevice;
+    expect(server.dhcpServer!.leases.size).toBe(0);
+    const frames: EthernetFrame[] = [];
+    restored.onWireTransfer = (_transfer, context) => frames.push(context.frame);
+    const fresh = createDevice(restored, 'host', { os: 'windows' }) as Host;
+    restored.connect(fresh.id, lab.sw1.id); fresh.interfaces[0].configureIpv4({ mode: 'dhcp', ip: null, gateway: null, dns: null });
+    expect(run(restored, fresh, 'ipconfig /renew')).toContain('192.168.1.101');
+    expect(frames.some((f) => f.payload.kind === 'arp' && f.payload.op === 'request' && f.payload.targetIp === ip('192.168.1.100'))).toBe(true);
+    expect(frames.some((f) => f.payload.kind === 'arp' && f.payload.op === 'reply' && f.payload.senderMac === client.interfaces[0].mac && f.payload.senderIp === ip('192.168.1.100'))).toBe(true);
+    expect(client.interfaces[0].ip?.addr).toBe(ip('192.168.1.100'));
+    expect(run(restored, client, 'dhclient')).toContain('bound to 192.168.1.100');
+    expect(new Set(server.dhcpServer!.leases.values()).size).toBe(2);
+  });
+
+  it('checks existing static addresses only in the server broadcast domain, respecting VLANs and routers', () => {
+    const net = new Network(), { pc1, pc2, sw1, r1, srv1 } = servicesLab(net);
+    pc1.interfaces[0].ip = parseCidr('192.168.1.100/24');
+    expect(run(net, pc2, 'dhclient')).toContain('bound to 192.168.1.101');
+    const other = createDevice(net, 'host') as Host; net.connect(other.id, sw1.id);
+    const sw = sw1 as SwitchDevice;
+    sw.vlans.set(pc1.interfaces[0].link!.other(pc1.interfaces[0]).name, 20);
+    // An identically numbered address behind the router is also a separate L2 domain.
+    srv1.interfaces[0].ip = parseCidr('192.168.1.100/24');
+    expect(run(net, other, 'dhclient')).toContain('bound to 192.168.1.100');
+    expect(r1.dhcpServer!.leases.size).toBe(2);
+  });
+
+  it('expires abandoned offers without extra timers and does not reuse a full pool early', () => {
+    const net = new Network(), { pc2, sw1, r1 } = servicesLab(net);
+    r1.dhcpServer!.rangeEnd = r1.dhcpServer!.rangeStart;
+    const mac = pc2.interfaces[0].mac;
+    pc2.sendDhcpClient(pc2.interfaces[0], { kind: 'dhcp', op: 'discover', xid: 1, clientMac: mac });
+    net.scheduler.advanceTo(1000);
+    expect(r1.dhcpServer!.leases.size).toBe(0); // an offer is not a confirmed lease
+    const other = createDevice(net, 'host') as Host; net.connect(other.id, sw1.id);
+    expect(run(net, other, 'dhclient')).toContain('No DHCPOFFERS');
+    net.scheduler.advanceTo(net.now + 31000);
+    expect(run(net, other, 'dhclient')).toContain('bound to 192.168.1.100');
+  });
+
+  it.each(['disable', 'replace', 'remove', 'disconnect'] as const)('does not emit a stale offer after %s during ARP probing', (change) => {
+    const net = new Network(), { pc2, r1 } = servicesLab(net);
+    const offers: EthernetFrame[] = [];
+    net.onWireTransfer = (_transfer, { frame }) => {
+      const p = frame.payload;
+      if (p.kind === 'ipv4' && p.l4.kind === 'udp' && p.l4.app?.kind === 'dhcp' && p.l4.app.op === 'offer') offers.push(frame);
+    };
+    const running = new Shell(pc2).exec('dhclient', { write() {} }, () => {});
+    net.scheduler.advanceTo(250); // DISCOVER arrived; ARP verification is pending.
+    if (change === 'disable') r1.dhcpServer!.enabled = false;
+    if (change === 'replace') r1.dhcpServer = { ...r1.dhcpServer!, enabled: false, leases: new Map() };
+    if (change === 'remove') net.removeDevice(r1.id);
+    if (change === 'disconnect') net.disconnect(r1.interfaces[0].link!.id);
+    running!.cancel(); net.scheduler.advanceTo(10000);
+    expect(offers).toEqual([]); expect(pc2.interfaces[0].ip).toBeNull();
   });
 
   it('reports no offers when there is no DHCP server', () => {

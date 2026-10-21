@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { IpDevice } from './engine/ipdevice';
+import { Host, IpDevice } from './engine/ipdevice';
 import { ApDevice, SwitchDevice } from './engine/switch';
 import { parseCidr, parseIp } from './engine/ip';
 import { Shell, type TermIO } from './commands/shell';
@@ -10,6 +10,7 @@ import { PASTE_END, PASTE_START } from './terminalInput';
 import * as terminalLine from './terminalLine';
 import { restoreNetwork, serializeNetwork } from './engine/serialize';
 import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, type AppearanceSaveFile } from './terminalAppearance';
+import { TERMINAL_EFFECT_GROUPS } from './terminalEffects';
 import { resizePanelPair } from './terminalPanels';
 import { PANEL_LAYOUT_KEY } from './terminalPanelPreferences';
 import type { MoveOperation } from './topologyHistory';
@@ -17,6 +18,8 @@ import { captureCreation, captureLink, dhcpSettings, sortedDnsRecords } from './
 import { TAB_LAYOUT_KEY } from './terminalTabPreferences';
 import { PacketCapture } from './packetCapture';
 import { PACKET_ANIMATION_SPEED_KEY, packetAnimationDuration, packetAnimationProgress } from './packetAnimation';
+import { HOST_CREATION_KEY } from './hostOs';
+import { emptyIpv4, parseStaticIpv4 } from './engine/ipv4Config';
 
 // Only the browser renderer is replaced. Commands, engine, store and persistence
 // run together so these tests cover the actual terminal-to-autosave path.
@@ -99,6 +102,169 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe('host OS profiles', () => {
+  it('groups consecutive IPv4 form confirmations and breaks the group for other edits or history navigation', () => {
+    const { a } = pair(), store = () => useStore.getState(), group = {};
+    const before = a.interfaces[0].ipv4;
+    const first = parseStaticIpv4('10.0.0.42', '24', '', '')!;
+    const second = parseStaticIpv4('10.0.0.42', '25', '', '10.0.0.2')!;
+    store().invalidateTopologyHistory();
+    store().setInterfaceIpv4(a.id, 'eth0', first, group);
+    store().setInterfaceIpv4(a.id, 'eth0', second, group);
+    store().setInterfaceIpv4(a.id, 'eth0', second, group); // Blur after debounce is a no-op.
+    expect(store().topologyHistory.past).toHaveLength(1);
+    store().undoTopology(); expect(a.interfaces[0].ipv4).toEqual(before);
+    const history = store().topologyHistory;
+    expect(store().setInterfaceIpv4(a.id, 'eth0', { ...second, ip: { addr: 1, prefix: 33 } }, group)).not.toBeNull();
+    expect(store().topologyHistory).toBe(history);
+    store().redoTopology(); expect(a.interfaces[0].ipv4).toEqual(second);
+    store().setInterfaceIpv4(a.id, 'eth0', first, group);
+    expect(store().topologyHistory.past).toHaveLength(2); // Never merge across Undo/Redo.
+    store().renameDevice(a.id, 'Grouped');
+    store().setInterfaceIpv4(a.id, 'eth0', second, group);
+    expect(store().topologyHistory.past).toHaveLength(4);
+    store().flushAutosave(); store().boot();
+    expect(sim.net.devices.get(a.id)!.interfaces[0].ipv4).toEqual(second);
+  });
+
+  it('does not merge a reverted IPv4 editing group into the preceding group', () => {
+    const { a } = pair(), store = () => useStore.getState();
+    const first = parseStaticIpv4('10.0.0.42', '24', '', '')!;
+    const second = parseStaticIpv4('10.0.0.43', '24', '', '')!, group = {};
+    store().invalidateTopologyHistory();
+    store().setInterfaceIpv4(a.id, 'eth0', first, {});
+    store().setInterfaceIpv4(a.id, 'eth0', second, group);
+    store().setInterfaceIpv4(a.id, 'eth0', first, group);
+    expect(store().topologyHistory.past).toHaveLength(1);
+    store().setInterfaceIpv4(a.id, 'eth0', second, group);
+    expect(store().topologyHistory.past).toHaveLength(2);
+    store().undoTopology(); expect(a.interfaces[0].ipv4).toEqual(first);
+  });
+
+  it('records atomic interface settings, preserves Redo on invalid/no-op edits and restores preferences after boot', () => {
+    const { a, b, net } = pair(), first = open(a), other = open(b), store = () => useStore.getState();
+    const config = parseStaticIpv4('10.0.0.42', '/24', '10.0.0.2', '10.0.0.2')!;
+    store().invalidateTopologyHistory();
+    expect(store().setInterfaceIpv4(a.id, 'eth0', config)).toBeNull();
+    config.ip!.addr = 0; // History and engine own their copies.
+    expect(a.interfaces[0].ip?.addr).toBe(parseIp('10.0.0.42'));
+    store().setInterfaceIpv4(a.id, 'eth0', emptyIpv4('dhcp'));
+    store().undoTopology();
+    const history = store().topologyHistory;
+    expect(store().setInterfaceIpv4(a.id, 'eth0', a.interfaces[0].ipv4)).toBeNull();
+    expect(store().setInterfaceIpv4(a.id, 'eth0', { ...a.interfaces[0].ipv4, gateway: parseIp('192.0.2.1') })).not.toBeNull();
+    expect(store().topologyHistory).toBe(history);
+    store().redoTopology(); expect(a.interfaces[0].ipv4).toEqual(emptyIpv4('dhcp'));
+    expect(sim.net).toBe(net); expect(getSession(a)).toBe(first); expect(getSession(b)).toBe(other);
+    store().flushAutosave(); store().boot();
+    expect(sim.net.devices.get(a.id)!.interfaces[0].ipv4).toEqual(emptyIpv4('dhcp'));
+    expect(store().terminals).toEqual([]);
+  });
+
+  it('publishes a terminal DHCP mode change immediately, before acquisition, and invalidates incompatible history', () => {
+    const { a, b, net } = pair(), session = open(a), other = open(b), store = () => useStore.getState();
+    store().renameDevice(a.id, 'DHCP-client');
+    input(session, 'dhclient eth0\r');
+    expect(a.interfaces[0].ipv4Mode).toBe('dhcp'); expect(a.interfaces[0].ip).toBeNull();
+    expect(store().topologyHistory.past).toEqual([]);
+    expect(store().nodes.find((n) => n.id === a.id)?.data.ip).toBeFalsy();
+    store().flushAutosave();
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!).devices[0].ifaces[0]).toMatchObject({ ipv4Mode: 'dhcp', ip: null });
+    // An Inspector edit cancels acquisition without closing either terminal.
+    store().setInterfaceIpv4(a.id, 'eth0', parseStaticIpv4('10.0.0.8', '24', '', '')!);
+    net.scheduler.advanceTo(10000);
+    expect(a.interfaces[0].ip?.addr).toBe(parseIp('10.0.0.8'));
+    expect(getSession(a)).toBe(session); expect(getSession(b)).toBe(other);
+    expect(a.dhcpListeners.size).toBe(0);
+  });
+  afterEach(() => useStore.getState().setHostCreationMode('linux'));
+
+  it('serializes a profile redraw with input arriving while xterm is still painting', () => {
+    const { a } = pair(), session = open(a), callbacks: (() => void)[] = [];
+    vi.mocked(session.term.write).mockImplementation((_text, callback) => { if (callback) callbacks.push(callback); });
+    useStore.getState().setHostOs(a.id, 'windows');
+    input(session, 'hostname\r');
+    expect(output(session)).not.toContain('hostname');
+    while (callbacks.length) callbacks.shift()!();
+    expect(output(session)).toContain('C:\\>hostname\r\n' + a.name + '\r\nC:\\>');
+    expect(session.term.dispose).not.toHaveBeenCalled();
+  });
+
+  it('samples Mixed once and restores that identity through create/delete history, import and autosave', () => {
+    const store = () => useStore.getState();
+    store().setHostCreationMode('mixed');
+    expect(storage.get(HOST_CREATION_KEY)).toBe('mixed');
+    vi.spyOn(Math, 'random').mockReturnValue(0.8);
+    store().addDeviceAt('host', { x: 20, y: 30 });
+    const id = store().nodes[0].id, original = sim.net.devices.get(id) as Host;
+    expect(original.os).toBe('windows'); expect(store().nodes[0].data.os).toBe('windows');
+    vi.mocked(Math.random).mockReturnValue(0.1);
+    store().undoTopology(); store().redoTopology();
+    const restored = sim.net.devices.get(id) as Host;
+    expect(restored.os).toBe('windows'); expect(restored.interfaces[0].mac).toBe(original.interfaces[0].mac);
+    store().addDeviceAt('host', { x: 120, y: 30 });
+    expect((sim.net.devices.get(store().nodes[1].id) as Host).os).toBe('linux');
+    store().setHostCreationMode('windows'); store().addDeviceAt('host', { x: 220, y: 30 });
+    expect((sim.net.devices.get(store().nodes[2].id) as Host).os).toBe('windows');
+    store().deleteDevice(id); store().undoTopology();
+    expect((sim.net.devices.get(id) as Host).os).toBe('windows');
+    store().flushAutosave();
+    const saved = storage.get('netsim:autosave:v1')!;
+    store().boot(); expect((sim.net.devices.get(id) as Host).os).toBe('windows'); expect(store().terminals).toEqual([]);
+    expect(store().importJson(saved)).toBeNull(); expect((sim.net.devices.get(id) as Host).os).toBe('windows');
+    const legacy = JSON.parse(saved); delete legacy.devices.find((d: { id: string }) => d.id === id).os;
+    expect(store().importJson(JSON.stringify(legacy))).toBeNull(); expect((sim.net.devices.get(id) as Host).os).toBe('linux');
+  });
+
+  it('changes profile with undo/redo without replacing active sessions, drafts, selection or pings', () => {
+    const { a, b, net } = pair(), session = open(a), other = open(b), store = () => useStore.getState();
+    input(session, 'ping 10.0.0.2\r'); net.scheduler.advanceTo(500);
+    store().setHostOs(a.id, 'windows'); net.scheduler.advanceTo(2500);
+    expect(output(session)).toContain('icmp_seq=3'); expect(output(session)).not.toContain('C:\\>');
+    input(session, '\x03'); expect(output(session)).toMatch(/C:\\>$/);
+    expect(getSession(a)).toBe(session); expect(getSession(b)).toBe(other); expect(sim.net).toBe(net);
+    store().undoTopology(); expect((a as Host).os).toBe('linux'); expect(output(session)).toMatch(/\$ $/);
+    store().redoTopology(); expect((a as Host).os).toBe('windows'); expect(output(session)).toMatch(/C:\\>$/);
+    input(session, 'ipconfig'); vi.mocked(session.term.hasSelection).mockReturnValue(true);
+    store().setHostOs(a.id, 'linux');
+    expect(output(session)).toMatch(/ipconfig$/);
+    vi.mocked(session.term.hasSelection).mockReturnValue(false);
+    input(session, '\r'); expect(output(session)).toContain('Windows IP Configuration'); expect(output(session)).toMatch(/\$ $/);
+    input(session, '\x1b[A'); expect(output(session)).toMatch(/ipconfig$/);
+    expect(session.term.dispose).not.toHaveBeenCalled(); expect(other.term.dispose).not.toHaveBeenCalled();
+    store().undoTopology(); const history = store().topologyHistory;
+    store().setHostOs(a.id, 'windows'); store().setHostOs(b.id, 'windows');
+    expect(store().topologyHistory).toBe(history); // unchanged and non-host edits preserve Redo
+  });
+
+  it('captures four Windows ping round trips for Guided and continues live -t after returning', () => {
+    const { a, net } = pair(), store = () => useStore.getState();
+    store().setHostOs(a.id, 'windows'); const session = open(a);
+    store().startPacketCapture(); store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    input(session, 'ping 10.0.0.2\r'); net.scheduler.advanceTo(3800); store().tick(0); vi.advanceTimersByTime(100);
+    expect(store().guidedPacket.status).toBe('playing'); expect(store().guidedPacket.attempts.map((a) => a.replied)).toEqual([true, true, true, true]);
+    expect(store().packetCapture.records.some((r) => r.frame.payload.kind === 'ipv4')).toBe(true);
+    expect(output(session)).toContain('Sent = 4, Received = 4'); expect(output(session)).toMatch(/C:\\>$/);
+    store().observeNextGuidedPacket(); input(session, 'ping -t 10.0.0.2\r');
+    net.scheduler.advanceTo(8000); store().tick(0); expect(store().guidedPacket.status).toBe('playing');
+    store().setPacketVisualizationMode('live'); const before = output(session);
+    net.scheduler.advanceTo(10000); expect(output(session).length).toBeGreaterThan(before.length);
+    input(session, '\x03'); expect(output(session)).toMatch(/C:\\>$/); expect(getSession(a)).toBe(session);
+  });
+
+  it('autosaves DHCP changes issued by ipconfig /renew while retaining visual preferences', () => {
+    const { a, b, net } = pair(); const store = () => useStore.getState();
+    a.interfaces[0].configureIpv4({ mode: 'dhcp', ip: null, gateway: null, dns: null });
+    b.dhcpServer = { enabled: true, rangeStart: parseIp('10.0.0.50')!, rangeEnd: parseIp('10.0.0.60')!, router: parseIp('10.0.0.2'), dns: parseIp('10.0.0.2'), leases: new Map() };
+    store().setHostOs(a.id, 'windows'); store().setTerminalColor(a.id, '#123456');
+    const session = open(a); input(session, 'ipconfig /renew\r'); net.scheduler.advanceTo(3000); store().flushAutosave();
+    const saved = JSON.parse(storage.get('netsim:autosave:v1')!);
+    expect(saved.devices.find((d: { id: string }) => d.id === a.id)).toMatchObject({ os: 'windows', ifaces: [expect.objectContaining({ ip: '10.0.0.50/24', ipv4Mode: 'dhcp', dns: '10.0.0.2' })] });
+    expect(saved.ui.terminalColors[a.id]).toBe('#123456');
+    expect(session.term.dispose).not.toHaveBeenCalled(); expect(output(session)).toMatch(/C:\\>$/);
+  });
 });
 
 describe('terminal session lifetime', () => {
@@ -240,7 +406,9 @@ describe('terminal session lifetime', () => {
     const send = vi.spyOn(a, 'sendDhcpClient');
     input(session, 'dhclient eth0\r');
     // Close after the request, with its ACK still travelling through the engine.
-    net.scheduler.advanceTo(200);
+    // Address-conflict probing now precedes the offer. Stop at the actual
+    // REQUEST instead of assuming a fixed DHCP handshake duration.
+    for (let step = 0; step < 300 && send.mock.calls.length < 2; step++) net.scheduler.advanceTo(net.now + 10);
     expect(send).toHaveBeenCalledTimes(2);
     useStore.getState().closeTerminal(a.id);
     net.scheduler.advanceTo(10_000);
@@ -1305,10 +1473,10 @@ describe('per-device terminal appearance persistence', () => {
     expect(serializeNetwork(restoreNetwork(saved), {})).toEqual(before);
   });
 
-  it('exports and imports custom colors through the actual JSON download path', async () => {
+  it.each(['dual-glow', 'aurora-lines', 'aurora-flow', ...TERMINAL_EFFECT_GROUPS.flatMap((group) => group.presets.map((preset) => preset.id))] as const)('exports and imports custom colors with %s through the actual JSON download path', async (style) => {
     const { a } = pair();
     useStore.getState().setTerminalColor(a.id, '#123456');
-    useStore.getState().setTerminalAppearance({ style: 'dual-glow', intensity: 63, fontFamily: 'cascadia' });
+    useStore.getState().setTerminalAppearance({ style, intensity: 63, fontFamily: 'cascadia' });
     useStore.getState().setTerminalLayoutMode('by-type');
     let downloaded!: Blob;
     const click = vi.fn();
@@ -1323,7 +1491,7 @@ describe('per-device terminal appearance persistence', () => {
     useStore.getState().newTopology();
     expect(useStore.getState().importJson(json)).toBeNull();
     expect(useStore.getState().terminalColors).toEqual({ [a.id]: '#123456' });
-    expect(useStore.getState().terminalAppearance).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style: 'dual-glow', intensity: 63, fontFamily: 'cascadia' });
+    expect(useStore.getState().terminalAppearance).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style, intensity: 63, fontFamily: 'cascadia' });
     expect(useStore.getState().terminalLayoutMode).toBe('by-type');
   });
 
@@ -1352,7 +1520,7 @@ describe('per-device terminal appearance persistence', () => {
     expect(useStore.getState().terminalColors).toEqual({});
   });
 
-  it('keeps a running session and partial input intact while colors change and after close/reopen', () => {
+  it.each(['dual-glow', 'aurora-lines', 'aurora-flow', 'fx-aurora-balanced', 'fx-lines-flow', 'fx-signal-pulse', 'fx-mesh-prism'] as const)('keeps a running session and partial input intact with %s and after close/reopen', (style) => {
     const { a, b, net } = pair();
     const first = open(a);
     const second = open(b);
@@ -1362,7 +1530,7 @@ describe('per-device terminal appearance persistence', () => {
     const exec = vi.spyOn(Shell.prototype, 'exec');
     useStore.getState().setTerminalColor(a.id, '#123456');
     useStore.getState().setTerminalColor(b.id, '#654321');
-    useStore.getState().setTerminalAppearance({ style: 'dual-glow', intensity: 95, fontSize: 18 });
+    useStore.getState().setTerminalAppearance({ style, intensity: 95, fontSize: 18 });
     net.scheduler.advanceTo(1100);
     expect(send).toHaveBeenCalledOnce();
     expect(first.term.dispose).not.toHaveBeenCalled();
@@ -1407,19 +1575,19 @@ describe('per-device terminal appearance persistence', () => {
     expect(useStore.getState().terminalColors).toEqual({});
   });
 
-  it('autosaves style/intensity independently of colors and preserves the engine configuration', () => {
+  it.each(['dual-glow', 'aurora-lines', 'aurora-flow', 'fx-aurora-balanced', 'fx-lines-flow', 'fx-signal-pulse', 'fx-mesh-prism'] as const)('autosaves %s/intensity independently of colors and preserves the engine configuration', (style) => {
     const { net } = pair();
     const before = serializeNetwork(net, {});
-    useStore.getState().setTerminalAppearance({ style: 'dual-glow' });
+    useStore.getState().setTerminalAppearance({ style });
     useStore.getState().setTerminalAppearance({ intensity: 55 });
     expect(serializeNetwork(net, {})).toEqual(before);
     vi.advanceTimersByTime(500);
     expect(setItem).toHaveBeenCalledOnce();
     const saved = JSON.parse(storage.get('netsim:autosave:v1')!);
-    expect(saved.ui.terminalAppearance).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style: 'dual-glow', intensity: 55 });
+    expect(saved.ui.terminalAppearance).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style, intensity: 55 });
     expect(saved.ui.terminalColors).toBeUndefined();
     useStore.getState().boot();
-    expect(useStore.getState().terminalAppearance).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style: 'dual-glow', intensity: 55 });
+    expect(useStore.getState().terminalAppearance).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style, intensity: 55 });
     useStore.getState().newTopology();
     expect(useStore.getState().terminalAppearance).toEqual(DEFAULT_TERMINAL_APPEARANCE);
   });
@@ -1542,7 +1710,7 @@ describe('autosave from terminal commands', () => {
     expect(setItem).toHaveBeenCalledTimes(1);
   });
 
-  it('saves asynchronous DHCP configuration after completion and restores it on boot', () => {
+  it('saves asynchronous DHCP configuration and avoids reissuing the occupied address after boot', () => {
     const { a, b, net } = pair();
     a.getInterface('eth0')!.ip = null;
     b.dhcpServer = {
@@ -1552,15 +1720,24 @@ describe('autosave from terminal commands', () => {
     const session = open(a);
     input(session, 'dhclient eth0\r');
     vi.advanceTimersByTime(500);
-    expect(setItem).not.toHaveBeenCalled();
+    expect(setItem).toHaveBeenCalledTimes(1); // DHCP mode is saved immediately, before an ACK.
     net.scheduler.advanceTo(2000);
     vi.advanceTimersByTime(500);
-    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(setItem).toHaveBeenCalledTimes(2);
     useStore.getState().boot();
     const restored = sim.net.devices.get(a.id) as IpDevice;
     expect(restored.getInterface('eth0')!.ip).toEqual(parseCidr('10.0.0.100/24'));
-    expect(restored.staticRoutes[0]?.via).toBe(parseIp('10.0.0.2'));
+    expect(restored.routes().find((r) => r.prefix === 0)?.via).toBe(parseIp('10.0.0.2'));
     expect(restored.nameserver).toBe(parseIp('10.0.0.2'));
+    const store = () => useStore.getState();
+    store().onEdgesChange([{ type: 'remove', id: store().edges[0].id }]);
+    store().addDeviceAt('switch', { x: 100, y: 100 }); const sw = store().nodes.at(-1)!.id;
+    store().addDeviceAt('host', { x: 200, y: 100 }); const fresh = sim.net.devices.get(store().nodes.at(-1)!.id) as Host;
+    for (const id of [a.id, b.id, fresh.id]) store().onConnect({ source: id, target: sw, sourceHandle: null, targetHandle: null });
+    store().setHostOs(fresh.id, 'windows'); fresh.interfaces[0].configureIpv4({ mode: 'dhcp', ip: null, gateway: null, dns: null });
+    const terminal = open(fresh); input(terminal, 'ipconfig /renew\r'); sim.net.scheduler.advanceTo(5000);
+    expect(fresh.interfaces[0].ip?.addr).toBe(parseIp('10.0.0.101'));
+    expect(restored.interfaces[0].ip?.addr).toBe(parseIp('10.0.0.100'));
   });
 
   it('does not save read-only commands, errors, packet output or ping cancellation', () => {
@@ -1655,7 +1832,7 @@ describe('topology movement history', () => {
     const seed = () => { move([a.id], useStore.getState().nodes[0].position.x + 5); expect(useStore.getState().topologyHistory.past.length).toBeGreaterThan(0); };
     seed(); expect(store.setIfaceIp(a.id, 'eth0', 'bad')).not.toBeNull(); input(first, 'hostname\r');
     expect(useStore.getState().topologyHistory.past).toHaveLength(1);
-    store.setIfaceIp(a.id, 'eth0', '10.0.0.9/24'); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('set-iface-ip');
+    store.setIfaceIp(a.id, 'eth0', '10.0.0.9/24'); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('set-interface-ipv4');
     seed(); store.renameDevice(a.id, 'pc-new'); expect(useStore.getState().topologyHistory.past.at(-1)?.type).toBe('rename-device');
     seed(); input(first, 'ip link set eth0 down\r'); expect(useStore.getState().topologyHistory.past).toEqual([]);
     input(second, 'ping 10.0.0.2\r'); input(first, 'sysctl -w net.ipv4.ip_forward=1\r'); seed(); input(second, '\x03');
@@ -1786,25 +1963,25 @@ describe('topology creation and cable history', () => {
     add('switch'); expect(store().topologyHistory.future).toHaveLength(0);
     store().deleteDevice(survivor.id); expect(store().topologyHistory.past).toHaveLength(50); expect(store().topologyHistory.past.at(-1)?.type).toBe('delete-devices');
     const next = add('host'); store().setIfaceIp(next.id, 'eth0', '192.0.2.1/24');
-    expect(store().topologyHistory.past.at(-1)?.type).toBe('set-iface-ip');
+    expect(store().topologyHistory.past.at(-1)?.type).toBe('set-interface-ipv4');
     input(open(next as IpDevice), 'sysctl -w net.ipv4.ip_forward=1\r'); expect(store().topologyHistory.past).toEqual([]);
     add('host'); expect(store().importJson('{')).not.toBeNull(); expect(store().topologyHistory.past).toHaveLength(1);
     store().flushAutosave(); store().boot();
     expect(store().topologyHistory).toEqual({ past: [], future: [] }); expect(store().terminals).toEqual([]);
   });
 
-  it('cancels DHCP on undoing creation without letting old callbacks affect the same-ID replacement', () => {
+  it('cancels DHCP on deletion and Undo without letting old callbacks affect the same-ID replacement', () => {
     const device = add('host') as IpDevice, session = open(device), net = sim.net;
     input(session, 'dhclient eth0\r');
     expect(device.dhcpListeners.size).toBe(1); expect(net.scheduler.pending).toBeGreaterThan(0);
-    store().undoTopology(); store().redoTopology();
+    store().deleteDevice(device.id); store().undoTopology();
     const restored = net.devices.get(device.id) as IpDevice;
     expect(restored).not.toBe(device); expect(store().terminals).toEqual([]);
     expect(device.dhcpListeners.size).toBe(0); expect(net.scheduler.pending).toBe(0);
     const text = output(session); net.scheduler.advanceTo(60_000);
     expect(output(session)).toBe(text); expect(restored.interfaces[0].ip).toBeNull();
     expect(session.term.dispose).toHaveBeenCalledOnce();
-    expect(store().topologyHistory.past).toHaveLength(1);
+    expect(store().topologyHistory.future).toHaveLength(1);
   });
 
   it('captures a React Flow delete before edge/node callbacks and ignores duplicate removal notifications', () => {

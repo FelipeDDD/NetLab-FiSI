@@ -22,6 +22,9 @@ const ARP_RETRY_MS = 500;
 const ARP_MAX_TRIES = 3;
 const FW_LOG_MAX = 80;
 const DNS_TIMEOUT_MS = 2500;
+const DHCP_OFFER_HOLD_MS = 30_000;
+const DHCP_PROBE_MS = 500;
+const DHCP_PROBE_TRIES = 3;
 // RIP timers are compressed versus the RFC's 30s/180s so convergence is
 // watchable in class without waiting minutes of simulated time.
 const RIP_INTERVAL_MS = 10_000;
@@ -84,6 +87,11 @@ export interface DhcpServerConfig {
   router: U32 | null;
   dns: U32 | null;
   leases: Map<string, U32>; // client MAC -> leased address
+}
+
+interface DhcpOffer {
+  ip: U32; xid: number; ifaceName: string; until: number;
+  checking: boolean; checkedAt: number; timer: ScheduledEvent | null; rejected: Set<U32>;
 }
 
 export interface DnsServerConfig {
@@ -163,7 +171,12 @@ export abstract class IpDevice extends Device {
   ncTcp = new Map<number, (msg: string) => void>();
   ncUdp = new Map<number, (msg: string) => void>();
   // Phase-3 services and client settings.
-  nameserver: U32 | null = null;
+  // Explicit device-wide DNS remains independent of interface-owned options.
+  manualNameserver: U32 | null = null;
+  get nameserver(): U32 | null {
+    return this.manualNameserver ?? this.interfaces.find((i) => i.up && i.ip && i.dns !== null)?.dns ?? null;
+  }
+  set nameserver(value: U32 | null) { this.manualNameserver = value; }
   dhcpServer: DhcpServerConfig | null = null;
   dnsServer: DnsServerConfig | null = null;
   httpServer: HttpServerConfig | null = null;
@@ -183,6 +196,9 @@ export abstract class IpDevice extends Device {
   private ephemeralPort = 39999;
   private dnsQidSeq = 0;
   private dhcpXidSeq = 0;
+  // Pending offers are runtime reservations, separate from confirmed leases
+  // and keyed by configuration identity so replacing a server discards them.
+  private dhcpOffers = new WeakMap<DhcpServerConfig, Map<string, DhcpOffer>>();
 
   override dispose(): void {
     super.dispose();
@@ -196,6 +212,7 @@ export abstract class IpDevice extends Device {
     this.udpSessions.clear();
     this.dnsPending.clear();
     this.dhcpListeners.clear();
+    this.dhcpOffers = new WeakMap();
     this.ncTcp.clear();
     this.ncUdp.clear();
   }
@@ -238,6 +255,11 @@ export abstract class IpDevice extends Device {
       }
     }
     rs.push(...this.staticRoutes);
+    for (const i of this.interfaces) {
+      if (i.up && i.ip && i.gateway !== null && !rs.some((r) => r.prefix === 0 && r.ifaceName === i.name && r.via === i.gateway)) {
+        rs.push({ dest: 0, prefix: 0, via: i.gateway, ifaceName: i.name, kind: 'static' });
+      }
+    }
     for (const r of this.freshRipRoutes()) {
       rs.push({ dest: r.dest, prefix: r.prefix, via: r.via, ifaceName: r.ifaceName, kind: 'rip', metric: r.metric });
     }
@@ -336,7 +358,7 @@ export abstract class IpDevice extends Device {
       return 'RTNETLINK answers: File exists';
     if (iface.ip)
       return `netsim: one address per interface in phase 1 — "ip address del ${ifaceName}'s current address" first`;
-    iface.ip = { addr, prefix };
+    iface.configureIpv4({ mode: 'static', ip: { addr, prefix }, gateway: null, dns: null });
     return null;
   }
 
@@ -345,7 +367,7 @@ export abstract class IpDevice extends Device {
     if (!iface) return `Cannot find device "${ifaceName}"`;
     if (!iface.ip || iface.ip.addr !== addr || iface.ip.prefix !== prefix)
       return 'RTNETLINK answers: Cannot assign requested address';
-    iface.ip = null;
+    iface.configureIpv4({ mode: 'unconfigured', ip: null, gateway: null, dns: null });
     return null;
   }
 
@@ -703,22 +725,83 @@ export abstract class IpDevice extends Device {
     if (!cfg?.enabled) return;
     const iface = this.getInterface(iif);
     if (!iface?.ip) return;
-    if (app.op === 'discover') {
-      const lease = this.allocLease(cfg, app.clientMac);
-      if (lease === null) return; // pool exhausted: silence, like a real server
+    if (app.op === 'release') {
+      if (app.serverIp === iface.ip.addr && app.yourIp !== undefined && cfg.leases.get(app.clientMac) === app.yourIp) {
+        cfg.leases.delete(app.clientMac);
+      }
+      return;
+    }
+    let offers = this.dhcpOffers.get(cfg);
+    if (!offers) { offers = new Map(); this.dhcpOffers.set(cfg, offers); }
+    // Lazy expiry avoids an additional scheduled event for every offer.
+    for (const [mac, offer] of offers) {
+      if (offer.until <= this.network.now || offer.ip < cfg.rangeStart || offer.ip > cfg.rangeEnd) {
+        if (offer.timer) this.network.scheduler.cancel(offer.timer);
+        offers.delete(mac);
+      }
+    }
+    const sendOffer = (offer: DhcpOffer) => {
+      if (!iface.ip) return;
       this.sendBroadcastUdp(iface, iface.ip.addr, 67, 68, {
-        kind: 'dhcp',
-        op: 'offer',
-        xid: app.xid,
-        clientMac: app.clientMac,
-        yourIp: lease,
-        prefix: iface.ip.prefix,
-        router: cfg.router,
-        dns: cfg.dns,
-        serverIp: iface.ip.addr,
+        kind: 'dhcp', op: 'offer', xid: offer.xid, clientMac: app.clientMac,
+        yourIp: offer.ip, prefix: iface.ip.prefix, router: cfg.router,
+        dns: cfg.dns, serverIp: iface.ip.addr,
       });
+    };
+    if (app.op === 'discover') {
+      const previous = offers.get(app.clientMac);
+      if (previous && previous.ifaceName === iif && this.dhcpAddressAvailable(cfg, app.clientMac, previous.ip, offers)) {
+        // Retries/new client transactions reuse the in-flight check instead of
+        // repeatedly resetting it before an answer can arrive.
+        previous.xid = app.xid;
+        previous.until = this.network.now + DHCP_OFFER_HOLD_MS;
+        if (!previous.checking) sendOffer(previous);
+        return;
+      }
+      if (previous?.timer) this.network.scheduler.cancel(previous.timer);
+      const lease = this.allocLease(cfg, app.clientMac, offers);
+      if (lease === null) return; // pool exhausted: silence, like a real server
+      const offer: DhcpOffer = { ip: lease, xid: app.xid, ifaceName: iif,
+        until: this.network.now + DHCP_OFFER_HOLD_MS, checking: true, checkedAt: this.network.now, timer: null, rejected: new Set() };
+      offers.set(app.clientMac, offer); // reserve before any other DISCOVER
+      const link = iface.link;
+      const probe = () => {
+        offer.checkedAt = this.network.now;
+        let tries = 0;
+        const sendProbe = () => {
+          this.sendArpRequest(iface, offer.ip);
+          offer.timer = this.schedule(DHCP_PROBE_MS, () => {
+            offer.timer = null;
+            if (offers.get(app.clientMac) !== offer) return;
+            if (this.dhcpServer !== cfg || !cfg.enabled || !iface.up || !iface.ip || iface.link !== link || offer.until <= this.network.now) {
+              offers.delete(app.clientMac); return;
+            }
+            // Only replies learned since this probe on this interface count.
+            // No topology lookup: switches/VLANs and delivery latency apply normally.
+            const neighbour = this.arpTable.get(offer.ip);
+            const conflict = neighbour && neighbour.ifaceName === iif && neighbour.at >= offer.checkedAt && neighbour.mac !== app.clientMac;
+            if (conflict || !this.dhcpAddressAvailable(cfg, app.clientMac, offer.ip, offers)) {
+              offer.rejected.add(offer.ip);
+              const next = this.allocLease(cfg, app.clientMac, offers, offer.rejected);
+              if (next === null) { offers.delete(app.clientMac); return; }
+              offer.ip = next; probe(); return;
+            }
+            const knownClient = neighbour && neighbour.ifaceName === iif && neighbour.at >= offer.checkedAt && neighbour.mac === app.clientMac;
+            if (!knownClient && ++tries < DHCP_PROBE_TRIES) { sendProbe(); return; }
+            offer.checking = false;
+            sendOffer(offer);
+          });
+        };
+        sendProbe();
+      };
+      probe();
     } else if (app.op === 'request' && app.yourIp !== undefined) {
+      const offer = offers.get(app.clientMac);
+      const ownsLease = cfg.leases.get(app.clientMac) === app.yourIp;
+      if ((offer?.checking || (!ownsLease && (!offer || offer.ip !== app.yourIp || offer.xid !== app.xid || offer.ifaceName !== iif))) ||
+          !this.dhcpAddressAvailable(cfg, app.clientMac, app.yourIp, offers)) return;
       cfg.leases.set(app.clientMac, app.yourIp);
+      offers.delete(app.clientMac);
       this.sendBroadcastUdp(iface, iface.ip.addr, 67, 68, {
         kind: 'dhcp',
         op: 'ack',
@@ -733,10 +816,18 @@ export abstract class IpDevice extends Device {
     }
   }
 
-  private allocLease(cfg: DhcpServerConfig, mac: string): U32 | null {
+  private dhcpAddressAvailable(cfg: DhcpServerConfig, mac: string, ip: U32, offers: Map<string, DhcpOffer>): boolean {
+    return ip >= cfg.rangeStart && ip <= cfg.rangeEnd && !this.hasIp(ip) &&
+      ![...cfg.leases].some(([owner, addr]) => owner !== mac && addr === ip) &&
+      ![...offers].some(([owner, offer]) => owner !== mac && offer.ip === ip);
+  }
+
+  private allocLease(cfg: DhcpServerConfig, mac: string, offers: Map<string, DhcpOffer>, rejected = new Set<U32>()): U32 | null {
     const existing = cfg.leases.get(mac);
-    if (existing !== undefined) return existing;
-    const taken = new Set([...cfg.leases.values(), ...this.myIps()]);
+    if (existing !== undefined && !rejected.has(existing) && this.dhcpAddressAvailable(cfg, mac, existing, offers)) return existing;
+    const pending = offers.get(mac);
+    if (pending && !rejected.has(pending.ip) && this.dhcpAddressAvailable(cfg, mac, pending.ip, offers)) return pending.ip;
+    const taken = new Set([...cfg.leases.values(), ...this.myIps(), ...rejected, ...[...offers.values()].map((offer) => offer.ip)]);
     for (let ip = cfg.rangeStart; ip <= cfg.rangeEnd; ip++) {
       if (!taken.has(ip >>> 0)) return ip >>> 0;
     }
@@ -1047,6 +1138,8 @@ export abstract class IpDevice extends Device {
 }
 
 export class Host extends IpDevice {
+  // Command-line presentation only; protocol behavior is shared by all hosts.
+  os: import('../hostOs').HostOs = 'linux';
   readonly kind = 'host' as const;
 
   constructor(network: Network, id: string, name: string) {

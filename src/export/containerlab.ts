@@ -73,7 +73,7 @@ export function containerlabYaml(net: Network, labName = 'netsim'): string {
       for (const i of d.interfaces) {
         if (i.ip) exec.push(`ip addr add ${cidrToString(i.ip.addr, i.ip.prefix)} dev ${clabIface(i.name)}`);
       }
-      for (const r of d.staticRoutes) {
+      for (const r of d.routes().filter((route) => route.kind === 'static')) {
         const dest = r.prefix === 0 ? 'default' : cidrToString(r.dest, r.prefix);
         const via = r.via !== null ? ` via ${ipToString(r.via)}` : '';
         exec.push(`ip route replace ${dest}${via} dev ${clabIface(r.ifaceName)}`);

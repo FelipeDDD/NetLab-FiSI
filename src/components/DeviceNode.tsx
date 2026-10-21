@@ -109,6 +109,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
         </span>
       )}
       <div className="dev-label">{data.label}</div>
+      {data.kind === 'host' && <span className="dev-os-badge" title={data.os === 'windows' ? 'Windows CMD' : 'Linux shell'}>{data.os === 'windows' ? 'Win' : 'Linux'}</span>}
       <div className="dev-ip">
         {data.ips.length ? <>
           <CopyIpButton address={data.ips[0]} context={data.label}>{data.ips[0]}</CopyIpButton>

@@ -2,18 +2,21 @@ import { create } from 'zustand';
 import { applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import type { Connection, Edge, EdgeChange, Node, NodeChange } from '@xyflow/react';
 import LZString from 'lz-string';
+import { sameIpv4, validIpv4, type InterfaceIpv4 } from './engine/ipv4Config';
+import { runDhclient } from './commands/dhclient';
 import { Network } from './engine/network';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
 import { normalizePacketAnimationSpeed, readPacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { advanceGuidedPacket, emptyGuidedPacket, finishGuidedCollection, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, waitForGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
-import { IpDevice } from './engine/ipdevice';
+import { Host, IpDevice } from './engine/ipdevice';
+import { chooseHostOs, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
 import type { DeviceKind } from './engine/device';
 import { restoreNetwork, serializeNetwork, type SaveFile } from './engine/serialize';
 import { listRuleset } from './engine/firewall-fmt';
 import { cidrToString, parseCidr, parseIp } from './engine/ip';
 import { ApDevice, SwitchDevice } from './engine/switch';
-import { disposeAllSessions, disposeSession, getSession } from './terminals';
+import { disposeAllSessions, disposeSession, getSession, refreshSessionProfile } from './terminals';
 import { sim } from './sim';
 import type { LabDef } from './labs/types';
 import { runChecks } from './labs/checker';
@@ -32,13 +35,14 @@ import { applyPanelPreferences, readPanelPreferences, rememberPanelPreferences, 
 import { forgetSavedTabs, insertSavedTab, mergeTabLayouts, readTabLayouts, TAB_LAYOUT_KEY, writeTabLayouts, type TerminalTabLayouts } from './terminalTabPreferences';
 import { capturePresentationSelection } from './terminalPresentationSelection';
 import { moveTerminalPanel } from './terminalPanels';
-import { applyMovement, emptyTopologyHistory, recordMovement, recordOperation, isInspectorOperation, sameInterfaceIp, sameServicePorts, sortedServicePorts, type Point, type TopologyHistory, type TopologyOperation } from './topologyHistory';
+import { applyMovement, emptyTopologyHistory, recordMovement, recordOperation, isInspectorOperation, sameServicePorts, sortedServicePorts, type Point, type TopologyHistory, type TopologyOperation } from './topologyHistory';
 import { applyAccessVlan, applyInspectorEdit, applyLinkEdit, canApplyLinkEdit, dhcpSettings, sortedDnsRecords, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
   label: string;
   ips: string[];
+  os?: HostOs;
   fw?: boolean;
 }
 
@@ -55,7 +59,8 @@ const AUTOSAVE_KEY = 'netsim:autosave:v1';
 const MAX_PACKETS = 150;
 
 function deviceNode(id: string, kind: DeviceKind, label: string, x: number, y: number): DevNode {
-  return { id, type: 'device', position: { x, y }, data: { kind, label, ips: [] } };
+  const d = sim.net.devices.get(id);
+  return { id, type: 'device', position: { x, y }, data: { kind, label, ips: [], ...(d instanceof Host ? { os: d.os } : {}) } };
 }
 
 function edgesFromEngine(): Edge[] {
@@ -81,6 +86,9 @@ function deviceIps(id: string): string[] {
 }
 
 interface NetsimState {
+  hostCreationMode: HostCreationMode;
+  setHostCreationMode(mode: HostCreationMode): void;
+  setHostOs(id: string, os: HostOs): void;
   topologyHistory: TopologyHistory;
   beginNodeMovement(source: 'drag' | 'keyboard'): void;
   finishNodeMovement(): void;
@@ -141,6 +149,8 @@ interface NetsimState {
   deleteTopologyElements(nodeIds: string[], edgeIds?: string[]): void;
   renameDevice(id: string, name: string): void;
   setIfaceIp(deviceId: string, ifaceName: string, value: string): string | null;
+  setInterfaceIpv4(deviceId: string, ifaceName: string, value: InterfaceIpv4, editGroup?: object): string | null;
+  renewInterfaceDhcp(deviceId: string, ifaceName: string): void;
   toggleIface(deviceId: string, ifaceName: string): void;
   setServices(deviceId: string, proto: 'tcp' | 'udp', text: string): string | null;
   copyDeviceConfig(deviceId: string): void;
@@ -222,6 +232,9 @@ export const useStore = create<NetsimState>()((set, get) => {
   // Detection only: no serialized snapshot is ever applied to the live engine.
   const configuration = () => JSON.stringify(serializeNetwork(sim.net, {}));
   let historyConfiguration = '';
+  // Only this form's consecutive confirmations may merge. Any other history
+  // edit/navigation or invalidation breaks the group without a second history.
+  let ipv4EditGroup: { token: object; history: TopologyHistory } | null = null;
   const checkHistoryConfiguration = () => {
     const current = configuration();
     if (historyConfiguration && current !== historyConfiguration) get().invalidateTopologyHistory();
@@ -253,6 +266,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({ nodes });
     } else if (isInspectorOperation(operation)) {
       if (!applyInspectorEdit(sim.net, operation, direction)) { get().invalidateTopologyHistory(); return; }
+      if (operation.type === 'set-host-os') refreshSessionProfile(operation.deviceId);
       get().refresh();
     } else if (operation.type === 'create-device') {
       const { device: creation } = operation, { saved } = creation;
@@ -332,9 +346,14 @@ export const useStore = create<NetsimState>()((set, get) => {
       wiredNetwork.onWireTransfer = null;
       wiredNetwork.onFwDrop = null;
       wiredNetwork.onPingProgress = null;
+      wiredNetwork.onClientConfiguration = null;
       capture.reset();
     }
     wiredNetwork = net;
+    net.onClientConfiguration = () => {
+      if (sim.net !== net) return;
+      checkHistoryConfiguration(); get().refresh(); saveSoon();
+    };
     net.onWireTransfer = (t, context, trace) => {
       if (sim.net !== net) return;
       if (get().packetVisualizationMode === 'live') {
@@ -580,9 +599,24 @@ export const useStore = create<NetsimState>()((set, get) => {
     labChecking: false,
     quizAnswers: {},
 
+    hostCreationMode: readHostCreationMode(),
+    setHostCreationMode(value) {
+      const mode = normalizeHostCreationMode(value);
+      set({ hostCreationMode: mode }); saveHostCreationMode(mode);
+    },
+    setHostOs(id, os) {
+      const d = sim.net.devices.get(id);
+      if (!(d instanceof Host) || d.disposed || (os !== 'linux' && os !== 'windows') || d.os === os) return;
+      prepareEdit();
+      const before = d.os; d.os = os;
+      refreshSessionProfile(id);
+      get().refresh();
+      commitEdit({ type: 'set-host-os', label: 'Change host OS', deviceId: id, before, after: os });
+      saveSoon();
+    },
     addDeviceAt(kind, pos) {
       prepareEdit();
-      const d = createDevice(sim.net, kind);
+      const d = createDevice(sim.net, kind, kind === 'host' ? { os: chooseHostOs(get().hostCreationMode) } : {});
       const creation = captureCreation(sim.net, d, pos, get().nodes.length);
       set({ nodes: [...get().nodes, deviceNode(d.id, kind, d.name, pos.x, pos.y)] });
       commitEdit({ type: 'create-device', label: `Create ${d.name}`, device: creation });
@@ -673,14 +707,46 @@ export const useStore = create<NetsimState>()((set, get) => {
       const trimmed = value.trim();
       const after = trimmed === '' ? null : parseCidr(trimmed);
       if (trimmed && !after) return 'use CIDR form, e.g. 192.168.1.10/24';
-      if (sameInterfaceIp(iface.ip, after)) return null;
+      return get().setInterfaceIpv4(deviceId, ifaceName, { mode: after ? 'static' : 'unconfigured', ip: after,
+        gateway: after && iface.ipv4Mode === 'static' ? iface.gateway : null, dns: after && iface.ipv4Mode === 'static' ? iface.dns : null });
+    },
+
+    setInterfaceIpv4(deviceId, ifaceName, value, editGroup) {
+      const d = sim.net.devices.get(deviceId), iface = d?.getInterface(ifaceName);
+      if (!(d instanceof IpDevice) || d.disposed || !iface) return 'Interface nicht verfügbar.';
+      if (!validIpv4(value)) return 'Ungültige IPv4-Konfiguration.';
+      const before = iface.ipv4, after = structuredClone(value);
+      if (sameIpv4(before, after)) return null;
       prepareEdit();
-      const before = iface.ip ? { ...iface.ip } : null;
-      iface.ip = after ? { ...after } : null;
+      const history = get().topologyHistory, previous = history.past.at(-1);
+      const merge = editGroup && ipv4EditGroup?.token === editGroup && ipv4EditGroup.history === history
+        && !history.future.length && previous?.type === 'set-interface-ipv4'
+        && previous.deviceId === deviceId && previous.ifaceName === ifaceName && sameIpv4(previous.after, before);
+      const cancelledGroup = merge && previous?.type === 'set-interface-ipv4' && sameIpv4(previous.before, after);
+      iface.configureIpv4(after);
       get().refresh();
-      commitEdit({ type: 'set-iface-ip', label: after ? 'Set interface IPv4' : 'Remove interface IPv4', deviceId, ifaceName, before, after });
+      if (merge && previous?.type === 'set-interface-ipv4') {
+        historyConfiguration = configuration();
+        const operation = { ...previous, after };
+        set({ topologyHistory: { past: sameIpv4(previous.before, after) ? history.past.slice(0, -1)
+          : [...history.past.slice(0, -1), structuredClone(operation)], future: [] } });
+      } else commitEdit({ type: 'set-interface-ipv4', label: 'Configure interface IPv4', deviceId, ifaceName, before, after });
+      ipv4EditGroup = editGroup && !cancelledGroup ? { token: editGroup, history: get().topologyHistory } : null;
       saveSoon();
       return null;
+    },
+
+    renewInterfaceDhcp(deviceId, ifaceName) {
+      const d = sim.net.devices.get(deviceId), net = sim.net;
+      const iface = d?.getInterface(ifaceName);
+      if (!(d instanceof IpDevice) || d.disposed || !iface || iface.ipv4Mode !== 'dhcp' || iface.cancelDhcp) return;
+      let message = '';
+      runDhclient(d, [ifaceName], (text) => { message = text; }, () => {
+        if (sim.net !== net || d.disposed) return;
+        get().refresh();
+        if (message) get().setNotice(message.trim());
+      });
+      get().refresh();
     },
 
     toggleIface(deviceId, ifaceName) {
@@ -731,9 +797,9 @@ export const useStore = create<NetsimState>()((set, get) => {
       const trimmed = text.trim();
       const after = trimmed === '' ? null : parseIp(trimmed);
       if (trimmed && after === null) return 'invalid nameserver address';
-      if (d.nameserver === after) return null;
+      if (d.manualNameserver === after) return null;
       prepareEdit();
-      const before = d.nameserver;
+      const before = d.manualNameserver;
       d.nameserver = after;
       get().refresh();
       commitEdit({ type: 'set-nameserver', label: after === null ? 'Remove nameserver' : 'Set nameserver', deviceId, before, after });
@@ -1058,7 +1124,7 @@ export const useStore = create<NetsimState>()((set, get) => {
           const d = sim.net.devices.get(n.id);
           if (!d) return n;
           const fw = d instanceof IpDevice ? d.fw.active() : false;
-          return { ...n, data: { ...n.data, label: d.name, ips: deviceIps(n.id), fw } };
+          return { ...n, data: { ...n.data, label: d.name, ips: deviceIps(n.id), fw, ...(d instanceof Host ? { os: d.os } : {}) } };
         }),
       });
     },

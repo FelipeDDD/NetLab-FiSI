@@ -1,4 +1,6 @@
-import type { IpDevice } from '../engine/ipdevice';
+import { Host, type IpDevice } from '../engine/ipdevice';
+import type { HostOs } from '../hostOs';
+import { runWindows } from './windows';
 import { ipToString } from '../engine/ip';
 import { formatArpClassic, runIp } from './ip-cmd';
 import { runPing } from './ping';
@@ -103,17 +105,19 @@ export function formatSockets(device: IpDevice): string {
 
 export class Shell {
   constructor(public device: IpDevice) {}
+  get os(): HostOs { return this.device instanceof Host ? this.device.os : 'linux'; }
 
   // Runs one command line. `done` is always called exactly once — immediately
   // for synchronous commands, later for ping/traceroute/nc. Returns a handle
   // for Ctrl-C when the command is still running, else null.
-  exec(line: string, io: TermIO, done: () => void): Running | null {
+  exec(line: string, io: TermIO, done: () => void, os: HostOs = this.os): Running | null {
     const trimmed = line.trim();
     const argv = trimmed.split(/\s+/).filter(Boolean);
     if (argv.length === 0) {
       done();
       return null;
     }
+    if (os === 'windows') return runWindows(this.device, argv, io, done);
     const [cmd, ...args] = argv;
     const rawRest = trimmed.slice(cmd.length).trim();
     switch (cmd) {

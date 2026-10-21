@@ -15,6 +15,8 @@ export type DhcpFieldEdit =
   | { field: 'rangeStart' | 'rangeEnd'; before: number; after: number }
   | { field: 'router' | 'dns'; before: number | null; after: number | null };
 export type InspectorOperation =
+  | { type: 'set-interface-ipv4'; label: string; deviceId: string; ifaceName: string; before: import('./engine/ipv4Config').InterfaceIpv4; after: import('./engine/ipv4Config').InterfaceIpv4 }
+  | { type: 'set-host-os'; label: string; deviceId: string; before: import('./hostOs').HostOs; after: import('./hostOs').HostOs }
   | { type: 'rename-device'; label: string; deviceId: string; before: string; after: string }
   | { type: 'set-iface-ip'; label: string; deviceId: string; ifaceName: string; before: InterfaceIp; after: InterfaceIp }
   | { type: 'set-nameserver'; label: string; deviceId: string; before: number | null; after: number | null }

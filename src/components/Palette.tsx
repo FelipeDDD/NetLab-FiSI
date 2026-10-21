@@ -2,6 +2,7 @@ import type { DragEvent } from 'react';
 import { useStore } from '../store';
 import type { DeviceKind } from '../engine/device';
 import { DeviceIcon } from './DeviceNode';
+import type { HostCreationMode } from '../hostOs';
 
 const ITEMS: { kind: DeviceKind; label: string; blurb: string }[] = [
   { kind: 'host', label: 'Host', blurb: 'Linux workstation' },
@@ -15,6 +16,7 @@ const ITEMS: { kind: DeviceKind; label: string; blurb: string }[] = [
 export function Palette() {
   const addDeviceAt = useStore((s) => s.addDeviceAt);
   const nodeCount = useStore((s) => s.nodes.length);
+  const hostMode = useStore((s) => s.hostCreationMode);
 
   const onDragStart = (e: DragEvent, kind: DeviceKind) => {
     e.dataTransfer.setData('application/netsim', kind);
@@ -24,6 +26,11 @@ export function Palette() {
   return (
     <aside className="palette">
       <div className="palette-title">Devices</div>
+      <label className="host-creation-mode">New hosts
+        <select value={hostMode} onChange={(e) => useStore.getState().setHostCreationMode(e.target.value as HostCreationMode)}>
+          <option value="linux">Linux</option><option value="windows">Windows</option><option value="mixed">Mixed (50/50)</option>
+        </select>
+      </label>
       {ITEMS.map((it) => (
         <button
           key={it.kind}
@@ -38,7 +45,7 @@ export function Palette() {
           </span>
           <span className="palette-item-text">
             <span className="palette-item-label">{it.label}</span>
-            <span className="palette-item-blurb">{it.blurb}</span>
+            <span className="palette-item-blurb">{it.kind === 'host' ? hostMode === 'mixed' ? 'Linux or Windows' : `${hostMode === 'windows' ? 'Windows' : 'Linux'} workstation` : it.blurb}</span>
           </span>
         </button>
       ))}

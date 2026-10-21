@@ -2,6 +2,7 @@ import type { ITheme } from '@xterm/xterm';
 import type { DeviceKind } from './engine/device';
 import type { SaveFile } from './engine/serialize';
 import type { TerminalLayoutMode } from './terminalPanels';
+import { isTerminalEffect, terminalEffectBackground, type TerminalEffectId } from './terminalEffects';
 
 export type TerminalKind = 'host' | 'server' | 'router' | 'firewall';
 export const DEFAULT_TERMINAL_COLORS: Readonly<Record<TerminalKind, string>> = {
@@ -17,7 +18,7 @@ export const TERMINAL_FONTS = {
   courier: { label: 'Courier New', family: '"Courier New", Courier, monospace' },
 } as const;
 export type TerminalFont = keyof typeof TERMINAL_FONTS;
-export interface TerminalAppearance { style: 'diagonal' | 'dual-glow'; intensity: number; fontSize: number; fontFamily: TerminalFont }
+export interface TerminalAppearance { style: 'diagonal' | 'dual-glow' | 'aurora-lines' | 'aurora-flow' | TerminalEffectId; intensity: number; fontSize: number; fontFamily: TerminalFont }
 export const DEFAULT_TERMINAL_APPEARANCE: Readonly<TerminalAppearance> = { style: 'diagonal', intensity: 80, fontSize: 14, fontFamily: 'system' };
 
 export function terminalFontFamily(value: unknown): string {
@@ -27,7 +28,7 @@ export function terminalFontFamily(value: unknown): string {
 export function normalizeTerminalAppearance(value: unknown, fallbackFontSize = DEFAULT_TERMINAL_APPEARANCE.fontSize): TerminalAppearance {
   const source = value && typeof value === 'object' ? value as Partial<TerminalAppearance> : {};
   return {
-    style: source.style === 'dual-glow' ? 'dual-glow' : 'diagonal',
+    style: source.style === 'dual-glow' || source.style === 'aurora-lines' || source.style === 'aurora-flow' || isTerminalEffect(source.style) ? source.style : 'diagonal',
     intensity: typeof source.intensity === 'number' && Number.isFinite(source.intensity)
       ? Math.round(Math.max(0, Math.min(100, source.intensity))) : DEFAULT_TERMINAL_APPEARANCE.intensity,
     fontSize: typeof source.fontSize === 'number' && Number.isFinite(source.fontSize)
@@ -99,9 +100,57 @@ export function terminalTint(color: string, intensity: number): string {
   return hex(mix(base, target, low * amount));
 }
 
-export function terminalBackground(color: string, preference: Pick<TerminalAppearance, 'style' | 'intensity'> = DEFAULT_TERMINAL_APPEARANCE): string {
+// Shared by the Aurora background and its fine panel accent. Keep palette
+// generation separate from rendering, with no CSS or engine state as input.
+export function terminalAuroraColors(color: string): { primary: string; secondary: string } {
+  const primary = normalizeTerminalColor(color) ?? DEFAULT_TERMINAL_COLORS.host;
+  return { primary, secondary: hex(mix(rgb(primary), rgb('#818cf8'), 0.75)) };
+}
+
+// Companion hues stay distinct even for neutral custom colors. Device color
+// remains the primary light; companions inherit a little of it for cohesion.
+export function terminalFlowColors(color: string, kind: DeviceKind = 'host'): { primary: string; secondary: string; tertiary: string } {
+  const primary = normalizeTerminalColor(color) ?? terminalColor(kind);
+  const companions: Record<TerminalKind, [string, string]> = {
+    host: ['#22d3ee', '#8b5cf6'], server: ['#14b8a6', '#3b82f6'],
+    router: ['#f97316', '#a78bfa'], firewall: ['#db2777', '#8b5cf6'],
+  };
+  const [second, third] = companions[hasTerminalColor(kind) ? kind : 'host'];
+  return { primary, secondary: hex(mix(rgb(primary), rgb(second), 0.85)), tertiary: hex(mix(rgb(primary), rgb(third), 0.9)) };
+}
+
+export function terminalBackground(color: string, preference: Pick<TerminalAppearance, 'style' | 'intensity'> = DEFAULT_TERMINAL_APPEARANCE, kind: DeviceKind = 'host'): string {
   const { style, intensity } = normalizeTerminalAppearance(preference);
+  if (isTerminalEffect(style)) {
+    const palette = terminalFlowColors(color, kind);
+    return terminalEffectBackground(style, Object.values(palette).map((tone) => terminalTint(tone, intensity)));
+  }
   const corner = terminalTint(color, intensity);
+  if (style === 'aurora-flow') {
+    const palette = terminalFlowColors(color, kind);
+    const light = terminalTint(palette.primary, intensity);
+    const second = terminalTint(palette.secondary, intensity * 0.9);
+    const third = terminalTint(palette.tertiary, intensity * 0.9);
+    // Two thin elliptical wave crests over broad, overlapping ambient lights.
+    // Luminance-capped stops use normal alpha compositing, never additive blending.
+    return [
+      `radial-gradient(ellipse 95% 75% at 20% 115%, transparent calc(72% - 2px), ${second} 72%, transparent calc(72% + 2px))`,
+      `radial-gradient(ellipse 110% 90% at 110% -10%, transparent calc(80% - 1px), ${third} 80%, transparent calc(80% + 2px))`,
+      `radial-gradient(ellipse 85% 80% at 90% 75%, ${light} 0%, transparent 85%)`,
+      `radial-gradient(ellipse 90% 75% at 8% 52%, ${second} 0%, transparent 85%)`,
+      `radial-gradient(ellipse 85% 90% at 72% 8%, ${third} 0%, transparent 85%)`,
+      `linear-gradient(145deg, ${TERMINAL_BASE} 8%, ${terminalTint(palette.primary, intensity * 0.25)} 55%, ${TERMINAL_BASE} 100%)`,
+    ].join(', ');
+  }
+  if (style === 'aurora-lines') {
+    const { secondary } = terminalAuroraColors(color);
+    const ribbon = terminalTint(secondary, intensity * 0.85);
+    const wash = terminalTint(color, intensity * 0.4);
+    const top = terminalTint(secondary, intensity * 0.18);
+    // Soft elliptical bands suggest an aurora without images, filters or motion.
+    // Every color stop uses the same luminance cap as the existing backgrounds.
+    return `radial-gradient(ellipse 110% 100% at 110% 130%, transparent 28%, ${corner} 52%, transparent 85%), radial-gradient(ellipse 120% 90% at -5% 125%, transparent 24%, ${ribbon} 56%, transparent 90%), radial-gradient(ellipse 90% 100% at 100% 110%, ${wash} 0%, transparent 75%), radial-gradient(ellipse 75% 70% at -10% -35%, ${top} 0%, transparent 85%)`;
+  }
   if (style === 'dual-glow') {
     const top = terminalTint(color, intensity * 0.45);
     return `radial-gradient(ellipse 65% 110% at 100% 100%, ${corner} 0%, transparent 70%), radial-gradient(ellipse 45% 85% at 0% 0%, ${top} 0%, transparent 75%)`;

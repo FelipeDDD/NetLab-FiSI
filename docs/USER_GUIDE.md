@@ -2,7 +2,7 @@
 
 NetSim is a network simulator that runs entirely in your browser. Build a
 network by dragging devices onto the canvas and cabling them together, open a
-terminal on any device and configure it with **real Linux commands**, and
+terminal with **Linux commands or a Windows CMD subset** on hosts, and
 watch packets travel between them. Nothing to install; nothing is sent to a
 server.
 
@@ -100,6 +100,22 @@ answers, open connections, transmitted packets and pending traffic are not
 rewound or replayed. Service inputs and textareas use the same stale-draft
 protection as the basic Inspector fields.
 
+The DHCP server reserves pending offers separately from confirmed leases, so
+simultaneous clients cannot receive the same offer. Before offering an address,
+it sends ARP checks on the receiving interface (up to three probes, 500 ms apart).
+If another MAC answers, it tries the next address. These frames appear in Packet
+Inspector and respect actual links, VLANs and delivery times. This also protects
+addresses retained by online clients after reloading/importing a topology, when
+the server's runtime lease table starts empty. Pending offers expire after 30
+simulated seconds; invalid/conflicting REQUESTs are not acknowledged. Probe timers
+use the existing device lifecycle and cannot send offers after device removal.
+
+This is conflict detection, not a guarantee against all duplicate IPs: an offline
+machine or an answer arriving after the probing window cannot be detected. Keep
+static addresses outside the DHCP pool. Manually assigning the same IP still
+creates a real configuration error; pinging your own address succeeds locally
+and does not establish that another machine with that address is reachable.
+
 The Inspector's RIP checkbox also supports Undo/Redo. Only the enabled setting
 is restored: disabling RIP cancels its periodic announcement and clears learned
 RIP routes; enabling it starts one announcement cycle and lets routes converge
@@ -171,8 +187,14 @@ details, separately from IP/MAC addresses. Click the selected row again or use
 the details' × button to return to the list. Reopening the main panel also returns
 to the list, keeping captured records and the list position. HTTP bodies are inert text. Missing
 wire fields are not invented; truncated captured text is marked. These records
-describe transmissions, not guaranteed delivery. New records do not scroll the
-table to the end; expired selections show a notice. Cable capture controls and
+describe transmissions, not guaranteed delivery. Expired selections show a notice.
+**Follow Live** starts enabled for a new capture and follows the latest page and
+its newest rows. Previous/Next, scrolling upward, or selecting a packet suspends
+following without stopping capture. A counter shows new arrivals while you read,
+including when older records are evicted at the 1,000-record limit. **Jump to
+latest** returns to the newest page, closes packet details and resumes following.
+Pause/resume capture preserves the follow setting. Pagination shows **Page X of Y**
+and the retained record range, with the same 50-row page limit. Cable capture controls and
 protocol filters are not part of this first interface.
 
 Use the compact **⚙ Settings** chip at the dock's upper-left edge (accessible
@@ -294,8 +316,16 @@ The Inspector now focuses on network settings. Enter/Space opens the menu;
 Escape closes it and returns focus to its trigger. Clicking outside also closes it.
 
 Choose **Diagonal** for a dark upper-left corner that transitions to the device
-color at the lower right, or **Dual Glow** for a subtle upper-left light and a
-stronger lower-right light with a dark center. **Intensity** ranges from 0 to
+color at the lower right, **Dual Glow** for a subtle upper-left light and a
+stronger lower-right light with a dark center, or **Aurora Lines** for soft curved
+bands blending the device color with indigo over a nearly black base. Aurora
+also adds a fine 1 px accent below the tabs, following the active device's color;
+the existing colored tab borders remain. These original backgrounds are static CSS, with
+no images, animations or blur filters. **Aurora Flow** adds overlapping ambient
+lights across the background and two fine curved wave crests. Its three-color
+palette combines the device color with cyan/violet (hosts), amber/violet
+(routers), magenta/purple (firewalls) or teal/blue (servers). Customized device
+colors remain the primary light. **Intensity** ranges from 0 to
 100%, with a more visible default of 80%. **Terminal font size** offers 12–18 px;
 new topologies start at 14 px. Older files without a font preference retain the
 original 13 px, also available in the menu. The terminal refits automatically
@@ -310,6 +340,23 @@ are saved with the topology alongside the existing per-device colors.
 Text, cursor and selection colors stay fixed;
 even choosing white keeps the background dark. The device name and selected-tab
 border remain visible, so identification does not depend on color alone.
+
+Choose an effect family in **Background style**, then a **Variation** when more
+than one is available: **Aurora** offers Soft/Balanced, **Aurora Lines** offers
+Subtle/Flow/Spectrum, and **Signal / Wireframe** uses Matrix. Single-variation
+styles hide the second selector. Diagonal, Dual Glow, Aurora Lines and Aurora
+Flow remain under **Original styles**; that group distinguishes the original
+Aurora Lines from the newer family with the same name.
+
+**Show experimental styles** reveals Aurora Vivid, Signal Minimal/Pulse and the
+three Gradient Mesh presets (Ambient, Prism, Deep Glow). It starts unchecked
+each time the settings open. A selected experimental preset always remains
+visible, even when this checkbox is off, including after import or reload.
+Hiding experiments never replaces the selected background. Existing preset IDs,
+intensity and device colors are preserved. Changes apply immediately without
+resetting sessions. See the
+[comparisons and visual assessment](TERMINAL_EFFECTS_LAB.md).
+
 Custom colors are saved with the topology (autosave, JSON export/import and
 share links), including for devices whose terminal is closed. Old files use
 the defaults. A color change does not restart the terminal or its commands.
@@ -387,7 +434,114 @@ Hosts have one interface; routers and firewalls have four; switches and APs
 have eight ports. A firewall is a router that already has nftables base
 chains declared.
 
-## Commands (the supported subset)
+## Linux and Windows hosts
+
+**New hosts** in the device palette selects Linux, Windows or Mixed. Mixed makes
+one approximately 50/50 choice when each host is created. It does not guarantee
+equal totals in a small topology. The creation preference is local to this browser;
+the OS of each existing host is saved in the topology, autosave and JSON exports.
+Old files without an OS load as Linux, regardless of the creation preference.
+The small Linux/Win badge identifies hosts without changing their device type.
+
+The Inspector's **Operating system** selector changes an individual host and
+supports Undo/Redo. It does not reboot the device or replace its terminal. An idle,
+empty prompt updates immediately; an active command, typed draft or selected text
+is preserved and the new profile applies at the next prompt. Other device types
+retain their Linux command interface. Existing examples and Labs remain Linux.
+
+Windows hosts use a simulated CMD prompt (`C:\>`) and case-insensitive command
+names, Windows syntax, output, errors and ping statistics. They support:
+
+| Command | Behavior |
+| --- | --- |
+| `ipconfig`, `ipconfig /all` | Actual IPv4/mask, gateway, MAC and configured DNS |
+| `ipconfig /renew` | DHCP discovery/request using the existing simulator client |
+| `arp -a`, `route print` | Actual ARP cache and IPv4 routes |
+| `ping host` | Four attempts by default |
+| `ping -n N host`, `ping -t host` | Explicit count or continuous until Ctrl+C |
+| `tracert host` | ICMP TTL probes, three per hop, up to 30 hops |
+| `nslookup host` | A lookup through the configured DNS server |
+| `hostname`, `cls`, `help` | Host name, clear screen, supported command help |
+
+Linux-specific commands and flags are rejected by the Windows shell; Windows-only
+commands and flags are rejected by Linux. The xterm renderer, colors, backgrounds,
+selection/copy/paste, history, panels and shortcuts work with both profiles.
+Windows and Linux use the same network stack and can communicate normally.
+Packet Inspector and Guided observe the same real simulated transmissions.
+
+This is a CMD subset, not a Windows VM or a complete command interpreter. There is
+no PowerShell, netsh, file system, piping or scripting. The engine does not model
+ICMP payload sizes or Windows interface indices; these are not fabricated in
+Windows output. RTT/TTL are measured from the simulation (including its existing
+two-second ping response timeout), not an emulation of Windows kernel defaults.
+`/renew` and `/release` act only on adapters explicitly configured for DHCP.
+An optional adapter name limits the operation (for example `ipconfig /renew eth0`).
+`/all` reports the actual DHCP mode. Automatic lease renewal/expiration is not modelled.
+JSON round-trips preserve OS identity; Linux configuration/container exports remain
+Linux-oriented and do not provision a real Windows environment.
+
+## IPv4 configuration per interface
+
+The Inspector's **IP-Adresse automatisch beziehen (DHCP)** checkbox selects DHCP
+independently of the host OS. Assigned values are read-only; **DHCP erneuern**
+requests a lease. Checking the box alone does not invent an address or start a
+command. Unchecking it clears the interface-owned values and shows an empty
+manual form in Unconfigured mode. Existing Static/DHCP/Unconfigured modes are
+preserved when opening the Inspector or loading a file.
+
+Manual fields are **IP-Adresse**, **Subnetzmaske**, **Standardgateway** and
+**DNS-Server**. An address such as `192.168.1.10/24` fills the decimal mask
+automatically. The mask also accepts `/24`, a bare prefix or a contiguous dotted
+mask. All IPv4 prefixes `/0` through `/32` are supported. Editing the mask after
+entering CIDR makes the mask field authoritative. Gateway and DNS are optional;
+the gateway must be in that interface's subnet.
+
+The complete valid configuration is applied after 500 ms without typing, or on
+leaving a field. There is no Apply button. Incomplete/invalid forms remain as
+drafts without changing the network. Clearing gateway or DNS removes that option;
+an entirely empty manual form means Unconfigured. Saved text keeps its formatting
+while typing, preserving the cursor. External changes cannot be overwritten by
+an obsolete draft: it remains visible while editing and is discarded with a
+message on blur. A clean form reflects Undo/Redo and terminal changes immediately.
+
+Consecutive confirmations during one focus visit to the manual form form one
+Undo/Redo operation. Leaving the form, changing modes, another history edit, or
+Undo/Redo breaks the group. Undo/Redo restores configuration, not a historical
+DHCP lease or a command that was cancelled. The debounce is local to this form;
+other Inspector editors keep their existing behavior.
+
+On Windows, `ipconfig /renew` preserves static and unconfigured adapters.
+`ipconfig /release` clears DHCP-owned address/options and sends RELEASE for a
+known lease. On Linux, explicitly running `dhclient eth0` switches that interface
+to DHCP immediately, cancelling any previous acquisition on it. A failed request
+leaves the interface in DHCP mode without inventing a new address. Renewing an
+existing configuration retains its previous address until a successful ACK or
+explicit release. Changing mode cancels pending DHCP callbacks.
+
+Each interface owns its gateway and DNS options. Renewing replaces those options,
+including clearing an option omitted by the server. These gateways participate in
+the existing route lookup; independent explicit static routes are preserved.
+The pre-existing device-wide **DNS client (global override)** remains an explicit
+override. With no override, the resolver uses the first up, addressed interface
+with a DNS option, in interface order. This is a simplified resolver policy, not
+per-application or split DNS. Fields in the DHCP section show received options,
+not the global override or independent routes.
+
+JSON/autosave preserve modes, addresses and interface-owned options. Loading them
+does not resume DHCP commands or fabricate active leases: saved values are marked
+**Kein aktives Lease (gespeicherte Werte)** until renewed. Old files without mode
+metadata infer Static for an existing address, otherwise Unconfigured. The same
+rule preserves legacy addresses and independent routes/DNS without guessing their
+origin. Terminal commands remain outside Undo/Redo and invalidate incompatible
+history; Inspector configuration changes are atomic history entries.
+
+The simulator still supports one IPv4 address per interface. Lease expiration and
+automatic renewal are not simulated. RELEASE uses the existing broadcast DHCP
+transport and the recorded server/IP/MAC to release only the matching allocation;
+other servers and leases are not cleared. Linux/container configuration exports
+remain snapshots of effective addresses/routes rather than a DHCP client manager.
+
+## Commands (the supported Linux subset)
 
 NetSim implements a **curated subset of genuine syntax** and errors clearly
 on anything outside it — it never silently fakes a command. Highlights:

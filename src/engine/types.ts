@@ -54,7 +54,7 @@ export interface IcmpL4 {
 // Application payloads carried inside TCP/UDP. These ride real simulated
 // packets, so DHCP/DNS/HTTP traffic animates on the wire and can be
 // firewalled like anything else.
-export type DhcpOp = 'discover' | 'offer' | 'request' | 'ack';
+export type DhcpOp = 'discover' | 'offer' | 'request' | 'ack' | 'release';
 
 export interface DhcpApp {
   kind: 'dhcp';

@@ -2,12 +2,14 @@ import { useId, useRef, useState } from 'react';
 import { IpDevice } from '../engine/ipdevice';
 import { sim } from '../sim';
 import { useStore } from '../store';
-import { terminalColor, TERMINAL_FONTS, type TerminalFont } from '../terminalAppearance';
+import { terminalColor, TERMINAL_FONTS, type TerminalAppearance, type TerminalFont } from '../terminalAppearance';
 import { FloatingPopover } from './FloatingPopover';
 import type { TerminalLayoutMode } from '../terminalPanels';
+import { terminalStyleFamilies, terminalStyleForFamily } from '../terminalStyleOptions';
 
 export function TerminalSettingsControls({ initialDeviceId, includeLayout = false }: { initialDeviceId?: string; includeLayout?: boolean }) {
   const intensityId = useId();
+  const [showExperimental, setShowExperimental] = useState(false);
   const nodes = useStore((s) => s.nodes);
   useStore((s) => s.uiPulse); // Keep device names current without subscribing to every tick.
   const [selected, setSelected] = useState(initialDeviceId ?? useStore.getState().activeTerminal);
@@ -16,6 +18,9 @@ export function TerminalSettingsControls({ initialDeviceId, includeLayout = fals
   const custom = useStore((s) => device ? s.terminalColors[device.id] : undefined);
   const setColor = useStore((s) => s.setTerminalColor);
   const preference = useStore((s) => s.terminalAppearance);
+  const families = terminalStyleFamilies(preference.style, showExperimental);
+  const family = families.find((item) => item.variations.some((variation) => variation.id === preference.style))!;
+  const variation = family.variations.find((item) => item.id === preference.style)!;
   const setPreference = useStore((s) => s.setTerminalAppearance);
   const layoutMode = useStore((s) => s.terminalLayoutMode);
   const color = device ? terminalColor(device.kind, custom) : '';
@@ -54,11 +59,35 @@ export function TerminalSettingsControls({ initialDeviceId, includeLayout = fals
       </>}
       <label className="terminal-style-label">
         Background style
-        <select value={preference.style} onChange={(e) => setPreference({ style: e.target.value as 'diagonal' | 'dual-glow' })}>
-          <option value="diagonal">Diagonal</option>
-          <option value="dual-glow">Dual Glow</option>
+        <select aria-label="Background style" value={family.id} onChange={(e) => {
+          const next = families.find((item) => item.id === e.target.value);
+          if (next) setPreference({ style: terminalStyleForFamily(next, preference.style) });
+        }}>
+          <optgroup label="Effect families">
+          {families.filter((item) => !item.original).map((item) => <option key={item.id} value={item.id}>
+            {item.label}{item.variations.every((entry) => entry.experimental) ? ' (experimental)' : ''}
+          </option>)}
+          </optgroup>
+          <optgroup label="Original styles">
+          {families.filter((item) => item.original).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </optgroup>
         </select>
       </label>
+      {family.variations.length > 1 && <label className="terminal-style-label">
+        Variation
+        <select aria-label="Variation" value={preference.style}
+          onChange={(e) => setPreference({ style: e.target.value as TerminalAppearance['style'] })}>
+          {family.variations.map((item) => <option key={item.id} value={item.id}>
+            {item.label}{item.experimental ? ' (experimental)' : ''}
+          </option>)}
+        </select>
+      </label>}
+      {family.variations.length === 1 && family.id !== variation.id && <span className="hint">{variation.label}</span>}
+      <label className="terminal-experimental-toggle">
+        <input type="checkbox" checked={showExperimental} onChange={(e) => setShowExperimental(e.target.checked)} />
+        Show experimental styles
+      </label>
+      {variation.experimental && <span className="hint">Experimental style selected.</span>}
       <label className="terminal-intensity-label" htmlFor={intensityId}>
         <span>Intensity <output>{preference.intensity}%</output></span>
         <input id={intensityId} type="range" min={0} max={100} step={1} value={preference.intensity}

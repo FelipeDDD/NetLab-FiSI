@@ -1,13 +1,18 @@
 import { Network } from './network';
 import { createDevice } from './factory';
-import { IpDevice } from './ipdevice';
+import { Host, IpDevice } from './ipdevice';
+import type { HostOs } from '../hostOs';
 import { ApDevice, SwitchDevice } from './switch';
 import type { DeviceKind } from './device';
+import { validIpv4, type Ipv4Mode } from './ipv4Config';
 import { cidrToString, ipToString, networkOf, parseCidr, parseIp } from './ip';
 import { firewallFromJSON, firewallToJSON, type FirewallJSON } from './firewall';
 import type { LabDef, LabProgress } from '../labs/types';
 
 export interface SavedIface {
+  ipv4Mode?: Ipv4Mode;
+  gateway?: string | null;
+  dns?: string | null;
   name: string;
   mac?: string;
   ip: string | null; // CIDR, e.g. "192.168.1.10/24"
@@ -21,6 +26,7 @@ export interface SavedRoute {
 }
 
 export interface SavedDevice {
+  os?: HostOs;
   id: string;
   kind: DeviceKind;
   name: string;
@@ -82,6 +88,7 @@ export function serializeNetwork(
         mac: i.mac,
         ip: i.ip ? cidrToString(i.ip.addr, i.ip.prefix) : null,
         up: i.up,
+        ...(ipd ? { ipv4Mode: i.ipv4Mode, gateway: i.gateway === null ? null : ipToString(i.gateway), dns: i.dns === null ? null : ipToString(i.dns) } : {}),
       })),
       routes: (ipd?.staticRoutes ?? []).map((r) => ({
         dest: cidrToString(r.dest, r.prefix),
@@ -89,13 +96,14 @@ export function serializeNetwork(
         dev: r.ifaceName,
       })),
     };
+    if (d instanceof Host) saved.os = d.os;
     if (ipd) {
       if (ipd.services.tcp.size || ipd.services.udp.size) {
         saved.services = { tcp: [...ipd.services.tcp].sort((a, b) => a - b), udp: [...ipd.services.udp].sort((a, b) => a - b) };
       }
       const fwj = firewallToJSON(ipd.fw);
       if (fwj) saved.firewall = fwj;
-      if (ipd.nameserver !== null) saved.nameserver = ipToString(ipd.nameserver);
+      if (ipd.manualNameserver !== null) saved.nameserver = ipToString(ipd.manualNameserver);
       if (ipd.dhcpServer) {
         saved.dhcpServer = {
           enabled: ipd.dhcpServer.enabled,
@@ -140,7 +148,7 @@ export function serializeNetwork(
 // Restore one fresh device into an existing network, without replacing survivors.
 export function restoreDevice(net: Network, sd: SavedDevice) {
   if (net.devices.has(sd.id)) throw new Error('device ID already exists');
-  const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name });
+  const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name, os: sd.os });
   for (const si of sd.ifaces) {
     const iface = d.getInterface(si.name);
     if (!iface) continue;
@@ -149,6 +157,10 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
     if (si.ip) {
       const cidr = parseCidr(si.ip);
       if (cidr) iface.ip = cidr;
+    }
+    if (d instanceof IpDevice && si.ipv4Mode) {
+      const config = { mode: si.ipv4Mode, ip: iface.ip, gateway: si.gateway ? parseIp(si.gateway) : null, dns: si.dns ? parseIp(si.dns) : null };
+      if (validIpv4(config)) iface.configureIpv4(config);
     }
   }
   if (d instanceof IpDevice) {

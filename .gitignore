@@ -4,3 +4,32 @@ samples/
 .DS_Store
 ._*
 *.local
+
+# Local environment secrets; keep sanitized templates publishable.
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Disposable browser/test output, separate from docs/img design references.
+/.playwright-mcp/
+/playwright-report/
+/test-results/
+/coverage/
+*.tsbuildinfo
+
+# Local logs and scratch files; do not hide test fixtures in source folders.
+/*.log
+/logs/
+/*.tmp
+/*.bak
+
+# Personal editor configuration; shared extension recommendations may be kept.
+/.idea/
+/.vscode/*
+!/.vscode/extensions.json
+
+# Local-only terminal visual experiments; functional renderer code stays tracked.
+/docs/img/aurora-flow-four-panels.png
+/docs/img/aurora-flow-grouped.png
+/docs/img/terminal-effects/*.png

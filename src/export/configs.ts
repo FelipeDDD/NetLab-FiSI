@@ -18,7 +18,7 @@ export function setupScript(d: IpDevice): string {
     if (i.ip) lines.push(`ip addr add ${cidrToString(i.ip.addr, i.ip.prefix)} dev ${i.name}`);
     if (i.ip || i.link) lines.push(`ip link set ${i.name} ${i.up ? 'up' : 'down'}`);
   }
-  for (const r of d.staticRoutes) {
+  for (const r of d.routes().filter((route) => route.kind === 'static')) {
     const dest = r.prefix === 0 ? 'default' : cidrToString(r.dest, r.prefix);
     const via = r.via !== null ? ` via ${ipToString(r.via)}` : '';
     lines.push(`ip route add ${dest}${via} dev ${r.ifaceName}`);

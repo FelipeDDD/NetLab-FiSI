@@ -2,6 +2,7 @@ import type { Network } from './network';
 import type { EthernetFrame } from './types';
 import type { U32 } from './ip';
 import type { ScheduledEvent } from './scheduler';
+import type { InterfaceIpv4, Ipv4Mode } from './ipv4Config';
 
 export type DeviceKind = 'host' | 'switch' | 'router' | 'firewall' | 'server' | 'ap';
 
@@ -9,6 +10,24 @@ export class NetInterface {
   link: Link | null = null;
   up = true;
   ip: { addr: U32; prefix: number } | null = null;
+  private configuredMode: Ipv4Mode | undefined;
+  gateway: U32 | null = null;
+  dns: U32 | null = null;
+  // Runtime ownership, never serialized or replayed by topology history.
+  dhcpLease: { serverIp: U32; address: U32 } | null = null;
+  cancelDhcp: (() => void) | null = null;
+  get ipv4Mode(): Ipv4Mode { return this.configuredMode ?? (this.ip ? 'static' : 'unconfigured'); }
+  get ipv4(): InterfaceIpv4 {
+    return { mode: this.ipv4Mode, ip: this.ip ? { ...this.ip } : null, gateway: this.gateway, dns: this.dns };
+  }
+  configureIpv4(value: InterfaceIpv4): void {
+    this.cancelDhcp?.();
+    this.configuredMode = value.mode;
+    this.ip = value.ip ? { ...value.ip } : null;
+    this.gateway = value.gateway;
+    this.dns = value.dns;
+    this.dhcpLease = null;
+  }
 
   constructor(
     public device: Device,
@@ -34,7 +53,7 @@ export abstract class Device {
   dispose(): void {
     this.removed = true;
     this.network.scheduler.cancelOwner(this);
-    for (const iface of this.interfaces) iface.up = false;
+    for (const iface of this.interfaces) { iface.cancelDhcp?.(); iface.up = false; }
   }
 
   constructor(

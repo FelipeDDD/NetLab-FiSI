@@ -47,6 +47,8 @@ export class Network {
   links = new Map<string, Link>();
   onWireTransfer: ((t: WireTransfer, context: WireFrameContext, visual?: WireVisualTrace) => void) | null = null;
   onPingProgress: ((event: PingProgress) => void) | null = null;
+  // Asynchronous client configuration changes, not traffic or clock updates.
+  onClientConfiguration: (() => void) | null = null;
   private visualArrivals = new WeakMap<FramePayload, Map<string, number>>();
   private visualEchoRequests = new WeakMap<IcmpMessage, number>();
   // Fired when a declared firewall chain drops or rejects a packet — the UI

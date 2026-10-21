@@ -12,28 +12,37 @@ export function runPing(
   args: string[],
   write: (s: string) => void,
   done: () => void,
+  windows = false,
 ): Running | null {
-  let count: number | null = null;
+  let count: number | null = windows ? 4 : null;
   let target: string | null = null;
+  let countOption = false;
   for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '-c') {
+    const a = windows ? args[i].toLowerCase() : args[i];
+    if (windows && (a === '-n' || a === '-t')) {
+      if (countOption) { write('Use either -n count or -t, once.\n'); done(); return null; }
+      countOption = true;
+    }
+    if (a === (windows ? '-n' : '-c')) {
       count = Number(args[++i]);
-      if (!Number.isInteger(count) || count <= 0) {
-        write('ping: invalid count\n');
+      if (!Number.isInteger(count) || count <= 0 || (windows && (!/^\d+$/.test(args[i] ?? '') || !Number.isSafeInteger(count)))) {
+        write(windows ? 'Bad value for option -n.\n' : 'ping: invalid count\n');
         done();
         return null;
       }
-    } else if (a.startsWith('-')) {
-      write(`ping: netsim supports only: ping [-c count] <host>  (got "${a}")\n`);
+    } else if (windows && a === '-t') {
+      count = null;
+    } else if (a.startsWith('-') || (windows && a.startsWith('/'))) {
+      write(windows ? `Invalid option ${a}. Usage: ping [-n count | -t] <host>\n` : `ping: netsim supports only: ping [-c count] <host>  (got "${a}")\n`);
       done();
       return null;
     } else {
-      target = a;
+      if (windows && target) { write('Bad parameter. Usage: ping [-n count | -t] <host>\n'); done(); return null; }
+      target = args[i];
     }
   }
   if (!target) {
-    write('usage: ping [-c count] <destination>\n');
+    write(windows ? 'Usage: ping [-n count | -t] <destination>\n' : 'usage: ping [-c count] <destination>\n');
     done();
     return null;
   }
@@ -42,7 +51,7 @@ export function runPing(
   let cancelFn: (() => void) | undefined;
   const resolver = resolveHost(device, target, (res) => {
     if ('error' in res) {
-      write(`ping: ${res.error}\n`);
+      write(windows ? `Ping request could not find host ${target}. Please check the name and try again.\n` : `ping: ${res.error}\n`);
       done();
       return;
     }
@@ -75,7 +84,9 @@ export function runPing(
     timers.add(timer);
   };
 
-  write(`PING ${target} (${ipToString(ip)}) 56(84) bytes of data.\n`);
+  // ICMP payload lengths are not represented by this simulator.
+  write(windows ? `\nPinging ${target === ipToString(ip) ? target : `${target} [${ipToString(ip)}]`}:\n`
+    : `PING ${target} (${ipToString(ip)}) 56(84) bytes of data.\n`);
 
   const finish = () => {
     if (finished) return;
@@ -84,17 +95,22 @@ export function runPing(
     timers.clear();
     device.offIcmp(id);
     const loss = sent ? Math.round(((sent - received) / sent) * 100) : 0;
-    write(`\n--- ${target} ping statistics ---\n`);
-    write(
-      `${sent} packets transmitted, ${received} received, ${loss}% packet loss, time ${Math.round(
-        sched.now - startedAt,
-      )}ms\n`,
-    );
+    if (windows) {
+      write(`\nPing statistics for ${ipToString(ip)}:\n    Packets: Sent = ${sent}, Received = ${received}, Lost = ${sent - received} (${loss}% loss),\n`);
+    } else {
+      write(`\n--- ${target} ping statistics ---\n`);
+      write(
+        `${sent} packets transmitted, ${received} received, ${loss}% packet loss, time ${Math.round(
+          sched.now - startedAt,
+        )}ms\n`,
+      );
+    }
     if (rtts.length) {
       const min = Math.min(...rtts);
       const max = Math.max(...rtts);
       const avg = rtts.reduce((a, b) => a + b, 0) / rtts.length;
-      write(`rtt min/avg/max = ${min.toFixed(1)}/${avg.toFixed(1)}/${max.toFixed(1)} ms\n`);
+      write(windows ? `Approximate round trip times in milli-seconds:\n    Minimum = ${min.toFixed(1)}ms, Maximum = ${max.toFixed(1)}ms, Average = ${avg.toFixed(1)}ms\n`
+        : `rtt min/avg/max = ${min.toFixed(1)}/${avg.toFixed(1)}/${max.toFixed(1)} ms\n`);
     }
     device.network.emitPingProgress({ type: 'finished', deviceId: device.id, icmpId: id });
     done();
@@ -102,7 +118,7 @@ export function runPing(
 
   const maybeFinish = (seq: number) => {
     device.network.emitPingProgress({ type: 'settled', deviceId: device.id, icmpId: id, seq });
-    if (count !== null && seq >= count) finish();
+    if (count !== null && (windows ? sent >= count && answered.size >= sent : seq >= count)) finish();
   };
 
   device.onIcmp(id, (ev) => {
@@ -115,7 +131,8 @@ export function runPing(
         const rtt = sched.now - (sendTimes.get(ev.seq) ?? sched.now);
         rtts.push(rtt);
         write(
-          `64 bytes from ${ipToString(ev.from)}: icmp_seq=${ev.seq} ttl=${ev.ttl} time=${rtt.toFixed(1)} ms\n`,
+          windows ? `Reply from ${ipToString(ev.from)}: time=${rtt.toFixed(1)}ms TTL=${ev.ttl}\n`
+            : `64 bytes from ${ipToString(ev.from)}: icmp_seq=${ev.seq} ttl=${ev.ttl} time=${rtt.toFixed(1)} ms\n`,
         );
         maybeFinish(ev.seq);
         break;
@@ -123,7 +140,7 @@ export function runPing(
       case 'time-exceeded': {
         const seq = ev.seq ?? 0;
         answered.add(seq);
-        write(`From ${ipToString(ev.from)} icmp_seq=${seq} Time to live exceeded\n`);
+        write(windows ? `Reply from ${ipToString(ev.from)}: TTL expired in transit.\n` : `From ${ipToString(ev.from)} icmp_seq=${seq} Time to live exceeded\n`);
         maybeFinish(seq);
         break;
       }
@@ -131,14 +148,14 @@ export function runPing(
         const seq = ev.seq ?? 0;
         answered.add(seq);
         const what = ev.code === 'net' ? 'Net' : ev.code === 'host' ? 'Host' : 'Port';
-        write(`From ${ipToString(ev.from)} icmp_seq=${seq} Destination ${what} Unreachable\n`);
+        write(windows ? `Reply from ${ipToString(ev.from)}: Destination ${what.toLowerCase()} unreachable.\n` : `From ${ipToString(ev.from)} icmp_seq=${seq} Destination ${what} Unreachable\n`);
         maybeFinish(seq);
         break;
       }
       case 'send-error': {
         const seq = ev.seq ?? 0;
         answered.add(seq);
-        write(`From ${device.name} icmp_seq=${seq} ${ev.message}\n`);
+        write(windows ? `PING: transmit failed. ${ev.message}\n` : `From ${device.name} icmp_seq=${seq} ${ev.message}\n`);
         maybeFinish(seq);
         break;
       }
@@ -151,6 +168,13 @@ export function runPing(
     sendTimes.set(seq, sched.now);
     const err = device.sendEcho(ip, id, seq);
     if (err) {
+      if (windows) {
+        answered.add(seq);
+        write(`PING: transmit failed. ${err}\n`);
+        maybeFinish(seq);
+        if (!finished && (count === null || sent < count)) schedule(INTERVAL_MS, sendOne);
+        return;
+      }
       sent--;
       // EPERM (an OUTPUT-chain drop) reads differently from a routing failure.
       if (err === 'Operation not permitted') write(`ping: sendmsg: ${err}\n`);
@@ -163,7 +187,7 @@ export function runPing(
       if (finished || answered.has(seq)) return;
       answered.add(seq);
       // Matches real `ping -O` behaviour; silent gaps teach nothing.
-      write(`no answer yet for icmp_seq=${seq}\n`);
+      write(windows ? 'Request timed out.\n' : `no answer yet for icmp_seq=${seq}\n`);
       maybeFinish(seq);
     });
     if (count === null || sent < count) schedule(INTERVAL_MS, sendOne);

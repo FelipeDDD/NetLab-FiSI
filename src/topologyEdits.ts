@@ -1,6 +1,7 @@
 import type { Device, Link } from './engine/device';
+import { sameIpv4, validIpv4 } from './engine/ipv4Config';
 import { Network } from './engine/network';
-import { IpDevice } from './engine/ipdevice';
+import { Host, IpDevice } from './engine/ipdevice';
 import { ApDevice, SwitchDevice } from './engine/switch';
 import { restoreDevice, serializeNetwork } from './engine/serialize';
 import { sameInterfaceIp, sameServicePorts, type CreatedDevice, type DhcpSettings, type DnsRecords, type HistoryLink, type InspectorOperation, type Point } from './topologyHistory';
@@ -26,14 +27,21 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   const device = net.devices.get(operation.deviceId);
   if (!device || device.disposed) return false;
   const from = direction === 'undo' ? 'after' : 'before', to = direction === 'undo' ? 'before' : 'after';
-  if (operation.type === 'rename-device') {
+  if (operation.type === 'set-interface-ipv4') {
+    const iface = device.getInterface(operation.ifaceName);
+    if (!(device instanceof IpDevice) || !iface || !sameIpv4(iface.ipv4, operation[from]) || !validIpv4(operation[to])) return false;
+    iface.configureIpv4(operation[to]);
+  } else if (operation.type === 'set-host-os') {
+    if (!(device instanceof Host) || device.os !== operation[from]) return false;
+    device.os = operation[to];
+  } else if (operation.type === 'rename-device') {
     if (device.name !== operation[from]) return false;
     device.name = operation[to];
   } else if (operation.type === 'set-rip-enabled') {
     if (!(device instanceof IpDevice) || device.ripEnabled !== operation[from]) return false;
     device.enableRip(operation[to]);
   } else if (operation.type === 'set-nameserver') {
-    if (!(device instanceof IpDevice) || device.nameserver !== operation[from]) return false;
+    if (!(device instanceof IpDevice) || device.manualNameserver !== operation[from]) return false;
     device.nameserver = operation[to];
   } else if (operation.type === 'set-services') {
     if (!(device instanceof IpDevice) || !sameServicePorts(device.services[operation.proto], operation[from])) return false;

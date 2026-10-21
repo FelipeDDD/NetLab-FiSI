@@ -9,6 +9,11 @@ const view = vi.hoisted(() => ({ packetInspectorOpen: false, packetCapture: {
   status: 'stopped', linkId: null, records: [] as CapturedPacket[], discarded: 0,
 } }));
 vi.mock('../store', () => ({ useStore: (select: (state: typeof view) => unknown) => select(view) }));
+// These tests render static markup only; Chromium covers the layout/scroll effect.
+vi.mock('react', async (importOriginal) => {
+  const react = await importOriginal<typeof import('react')>();
+  return { ...react, useLayoutEffect: react.useEffect };
+});
 
 it('renders nested details and truncation metadata while treating HTTP content as inert text', () => {
   const packet: CapturedPacket = { id: 1, start: 1500, end: 1580, kind: 'tcp', linkId: 'link',
@@ -50,4 +55,22 @@ it('shows historical link names in the list, reopening without details or changi
   view.packetInspectorOpen = true;
   expect(renderToStaticMarkup(createElement(PacketInspector))).not.toContain('aria-label="Packet details"');
   expect(view.packetCapture.records).toEqual([packet]);
+});
+
+it('opens on the latest 50-record page with Follow Live and clear pagination', () => {
+  const template: CapturedPacket = { id: 1, start: 0, end: 80, kind: 'arp', linkId: 'link',
+    fromDeviceId: 'pc', toDeviceId: 'sw', fromDeviceName: 'PC', toDeviceName: 'Switch',
+    fromInterface: 'eth0', toInterface: 'eth1', truncatedFields: [],
+    frame: { srcMac: 'aa', dstMac: 'ff', payload: { kind: 'arp', op: 'request', senderIp: 1, targetIp: 2, senderMac: 'aa', targetMac: null } },
+  };
+  view.packetCapture.records = Array.from({ length: 151 }, (_, i) => ({ ...template, id: i + 1 }));
+  view.packetInspectorOpen = true;
+  const html = renderToStaticMarkup(createElement(PacketInspector));
+  expect(html).toContain('type="checkbox" checked=""');
+  expect(html).toContain('Follow Live');
+  expect(html).toContain('Page 4 of 4');
+  expect(html).toContain('151–151 of 151');
+  expect(html).toContain('Inspect packet 151,');
+  expect(html).not.toContain('Inspect packet 150,');
+  expect(html).not.toContain('Jump to latest');
 });

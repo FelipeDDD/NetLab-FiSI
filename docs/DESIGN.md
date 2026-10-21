@@ -140,9 +140,18 @@ paper's stated future work (outbound filtering, NAT, stateful).
   Após mudanças de colunas, a fila de entrada redesenha somente a linha
   editável não vazia a partir do buffer lógico, evitando desalinhamento do
   reflow em comandos longos Unicode. Não redesenha comandos em execução.
-- Os fundos CSS estáticos oferecem Diagonal e Dual Glow. O primeiro começa
+- Os fundos CSS estáticos oferecem Diagonal, Dual Glow, Aurora Lines e Aurora Flow. O primeiro começa
   a transição em 12% do percurso diagonal; o segundo combina duas fontes radiais,
-  com a inferior direita mais forte e o centro escuro. A intensidade escala a
+  com a inferior direita mais forte e o centro escuro. Aurora Lines combina
+  faixas elípticas suaves da cor do dispositivo com um tom índigo, mantendo a
+  base quase preta. `terminalAuroraColors()` separa a paleta da renderização;
+  o header recebe um traço de 1 px abaixo das abas, pela cor do dispositivo ativo,
+  sem ocupar espaço ou interceptar eventos. Aurora Flow usa `terminalFlowColors()`
+  com três tons por tipo (cor personalizada como luz principal), luzes radiais
+  parcialmente sobrepostas, uma base diagonal e dois traços elípticos finos.
+  A borda existente de 1 px recebe um acento, preservando indicação de foco e
+  dimensões. Não altera Aurora Lines nem a transparência/tema do xterm.
+  A intensidade escala a
   faixa segura inteira, de 0 a 100%, com padrão 80%. A luminância relativa do
   ponto mais claro é limitada a 0,032, preservando contraste de pelo menos 4,5:1
   dos textos ANSI normais. Alterar cor, estilo ou intensidade muda somente
@@ -150,12 +159,24 @@ paper's stated future work (outbound filtering, NAT, stateful).
 - A [API do xterm](https://xtermjs.org/docs/api/terminal/interfaces/iterminaloptions/)
   informa que `allowTransparency` deve ser habilitado antes de `open()` e pode
   afetar o desempenho. A implementação mantém o renderizador DOM já utilizado,
-  sem Canvas/WebGL, filtros ou animações do fundo. A base RGB permanece no tema
+  sem Canvas/WebGL ou filtros aplicados ao conteúdo do terminal. A base RGB permanece no tema
   transparente para contraste e texto invertido; `minimumContrastRatio: 4.5`,
   paleta ANSI clara e seleção opaca com texto branco preservam a leitura.
   Os testes verificam contraste de texto ANSI normal, cursor e seleção inclusive
   contra o canto mais claro possível. Texto ANSI dim continua intencionalmente
   atenuado e cores true-color arbitrárias dependem também do ajuste do xterm.
+- O [Visual Effects Lab](TERMINAL_EFFECTS_LAB.md) adiciona 12 presets estáticos
+  em `terminalEffects.ts`, com IDs `fx-*` persistidos no mesmo campo `style`.
+  Imagens SVG autocontidas combinam gradientes, faixas e traços Bézier rasos,
+  sem overlays interativos ou novos contextos de renderização. Só as faixas
+  largas recebem suavização SVG de região limitada na rasterização; as cores
+  continuam limitadas pela luminância segura. `terminalStyleOptions.ts` organiza
+  somente a apresentação em família/variação; não altera IDs ou desenhos.
+  O menu principal destaca Soft/Balanced, Subtle/Flow/Spectrum e Matrix,
+  conservando os quatro originais em um grupo separado. Experimentos ficam
+  ocultos por padrão, exceto o preset atualmente selecionado; o checkbox de
+  exibição não escreve preferências. O estilo padrão não muda. O motor,
+  autosave e a montagem das sessões continuam usando as estruturas existentes.
 - Validação em Chromium 155: inspeção visual, personalização/restauração,
   recarga, foco e entrada preservados. A validação dos painéis abaixo inclui
   quatro instâncias reais com pings ativos. Medições em hardware de laboratório
@@ -649,12 +670,39 @@ transmissões seguem a implementação existente. O widget abre os controles em
 FloatingPopover, preservando arraste e limites da janela. O modo é temporário,
 sempre Live após recarregar; velocidade e posição continuam persistidas.
 
+### Hosts Linux, Windows e Mixed
+
+`Host.os` é metadado de apresentação (`linux` por padrão), sem ramificações nos
+protocolos. `factory` e `serialize` preservam o valor somente em hosts; topologias
+anteriores continuam Linux. `hostOs.ts` separa a preferência local de criação da
+identidade salva do dispositivo: Mixed sorteia apenas em `addDeviceAt`, antes de
+capturar a operação de criação. Restauração e Undo/Redo nunca sorteiam novamente.
+
+`Shell` despacha Windows para `commands/windows.ts`. Ping, traceroute e DHCP
+compartilham a execução existente com uma opção de apresentação Windows; não há
+segundo caminho de transmissão. A sintaxe Windows é validada antes da execução,
+ping assume quatro tentativas e publica os mesmos eventos ICMP/Guided. Consultas
+ARP, rotas e ipconfig formatam os objetos reais. DNS usa `resolveDns`, com proteção
+contra callbacks após cancelamento. Não há dependência de SO real do navegador.
+
+O Inspector registra `set-host-os` no histórico existente e agenda autosave.
+A reprodução valida o estado anterior e preserva as instâncias. O terminal fixa
+o perfil do prompt para o comando digitado: alterações durante execução, edição
+ou seleção passam a valer no próximo prompt. Uma sessão ociosa sem rascunho pode
+redesenhar só o prompt; buffer, histórico, aparência e xterm são mantidos.
+
+Limites: sem payload ICMP/índices Windows/leases fictícios, sem CMD completo.
+`ipconfig /renew` reutiliza a aquisição DHCP; `/release` aguarda suporte explícito
+de RELEASE e propriedade de concessão no cliente. Segunda etapa possível: ampliar
+opções de tracert/nslookup e configuração estática Windows, após definir validação,
+cancelamento e apresentação próprios. Não implementar histórico de comandos.
+
 ## NetLab-FiSI — ideias futuras
 
 - Expandir Undo/Redo para as demais configurações do Inspector, com
   transações próprias e tratamento seguro de timers e referências do motor.
-- Perfis de terminal Windows e Linux por dispositivo, com comandos e saídas
-  equivalentes sobre o mesmo motor. Manter explícito o subconjunto suportado.
+- Ampliar o subconjunto Windows dos hosts conforme as limitações acima;
+  manter explícitas as diferenças entre o CMD simulado e um sistema operacional real.
 - Outros estilos de gradiente e controles avançados de aparência.
 - Avaliar uma linha colorida no topo do próprio painel, imediatamente abaixo
   das abas. Nesta etapa existe apenas a borda integrada às abas, sem alternância

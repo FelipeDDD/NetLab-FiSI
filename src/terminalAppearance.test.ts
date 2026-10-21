@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Network } from './engine/network';
 import { createDevice } from './engine/factory';
 import { serializeNetwork } from './engine/serialize';
-import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, terminalBackground, terminalColor, terminalTint, terminalFontFamily, TERMINAL_FONTS, TERMINAL_THEME, type AppearanceSaveFile } from './terminalAppearance';
+import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, terminalAuroraColors, terminalFlowColors, terminalBackground, terminalColor, terminalTint, terminalFontFamily, TERMINAL_FONTS, TERMINAL_THEME, type AppearanceSaveFile, type TerminalKind } from './terminalAppearance';
 
 function luminance(hex: string): number {
   const values = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -94,6 +94,66 @@ describe('terminal appearance', () => {
     expect(gradient).toContain('at 0% 0%');
     expect(gradient).toContain('transparent');
     expect(gradient).not.toContain('url(');
+  });
+
+  it.each(['aurora-lines', 'aurora-flow'] as const)('accepts %s with the existing preferences and preserves legacy defaults', (style) => {
+    const file = serializeNetwork(new Network(), {});
+    const preference = { ...DEFAULT_TERMINAL_APPEARANCE, style, intensity: 67 };
+    expect(normalizeTerminalAppearance(preference)).toEqual(preference);
+    expect(readTerminalAppearance({ ...file, ui: { terminalAppearance: preference } })).toEqual(preference);
+    expect(readTerminalAppearance(file)).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, fontSize: 13 });
+    expect(terminalAuroraColors('url(bad)')).toEqual(terminalAuroraColors(DEFAULT_TERMINAL_COLORS.host));
+    expect(terminalBackground('url(bad)', preference)).toBe(terminalBackground(DEFAULT_TERMINAL_COLORS.host, preference));
+  });
+
+  it('gives Aurora Flow distinct companion hues for each type while retaining the custom primary color', () => {
+    for (const kind of Object.keys(DEFAULT_TERMINAL_COLORS) as TerminalKind[]) {
+      const palette = terminalFlowColors('#ABCDEF', kind);
+      expect(palette.primary).toBe('#abcdef');
+      expect(new Set(Object.values(palette)).size).toBe(3);
+      expect(terminalFlowColors('url(bad)', kind)).toEqual(terminalFlowColors(DEFAULT_TERMINAL_COLORS[kind], kind));
+    }
+    expect(terminalFlowColors('#abcdef', 'router')).not.toEqual(terminalFlowColors('#abcdef', 'host'));
+  });
+
+  it('keeps Aurora Flow ambient lights and wave crests within the existing ANSI contrast budget', () => {
+    const textColors = ['foreground', 'cursor', 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+      'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'] as const;
+    for (const kind of Object.keys(DEFAULT_TERMINAL_COLORS) as TerminalKind[]) {
+      for (const color of [DEFAULT_TERMINAL_COLORS[kind], '#ffffff', '#000000', '#ff0000', '#00ff00', '#0000ff']) {
+        for (const intensity of [0, 50, 80, 100]) {
+          const gradient = terminalBackground(color, { style: 'aurora-flow', intensity }, kind);
+          const stops = gradient.match(/#[0-9a-f]{6}/g)!;
+          expect(gradient).not.toMatch(/url\(|blur\(|filter/);
+          for (const stop of stops) for (const name of textColors) {
+            expect(contrast(TERMINAL_THEME[name]!, stop), `${kind} ${color} ${intensity} ${name}`).toBeGreaterThanOrEqual(4.5);
+          }
+          if (intensity === 0) expect(new Set(stops)).toEqual(new Set(['#06080c']));
+          else expect(new Set(stops).size).toBeGreaterThan(2);
+        }
+      }
+    }
+  });
+
+  it('keeps Aurora color stops legible at every intensity, with static curves and a black zero-intensity base', () => {
+    const names = ['foreground', 'cursor', 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+      'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'] as const;
+    for (const color of [...Object.values(DEFAULT_TERMINAL_COLORS), '#ffffff', '#000000', '#ff0000', '#00ff00', '#0000ff']) {
+      for (const intensity of [0, 25, 50, 80, 100]) {
+        const background = terminalBackground(color, { style: 'aurora-lines', intensity });
+        const stops = background.match(/#[0-9a-f]{6}/g)!;
+        expect(background.match(/radial-gradient/g)).toHaveLength(4);
+        expect(background).not.toMatch(/url\(|blur\(|filter/);
+        for (const stop of stops) for (const name of names) {
+          expect(contrast(TERMINAL_THEME[name]!, stop), `${color} ${intensity}% ${name}`).toBeGreaterThanOrEqual(4.5);
+        }
+        if (intensity === 0) expect(new Set(stops)).toEqual(new Set(['#06080c']));
+      }
+    }
+    const colors = terminalAuroraColors('#ABCDEF');
+    expect(colors.primary).toBe('#abcdef'); expect(normalizeTerminalColor(colors.secondary)).toBe(colors.secondary);
+    expect(terminalBackground('#fb7185', { style: 'aurora-lines', intensity: 80 }))
+      .not.toBe(terminalBackground('#34d399', { style: 'aurora-lines', intensity: 80 }));
   });
 
   it('keeps 13px for old topology files while using 14px for new preferences', () => {

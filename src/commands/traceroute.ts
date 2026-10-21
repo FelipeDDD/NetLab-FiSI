@@ -11,6 +11,7 @@ export function runTraceroute(
   args: string[],
   write: (s: string) => void,
   done: () => void,
+  windows = false,
 ): Running | null {
   let maxHops = 30;
   let target: string | null = null;
@@ -40,7 +41,7 @@ export function runTraceroute(
   let cancelFn: (() => void) | undefined;
   const resolver = resolveHost(device, target, (res) => {
     if ('error' in res) {
-      write(`traceroute: ${res.error}\n`);
+      write(windows ? `Unable to resolve target system name ${target}.\n` : `traceroute: ${res.error}\n`);
       done();
       return;
     }
@@ -68,7 +69,8 @@ export function runTraceroute(
   let hopReached = false;
   let sendTime = 0;
 
-  write(`traceroute to ${target} (${ipToString(ip)}), ${maxHops} hops max, 60 byte packets\n`);
+  write(windows ? `\nTracing route to ${target} [${ipToString(ip)}]\nover a maximum of ${maxHops} hops:\n\n`
+    : `traceroute to ${target} (${ipToString(ip)}), ${maxHops} hops max, 60 byte packets\n`);
 
   const cleanup = () => {
     if (finished) return;
@@ -81,7 +83,8 @@ export function runTraceroute(
   const flushHopLine = () => {
     const fromStr = hopFrom !== null ? ipToString(hopFrom) : '*';
     const rttStr = hopRtts.map((r) => (r === null ? '*' : `${r.toFixed(1)} ms`)).join('  ');
-    write(`${String(ttl).padStart(2)}  ${fromStr}  ${rttStr}\n`);
+    write(windows ? `${String(ttl).padStart(3)}  ${rttStr}  ${hopFrom === null ? 'Request timed out.' : fromStr}\n`
+      : `${String(ttl).padStart(2)}  ${fromStr}  ${rttStr}\n`);
   };
 
   const nextStep = () => {
@@ -92,6 +95,7 @@ export function runTraceroute(
     }
     flushHopLine();
     if (hopReached || ttl >= maxHops) {
+      if (windows) write('\nTrace complete.\n');
       cleanup();
       return;
     }
@@ -129,6 +133,7 @@ export function runTraceroute(
         onProbeResult(ev.from, rtt, false);
         break;
       case 'unreachable':
+        if (windows) write(`Reply from ${ipToString(ev.from)}: Destination ${ev.code} unreachable.\n`);
         onProbeResult(ev.from, rtt, true);
         break;
       case 'send-error':
@@ -144,7 +149,7 @@ export function runTraceroute(
     sendTime = sched.now;
     const err = device.sendEcho(ip, id, seq, ttl);
     if (err) {
-      write(`connect: ${err}\n`);
+      write(windows ? `Transmit error: ${err}\n` : `connect: ${err}\n`);
       cleanup();
       return;
     }

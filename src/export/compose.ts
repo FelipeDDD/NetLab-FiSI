@@ -97,7 +97,7 @@ export function composeYaml(net: Network): string {
     lines.push(`    container_name: ${name}`);
     lines.push('    cap_add: [NET_ADMIN]');
     const cmds: string[] = [];
-    for (const r of d.staticRoutes) {
+    for (const r of d.routes().filter((route) => route.kind === 'static')) {
       const dest = r.prefix === 0 ? 'default' : cidrToString(r.dest, r.prefix);
       const via = r.via !== null ? ` via ${ipToString(r.via)}` : '';
       cmds.push(`ip route replace ${dest}${via}`);

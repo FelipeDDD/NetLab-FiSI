@@ -1,13 +1,14 @@
 import { Fragment, useState } from 'react';
 import { useStore } from '../store';
 import { sim } from '../sim';
-import { IpDevice } from '../engine/ipdevice';
+import { Host, IpDevice } from '../engine/ipdevice';
+import type { HostOs } from '../hostOs';
 import { ApDevice, SwitchDevice } from '../engine/switch';
-import { cidrToString, ipToString } from '../engine/ip';
+import { ipToString } from '../engine/ip';
 import { formatNeigh, formatRoutes } from '../commands/ip-cmd';
 import { formatConntrack } from '../commands/shell';
 import { listRuleset } from '../engine/firewall-fmt';
-import { CopyIpButton } from './CopyIpButton';
+import { InterfaceIpv4Panel } from './InterfaceIpv4Panel';
 import { newInspectorDraft, syncInspectorDraft } from '../inspectorDraft';
 import { sortedDnsRecords } from '../topologyEdits';
 import { sortedServicePorts } from '../topologyHistory';
@@ -171,48 +172,6 @@ function ServicesRow({ deviceId, proto }: { deviceId: string; proto: 'tcp' | 'ud
   );
 }
 
-function IfaceRow({ deviceId, ifaceName }: { deviceId: string; ifaceName: string }) {
-  const setIfaceIp = useStore((s) => s.setIfaceIp);
-  const toggleIface = useStore((s) => s.toggleIface);
-  const device = sim.net.devices.get(deviceId);
-  const iface = device?.getInterface(ifaceName);
-  const current = iface?.ip ? cidrToString(iface.ip.addr, iface.ip.prefix) : '';
-  const draft = useInspectorDraft(`${deviceId}:${ifaceName}`, current, () => {
-    const latest = sim.net.devices.get(deviceId)?.getInterface(ifaceName);
-    return latest ? latest.ip ? cidrToString(latest.ip.addr, latest.ip.prefix) : '' : undefined;
-  }, (text) => setIfaceIp(deviceId, ifaceName, text));
-
-  if (!iface) return null;
-
-  return (
-    <div className="iface-row">
-      <button
-        className={`iface-state ${iface.up ? 'up' : 'down'}`}
-        onClick={() => toggleIface(deviceId, ifaceName)}
-        title={`ip link set ${ifaceName} ${iface.up ? 'down' : 'up'}`}
-      >
-        {iface.up ? 'UP' : 'DOWN'}
-      </button>
-      <div className="iface-name">
-        {ifaceName}
-        <span className="iface-mac">{iface.mac}</span>
-        {iface.link ? null : <span className="iface-unplugged">unplugged</span>}
-      </div>
-      <input
-        className="iface-ip"
-        placeholder="no address (CIDR)"
-        aria-label={`IPv4 address for ${device?.name} ${ifaceName}`}
-        value={draft.value}
-        onChange={(e) => draft.onChange(e.target.value)}
-        onBlur={draft.commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur();
-        }}
-      />
-      {iface.ip && <CopyIpButton address={ipToString(iface.ip.addr)} context={`${device?.name} ${ifaceName}`} />}
-    </div>
-  );
-}
 
 export function Inspector({ hidden = false }: { hidden?: boolean }) {
   const selected = useStore((s) => s.selected);
@@ -234,9 +193,17 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
         <DeviceName key={device.id} deviceId={device.id} name={device.name} />
         <span className={`inspector-kind kind-${device.kind}`}>{device.kind}</span>
       </div>
+      {device instanceof Host && <section>
+        <label className="host-os-setting">Operating system
+          <select value={device.os} onChange={(e) => useStore.getState().setHostOs(device.id, e.target.value as HostOs)}>
+            <option value="linux">Linux</option><option value="windows">Windows (CMD)</option>
+          </select>
+        </label>
+        <span className="hint">Active commands and typed input keep their shell until the next prompt.</span>
+      </section>}
 
 
-      {ipd && (
+      {ipd && !(device instanceof Host) && (
         <div className="inspector-forwarding">
           IP forwarding: <strong>{ipd.forwarding ? 'on' : 'off'}</strong>
           <span className="hint"> (sysctl net.ipv4.ip_forward)</span>
@@ -270,7 +237,7 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
       <section>
         <h3>Interfaces</h3>
         {device.interfaces.map((i) => (
-          <IfaceRow
+          <InterfaceIpv4Panel
             key={device.id + ':' + i.name}
             deviceId={device.id}
             ifaceName={i.name}
@@ -289,14 +256,14 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
 
       {ipd && (
         <section>
-          <h3>DNS client</h3>
+          <h3>DNS client (global override)</h3>
           <div className="svc-grid">
             <span>nameserver</span>
             <InspectorSettingInput
               key={ipd.id} identity={`${ipd.id}:nameserver`} label="DNS client nameserver"
-              value={ipd.nameserver !== null ? ipToString(ipd.nameserver) : ''}
-              readCurrent={() => { const d = sim.net.devices.get(ipd.id); return d instanceof IpDevice ? d.nameserver === null ? '' : ipToString(d.nameserver) : undefined; }}
-              placeholder="none (set by dhclient)"
+              value={ipd.manualNameserver !== null ? ipToString(ipd.manualNameserver) : ''}
+              readCurrent={() => { const d = sim.net.devices.get(ipd.id); return d instanceof IpDevice ? d.manualNameserver === null ? '' : ipToString(d.manualNameserver) : undefined; }}
+              placeholder="none (use interface DNS)"
               onCommit={(t) => useStore.getState().setNameserver(ipd.id, t)}
             />
           </div>
@@ -386,7 +353,7 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
       {ipd && (
         <section className="inspector-arp-note">
           <span className="hint">
-            Addresses set here run the same code as <code>ip address add</code> in the terminal.
+            IPv4 wird pro Schnittstelle konfiguriert. Explizite statische Routen und der globale DNS-Override bleiben unabh?ngig.
           </span>
         </section>
       )}

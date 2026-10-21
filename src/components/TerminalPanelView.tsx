@@ -5,19 +5,21 @@ import { sim } from '../sim';
 import { IpDevice } from '../engine/ipdevice';
 import { getSession } from '../terminals';
 import { MIN_TERMINAL_PANEL_WIDTH, TERMINAL_GROUP_LABELS, type TerminalPanel } from '../terminalPanels';
-import { terminalBackground, terminalColor, terminalFontFamily, terminalTint } from '../terminalAppearance';
+import { terminalAuroraColors, terminalFlowColors, terminalBackground, terminalColor, terminalFontFamily, terminalTint } from '../terminalAppearance';
 import { TerminalColorButton } from './TerminalAppearanceControls';
 import { attachTerminalSession, observeTerminalSize } from './terminalDockLayout';
 import { TerminalPanelMoveHandle, TerminalTabMoveMenu, useTerminalTabMovement } from './TerminalTabMovement';
 import { restorePresentationSelection } from '../terminalPresentationSelection';
+import { isTerminalEffect } from '../terminalEffects';
 
 function TerminalSessionView({ deviceId, visible, focused, suspended }: { deviceId: string; visible: boolean; focused: boolean; suspended: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const focusRequest = useStore((s) => s.terminalFocusRequest);
   const preference = useStore((s) => s.terminalAppearance);
   const custom = useStore((s) => s.terminalColors[deviceId]);
-  const color = terminalColor(sim.net.devices.get(deviceId)?.kind ?? 'host', custom);
-  const background = useMemo(() => terminalBackground(color, preference), [color, preference]);
+  const kind = sim.net.devices.get(deviceId)?.kind ?? 'host';
+  const color = terminalColor(kind, custom);
+  const background = useMemo(() => terminalBackground(color, preference, kind), [color, preference, kind]);
 
   useLayoutEffect(() => {
     const device = sim.net.devices.get(deviceId);
@@ -60,6 +62,7 @@ function TerminalSessionView({ deviceId, visible, focused, suspended }: { device
   }, [visible, focused, deviceId, focusRequest, suspended]);
 
   return <div ref={ref} className="term-host" data-terminal-device={deviceId} role="tabpanel"
+    data-terminal-effect={isTerminalEffect(preference.style) ? '' : undefined}
     id={`terminal-panel-${deviceId}`} aria-labelledby={`terminal-tab-${deviceId}`}
     style={{ display: visible ? 'block' : 'none', backgroundImage: background }} />;
 }
@@ -120,6 +123,12 @@ function TerminalTab({ id, panel }: { id: string; panel: TerminalPanel }) {
 
 export function TerminalPanelView({ panel, index, focused, width, suspended }: { panel: TerminalPanel; index: number; focused: boolean; width: number; suspended: boolean }) {
   const ref = useRef<HTMLElement>(null);
+  const style = useStore((s) => s.terminalAppearance.style);
+  const custom = useStore((s) => s.terminalColors[panel.active]);
+  const kind = sim.net.devices.get(panel.active)?.kind ?? 'host';
+  const color = terminalColor(kind, custom);
+  const aurora = useMemo(() => style === 'aurora-flow' || isTerminalEffect(style) ? terminalFlowColors(color, kind)
+    : style === 'aurora-lines' ? terminalAuroraColors(color) : null, [style, color, kind]);
   const focusRequest = useStore((s) => s.terminalFocusRequest);
   const movement = useTerminalTabMovement();
   const target = movement.target?.panelId === panel.id ? movement.target : null;
@@ -133,9 +142,11 @@ export function TerminalPanelView({ panel, index, focused, width, suspended }: {
     return () => observer.disconnect();
   }, [focused, focusRequest, suspended]);
 
-  return <section ref={ref} id={panel.id} data-terminal-pane="" role="group" aria-label={`Terminal panel ${index + 1}`}
+  return <section ref={ref} id={panel.id} data-terminal-pane="" data-terminal-style={style} data-terminal-effect={isTerminalEffect(style) ? '' : undefined} role="group" aria-label={`Terminal panel ${index + 1}`}
     className={`terminal-pane${focused ? ' is-focused' : ''}${movement.panelDragging === panel.id ? ' is-dragging-panel' : ''}${target ? target.allowed ? ' is-drop-target' : ' is-drop-forbidden' : ''}`}
-    style={{ flex: `0 0 ${width}px`, minWidth: MIN_TERMINAL_PANEL_WIDTH }}>
+    style={{ flex: `0 0 ${width}px`, minWidth: MIN_TERMINAL_PANEL_WIDTH,
+      ...(aurora ? { '--terminal-aurora-start': aurora.primary + 'b3', '--terminal-aurora-end': aurora.secondary + '80' } : {}),
+    } as CSSProperties}>
     <div className="terminal-panel-header">
       {panel.kind && <div className="terminal-panel-type">{TERMINAL_GROUP_LABELS[panel.kind]}</div>}
       <TerminalPanelMoveHandle panel={panel} index={index} />
