@@ -2353,6 +2353,193 @@ describe('independent packet animation', () => {
   });
 });
 
+describe('guided packet visualization', () => {
+  const store = () => useStore.getState();
+  afterEach(() => store().setPacketVisualizationMode('live'));
+  function topology() {
+    const devices = pair(), { a, b } = devices;
+    store().onEdgesChange([{ type: 'remove', id: store().edges[0].id }]);
+    store().addDeviceAt('switch', { x: 100, y: 100 });
+    const relay = store().nodes.find((n) => n.data.kind === 'switch')!;
+    for (const device of [a, b]) store().onConnect({ source: device.id, target: relay.id, sourceHandle: null, targetHandle: null });
+    vi.advanceTimersByTime(500); setItem.mockClear();
+    store().setPacketAnimationSpeed(1); store().setSpeed(1); store().setPaused(false);
+    return { ...devices, relay };
+  }
+
+  it.each(['ping', 'ping -c 4'])('starts replay exactly at the fourth reply for %s, without the safety window', (command) => {
+    const { a, net } = topology(), session = open(a);
+    store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    input(session, `${command} 10.0.0.2\r`);
+    net.scheduler.advanceTo(3319); expect(store().guidedPacket.status).toBe('collecting');
+    net.scheduler.advanceTo(3320);
+    expect(store().guidedPacket.status).toBe('playing'); expect(net.now).toBe(3320);
+    expect(store().guidedPacket.attempts.map((attempt) => attempt.replied)).toEqual([true, true, true, true]);
+    expect(output(session)).toContain('icmp_seq=4'); expect(getSession(a)).toBe(session);
+    const captured = store().guidedPacket.hops;
+    net.scheduler.advanceTo(4500); expect(store().guidedPacket.hops).toBe(captured);
+    if (command === 'ping') expect(output(session)).toContain('icmp_seq=5');
+  });
+
+  it('finishes the observed remainder of an already running finite session when that command ends', () => {
+    const { a, net } = topology(), session = open(a);
+    input(session, 'ping -c 4 10.0.0.2\r'); net.scheduler.advanceTo(1500);
+    store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    net.scheduler.advanceTo(3319); expect(store().guidedPacket.status).toBe('collecting');
+    net.scheduler.advanceTo(3320);
+    expect(store().guidedPacket.status).toBe('playing');
+    expect(store().guidedPacket.attempts.map((attempt) => attempt.seq)).toEqual([3, 4]);
+    expect(store().guidedPacket.hops).toHaveLength(8); expect(output(session)).toContain('4 packets transmitted, 4 received');
+  });
+
+  it('finishes an explicitly cancelled session when its observed attempts already have replies', () => {
+    const { a, net } = topology(), session = open(a);
+    store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    input(session, 'ping 10.0.0.2\r'); net.scheduler.advanceTo(700);
+    expect(store().guidedPacket.status).toBe('collecting'); input(session, '\x03');
+    expect(store().guidedPacket.status).toBe('playing'); expect(store().guidedPacket.attempts).toHaveLength(1);
+    expect(net.now).toBe(700); expect(getSession(a)).toBe(session);
+  });
+
+  it.each(['ping', 'ping -c 4'])('uses the real two-second timeout for missing replies in %s', (command) => {
+    const { a, b, net } = topology();
+    a.sendEcho(parseIp('10.0.0.2')!, 99, 1); net.scheduler.advanceTo(800);
+    b.getInterface('eth0')!.up = false;
+    const session = open(a); store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    input(session, `${command} 10.0.0.2\r`);
+    net.scheduler.advanceTo(5799); expect(store().guidedPacket.status).toBe('collecting');
+    net.scheduler.advanceTo(5800);
+    expect(store().guidedPacket.status).toBe('playing'); expect(net.now).toBe(5800);
+    expect(store().guidedPacket.attempts.map((attempt) => attempt.replied)).toEqual([false, false, false, false]);
+    expect(store().guidedPacket.hops.every((hop) => hop.direction === 'request')).toBe(true);
+    expect(output(session)).toContain('no answer yet for icmp_seq=4');
+  });
+
+  it('keeps observed transmissions still in flight after the real timeouts and command finish', () => {
+    const { a, net } = pair();
+    a.sendEcho(parseIp('10.0.0.2')!, 99, 1); net.scheduler.advanceTo(800);
+    [...net.links.values()][0].latency = 1500;
+    const session = open(a); store().setPaused(false); store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    input(session, 'ping -c 4 10.0.0.2\r'); net.scheduler.advanceTo(5800); store().tick(0);
+    expect(output(session)).toContain('4 packets transmitted, 0 received');
+    expect(store().guidedPacket.status).toBe('collecting');
+    expect(store().guidedPacket.observed.some((hop) => hop.end > net.now)).toBe(true);
+    net.scheduler.advanceTo(6799); store().tick(0); expect(store().guidedPacket.status).toBe('collecting');
+    net.scheduler.advanceTo(6800); store().tick(0); expect(store().guidedPacket.status).toBe('playing');
+    expect(store().guidedPacket.hops).toHaveLength(8); expect(getSession(a)).toBe(session);
+  });
+
+  it('does not let a failed progress observer affect the real ping command', () => {
+    const { a, net } = pair(), session = open(a);
+    net.onPingProgress = () => { throw new Error('observer failed'); };
+    input(session, 'ping -c 1 10.0.0.2\r'); net.scheduler.advanceTo(320);
+    expect(output(session)).toContain('64 bytes'); // The normal reply and summary still reach xterm.
+    expect(output(session)).toContain('1 packets transmitted, 1 received');
+  });
+
+  it('transitions from Live with an ongoing ping through waiting and four real collection counts to playback', () => {
+    const { a, net } = topology(), session = open(a);
+    input(session, 'ping 10.0.0.2\r'); net.scheduler.advanceTo(1500);
+    expect(output(session)).toContain('icmp_seq=2');
+    store().setPacketVisualizationMode('guided');
+    expect(store().guidedPacket.status).toBe('idle');
+    store().observeNextGuidedPacket();
+    expect(store().guidedPacket).toMatchObject({ status: 'waiting', attempts: [] });
+    for (let count = 1; count <= 4; count++) {
+      net.scheduler.advanceTo(1000 + count * 1000); store().tick(0);
+      expect(store().guidedPacket.status).toBe('collecting');
+      expect(store().guidedPacket.attempts.map((attempt) => attempt.seq)).toEqual(Array.from({ length: count }, (_, i) => i + 3));
+      expect(store().guidedPacket.hops).toEqual([]);
+    }
+    net.scheduler.advanceTo(5500); store().tick(0);
+    expect(store().guidedPacket.status).toBe('playing');
+    expect(store().guidedPacket.attempts).toHaveLength(4);
+    expect(store().guidedPacket.hops).toHaveLength(16);
+    expect(output(session)).toContain('icmp_seq=6'); expect(getSession(a)).toBe(session);
+    expect(session.term.dispose).not.toHaveBeenCalled(); expect(net.now).toBe(5500);
+  });
+
+  it('observes four real round trips from one of two simultaneous sessions, then returns to Live', () => {
+    const { a, b, net, relay } = topology(), first = open(a), second = open(b);
+    const history = store().topologyHistory;
+    store().startPacketCapture(); store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    input(first, 'ping 10.0.0.2\r'); input(second, 'ping 10.0.0.1\r');
+    net.scheduler.advanceTo(3800); store().tick(0); vi.advanceTimersByTime(100);
+    expect(store().guidedPacket.status).toBe('playing');
+    const path = store().guidedPacket.hops;
+    expect(path.map((hop) => [hop.fromDeviceId, hop.toDeviceId])).toEqual([1, 2, 3, 4].flatMap(() => [[a.id, relay.id], [relay.id, b.id], [b.id, relay.id], [relay.id, a.id]]));
+    expect(store().guidedPacket.attempts.map((attempt) => attempt.replied)).toEqual([true, true, true, true]);
+    expect(path[1].parentTransferId).toBe(path[0].id); expect(store().guidedPacket.observed).toEqual([]);
+    expect(store().packets).toEqual([]);
+    expect(output(first)).toContain('icmp_seq=1'); expect(output(second)).toContain('icmp_seq=1');
+    expect(store().packetCapture.records.some((r) => r.frame.payload.kind === 'ipv4' && r.frame.payload.l4.kind === 'icmp' && r.frame.payload.l4.msg.type === 'echo-reply')).toBe(true);
+    expect(store().packetCapture.records.every((r) => r.end - r.start === 80)).toBe(true);
+    store().toggleGuidedPlayback(); const paused = store().guidedPacket;
+    store().tick(100); expect(store().guidedPacket).toBe(paused); expect(net.now).toBe(3900);
+    store().toggleGuidedPlayback(); store().tick(16000);
+    expect(store().guidedPacket.status).toBe('finished');
+    const finished = store().guidedPacket;
+    net.scheduler.advanceTo(4500); store().tick(100);
+    expect(store().guidedPacket).toBe(finished); expect(store().packets).toEqual([]);
+    expect(output(first)).toContain('icmp_seq=4'); expect(output(second)).toContain('icmp_seq=4');
+    expect(getSession(a)).toBe(first); expect(getSession(b)).toBe(second); expect(sim.net).toBe(net);
+    expect(store().topologyHistory).toBe(history);
+    expect(setItem.mock.calls.filter(([key]) => key === 'netsim:autosave:v1')).toHaveLength(0);
+    store().setPacketVisualizationMode('live'); net.scheduler.advanceTo(5500);
+    expect(store().packets.length).toBeGreaterThan(0); expect(store().guidedPacket.hops).toEqual([]);
+  });
+
+  it('replays and steps independently of network pause, preserves speed and invalidates removed paths', () => {
+    const { a, net } = topology(), session = open(a);
+    store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    input(session, 'ping -c 4 10.0.0.2\r'); net.scheduler.advanceTo(3800); store().tick(0);
+    expect(output(session)).toContain('4 packets transmitted, 4 received');
+    store().setPaused(true); const clock = net.now;
+    store().replayGuidedPacket(); store().tick(500);
+    expect(store().guidedPacket.progress).toBe(0.5); expect(net.now).toBe(clock);
+    store().setPacketAnimationSpeed(2); expect(store().guidedPacket.progress).toBe(0.5);
+    store().tick(250); expect(store().guidedPacket.index).toBe(1); expect(store().guidedPacket.progress).toBe(0);
+    store().replayGuidedPacket(); store().nextGuidedHop();
+    expect(store().guidedPacket).toMatchObject({ index: 1, progress: 0, status: 'paused' });
+    store().tick(1000); expect(store().guidedPacket.progress).toBe(0);
+    store().toggleGuidedPlayback(); store().tick(10000); expect(store().guidedPacket.status).toBe('finished');
+    const finished = store().guidedPacket;
+    store().toggleGuidedPlayback(); store().tick(1000);
+    expect(store().guidedPacket).toBe(finished); expect(net.now).toBe(clock);
+    store().replayGuidedPacket(); expect(store().guidedPacket).toMatchObject({ index: 0, progress: 0, status: 'playing' });
+    expect(store().guidedPacket.hops).toBe(finished.hops);
+    const edge = store().guidedPacket.hops[1].linkId;
+    store().onEdgesChange([{ type: 'remove', id: edge }]);
+    expect(store().guidedPacket).toMatchObject({ status: 'incomplete', hops: [] });
+    store().replayGuidedPacket(); store().undoTopology(); expect(store().guidedPacket.hops).toEqual([]);
+    expect(store().packetAnimationSpeed).toBe(2); expect(net.now).toBe(clock);
+    expect(getSession(a)).toBe(session); expect(session.term.dispose).not.toHaveBeenCalled();
+  });
+
+  it('observes four unanswered requests and resets on valid imports/new topology while rejecting old callbacks', () => {
+    const { a, b, net } = topology();
+    a.sendEcho(parseIp('10.0.0.2')!, 1, 1); net.scheduler.advanceTo(800); // Resolve ARP before making delivery impossible.
+    b.getInterface('eth0')!.up = false;
+    store().setPacketVisualizationMode('guided'); store().observeNextGuidedPacket();
+    const session = open(a); input(session, 'ping -c 4 10.0.0.2\r'); net.scheduler.advanceTo(9000); store().tick(0);
+    expect(store().guidedPacket.status).toBe('playing'); expect(store().guidedPacket.observed).toEqual([]);
+    expect(store().guidedPacket.attempts.map((attempt) => attempt.replied)).toEqual([false, false, false, false]);
+    expect(store().guidedPacket.hops.every((hop) => hop.direction === 'request')).toBe(true);
+    expect(output(session)).toContain('4 packets transmitted, 0 received');
+    store().observeNextGuidedPacket(); const waiting = store().guidedPacket;
+    expect(store().importJson('{')).not.toBeNull(); expect(store().guidedPacket).toBe(waiting);
+    expect(store().importJson(JSON.stringify(serializeNetwork(net, {})))).toBeNull();
+    expect(store().guidedPacket.status).toBe('idle');
+    const oldCallback = sim.net.onWireTransfer!;
+    store().newTopology(); store().observeNextGuidedPacket();
+    oldCallback({ id: 999, linkId: 'old', fromDeviceId: a.id, toDeviceId: b.id, start: 0, end: 80, kind: 'icmp' }, {
+      fromDeviceName: a.name, toDeviceName: b.name, fromInterface: 'eth0', toInterface: 'eth0',
+      frame: { srcMac: 'aa', dstMac: 'bb', payload: { kind: 'ipv4', src: 1, dst: 2, ttl: 64, l4: { kind: 'icmp', msg: { type: 'echo-request', id: 1, seq: 1 } } } },
+    });
+    expect(store().guidedPacket.status).toBe('waiting'); expect(store().guidedPacket.observed).toEqual([]);
+  });
+});
+
 describe('packet capture store integration', () => {
   const store = () => useStore.getState();
 

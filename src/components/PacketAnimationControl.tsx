@@ -3,14 +3,19 @@ import type { PointerEvent } from 'react';
 import { PACKET_ANIMATION_SPEEDS } from '../packetAnimation';
 import { clampPacketWidget, readPacketAnimationPlacement, savePacketAnimationPlacement, type PacketAnimationPlacement } from '../packetAnimationWidget';
 import { useStore } from '../store';
+import { FloatingPopover } from './FloatingPopover';
+import { GuidedPacketControls } from './GuidedPacketControls';
 
 export function PacketAnimationControl({ initialPlacement }: { initialPlacement?: PacketAnimationPlacement }) {
   const speed = useStore((s) => s.packetAnimationSpeed);
+  const mode = useStore((s) => s.packetVisualizationMode);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const modeButton = useRef<HTMLButtonElement>(null);
   const [placement, setPlacement] = useState(() => readPacketAnimationPlacement(initialPlacement));
   const widget = useRef<HTMLDivElement>(null), handle = useRef<HTMLButtonElement>(null);
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number; moved: boolean; last: PacketAnimationPlacement } | null>(null);
   const clamp = (x: number, y: number) => clampPacketWidget({ x, y }, { width: window.innerWidth, height: window.innerHeight },
-    { width: widget.current?.offsetWidth ?? 206,
+    { width: widget.current?.offsetWidth ?? 234,
       height: widget.current ? widget.current.offsetHeight + (widget.current.classList.contains('is-floating') ? 0 : 8) : 43 });
   useLayoutEffect(() => {
     const resize = () => setPlacement((current) => {
@@ -60,14 +65,31 @@ export function PacketAnimationControl({ initialPlacement }: { initialPlacement?
       }} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>⠿</button>
     <div className="packet-animation-control">
       <label htmlFor="packet-animation-speed" title="Visual speed only. Identified forwarding hops animate in sequence; replies are independent.">Packet animation</label>
+      <button ref={modeButton} type="button" className="packet-animation-mode" aria-label={`Packet visualization: ${mode === 'live' ? 'Live' : 'Guided'}`}
+        aria-haspopup="dialog" aria-expanded={controlsOpen} aria-controls={controlsOpen ? 'packet-visualization-settings' : undefined}
+        onClick={() => setControlsOpen(!controlsOpen)}>{mode === 'live' ? 'Live' : 'Guided'} ▾</button>
       <input id="packet-animation-speed" type="range" min={0} max={PACKET_ANIMATION_SPEEDS.length - 1} step={1}
         value={PACKET_ANIMATION_SPEEDS.indexOf(speed as typeof PACKET_ANIMATION_SPEEDS[number])}
         aria-describedby="packet-animation-help" aria-valuetext={`${speed}× visual speed`}
         onChange={(event) => useStore.getState().setPacketAnimationSpeed(PACKET_ANIMATION_SPEEDS[Number(event.target.value)])} />
       <output htmlFor="packet-animation-speed">{speed}×</output>
-      <span id="packet-animation-help" className="sr-only">Packet animation speed; 1× is one second per link. Network timing is unchanged. Untracked packets and replies animate independently.</span>
+      <span id="packet-animation-help" className="sr-only">Packet animation speed; 1× is one second per link. Network timing is unchanged. {mode === 'guided'
+        ? 'Guided replays up to four requests and replies from one ping session.' : 'Untracked packets and replies animate independently.'}</span>
     </div>
     <button type="button" className="packet-animation-restore" style={{ visibility: placement.mode === 'floating' ? 'visible' : 'hidden' }}
       disabled={placement.mode !== 'floating'} title="Restore to toolbar" aria-label="Restore packet animation to toolbar" onClick={dock}>↶</button>
+    {controlsOpen && <FloatingPopover anchor={modeButton} onClose={() => setControlsOpen(false)}
+      id="packet-visualization-settings" label="Packet visualization" width={310} className="packet-visualization-settings">
+      <div role="group" aria-label="Visualization mode" className="guided-playback-actions">
+        <button type="button" className="btn" aria-pressed={mode === 'live'} onClick={() => useStore.getState().setPacketVisualizationMode('live')}>Live</button>
+        <button type="button" className="btn" aria-pressed={mode === 'guided'} onClick={() => {
+          const state = useStore.getState();
+          if (state.packetVisualizationMode === 'guided') return;
+          state.setPacketVisualizationMode('guided');
+          state.observeNextGuidedPacket();
+        }}>Guided</button>
+      </div>
+      {mode === 'guided' ? <GuidedPacketControls /> : <p>Live: simultaneous packet animations. Network timing is unchanged.</p>}
+    </FloatingPopover>}
   </div>;
 }

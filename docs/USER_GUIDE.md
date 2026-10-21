@@ -124,6 +124,32 @@ request's visual path finishes. The display retains at most 150 events and
 omits waits beyond 12 seconds. Missing predecessors animate independently, so
 this is a bounded teaching visualization rather than a complete traffic replay.
 
+Open the **Live ▾** menu beside Packet animation to switch to **Guided**,
+a learning view that immediately clears Live dots and arms observation, without
+stopping any command. Run `ping <IP>` or `ping -c 4 <IP>`, or wait for the next
+request of an already running ping. Guided collects up to four consecutive real requests from that
+session and their matching replies, then automatically plays each outward path
+followed by its return path. **Ping 2/4** identifies the current attempt.
+**Pause/Play** controls only replay; **Replay** repeats the observed sequence
+without sending packets. After four attempts it holds the last endpoint;
+later requests do not start a new cycle. Choose Observe next ping for another
+sequence, or return to Live for simultaneous animations.
+
+Guided playback can continue while the simulation is paused; collecting a new
+sequence requires the network to run. Missing return paths are identified;
+Guided never invents replies or requests that were not transmitted. If the
+command stops early, only the observed attempts are replayed. ARP or routing
+failures that prevent any ICMP transmission produce an explanatory message.
+Collection retains at most 256 related transmissions. It starts replay as soon
+as the four attempts have outcomes, using the ping's actual replies/errors and
+two-second timeouts. If the selected command ends early, the observed remainder
+can replay immediately. Already observed frames in flight are still awaited.
+The ten-second safety window (and five-second per-request fallback for traffic
+without command lifecycle information) is not a mandatory delay and does not
+change real ping timing. Removed paths are discarded. The view
+shows link transmissions, not proof of IP acceptance. No sequence data is saved;
+terminal commands and Packet Inspector capture are unaffected.
+
 Use **Packets** in the main toolbar to open or close the Packet Inspector in
 the device Inspector's side area. Opening or closing the panel does not change
 capture, device selection or running terminals. On smaller screens the panel

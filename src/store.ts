@@ -5,6 +5,7 @@ import LZString from 'lz-string';
 import { Network } from './engine/network';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
 import { normalizePacketAnimationSpeed, readPacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
+import { advanceGuidedPacket, emptyGuidedPacket, finishGuidedCollection, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, waitForGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
 import { IpDevice } from './engine/ipdevice';
 import type { DeviceKind } from './engine/device';
@@ -93,6 +94,13 @@ interface NetsimState {
   packetAnimationClock: number;
   packetAnimationSpeed: number;
   setPacketAnimationSpeed(speed: number): void;
+  packetVisualizationMode: PacketVisualizationMode;
+  guidedPacket: GuidedPacketState;
+  setPacketVisualizationMode(mode: PacketVisualizationMode): void;
+  observeNextGuidedPacket(): void;
+  toggleGuidedPlayback(): void;
+  nextGuidedHop(): void;
+  replayGuidedPacket(): void;
   packetCapture: PacketCaptureState;
   packetInspectorOpen: boolean;
   setPacketInspectorOpen(open: boolean): void;
@@ -200,6 +208,14 @@ export const useStore = create<NetsimState>()((set, get) => {
   // Set before advancing the scheduler so new emissions use this frame's
   // presentation time, including after a long gap in browser callbacks.
   let animationNow = 0;
+  const currentGuided = () => validateGuidedPacket(get().guidedPacket, (hop) => {
+    const link = sim.net.links.get(hop.linkId);
+    if (!link) return false;
+    const from = link.a.device.id === hop.fromDeviceId ? link.a : link.b;
+    const to = link.other(from);
+    return from.device.id === hop.fromDeviceId && to.device.id === hop.toDeviceId &&
+      from.name === hop.fromInterface && to.name === hop.toInterface;
+  });
   let movement: { source: 'drag' | 'keyboard'; before: Map<string, Point> } | null = null;
   let ignoreDrag = false;
   let labCheckGeneration = 0;
@@ -284,7 +300,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     } else {
       const add = (operation.type === 'add-links') === (direction === 'redo');
       if (!applyLinkEdit(sim.net, operation.links, add)) { get().invalidateTopologyHistory(); return; }
-      set({ edges: edgesFromEngine(), packets: get().packets.filter((p) => !operation.links.some((l) => l.id === p.linkId)) });
+      set({ edges: edgesFromEngine(), packets: get().packets.filter((p) => !operation.links.some((l) => l.id === p.linkId)), guidedPacket: currentGuided() });
     }
     historyConfiguration = configuration();
     set({ topologyHistory: direction === 'undo'
@@ -315,15 +331,33 @@ export const useStore = create<NetsimState>()((set, get) => {
     if (wiredNetwork && wiredNetwork !== net) {
       wiredNetwork.onWireTransfer = null;
       wiredNetwork.onFwDrop = null;
+      wiredNetwork.onPingProgress = null;
       capture.reset();
     }
     wiredNetwork = net;
     net.onWireTransfer = (t, context, trace) => {
       if (sim.net !== net) return;
-      const packets = get().packets;
-      const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(get().packetAnimationSpeed));
-      if (visual) set({ packets: [...packets.slice(-(MAX_PACKETS - 1)), visual] });
+      if (get().packetVisualizationMode === 'live') {
+        const packets = get().packets;
+        const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(get().packetAnimationSpeed));
+        if (visual) set({ packets: [...packets.slice(-(MAX_PACKETS - 1)), visual] });
+      } else if (['waiting', 'collecting'].includes(get().guidedPacket.status)) {
+        const before = get().guidedPacket, payload = context.frame.payload;
+        const to = net.devices.get(t.toDeviceId);
+        const iface = to?.getInterface(context.toInterface);
+        // Endpoint ownership identifies the last known link, not correlation or successful delivery.
+        const destination = payload.kind === 'ipv4' && to instanceof IpDevice && to.hasIp(payload.dst) &&
+          iface?.up === true && iface.mac === context.frame.dstMac;
+        // Observe newly emitted continuations before testing completion at a delivery boundary.
+        const guidedPacket = finishGuidedCollection(observeGuidedPacket(currentGuided(), t, context, trace, destination), net.now);
+        if (guidedPacket !== before) set({ guidedPacket });
+      }
       if (sim.net === net) capture.observe(t, context);
+    };
+    net.onPingProgress = (event) => {
+      if (sim.net !== net || get().packetVisualizationMode !== 'guided') return;
+      const guidedPacket = observeGuidedPingProgress(currentGuided(), event, net.now);
+      if (guidedPacket !== get().guidedPacket) set({ guidedPacket });
     };
     net.onFwDrop = (deviceId) => {
       if (sim.net !== net) return;
@@ -402,6 +436,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     set({
       nodes: get().nodes.filter((n) => !ids.has(n.id)), edges: edgesFromEngine(),
       packets: get().packets.filter((p) => !ids.has(p.fromDeviceId) && !ids.has(p.toDeviceId) && !links.has(p.linkId)),
+      guidedPacket: currentGuided(),
       dropFlashes: get().dropFlashes.filter((f) => !ids.has(f.deviceId)),
       terminals, terminalDockCollapsed: get().terminalDockCollapsed && terminals.length > 0,
       ...prunePanelSessions(get().terminalPanels, terminals, get().activeTerminal),
@@ -424,6 +459,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       nodes,
       edges: edgesFromEngine(),
       packets: [],
+      guidedPacket: emptyGuidedPacket(),
       dropFlashes: [],
       selected: null,
       terminals: [],
@@ -446,6 +482,22 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
 
   return {
+    packetVisualizationMode: 'live',
+    guidedPacket: emptyGuidedPacket(),
+    setPacketVisualizationMode(packetVisualizationMode) {
+      if (packetVisualizationMode === get().packetVisualizationMode) return;
+      set({ packetVisualizationMode, guidedPacket: emptyGuidedPacket(), packets: [] });
+    },
+    observeNextGuidedPacket() {
+      if (get().packetVisualizationMode === 'guided') set({ guidedPacket: waitForGuidedPacket(sim.net.now) });
+    },
+    toggleGuidedPlayback() {
+      const state = currentGuided();
+      set({ guidedPacket: state.status === 'playing' ? { ...state, status: 'paused' }
+        : state.status === 'paused' ? { ...state, status: 'playing' } : state });
+    },
+    nextGuidedHop() { set({ guidedPacket: stepGuidedPacket(currentGuided()) }); },
+    replayGuidedPacket() { set({ guidedPacket: replayGuidedPacket(currentGuided()) }); },
     packetAnimationClock: animationNow,
     packetAnimationSpeed: readPacketAnimationSpeed(),
     setPacketAnimationSpeed(value) {
@@ -561,7 +613,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       for (const ch of changes) {
         if (ch.type === 'remove') sim.net.disconnect(ch.id);
       }
-      set({ edges: applyEdgeChanges(changes, get().edges), packets: get().packets.filter((p) => !removed.some((l) => l.id === p.linkId)) });
+      set({ edges: applyEdgeChanges(changes, get().edges), packets: get().packets.filter((p) => !removed.some((l) => l.id === p.linkId)), guidedPacket: currentGuided() });
       if (removed.length && !unsupported) commitEdit({ type: 'remove-links', label: removed.length === 1 ? 'Remove cable' : `Remove ${removed.length} cables`, links: removed });
       if (changes.some((c) => c.type === 'remove')) saveSoon();
     },
@@ -1012,7 +1064,15 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     tick(dtMs) {
-      if (get().paused) return;
+      const elapsed = Number.isFinite(dtMs) ? Math.max(0, dtMs) : 0;
+      if (get().paused) {
+        // Guided playback is independent of network pause; collecting still waits for simulated delivery.
+        if (get().packetVisualizationMode === 'guided') {
+          const guidedPacket = advanceGuidedPacket(currentGuided(), elapsed, packetAnimationDuration(get().packetAnimationSpeed));
+          if (guidedPacket !== get().guidedPacket) set({ guidedPacket });
+        }
+        return;
+      }
       animationNow += Number.isFinite(dtMs) ? Math.max(0, dtMs) : 0;
       const dt = Math.min(dtMs, 100) * get().speed;
       sim.net.scheduler.advanceTo(sim.net.scheduler.now + dt);
@@ -1024,6 +1084,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       const pulse = Math.floor(now / 400);
       set({
         clock: now,
+        ...(get().packetVisualizationMode === 'guided' ? { guidedPacket: advanceGuidedPacket(
+          finishGuidedCollection(currentGuided(), now), elapsed, packetAnimationDuration(get().packetAnimationSpeed)) } : {}),
         packetAnimationClock: animationNow,
         ...(alive.length !== packets.length ? { packets: alive } : {}),
         ...(aliveFlashes.length !== flashes.length ? { dropFlashes: aliveFlashes } : {}),
@@ -1060,6 +1122,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         nodes: [],
         edges: [],
         packets: [],
+        guidedPacket: emptyGuidedPacket(),
         dropFlashes: [],
         selected: null,
         terminals: [],

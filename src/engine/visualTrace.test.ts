@@ -43,9 +43,10 @@ for (const middle of ['switch', 'router', 'firewall'] as const) {
       });
       const requests = echo('echo-request'), responses = echo('echo-reply');
       expect(requests).toHaveLength(2); expect(responses).toHaveLength(2);
-      expect(requests[0].trace).toBeUndefined(); expect(responses[0].trace).toBeUndefined();
+      expect(requests[0].trace).toBeUndefined();
+      expect(responses[0].trace).toEqual({ echoRequestTransferId: requests[1].transfer.id });
       expect(requests[1].trace).toEqual({ parentTransferId: requests[0].transfer.id });
-      expect(responses[1].trace).toEqual({ parentTransferId: responses[0].transfer.id });
+      expect(responses[1].trace).toEqual({ parentTransferId: responses[0].transfer.id, echoRequestTransferId: requests[1].transfer.id });
       const first = visuals.find((p) => p.id === requests[0].transfer.id)!;
       const second = visuals.find((p) => p.id === requests[1].transfer.id)!;
       expect(first.visualStart).toBe(0); expect(second.visualStart).toBe(1000);
@@ -55,6 +56,9 @@ for (const middle of ['switch', 'router', 'firewall'] as const) {
       expect(requests[1].context).not.toHaveProperty('parentTransferId');
       expect(requests[1].context.frame.payload).not.toHaveProperty('parentTransferId');
       expect(requests[1].transfer).not.toHaveProperty('parentTransferId');
+      expect(responses[1].context).not.toHaveProperty('echoRequestTransferId');
+      expect(responses[1].context.frame.payload).not.toHaveProperty('echoRequestTransferId');
+      expect(responses[1].transfer).not.toHaveProperty('echoRequestTransferId');
     }
   });
 }

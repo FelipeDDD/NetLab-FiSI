@@ -1,7 +1,7 @@
 import { Scheduler } from './scheduler';
 import { Link } from './device';
 import type { Device, DeviceKind, NetInterface } from './device';
-import type { EthernetFrame, FramePayload } from './types';
+import type { EthernetFrame, FramePayload, IcmpMessage, Ipv4Packet } from './types';
 
 // Emitted for every frame that crosses a link; the UI turns these into
 // animated packets travelling along the corresponding edge.
@@ -26,7 +26,11 @@ export interface WireFrameContext {
 }
 
 // Presentation side channel only: never part of protocol data or capture context.
-export interface WireVisualTrace { parentTransferId: number }
+export interface WireVisualTrace { parentTransferId?: number; echoRequestTransferId?: number }
+
+// Read-only command lifecycle observation; not protocol/capture data.
+export type PingProgress = { deviceId: string; icmpId: number } &
+  ({ type: 'settled'; seq: number } | { type: 'finished' });
 
 const NAME_PREFIX: Record<DeviceKind, string> = {
   host: 'pc',
@@ -42,7 +46,9 @@ export class Network {
   devices = new Map<string, Device>();
   links = new Map<string, Link>();
   onWireTransfer: ((t: WireTransfer, context: WireFrameContext, visual?: WireVisualTrace) => void) | null = null;
+  onPingProgress: ((event: PingProgress) => void) | null = null;
   private visualArrivals = new WeakMap<FramePayload, Map<string, number>>();
+  private visualEchoRequests = new WeakMap<IcmpMessage, number>();
   // Fired when a declared firewall chain drops or rejects a packet — the UI
   // flashes the device so students see *where* traffic died.
   onFwDrop: ((deviceId: string) => void) | null = null;
@@ -145,6 +151,15 @@ export class Network {
     this.recordVisualArrival(forwarded, deviceId, this.visualArrivals.get(original)?.get(deviceId));
   }
 
+  associateVisualEchoReply(request: Ipv4Packet, reply: IcmpMessage, deviceId: string): void {
+    const arrival = this.visualArrivals.get(request)?.get(deviceId);
+    if (arrival !== undefined) this.visualEchoRequests.set(reply, arrival);
+  }
+
+  emitPingProgress(event: PingProgress): void {
+    try { this.onPingProgress?.(event); } catch { /* Observation must not interrupt a command. */ }
+  }
+
   emitWire(link: Link, from: Device, to: Device, frame: EthernetFrame): number | undefined {
     if (!this.onWireTransfer) return;
     const source = link.a.device === from ? link.a : link.b;
@@ -164,8 +179,13 @@ export class Network {
         fromDeviceName: from.name, toDeviceName: to.name,
       };
       const parentTransferId = this.visualArrivals.get(frame.payload)?.get(from.id);
-      if (parentTransferId === undefined) this.onWireTransfer(transfer, context);
-      else this.onWireTransfer(transfer, context, { parentTransferId });
+      const echoRequestTransferId = frame.payload.kind === 'ipv4' && frame.payload.l4.kind === 'icmp'
+        ? this.visualEchoRequests.get(frame.payload.l4.msg) : undefined;
+      if (parentTransferId === undefined && echoRequestTransferId === undefined) this.onWireTransfer(transfer, context);
+      else this.onWireTransfer(transfer, context, {
+        ...(parentTransferId === undefined ? {} : { parentTransferId }),
+        ...(echoRequestTransferId === undefined ? {} : { echoRequestTransferId }),
+      });
     } catch {
       // Observation must never prevent Link.transmit from scheduling delivery.
     }

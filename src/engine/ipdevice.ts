@@ -650,6 +650,7 @@ export abstract class IpDevice extends Device {
         const t = tupleOf(pkt);
         if (t) this.ct.confirm(origTuple, t, now);
       }
+      this.network.inheritVisualArrival(pktIn, pkt, this.id);
       this.deliverLocal(pkt);
       return;
     }
@@ -893,13 +894,16 @@ export abstract class IpDevice extends Device {
     }
     const msg = l4.msg;
     switch (msg.type) {
-      case 'echo-request':
+      case 'echo-request': {
+        const reply: IcmpMessage = { type: 'echo-reply', id: msg.id, seq: msg.seq };
+        this.network.associateVisualEchoReply(pkt, reply, this.id);
         this.sendIcmp(
           pkt.src,
-          { type: 'echo-reply', id: msg.id, seq: msg.seq },
+          reply,
           { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined },
         );
         break;
+      }
       case 'echo-reply':
         this.icmpListeners.get(msg.id)?.({ type: 'reply', from: pkt.src, seq: msg.seq, ttl: pkt.ttl });
         break;

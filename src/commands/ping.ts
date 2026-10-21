@@ -96,10 +96,12 @@ export function runPing(
       const avg = rtts.reduce((a, b) => a + b, 0) / rtts.length;
       write(`rtt min/avg/max = ${min.toFixed(1)}/${avg.toFixed(1)}/${max.toFixed(1)} ms\n`);
     }
+    device.network.emitPingProgress({ type: 'finished', deviceId: device.id, icmpId: id });
     done();
   };
 
   const maybeFinish = (seq: number) => {
+    device.network.emitPingProgress({ type: 'settled', deviceId: device.id, icmpId: id, seq });
     if (count !== null && seq >= count) finish();
   };
 

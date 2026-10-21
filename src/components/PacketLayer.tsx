@@ -18,9 +18,11 @@ export function PacketLayer() {
   const dropFlashes = useStore((s) => s.dropFlashes);
   const clock = useStore((s) => s.clock);
   const animationClock = useStore((s) => s.packetAnimationClock);
+  const mode = useStore((s) => s.packetVisualizationMode);
+  const guided = useStore((s) => s.guidedPacket);
   const nodes = useStore((s) => s.nodes);
 
-  if (!packets.length && !dropFlashes.length) return null;
+  if (!packets.length && !dropFlashes.length && !guided.hops.length) return null;
 
   const centers = new Map<string, { x: number; y: number }>();
   for (const n of nodes) {
@@ -30,9 +32,10 @@ export function PacketLayer() {
     });
   }
 
-  const dots = packets
-    .map((p) => {
-      const t = packetAnimationProgress(p, animationClock);
+  const visible = mode === 'live' ? packets.map((p) => ({ p, t: packetAnimationProgress(p, animationClock) }))
+    : guided.hops[guided.index] ? [{ p: guided.hops[guided.index], t: guided.progress }] : [];
+  const dots = visible
+    .map(({ p, t }) => {
       if (t === null) return null;
       const a = centers.get(p.fromDeviceId);
       const b = centers.get(p.toDeviceId);
@@ -43,7 +46,7 @@ export function PacketLayer() {
     });
 
   // Expanding red ring where a firewall chain dropped or rejected a packet.
-  const rings = dropFlashes
+  const rings = (mode === 'live' ? dropFlashes : [])
     .filter((f) => clock >= f.start && clock <= f.until)
     .map((f) => {
       const c = centers.get(f.deviceId);
