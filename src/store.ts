@@ -4,10 +4,10 @@ import type { Connection, Edge, EdgeChange, Node, NodeChange } from '@xyflow/rea
 import LZString from 'lz-string';
 import { sameIpv4, validIpv4, type InterfaceIpv4 } from './engine/ipv4Config';
 import { runDhclient } from './commands/dhclient';
-import { Network } from './engine/network';
+import { Network, type PingProgress } from './engine/network';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
 import { normalizePacketAnimationSpeed, readPacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
-import { advanceGuidedPacket, emptyGuidedPacket, finishGuidedCollection, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, waitForGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
+import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
 import { Host, IpDevice } from './engine/ipdevice';
 import { chooseHostOs, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
@@ -105,10 +105,10 @@ interface NetsimState {
   packetVisualizationMode: PacketVisualizationMode;
   guidedPacket: GuidedPacketState;
   setPacketVisualizationMode(mode: PacketVisualizationMode): void;
-  observeNextGuidedPacket(): void;
   toggleGuidedPlayback(): void;
   nextGuidedHop(): void;
   replayGuidedPacket(): void;
+  followGuidedPacket(): void;
   packetCapture: PacketCaptureState;
   packetInspectorOpen: boolean;
   setPacketInspectorOpen(open: boolean): void;
@@ -218,6 +218,13 @@ export const useStore = create<NetsimState>()((set, get) => {
   // Set before advancing the scheduler so new emissions use this frame's
   // presentation time, including after a long gap in browser callbacks.
   let animationNow = 0;
+  // One lifecycle marker, also in Live, so entering Guided cannot select an
+  // older continuous ping merely because its next attempt happens first.
+  let latestPing: { start: Extract<PingProgress, { type: 'started' }>; finished: boolean } | null = null;
+  const armGuided = () => {
+    const state = latestPing ? observeGuidedPingProgress(emptyGuidedPacket(), latestPing.start, sim.net.now) : emptyGuidedPacket();
+    return latestPing?.finished ? observeGuidedPingProgress(state, { ...latestPing.start, type: 'finished' }, sim.net.now) : state;
+  };
   const currentGuided = () => validateGuidedPacket(get().guidedPacket, (hop) => {
     const link = sim.net.links.get(hop.linkId);
     if (!link) return false;
@@ -350,6 +357,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       capture.reset();
     }
     wiredNetwork = net;
+    latestPing = null;
     net.onClientConfiguration = () => {
       if (sim.net !== net) return;
       checkHistoryConfiguration(); get().refresh(); saveSoon();
@@ -360,7 +368,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         const packets = get().packets;
         const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(get().packetAnimationSpeed));
         if (visual) set({ packets: [...packets.slice(-(MAX_PACKETS - 1)), visual] });
-      } else if (['waiting', 'collecting'].includes(get().guidedPacket.status)) {
+      } else {
         const before = get().guidedPacket, payload = context.frame.payload;
         const to = net.devices.get(t.toDeviceId);
         const iface = to?.getInterface(context.toInterface);
@@ -368,13 +376,16 @@ export const useStore = create<NetsimState>()((set, get) => {
         const destination = payload.kind === 'ipv4' && to instanceof IpDevice && to.hasIp(payload.dst) &&
           iface?.up === true && iface.mac === context.frame.dstMac;
         // Observe newly emitted continuations before testing completion at a delivery boundary.
-        const guidedPacket = finishGuidedCollection(observeGuidedPacket(currentGuided(), t, context, trace, destination), net.now);
+        const guidedPacket = updateGuidedObservation(observeGuidedPacket(currentGuided(), t, context, trace, destination), net.now);
         if (guidedPacket !== before) set({ guidedPacket });
       }
       if (sim.net === net) capture.observe(t, context);
     };
     net.onPingProgress = (event) => {
-      if (sim.net !== net || get().packetVisualizationMode !== 'guided') return;
+      if (sim.net !== net) return;
+      if (event.type === 'started') latestPing = { start: event, finished: false };
+      else if (event.type === 'finished' && latestPing?.start.deviceId === event.deviceId && latestPing.start.icmpId === event.icmpId) latestPing.finished = true;
+      if (get().packetVisualizationMode !== 'guided') return;
       const guidedPacket = observeGuidedPingProgress(currentGuided(), event, net.now);
       if (guidedPacket !== get().guidedPacket) set({ guidedPacket });
     };
@@ -505,18 +516,15 @@ export const useStore = create<NetsimState>()((set, get) => {
     guidedPacket: emptyGuidedPacket(),
     setPacketVisualizationMode(packetVisualizationMode) {
       if (packetVisualizationMode === get().packetVisualizationMode) return;
-      set({ packetVisualizationMode, guidedPacket: emptyGuidedPacket(), packets: [] });
-    },
-    observeNextGuidedPacket() {
-      if (get().packetVisualizationMode === 'guided') set({ guidedPacket: waitForGuidedPacket(sim.net.now) });
+      set({ packetVisualizationMode, guidedPacket: packetVisualizationMode === 'guided' ? armGuided() : emptyGuidedPacket(), packets: [] });
     },
     toggleGuidedPlayback() {
       const state = currentGuided();
-      set({ guidedPacket: state.status === 'playing' ? { ...state, status: 'paused' }
-        : state.status === 'paused' ? { ...state, status: 'playing' } : state });
+      set({ guidedPacket: toggleGuidedPlayback(state) });
     },
     nextGuidedHop() { set({ guidedPacket: stepGuidedPacket(currentGuided()) }); },
     replayGuidedPacket() { set({ guidedPacket: replayGuidedPacket(currentGuided()) }); },
+    followGuidedPacket() { set({ guidedPacket: followGuidedPacket(currentGuided()) }); },
     packetAnimationClock: animationNow,
     packetAnimationSpeed: readPacketAnimationSpeed(),
     setPacketAnimationSpeed(value) {
@@ -1151,7 +1159,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({
         clock: now,
         ...(get().packetVisualizationMode === 'guided' ? { guidedPacket: advanceGuidedPacket(
-          finishGuidedCollection(currentGuided(), now), elapsed, packetAnimationDuration(get().packetAnimationSpeed)) } : {}),
+          updateGuidedObservation(currentGuided(), now), elapsed, packetAnimationDuration(get().packetAnimationSpeed)) } : {}),
         packetAnimationClock: animationNow,
         ...(alive.length !== packets.length ? { packets: alive } : {}),
         ...(aliveFlashes.length !== flashes.length ? { dropFlashes: aliveFlashes } : {}),

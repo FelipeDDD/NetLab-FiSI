@@ -5,7 +5,7 @@ import { sim } from '../sim';
 import { IpDevice } from '../engine/ipdevice';
 import { getSession } from '../terminals';
 import { MIN_TERMINAL_PANEL_WIDTH, TERMINAL_GROUP_LABELS, type TerminalPanel } from '../terminalPanels';
-import { terminalAuroraColors, terminalFlowColors, terminalBackground, terminalColor, terminalFontFamily, terminalTint } from '../terminalAppearance';
+import { terminalAuroraColors, terminalFlowColors, terminalBackground, terminalColor, terminalFontFamily, terminalTabPalette } from '../terminalAppearance';
 import { TerminalColorButton } from './TerminalAppearanceControls';
 import { attachTerminalSession, observeTerminalSize } from './terminalDockLayout';
 import { TerminalPanelMoveHandle, TerminalTabMoveMenu, useTerminalTabMovement } from './TerminalTabMovement';
@@ -77,11 +77,16 @@ function TerminalTab({ id, panel }: { id: string; panel: TerminalPanel }) {
   const name = device?.name ?? id;
   const selected = id === panel.active;
   const color = terminalColor(device?.kind ?? 'host', custom);
-  const tabStyle = useMemo(() => ({
-    '--terminal-tab-color': color,
-    '--terminal-tab-muted-color': color + '80',
-    '--terminal-tab-tint': terminalTint(color, 60),
-  }) as CSSProperties, [color]);
+  const tabStyle = useMemo(() => {
+    const palette = terminalTabPalette(color);
+    return {
+      '--terminal-tab-color': color,
+      '--terminal-tab-border': color + '80',
+      '--terminal-tab-tint': palette.active,
+      '--terminal-tab-hover-tint': palette.hover,
+      '--terminal-tab-active-hover-tint': palette.activeHover,
+    } as CSSProperties;
+  }, [color]);
   useLayoutEffect(() => {
     if (!selected || !ref.current?.parentElement) return;
     const strip = ref.current.parentElement;

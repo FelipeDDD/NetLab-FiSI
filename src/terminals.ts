@@ -5,7 +5,7 @@ import type { IpDevice } from './engine/ipdevice';
 import { serializeNetwork } from './engine/serialize';
 import { normalizeTerminalPaste, PASTE_END, PASTE_START, removeLastCodePoint } from './terminalInput';
 import { currentCommandRange, inputStartRow } from './terminalLine';
-import { LEGACY_TERMINAL_FONT_SIZE, TERMINAL_THEME } from './terminalAppearance';
+import { LEGACY_TERMINAL_FONT_SIZE, TERMINAL_THEME, terminalFontFamily } from './terminalAppearance';
 
 export interface SessionOpts {
   onAfterCommand?: (configurationChanged: boolean) => void;
@@ -30,7 +30,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     // API-only sessions retain the original reference. The view applies the
     // persisted preference before its first fit without recreating the terminal.
     fontSize: LEGACY_TERMINAL_FONT_SIZE,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    fontFamily: terminalFontFamily('system'),
     scrollback: 2000,
     // Set before open(). Keep the built-in DOM renderer and a static CSS
     // background; changing a device color never recreates a session or its theme.
@@ -173,6 +173,13 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       selectedCommand = false;
       if (!running && buf) return redrawLine(buf, done);
       return done();
+    }
+    // A selection may defer a profile refresh, but must not bind a NEW command
+    // to the old OS. Existing drafts and running commands keep their profile.
+    if (!running && !buf && promptOs !== shell.os &&
+      (data === '\r' || data === '\x1b[A' || data.startsWith(PASTE_START) || data >= ' ')) {
+      promptOs = shell.os;
+      return redrawLine('', () => processInput(data, replace, done));
     }
     if (data === '\x01') {
       if (running || !buf) {

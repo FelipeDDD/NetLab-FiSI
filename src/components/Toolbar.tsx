@@ -5,6 +5,8 @@ import { LABS } from '../labs/library';
 import { EXAMPLES } from '../labs/examples';
 import { FloatingPopover } from './FloatingPopover';
 import { PacketAnimationControl } from './PacketAnimationControl';
+import { InspectorLayoutSettings } from './InspectorLayoutSettings';
+import type { InspectorLayoutPreference } from '../inspectorLayout';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 
@@ -44,7 +46,9 @@ function ExportItem({
   );
 }
 
-export function Toolbar() {
+export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
+  inspectorLayout: InspectorLayoutPreference; onInspectorLayoutChange: (value: InspectorLayoutPreference) => void;
+}) {
   const [labsOpen, setLabsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [menuFocus, setMenuFocus] = useState<'first' | 'last'>('first');
@@ -93,6 +97,7 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar-group">
+        <InspectorLayoutSettings value={inspectorLayout} onChange={onInspectorLayoutChange} />
         <button className="btn topology-history-action" disabled={!history.past.length} aria-label="Undo"
           title={history.past.length ? `Undo: ${history.past.at(-1)!.label} (Ctrl/Cmd+Z)` : 'Undo (Ctrl/Cmd+Z)'}
           onClick={() => useStore.getState().undoTopology()}>↶ Undo</button>

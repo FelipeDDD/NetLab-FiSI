@@ -1,126 +1,111 @@
 import { expect, it } from 'vitest';
 import type { WireFrameContext, WireTransfer } from './engine/network';
-import { advanceGuidedPacket, finishGuidedCollection, MAX_GUIDED_HOPS, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, waitForGuidedPacket, type GuidedPacketState } from './guidedPacket';
-
-const context = (seq = 1, id = 7, reply = false): WireFrameContext => ({
+import { advanceGuidedPacket, emptyGuidedPacket, updateGuidedObservation, followGuidedPacket, guidedReplayHops,
+  MAX_GUIDED_HOPS, MAX_GUIDED_QUEUE, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket,
+  stepGuidedPacket, toggleGuidedPlayback, validateGuidedPacket, type GuidedPacketState } from './guidedPacket';
+const context = (seq = 1, reply = false): WireFrameContext => ({
   fromDeviceName: 'PC', toDeviceName: 'Switch', fromInterface: 'eth0', toInterface: 'eth1',
   frame: { srcMac: 'aa', dstMac: 'bb', payload: { kind: 'ipv4', src: 1, dst: 2, ttl: 64,
-    l4: { kind: 'icmp', msg: { type: reply ? 'echo-reply' : 'echo-request', id, seq } } } },
+    l4: { kind: 'icmp', msg: { type: reply ? 'echo-reply' : 'echo-request', id: 7, seq } } } },
 });
-const transfer = (id: number, start = 0, fromDeviceId = 'a', toDeviceId = 'sw'): WireTransfer => ({
-  id, start, end: start + 80, linkId: `link-${id}`, fromDeviceId, toDeviceId, kind: 'icmp',
+const transfer = (id: number, fromDeviceId = 'a', toDeviceId = 'sw'): WireTransfer => ({
+  id, start: 0, end: 80, linkId: `link-${id}`, fromDeviceId, toDeviceId, kind: 'icmp',
 });
-function observations(missing: number[] = []) {
-  let state = waitForGuidedPacket();
-  for (let seq = 1; seq <= 4; seq++) {
-    const id = (seq - 1) * 4 + 1, start = (seq - 1) * 1000;
-    state = observeGuidedPacket(state, transfer(id, start), context(seq), undefined, false);
-    state = observeGuidedPacket(state, transfer(id + 1, start + 80, 'sw', 'b'), context(seq), { parentTransferId: id }, true);
-    if (missing.includes(seq)) continue;
-    state = observeGuidedPacket(state, transfer(id + 2, start + 160, 'b', 'sw'), context(seq, 7, true), { echoRequestTransferId: id + 1 }, false);
-    state = observeGuidedPacket(state, transfer(id + 3, start + 240, 'sw', 'a'), context(seq, 7, true), { parentTransferId: id + 2, echoRequestTransferId: id + 1 }, true);
-  }
-  return state;
+const start = (state = emptyGuidedPacket(), deviceId = 'a', icmpId = 7) =>
+  observeGuidedPingProgress(state, { type: 'started', deviceId, icmpId }, 0);
+const attempt = (state: GuidedPacketState, seq = 1) =>
+  observeGuidedPingProgress(state, { type: 'attempt', deviceId: 'a', icmpId: 7, seq, local: false, deadline: 2000 }, 0);
+function path() {
+  let state = attempt(start());
+  state = observeGuidedPacket(state, transfer(1), context(), undefined, false);
+  state = observeGuidedPacket(state, transfer(2, 'sw', 'b'), context(), { parentTransferId: 1 }, true);
+  state = observeGuidedPacket(state, transfer(3, 'b', 'sw'), context(1, true), { echoRequestTransferId: 2 }, false);
+  return observeGuidedPacket(state, transfer(4, 'sw', 'a'), context(1, true), { parentTransferId: 3 }, true);
 }
-const path = () => finishGuidedCollection(observations(), 3320);
-
-it('finishes missing attempts at their real outcomes and ignores other ping sessions', () => {
-  let state = observations([2, 4]);
-  expect(observeGuidedPingProgress(state, { deviceId: 'other', icmpId: 7, type: 'finished' }, 3000)).toBe(state);
-  expect(observeGuidedPingProgress(state, { deviceId: 'a', icmpId: 8, type: 'finished' }, 3000)).toBe(state);
-  state = observeGuidedPingProgress(state, { deviceId: 'a', icmpId: 7, seq: 2, type: 'settled' }, 3000);
-  expect(state.status).toBe('collecting');
-  state = observeGuidedPingProgress(state, { deviceId: 'a', icmpId: 7, seq: 4, type: 'settled' }, 5000);
-  expect(state.status).toBe('playing'); expect(state.attempts.map((attempt) => attempt.replied)).toEqual([true, false, true, false]);
+it('starts on the first actual transmission and keeps observation independent of playback', () => {
+  let state = attempt(start());
+  expect(state.playback.hops).toEqual([]);
+  state = observeGuidedPacket(state, transfer(1), context(), undefined, false);
+  expect(state.playback).toMatchObject({ status: 'playing', hops: [expect.objectContaining({ id: 1 })] });
+  state = toggleGuidedPlayback(state);
+  state = observeGuidedPacket(state, transfer(2, 'sw', 'b'), context(), { parentTransferId: 1 }, true);
+  expect(state.playback.status).toBe('paused'); expect(state.observation.observed).toHaveLength(2);
+  expect(updateGuidedObservation(state, 10000).observation.status).toBe('observing');
 });
-
-it('finishes fewer than four attempts on source finish, but preserves known pending wire transfers', () => {
-  const all = observations();
-  const partial = { ...all, attempts: all.attempts.slice(0, 2), observed: all.observed.filter((hop) => hop.ping <= 2) };
-  expect(finishGuidedCollection(partial, 1320)).toBe(partial);
-  const finished = observeGuidedPingProgress(partial, { deviceId: 'a', icmpId: 7, type: 'finished' }, 1320);
-  expect(finished.status).toBe('playing'); expect(finished.attempts).toHaveLength(2);
-  expect(observeGuidedPingProgress(partial, { deviceId: 'a', icmpId: 7, type: 'finished' }, 1319).status).toBe('collecting');
+it('the newest command takes focus before wire traffic; old attempts, replies and finish cannot take it back', () => {
+  const state = start(replayGuidedPacket(path()), 'new', 7); // Same ICMP id on a different host.
+  expect(state.playback.hops).toEqual([]); expect(state.playback.kind).toBe('follow');
+  expect(observeGuidedPingProgress(state, { type: 'finished', deviceId: 'a', icmpId: 7 }, 100)).toBe(state);
+  expect(attempt(state, 2)).toBe(state);
+  expect(observeGuidedPacket(state, transfer(9), context(), undefined, true)).toBe(state);
+  expect(observeGuidedPacket(state, transfer(10, 'b', 'a'), context(1, true), { echoRequestTransferId: 2 }, true)).toBe(state);
+  expect(start(state, 'new', 8).observation.session).toEqual({ deviceId: 'new', icmpId: 8 });
 });
-
-it('observes a pending request continuation before closing at its delivery boundary, even past the safety window', () => {
-  const captured = observations([4]);
-  let state: GuidedPacketState = { ...captured, observed: captured.observed.map((hop) => hop.id === 14 ? { ...hop, end: 12000 } : hop) };
-  state = observeGuidedPingProgress(state, { type: 'settled', deviceId: 'a', icmpId: 7, seq: 4 }, 5000);
-  expect(finishGuidedCollection(state, 10000).status).toBe('collecting');
-  state = observeGuidedPacket(state, transfer(15, 12000, 'b', 'sw'), context(4, 7, true), { echoRequestTransferId: 14 }, false);
-  expect(finishGuidedCollection(state, 12000).status).toBe('collecting');
-  state = observeGuidedPacket(state, transfer(16, 12080, 'sw', 'a'), context(4, 7, true), { parentTransferId: 15, echoRequestTransferId: 14 }, true);
-  expect(finishGuidedCollection(state, 12159).status).toBe('collecting');
-  expect(finishGuidedCollection(state, 12160)).toMatchObject({ status: 'playing', hops: expect.arrayContaining([expect.objectContaining({ id: 16 })]) });
+it('replay freezes real correlated paths while observing new attempts from the focused session', () => {
+  let state = replayGuidedPacket(path()); const replay = state.playback;
+  expect(replay.hops.map(h => h.direction)).toEqual(['request', 'request', 'reply', 'reply']);
+  state = attempt(state, 2);
+  state = observeGuidedPacket(state, transfer(5), context(2), undefined, false);
+  expect(state.playback).toBe(replay); expect(state.observation.observed).toHaveLength(5);
+  state = followGuidedPacket(state);
+  expect(state.playback.hops).toEqual([]);
+  state = observeGuidedPacket(state, transfer(6, 'sw', 'b'), context(2), { parentTransferId: 5 }, true);
+  expect(state.playback.hops.map(h => h.id)).toEqual([6]);
 });
-
-it('selects one device/ICMP session and pairs replies by exact request identity, never by addresses or timing', () => {
-  const waiting = waitForGuidedPacket();
-  expect(observeGuidedPacket(waiting, transfer(1), context(), { parentTransferId: 99 }, false)).toBe(waiting);
-  expect(observeGuidedPacket(waiting, transfer(1), context(1, 7, true), undefined, true)).toBe(waiting);
-  const selected = observeGuidedPacket(waiting, transfer(1), context(), undefined, false);
-  expect(observeGuidedPacket(selected, transfer(2, 10, 'another-pc'), context(), undefined, false)).toBe(selected);
-  expect(observeGuidedPacket(selected, transfer(3), context(2, 8), undefined, false)).toBe(selected);
-  expect(observeGuidedPacket(selected, transfer(4), context(1, 7, true), { echoRequestTransferId: 999 }, true)).toBe(selected);
-  const captured = observations();
-  expect(finishGuidedCollection(captured, 3319)).toBe(captured);
-  const playing = path();
-  expect(playing.attempts.map((a) => [a.seq, a.replied])).toEqual([[1, true], [2, true], [3, true], [4, true]]);
-  expect(playing.hops.map((hop) => `${hop.ping}:${hop.direction}`)).toEqual([1, 2, 3, 4].flatMap((i) => [`${i}:request`, `${i}:request`, `${i}:reply`, `${i}:reply`]));
-  expect(new Set(playing.hops.map((h) => h.id)).size).toBe(16); expect(playing.observed).toEqual([]);
-  expect(playing.hops[0]).not.toHaveProperty('frame'); expect(playing.hops[0].fromDeviceName).toBe('PC');
-  expect(observeGuidedPacket(captured, transfer(99, 4000), context(5), undefined, false)).toBe(captured);
+it('replay/step/pause/speed operate on the cursor without changing observations', () => {
+  const state = replayGuidedPacket(path());
+  const half = advanceGuidedPacket(state, 500, 1000);
+  expect(half.playback.progress).toBe(.5);
+  expect(advanceGuidedPacket(half, 250, 500).playback.index).toBe(1);
+  const paused = toggleGuidedPlayback(half);
+  expect(advanceGuidedPacket(paused, 5000, 1000)).toBe(paused);
+  expect(stepGuidedPacket(paused).playback).toMatchObject({ index: 1, progress: 0, status: 'paused' });
+  const finished = advanceGuidedPacket(state, 4000, 1000);
+  expect(finished.playback.status).toBe('finished'); expect(toggleGuidedPlayback(finished)).toBe(finished);
+  expect(finished.observation).toBe(state.observation);
+  expect(replayGuidedPacket(finished).playback).toMatchObject({ status: 'playing', index: 0 });
 });
-
-it('plays and replays the four real round trips, pauses, changes speed and holds the final endpoint', () => {
-  const playing = path(), middle = advanceGuidedPacket(playing, 500, 1000);
-  expect(middle.index).toBe(0); expect(middle.progress).toBe(0.5);
-  const faster = advanceGuidedPacket(middle, 250, 500);
-  expect(faster.index).toBe(1); expect(faster.progress).toBe(0);
-  const paused = { ...middle, status: 'paused' as const };
-  expect(advanceGuidedPacket(paused, 10000, 1000)).toBe(paused);
-  const stepped = stepGuidedPacket(paused);
-  expect(stepped.index).toBe(1); expect(stepped.progress).toBe(0); expect(stepped.status).toBe('paused');
-  const finished = advanceGuidedPacket(playing, 16000, 1000);
-  expect(finished.status).toBe('finished'); expect(finished.progress).toBe(1);
-  expect(finished.hops[finished.index]).toMatchObject({ ping: 4, direction: 'reply', toDeviceId: 'a' });
-  expect(advanceGuidedPacket(finished, 100000, 1000)).toBe(finished);
-  expect(observeGuidedPacket(finished, transfer(99), context(5), undefined, true)).toBe(finished);
-  expect(replayGuidedPacket(finished)).toMatchObject({ status: 'playing', index: 0, progress: 0, hops: playing.hops });
+it('waits for further hops without permanently finishing a continuous session', () => {
+  let state = advanceGuidedPacket(path(), 4000, 1000);
+  expect(state.playback.status).toBe('waiting');
+  state = attempt(state, 2);
+  state = observeGuidedPacket(state, transfer(5), context(2), undefined, false);
+  expect(state.playback).toMatchObject({ status: 'playing', index: 0, progress: 0 });
+  expect(state.playback.hops.map(h => h.id)).toEqual([5]);
 });
-
-it('marks missing replies and keeps all four actual attempts without manufacturing return paths', () => {
-  const missing = observations([2, 4]);
-  expect(finishGuidedCollection(missing, 7999)).toBe(missing);
-  const playing = finishGuidedCollection(missing, 8000);
-  expect(playing.attempts.map((a) => a.replied)).toEqual([true, false, true, false]);
-  expect(playing.hops).toHaveLength(12);
-  expect(playing.hops.filter((h) => h.direction === 'reply').map((h) => h.ping)).toEqual([1, 1, 3, 3]);
-  const unreachable = finishGuidedCollection(observations([1, 2, 3, 4]), 8000);
-  expect(unreachable.attempts).toHaveLength(4); expect(unreachable.hops.every((h) => h.direction === 'request')).toBe(true);
-  expect(advanceGuidedPacket(unreachable, 100000, 1000).status).toBe('finished');
+it('bounds a paused backlog and keeps a rolling four-attempt observation for continuous pings', () => {
+  let state = toggleGuidedPlayback(path());
+  for (let seq = 2; seq <= 1000; seq++) {
+    state = attempt(state, seq);
+    state = observeGuidedPacket(state, transfer(seq + 4), context(seq), undefined, false);
+  }
+  expect(state.observation.attempts.map(a => a.seq)).toEqual([997, 998, 999, 1000]);
+  expect(state.observation.observed).toHaveLength(4);
+  expect(state.playback.hops).toHaveLength(MAX_GUIDED_QUEUE); expect(state.playback.skipped).toBeGreaterThan(0);
+  expect(guidedReplayHops(state.observation).map(h => h.ping)).toEqual([997, 998, 999, 1000]);
 });
-
-it('bounds collection, reports absent transmissions and never guesses a flooded incomplete branch', () => {
-  expect(finishGuidedCollection(waitForGuidedPacket(100), 10100)).toMatchObject({ status: 'incomplete', hops: [], observed: [] });
-  let state = observeGuidedPacket(waitForGuidedPacket(), transfer(1), context(), undefined, false);
-  const partial = finishGuidedCollection(state, 10000);
-  expect(partial.attempts).toHaveLength(1); expect(partial.message).toContain('Remaining requests were not observed');
-  expect(observeGuidedPacket(state, transfer(5), context(), { parentTransferId: 999 }, true)).toBe(state);
-  let flooded = observeGuidedPacket(state, transfer(2), context(), { parentTransferId: 1 }, false);
-  flooded = observeGuidedPacket(flooded, transfer(3), context(), { parentTransferId: 1 }, false);
-  expect(finishGuidedCollection(flooded, 10000).hops.map((h) => h.id)).toEqual([1]);
-  for (let id = 2; id <= MAX_GUIDED_HOPS; id++) state = observeGuidedPacket(state, transfer(id, 10), context(), { parentTransferId: id - 1 }, false);
-  expect(state.observed).toHaveLength(MAX_GUIDED_HOPS);
-  state = observeGuidedPacket(state, transfer(257, 10), context(), { parentTransferId: 256 }, true);
-  expect(state).toMatchObject({ status: 'incomplete', observed: [], hops: [] });
+it('bounds an individual flooding path and never invents an ambiguous replay branch', () => {
+  let state = attempt(start()); state = observeGuidedPacket(state, transfer(1), context(), undefined, false);
+  state = observeGuidedPacket(state, transfer(2, 'sw', 'b'), context(), { parentTransferId: 1 }, false);
+  state = observeGuidedPacket(state, transfer(3, 'sw', 'c'), context(), { parentTransferId: 1 }, false);
+  expect(guidedReplayHops(state.observation).map(h => h.id)).toEqual([1]);
+  for (let id = 4; id <= MAX_GUIDED_HOPS + 1; id++) state = observeGuidedPacket(state, transfer(id), context(), { parentTransferId: 1 }, false);
+  expect(state.observation.observed).toHaveLength(MAX_GUIDED_HOPS); expect(state.observation.truncated).toBe(true);
 });
-
-it('clears removed sequences and cannot revive them through playback controls', () => {
-  const original = path();
-  expect(validateGuidedPacket(original, () => true)).toBe(original);
-  const invalid = validateGuidedPacket(original, (hop) => hop.linkId !== 'link-2');
-  expect(invalid).toMatchObject({ status: 'incomplete', hops: [], observed: [] });
-  expect(replayGuidedPacket(invalid)).toBe(invalid); expect(stepGuidedPacket(invalid)).toBe(invalid);
+it('does not turn local ping or failure before transmission into empty replay; waits for known in-flight hops', () => {
+  let local = observeGuidedPingProgress(start(), { type: 'attempt', deviceId: 'a', icmpId: 7, seq: 1, local: true, deadline: 2000 }, 0);
+  local = observeGuidedPingProgress(local, { type: 'finished', deviceId: 'a', icmpId: 7 }, 2);
+  expect(local.observation.message).toContain('Local ping'); expect(replayGuidedPacket(local)).toBe(local);
+  let state = observeGuidedPingProgress(path(), { type: 'finished', deviceId: 'a', icmpId: 7 }, 79);
+  expect(state.observation.status).toBe('observing');
+  state = updateGuidedObservation(state, 80); expect(state.observation.status).toBe('complete');
+  expect(state.observation.attempts[0].replied).toBe(true);
+  expect(start(state).observation.status).toBe('observing');
+});
+it('invalidates removed paths without letting old events resurrect them; a new command still works', () => {
+  const original = path(); expect(validateGuidedPacket(original, () => true)).toBe(original);
+  const invalid = validateGuidedPacket(original, h => h.id !== 2);
+  expect(invalid.observation.status).toBe('incomplete'); expect(invalid.playback.hops).toEqual([]);
+  expect(attempt(invalid, 2)).toBe(invalid); expect(replayGuidedPacket(invalid)).toBe(invalid);
+  expect(start(invalid, 'a', 8).observation.session?.icmpId).toBe(8);
 });

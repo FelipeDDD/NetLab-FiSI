@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Network } from './engine/network';
 import { createDevice } from './engine/factory';
 import { serializeNetwork } from './engine/serialize';
-import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, terminalAuroraColors, terminalFlowColors, terminalBackground, terminalColor, terminalTint, terminalFontFamily, TERMINAL_FONTS, TERMINAL_THEME, type AppearanceSaveFile, type TerminalKind } from './terminalAppearance';
+import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, terminalAuroraColors, terminalFlowColors, terminalBackground, terminalColor, terminalTint, terminalTabPalette, terminalFontFamily, TERMINAL_FONTS, TERMINAL_THEME, type AppearanceSaveFile, type TerminalKind } from './terminalAppearance';
 
 function luminance(hex: string): number {
   const values = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -15,6 +15,17 @@ function contrast(a: string, b: string): number {
 }
 
 describe('terminal appearance', () => {
+  it('makes active tabs distinct from the neutral surface while keeping UI text legible for extreme custom colors', () => {
+    for (const color of ['#60a5fa', '#a78bfa', '#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff']) {
+      const palette = terminalTabPalette(color);
+      for (const surface of Object.values(palette)) expect(contrast('#dbe6f4', surface)).toBeGreaterThanOrEqual(4.5);
+      expect(palette.active).not.toBe(palette.hover);
+    }
+    for (const color of ['#60a5fa', '#a78bfa']) {
+      expect(contrast(terminalTabPalette(color).active, '#0b1220')).toBeGreaterThan(1.45);
+    }
+    expect(terminalTabPalette('invalid')).toEqual(terminalTabPalette(DEFAULT_TERMINAL_COLORS.host));
+  });
   it('has distinct defaults for the four shell device types', () => {
     expect(new Set(Object.values(DEFAULT_TERMINAL_COLORS)).size).toBe(4);
     for (const [kind, color] of Object.entries(DEFAULT_TERMINAL_COLORS)) {

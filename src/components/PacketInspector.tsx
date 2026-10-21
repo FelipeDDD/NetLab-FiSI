@@ -4,6 +4,7 @@ import type { CapturedPacket, PacketCaptureState } from '../packetCapture';
 import { packetLayers, packetSummary, PACKET_PAGE_SIZE } from '../packetPresentation';
 import { emptyPacketLiveView, newPacketCount, packetCaptureWasReset, packetLivePage, receivedPacketCount, suspendPacketLive, type PacketLiveView } from '../packetLiveView';
 import { useStore } from '../store';
+import { normalizePacketInspector, type PacketInspectorPreference } from '../packetInspectorLayout';
 
 const PacketRow = memo(function PacketRow({ packet, selected, onSelect }: {
   packet: CapturedPacket; selected: boolean; onSelect: (packet: CapturedPacket | null) => void;
@@ -15,8 +16,8 @@ const PacketRow = memo(function PacketRow({ packet, selected, onSelect }: {
       {(packet.start / 1000).toFixed(3)}s
     </button></td>
     <td className="packet-protocol">{info.protocol}</td>
-    <td title={info.source}>{info.source}</td><td title={info.destination}>{info.destination}</td>
-    <td className="packet-link" title={`${packet.fromDeviceName} / ${packet.fromInterface} → ${packet.toDeviceName} / ${packet.toInterface} (${packet.linkId})`}>
+    <td className="packet-full-column" title={info.source}>{info.source}</td><td className="packet-full-column" title={info.destination}>{info.destination}</td>
+    <td className="packet-link packet-full-column" title={`${packet.fromDeviceName} / ${packet.fromInterface} → ${packet.toDeviceName} / ${packet.toInterface} (${packet.linkId})`}>
       <span>{packet.fromDeviceName}</span><span>→ {packet.toDeviceName}</span>
     </td>
     <td title={info.summary}>{info.summary}</td>
@@ -51,9 +52,10 @@ export const PacketDetails = memo(function PacketDetails({ packet, onClose }: { 
   </section>;
 });
 
-function PacketInspectorContent({ capture, view, setView, listScroll }: {
+function PacketInspectorContent({ capture, view, setView, listScroll, layout, onLayoutChange }: {
   capture: PacketCaptureState; view: PacketLiveView; setView: Dispatch<SetStateAction<PacketLiveView>>;
   listScroll: { current: number };
+  layout: PacketInspectorPreference; onLayoutChange: (value: PacketInspectorPreference) => void;
 }) {
   const [selection, onSelect] = useState<CapturedPacket | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -112,7 +114,16 @@ function PacketInspectorContent({ capture, view, setView, listScroll }: {
     }}>
     <header className="packet-inspector-head">
       <h2 id="packet-inspector-heading" ref={heading} tabIndex={-1}>Packet Inspector</h2>
+      <div className="packet-panel-actions">
+        <select className="packet-table-mode" aria-label="Packet table view" value={layout.mode}
+          onChange={event => onLayoutChange({ ...layout, mode: event.target.value as PacketInspectorPreference['mode'] })}>
+          <option value="compact">Compact</option><option value="full">Full</option>
+        </select>
+        <button type="button" className="mini-btn packet-position-toggle" aria-label="Swap packet panel position"
+          title={layout.side === 'right' ? 'Move Packets to the left' : 'Move Packets to the right'} aria-pressed={layout.side === 'left'}
+          onClick={() => onLayoutChange({ ...layout, side: layout.side === 'right' ? 'left' : 'right' })}>⇄</button>
       <button type="button" className="mini-btn" aria-label="Close Packet Inspector" title="Close Packet Inspector (Esc)" onClick={close}>×</button>
+      </div>
     </header>
     <div className="packet-capture-controls" role="group" aria-label="Packet capture controls">
       <button type="button" className="btn" disabled={capture.status !== 'stopped'} title="Start a new capture on all links"
@@ -150,9 +161,9 @@ function PacketInspectorContent({ capture, view, setView, listScroll }: {
         previousScroll.current = element.scrollTop;
         listScroll.current = element.scrollTop;
       }}>
-      <table className="packet-table">
+      <table className={`packet-table${layout.mode === 'compact' ? ' is-compact' : ''}`}>
         <caption className="sr-only">Simulated transmissions in chronological order. Source and destination are protocol addresses.</caption>
-        <thead><tr><th scope="col">Time</th><th scope="col">Protocol</th><th scope="col">Source</th><th scope="col">Destination</th><th scope="col">Link</th><th scope="col">Summary</th></tr></thead>
+        <thead><tr><th scope="col">Time</th><th scope="col">Protocol</th><th className="packet-full-column" scope="col">Source</th><th className="packet-full-column" scope="col">Destination</th><th className="packet-full-column" scope="col">Link</th><th scope="col">Summary</th></tr></thead>
         <tbody>{rows.map((packet) => <PacketRow key={packet.id} packet={packet} selected={packet === selected} onSelect={selectPacket} />)}</tbody>
       </table>
       {!rows.length && <p className="packet-empty">No packets captured. {capture.status === 'stopped'
@@ -172,7 +183,9 @@ function PacketInspectorContent({ capture, view, setView, listScroll }: {
   </aside>;
 }
 
-export function PacketInspector() {
+export function PacketInspector({ layout = normalizePacketInspector(null), onLayoutChange = () => {} }: {
+  layout?: PacketInspectorPreference; onLayoutChange?: (value: PacketInspectorPreference) => void;
+}) {
   const open = useStore((s) => s.packetInspectorOpen);
   const capture = useStore((s) => s.packetCapture);
   const [view, setView] = useState(emptyPacketLiveView);
@@ -184,5 +197,5 @@ export function PacketInspector() {
   const listScroll = useRef(0);
   // Retain list position, but let the content's selection reset on unmount.
   // Opening/closing never calls capture controls.
-  return open ? <PacketInspectorContent capture={capture} view={view} setView={setView} listScroll={listScroll} /> : null;
+  return open ? <PacketInspectorContent capture={capture} view={view} setView={setView} listScroll={listScroll} layout={layout} onLayoutChange={onLayoutChange} /> : null;
 }

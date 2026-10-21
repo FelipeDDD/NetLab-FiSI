@@ -47,12 +47,23 @@ export function runPing(
     return null;
   }
 
+  // Command identity is allocated before resolution so Guided can focus the
+  // newest command immediately, even while DNS or ARP is pending.
+  const id = device.allocIcmpId();
+  let completed = false;
+  const complete = () => {
+    if (completed) return;
+    completed = true;
+    device.network.emitPingProgress({ type: 'finished', deviceId: device.id, icmpId: id });
+    done();
+  };
+  device.network.emitPingProgress({ type: 'started', deviceId: device.id, icmpId: id });
   // Resolution may complete synchronously (literal IP) or after DNS traffic.
   let cancelFn: (() => void) | undefined;
   const resolver = resolveHost(device, target, (res) => {
     if ('error' in res) {
       write(windows ? `Ping request could not find host ${target}. Please check the name and try again.\n` : `ping: ${res.error}\n`);
-      done();
+      complete();
       return;
     }
     cancelFn = start(res.ip);
@@ -60,14 +71,13 @@ export function runPing(
   if (!cancelFn) {
     cancelFn = () => {
       resolver.cancel();
-      done();
+      complete();
     };
   }
   return { cancel: () => cancelFn!() };
 
   function start(ip: U32): () => void {
   const sched = device.network.scheduler;
-  const id = device.allocIcmpId();
   const startedAt = sched.now;
   const sendTimes = new Map<number, number>();
   const answered = new Set<number>();
@@ -112,8 +122,7 @@ export function runPing(
       write(windows ? `Approximate round trip times in milli-seconds:\n    Minimum = ${min.toFixed(1)}ms, Maximum = ${max.toFixed(1)}ms, Average = ${avg.toFixed(1)}ms\n`
         : `rtt min/avg/max = ${min.toFixed(1)}/${avg.toFixed(1)}/${max.toFixed(1)} ms\n`);
     }
-    device.network.emitPingProgress({ type: 'finished', deviceId: device.id, icmpId: id });
-    done();
+    complete();
   };
 
   const maybeFinish = (seq: number) => {
@@ -166,6 +175,8 @@ export function runPing(
     if (finished) return;
     const seq = ++sent;
     sendTimes.set(seq, sched.now);
+    device.network.emitPingProgress({ type: 'attempt', deviceId: device.id, icmpId: id,
+      seq, local: device.hasIp(ip), deadline: sched.now + TIMEOUT_MS });
     const err = device.sendEcho(ip, id, seq);
     if (err) {
       if (windows) {

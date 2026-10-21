@@ -5,17 +5,19 @@ import { floatingPosition } from './floatingPosition';
 
 const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]';
 
-export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', preferredSide = 'auto', className = '' }: {
+export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', preferredSide = 'auto', className = '', onPointerEnter, onPointerLeave }: {
   anchor: RefObject<HTMLElement>;
   children: ReactNode;
   onClose: () => void;
   id: string;
   label: string;
-  role?: 'menu' | 'dialog';
+  role?: 'menu' | 'dialog' | 'tooltip';
   width?: number;
-  initialFocus?: 'first' | 'last';
+  initialFocus?: 'first' | 'last' | 'none';
   preferredSide?: 'auto' | 'above';
   className?: string;
+  onPointerEnter?: () => void;
+  onPointerLeave?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -60,14 +62,15 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
   }, [anchor, width, initialFocus, preferredSide]);
 
   useLayoutEffect(() => {
-    if (!position || focused.current) return;
+    if (!position || focused.current || initialFocus === 'none') return;
     focused.current = true;
     const items = ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
     ((initialFocus === 'last' ? items?.[items.length - 1] : items?.[0]) ?? ref.current)?.focus({ preventScroll: true });
   }, [position, initialFocus]);
 
   return createPortal(
-    <div ref={ref} id={id} role={role} tabIndex={-1} aria-label={label} className={`floating-popover ${className}`}
+    <div ref={ref} id={id} role={role} tabIndex={role === 'tooltip' ? undefined : -1} aria-label={label} className={`floating-popover ${className}`}
+      onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave}
       data-floating-popover="" style={position ?? { visibility: 'hidden', top: 0, left: 0, width }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {

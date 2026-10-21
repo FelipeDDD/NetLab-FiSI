@@ -49,10 +49,6 @@ export function Palette() {
           </span>
         </button>
       ))}
-      <div className="palette-hint">
-        Drag between the dots on two devices to cable them. Double-click a host or router for its
-        terminal.
-      </div>
     </aside>
   );
 }

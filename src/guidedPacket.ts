@@ -1,161 +1,206 @@
 import type { PingProgress, WireFrameContext, WireTransfer, WireVisualTrace } from './engine/network';
 
 export type PacketVisualizationMode = 'live' | 'guided';
-export const GUIDED_PING_COUNT = 4;
+export const GUIDED_PING_COUNT = 4; // Rolling replay window, never a session limit.
 export const MAX_GUIDED_HOPS = 256;
-export const GUIDED_COLLECTION_MS = 10_000;
-export const GUIDED_REPLY_WAIT_MS = 5_000;
+export const MAX_GUIDED_QUEUE = 32;
 
-// Only presentation metadata, never protocol objects or engine instances.
 export interface GuidedHop extends WireTransfer {
   parentTransferId?: number;
   fromDeviceName: string;
   toDeviceName: string;
   fromInterface: string;
   toInterface: string;
-  ping: number;
+  ping: number; // Actual ICMP sequence number, including continuous pings.
   direction: 'request' | 'reply';
 }
 export interface GuidedAttempt {
   seq: number;
-  requestRoot: number;
+  requestRoot: number | null;
   requestDestination: number | null;
   replyRoot: number | null;
   replyDestination: number | null;
   deadline: number;
   replied: boolean;
   settled?: boolean;
+  local?: boolean;
 }
-export interface GuidedPacketState {
-  status: 'idle' | 'waiting' | 'collecting' | 'playing' | 'paused' | 'finished' | 'incomplete';
-  observed: readonly GuidedHop[];
-  hops: readonly GuidedHop[];
-  session: { deviceId: string; icmpId: number; firstSeq: number } | null;
+export interface GuidedObservation {
+  status: 'waiting' | 'observing' | 'complete' | 'incomplete';
+  session: { deviceId: string; icmpId: number } | null;
   attempts: readonly GuidedAttempt[];
+  observed: readonly GuidedHop[];
   sourceFinished: boolean;
-  deadline: number;
-  index: number;
-  progress: number;
+  truncated: boolean;
   message: string;
 }
+export interface GuidedPlayback {
+  kind: 'follow' | 'replay';
+  status: 'waiting' | 'playing' | 'paused' | 'finished';
+  hops: readonly GuidedHop[];
+  index: number;
+  progress: number;
+  skipped: number;
+}
+export interface GuidedPacketState {
+  observation: GuidedObservation;
+  playback: GuidedPlayback;
+}
+const emptyPlayback = (): GuidedPlayback => ({ kind: 'follow', status: 'waiting', hops: [], index: 0, progress: 0, skipped: 0 });
 export const emptyGuidedPacket = (): GuidedPacketState => ({
-  status: 'idle', observed: [], hops: [], session: null, attempts: [], sourceFinished: false, deadline: 0, index: 0, progress: 0,
-  message: 'Choose Observe next ping, then run ping or ping -c 4.',
+  observation: { status: 'waiting', session: null, attempts: [], observed: [], sourceFinished: false, truncated: false,
+    message: 'Waiting for a ping. The newest command takes focus automatically.' },
+  playback: emptyPlayback(),
 });
-export const waitForGuidedPacket = (now = 0): GuidedPacketState => ({ ...emptyGuidedPacket(), status: 'waiting',
-  deadline: now + GUIDED_COLLECTION_MS, message: 'Waiting for the next ping. The network must be running.' });
-export const endIncompleteGuidedPacket = (message: string): GuidedPacketState => ({ ...emptyGuidedPacket(), status: 'incomplete', message });
+
+function beginSession(event: PingProgress): GuidedPacketState {
+  const state = emptyGuidedPacket();
+  return { ...state, observation: { ...state.observation, status: 'observing',
+    session: { deviceId: event.deviceId, icmpId: event.icmpId },
+    message: 'New ping selected. Waiting for its first link transmission (DNS/ARP may be needed).' } };
+}
+
+export function observeGuidedPingProgress(state: GuidedPacketState, event: PingProgress, now: number): GuidedPacketState {
+  // This event is synchronous at command start, BEFORE DNS and ARP. Only a new
+  // command can replace an established focus; late attempts/replies cannot.
+  if (event.type === 'started') return beginSession(event);
+  if (!state.observation.session && event.type === 'attempt') state = beginSession(event); // Entering Guided mid-command.
+  const o = state.observation;
+  if (event.deviceId !== o.session?.deviceId || event.icmpId !== o.session.icmpId) return state;
+  if (o.status === 'incomplete') return state;
+  if (event.type === 'attempt') {
+    if (o.sourceFinished || o.attempts.some((a) => a.seq === event.seq)) return state;
+    const attempts = [...o.attempts, { seq: event.seq, requestRoot: null, requestDestination: null, replyRoot: null,
+      replyDestination: null, deadline: event.deadline, replied: false, local: event.local }].slice(-GUIDED_PING_COUNT);
+    const kept = new Set(attempts.map((a) => a.seq));
+    return { ...state, observation: { ...o, status: 'observing', attempts,
+      observed: o.observed.filter((hop) => kept.has(hop.ping)),
+      message: event.local ? 'Local ping: no packets cross a link.' : `Following ping ${event.seq}. Waiting for observed transmissions.` } };
+  }
+  const next = event.type === 'finished' ? { ...o, sourceFinished: true }
+    : { ...o, attempts: o.attempts.map((a) => a.seq === event.seq ? { ...a, settled: true } : a) };
+  return updateGuidedObservation({ ...state, observation: next }, now);
+}
+
+function enqueueHop(playback: GuidedPlayback, hop: GuidedHop): GuidedPlayback {
+  if (playback.kind === 'replay') return playback; // Replay is an immutable view, not the observer.
+  const exhausted = !playback.hops.length || playback.index === playback.hops.length - 1 && playback.progress === 1;
+  const consumed = exhausted ? playback.hops.length : playback.index;
+  const pending = playback.hops.slice(consumed);
+  // Discard queued presentation only; observation/replay and Packet Inspector
+  // remain independent. Never accumulate an unbounded queue while paused.
+  if (pending.length >= MAX_GUIDED_QUEUE) return { ...playback, skipped: playback.skipped + 1 };
+  return { ...playback, hops: [...pending, hop], index: 0, progress: exhausted ? 0 : playback.progress,
+    status: playback.status === 'paused' ? 'paused' : 'playing' };
+}
 
 export function observeGuidedPacket(state: GuidedPacketState, transfer: WireTransfer, context: WireFrameContext,
   trace: WireVisualTrace | undefined, destination: boolean): GuidedPacketState {
-  if (state.status !== 'waiting' && state.status !== 'collecting') return state;
-  const p = context.frame.payload;
-  if (p.kind !== 'ipv4' || p.l4.kind !== 'icmp') return state;
+  const o = state.observation, p = context.frame.payload;
+  if (!o.session || o.status === 'incomplete' || p.kind !== 'ipv4' || p.l4.kind !== 'icmp') return state;
   const msg = p.l4.msg;
-  if (msg.type !== 'echo-request' && msg.type !== 'echo-reply') return state;
-  const root = trace?.parentTransferId === undefined;
-  if (state.status === 'waiting') {
-    if (!root || msg.type !== 'echo-request') return state;
-    state = { ...state, status: 'collecting', session: { deviceId: transfer.fromDeviceId, icmpId: msg.id, firstSeq: msg.seq },
-      deadline: transfer.start + GUIDED_COLLECTION_MS, message: 'Observing up to four requests and their real replies…' };
-  }
-  const session = state.session!;
-  if (msg.id !== session.icmpId || msg.seq < session.firstSeq || msg.seq >= session.firstSeq + GUIDED_PING_COUNT) return state;
-  if (transfer.start >= state.deadline && root && msg.type === 'echo-request') return finishGuidedCollection(state, transfer.start);
-  const attempts = state.attempts.map((attempt) => ({ ...attempt }));
-  let attempt = attempts.find((item) => item.seq === msg.seq);
-  const parent = state.observed.find((hop) => hop.id === trace?.parentTransferId);
+  if ((msg.type !== 'echo-request' && msg.type !== 'echo-reply') || msg.id !== o.session.icmpId) return state;
+  const attempts = o.attempts.map((a) => ({ ...a }));
+  const attempt = attempts.find((a) => a.seq === msg.seq);
+  if (!attempt) return state;
   const direction = msg.type === 'echo-request' ? 'request' : 'reply';
+  const root = trace?.parentTransferId === undefined;
+  const parent = o.observed.find((hop) => hop.id === trace?.parentTransferId);
   if (root && direction === 'request') {
-    if (transfer.fromDeviceId !== session.deviceId || attempt) return state;
-    attempt = { seq: msg.seq, requestRoot: transfer.id, requestDestination: null, replyRoot: null, replyDestination: null,
-      deadline: transfer.start + GUIDED_REPLY_WAIT_MS, replied: false };
-    attempts.push(attempt); attempts.sort((a, b) => a.seq - b.seq);
+    if (transfer.fromDeviceId !== o.session.deviceId || attempt.requestRoot !== null) return state;
+    attempt.requestRoot = transfer.id;
   } else if (root && direction === 'reply') {
-    // Exact generating-request arrival identity, plus ICMP session ID and sequence.
-    // Addresses/time alone cannot distinguish simultaneous sessions behind NAT.
-    const request = state.observed.find((hop) => hop.id === trace?.echoRequestTransferId && hop.direction === 'request');
-    if (!attempt || attempt.replyRoot !== null || request?.ping !== msg.seq - session.firstSeq + 1) return state;
-    attempt.replyRoot = transfer.id;
-    attempt.requestDestination = request.id;
-  } else if (!attempt || !parent || parent.direction !== direction || parent.ping !== msg.seq - session.firstSeq + 1) return state;
-  if (state.observed.length >= MAX_GUIDED_HOPS) return endIncompleteGuidedPacket('Sequence incomplete: observation limit reached. Choose Observe next ping.');
+    const request = o.observed.find((hop) => hop.id === trace?.echoRequestTransferId && hop.direction === 'request');
+    if (attempt.replyRoot !== null || request?.ping !== msg.seq) return state;
+    attempt.replyRoot = transfer.id; attempt.requestDestination = request.id;
+  } else if (!parent || parent.direction !== direction || parent.ping !== msg.seq) return state;
+  if (o.observed.length >= MAX_GUIDED_HOPS) return { ...state, observation: { ...o, truncated: true } };
   if (destination) {
     if (direction === 'request') attempt.requestDestination = transfer.id;
-    else if (transfer.toDeviceId === session.deviceId) attempt.replyDestination = transfer.id;
+    else if (transfer.toDeviceId === o.session.deviceId) attempt.replyDestination = transfer.id;
   }
   const hop: GuidedHop = { ...transfer, ...(trace?.parentTransferId === undefined ? {} : { parentTransferId: trace.parentTransferId }),
     fromDeviceName: context.fromDeviceName, toDeviceName: context.toDeviceName,
-    fromInterface: context.fromInterface, toInterface: context.toInterface, ping: msg.seq - session.firstSeq + 1, direction };
-  return { ...state, attempts, observed: [...state.observed, hop] };
+    fromInterface: context.fromInterface, toInterface: context.toInterface, ping: msg.seq, direction };
+  return { observation: { ...o, attempts, observed: [...o.observed, hop], message: `Following ping ${msg.seq}.` },
+    playback: enqueueHop(state.playback, hop) };
 }
 
 function observedPath(observed: readonly GuidedHop[], root: number | null, destination: number | null): GuidedHop[] {
   if (root === null) return [];
   const target = observed.find((hop) => hop.id === destination);
   if (target) {
-    const hops: GuidedHop[] = [];
+    const path: GuidedHop[] = [];
     let hop: GuidedHop | undefined = target;
-    while (hop) {
-      hops.unshift(hop);
-      hop = observed.find((candidate) => candidate.id === hop!.parentTransferId);
-    }
-    return hops;
+    while (hop) { path.unshift(hop); hop = observed.find((candidate) => candidate.id === hop!.parentTransferId); }
+    return path;
   }
-  // For failed delivery show only the unambiguous observed prefix, never guess a flooded branch.
-  const hops: GuidedHop[] = [];
+  const path: GuidedHop[] = [];
   let hop = observed.find((item) => item.id === root);
   while (hop) {
-    hops.push(hop);
+    path.push(hop);
     const children = observed.filter((item) => item.parentTransferId === hop!.id);
     hop = children.length === 1 ? children[0] : undefined;
   }
-  return hops;
+  return path;
+}
+export function guidedReplayHops(o: GuidedObservation): GuidedHop[] {
+  return o.attempts.flatMap((a) => [...observedPath(o.observed, a.requestRoot, a.requestDestination),
+    ...observedPath(o.observed, a.replyRoot, a.replyDestination)]);
 }
 
-export function observeGuidedPingProgress(state: GuidedPacketState, event: PingProgress, now: number): GuidedPacketState {
-  if (state.status !== 'collecting' || event.deviceId !== state.session?.deviceId || event.icmpId !== state.session.icmpId) return state;
-  if (event.type === 'finished') return finishGuidedCollection({ ...state, sourceFinished: true }, now);
-  if (!state.attempts.some((attempt) => attempt.seq === event.seq && !attempt.settled)) return state;
-  return finishGuidedCollection({ ...state, attempts: state.attempts.map((attempt) => attempt.seq === event.seq ? { ...attempt, settled: true } : attempt) }, now);
-}
-
-export function finishGuidedCollection(state: GuidedPacketState, simulatedTime: number): GuidedPacketState {
-  if (state.status === 'waiting' && simulatedTime >= state.deadline) {
-    return endIncompleteGuidedPacket('No ICMP request observed. Check ARP/routes or choose Observe next ping.');
-  }
-  if (state.status !== 'collecting') return state;
-  const received = (attempt: GuidedAttempt) => state.observed.some((hop) => hop.id === attempt.replyDestination && hop.end <= simulatedTime);
-  const settled = (state.attempts.length === GUIDED_PING_COUNT || state.sourceFinished) &&
-    state.attempts.every((attempt) => received(attempt) || attempt.settled || simulatedTime >= attempt.deadline);
-  // A real timeout/finished command must not discard already observed transmissions still in flight.
-  if (state.observed.some((hop) => hop.end > simulatedTime) || (!settled && simulatedTime < state.deadline)) return state;
-  const attempts = state.attempts.map((attempt) => ({ ...attempt, replied: received(attempt) }));
-  const hops = attempts.flatMap((attempt) => [
-    ...observedPath(state.observed, attempt.requestRoot, attempt.requestDestination),
-    ...observedPath(state.observed, attempt.replyRoot, attempt.replyDestination),
-  ]);
-  const replies = attempts.filter((attempt) => attempt.replied).length;
-  return { ...state, observed: [], hops, attempts, status: 'playing',
-    message: `${attempts.length}/4 requests observed · ${replies} complete reply paths · ${attempts.length - replies} without a complete reply path.${attempts.length < 4 ? ' Remaining requests were not observed.' : ''}` };
+// Updates observation outcomes only. It never starts or gates animation/replay.
+export function updateGuidedObservation(state: GuidedPacketState, now: number): GuidedPacketState {
+  const o = state.observation;
+  if (!o.session || o.status === 'incomplete') return state;
+  const attempts = o.attempts.map((a) => {
+    const replied = o.observed.some((hop) => hop.id === a.replyDestination && hop.end <= now);
+    return replied === a.replied ? a : { ...a, replied };
+  });
+  const inFlight = o.observed.some((hop) => hop.end > now);
+  const complete = o.sourceFinished && !inFlight;
+  const status = complete ? 'complete' : 'observing';
+  const message = complete ? !o.observed.length
+    ? attempts.length && attempts.every((a) => a.local)
+      ? 'Local ping: no packets crossed a link; there is no path to replay. Ready for the next command.'
+      : 'No ICMP link transmission was observed for this selection. Check the terminal, ARP and routes. Ready for the next command.'
+    : `Command ended. ${attempts.filter(a => a.replied).length}/${attempts.length} complete reply paths in the replay window. A new ping takes focus automatically.` : o.message;
+  if (status === o.status && message === o.message && attempts.every((a, i) => a === o.attempts[i])) return state;
+  return { ...state, observation: { ...o, status, message, attempts },
+    playback: complete && state.playback.status === 'waiting' && state.playback.hops.length
+      ? { ...state.playback, status: 'finished' } : state.playback };
 }
 
 export function advanceGuidedPacket(state: GuidedPacketState, elapsed: number, duration: number): GuidedPacketState {
-  if (state.status !== 'playing' || !state.hops.length || elapsed <= 0) return state;
-  const position = state.index + state.progress + elapsed / duration;
-  if (position >= state.hops.length) return { ...state, index: state.hops.length - 1, progress: 1, status: 'finished' };
-  return { ...state, index: Math.floor(position), progress: position % 1 };
+  const p = state.playback;
+  if (p.status !== 'playing' || !p.hops.length || elapsed <= 0) return state;
+  const position = p.index + p.progress + elapsed / duration;
+  if (position >= p.hops.length) return { ...state, playback: { ...p, index: p.hops.length - 1, progress: 1,
+    status: p.kind === 'replay' || state.observation.status === 'complete' ? 'finished' : 'waiting' } };
+  return { ...state, playback: { ...p, index: Math.floor(position), progress: position % 1 } };
+}
+export function toggleGuidedPlayback(state: GuidedPacketState): GuidedPacketState {
+  const p = state.playback;
+  if (!p.hops.length || p.status !== 'playing' && p.status !== 'paused') return state;
+  return { ...state, playback: { ...p, status: p.status === 'playing' ? 'paused' : 'playing' } };
 }
 export function stepGuidedPacket(state: GuidedPacketState): GuidedPacketState {
-  if (!state.hops.length || state.status === 'finished') return state;
-  if (state.index + 1 === state.hops.length) return { ...state, progress: 1, status: 'finished' };
-  return { ...state, index: state.index + 1, progress: 0, status: 'paused' };
+  const p = state.playback;
+  if (!p.hops.length || p.status === 'finished') return state;
+  return { ...state, playback: p.index + 1 < p.hops.length ? { ...p, index: p.index + 1, progress: 0, status: 'paused' }
+    : { ...p, progress: 1, status: p.kind === 'replay' ? 'finished' : 'paused' } };
 }
 export function replayGuidedPacket(state: GuidedPacketState): GuidedPacketState {
-  return state.hops.length ? { ...state, index: 0, progress: 0, status: 'playing' } : state;
+  const hops = guidedReplayHops(state.observation);
+  return hops.length ? { ...state, playback: { ...emptyPlayback(), kind: 'replay', status: 'playing', hops } } : state;
 }
-
+export function followGuidedPacket(state: GuidedPacketState): GuidedPacketState {
+  // Only subsequently observed transmissions are followed; Replay never emits packets.
+  return { ...state, playback: emptyPlayback() };
+}
 export function validateGuidedPacket(state: GuidedPacketState, valid: (hop: GuidedHop) => boolean): GuidedPacketState {
-  return state.observed.every(valid) && state.hops.every(valid) ? state
-    : endIncompleteGuidedPacket('Sequence unavailable: a device or link was removed or reconnected. Choose Observe next ping.');
+  if (state.observation.observed.every(valid) && state.playback.hops.every(valid)) return state;
+  // Retain identity so old attempts cannot reselect this invalidated session.
+  return { observation: { ...state.observation, status: 'incomplete', observed: [], attempts: [],
+    message: 'Path removed or reconnected. Waiting for a new ping command.' }, playback: emptyPlayback() };
 }

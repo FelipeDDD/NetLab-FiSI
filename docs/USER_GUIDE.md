@@ -26,6 +26,103 @@ Live app: <https://netsim.borck.education/>
 - **Inspector** (right, when a device is selected): rename, interfaces and
   addresses, routing/ARP/MAC/conntrack tables, firewall ruleset and log, and
   service editors (DHCP/DNS/web, VLANs, SSID, RIP).
+  Hosts use three tabs: **Allgemein** (name, OS and live network summary),
+  **Netzwerk** (the existing IPv4 form, expandable routing/ARP/DNS sections and
+  advanced services/ports), and **Sicherheit** (NetLab simulated packet filter,
+  conntrack, logs and configuration copy). Windows hosts use the same simulated
+  filter; its nftables representation/export is not Windows Defender Firewall.
+  Left/Right arrows and Home/End navigate the focused tab bar. Selecting another
+  host starts on Allgemein. Pages remain mounted during tab changes, preserving
+  drafts and the IPv4 500 ms autosave; leaving a field still commits only a valid
+  complete form. Incomplete drafts survive returning to the tab. Delete device
+  stays below the pages; terminal access remains on devices and in the dock.
+  On Allgemein, **Bearbeiten** opens the existing IPv4 editor inline for that
+  interface. There is one editor instance, moved between this slot and Netzwerk;
+  its draft, debounce and validation survive the move and closing the quick view.
+  **ARP-Tabelle** expands the current neighbor table; **Terminal** opens or focuses
+  the existing device session. Gateway/DNS summaries identify interface-owned
+  Static/DHCP options, independent explicit routes, and the global DNS override.
+  An effective value from a route or override is not copied into the interface's
+  empty fields. If a route and interface option share the same gateway, both
+  ownership labels remain visible; this does not create another route. Legacy
+  files have no provenance beyond their saved configuration: a saved explicit
+  route/global DNS remains labeled as such, without guessing its earlier origin.
+  **ARP-Tabelle**, **Routing-Tabelle** and **MAC-Tabelle** use structured live
+  tables. Interface/type/metric details sit beneath each entry when extra
+  columns would be cramped. ARP age means time since its last update, not a
+  remaining lifetime; the MAC table has no simulated age. Default routes show
+  `0.0.0.0/0`, and metrics appear only when supplied by the engine. Tables can
+  be focused with Tab and scrolled with the keyboard; full addresses wrap
+  without truncation. Large tables scroll vertically within a compact area.
+  Servers use **Allgemein**, **Netzwerk**, **Dienste** and **Sicherheit**.
+  Allgemein shows the name, interface addresses/states and live DHCP/DNS/HTTP
+  status. Compact on/off switches with **AN/AUS** labels on Allgemein use the same DHCP/DNS/HTTP
+  actions as Dienste, including Undo/Redo and autosave. Disabling a service
+  preserves its configuration; disabling DHCP does not remove client addresses.
+  **Bearbeiten** opens the existing interface editor in Netzwerk;
+  **Dienste bearbeiten** opens the service page. Netzwerk also keeps routing,
+  ARP, global DNS override and forwarding information in expandable sections.
+  Dienste preserves DHCP/DNS/HTTP editors and additional TCP/UDP ports;
+  Sicherheit contains the existing nftables rules, configuration copy,
+  conntrack and logs. All four pages stay mounted to preserve drafts and
+  IPv4 autosave. Server tabs use 2 + 2 at narrow widths and one row at 460 px.
+  Blue info tooltips in Sicherheit explain nftables, INPUT/OUTPUT/FORWARD,
+  Quelle/Ziel and Conntrack on hover, keyboard focus or click/touch. Delete
+  device remains below the pages; terminal access stays on devices and in the
+  dock, without a duplicate Inspector button. Server devices
+  currently use the existing Linux shell; OS selection applies to Hosts only.
+  Routers use **Allgemein**, **Interfaces**, **Routing**, **Dienste** and
+  **Firewall**. Allgemein summarizes connected peers, IPv4, UP/DOWN, forwarding
+  and RIP. **Bearbeiten** opens the selected interface's existing IPv4 editor;
+  interface sections can be collapsed.
+  Router Allgemein also offers the same DHCP/DNS/HTTP quick switches; advanced
+  configuration stays in Dienste. Router and Server summaries show a physical
+  connection indicator and peer name separately from **Admin: UP/DOWN**.
+  Green means a cable exists and both modeled endpoints are UP, not guaranteed
+  IP reachability. A cable with a local or remote DOWN endpoint is shown in a
+  muted amber state; no cable and unknown status use neutral text. Each IPv4
+  address belongs to its own interface. Inspector data
+  and device-list descriptions use at least 12 px; terminal font settings remain
+  independent.
+  Switches use **Allgemein**, **Ports**, **VLAN** and **MAC-Tabelle**. Allgemein
+  summarizes attached cables, configured port VLANs and learned MAC count;
+  unused ports collapse into a compact section. Ports shows each real port,
+  its peer/link state, administrative UP/DOWN, MAC address and access VLAN.
+  **Bearbeiten** opens that port; **VLAN bearbeiten** focuses its existing VLAN
+  editor. VLAN allows IDs 1–4094 on every port, including unplugged ports,
+  with VLAN 1 as default. Blue help explains access VLANs and the simulated
+  untagged frames. There is no trunk or 802.1Q-tag configuration in the engine.
+  MAC-Tabelle uses the live shared MAC/VLAN/Port table. Learned entries are
+  runtime data and are learned again after reloading. All pages remain mounted
+  during tab changes. The L2 Switch has no functional IPv4 configuration;
+  its administrative and VLAN edits retain Undo/Redo and autosave. AP settings
+  remain unchanged.
+  On Routers, **Routing** contains the live routing/ARP
+  tables and RIP switch; static routes still use terminal commands. Firewall
+  contains nftables, conntrack and logs. Dienste keeps DHCP/DNS/HTTP servers,
+  extra TCP/UDP ports and the global DNS override. All pages remain mounted
+  during tab changes, preserving drafts and IPv4 autosave. Selecting another
+  router starts on Allgemein. Arrow keys and Home/End navigate the tab bar;
+  toolbar **Settings → Inspector layout · Experiment** offers three local,
+  immediately applied comparisons: **A / Kompakt** (290 px), **B / Ausgewogen**
+  (340 px), and **C / Breit** (470 px), plus **Benutzerdefiniert** for a saved
+  custom width. Drag the Inspector's left edge to resize between 290 and 470 px;
+  this selects the custom mode without snapping to presets. Double-click the
+  edge to restore B. Focus the edge with Tab: Left/Right adjust by 5 px (20 px
+  with Shift), Home/End select the width limits. Without a saved preference,
+  B is the provisional default; previous preset preferences remain valid.
+  Router tabs use two aligned rows (3 + 2), switching to one row when the
+  displayed Inspector reaches 460 px. Hosts keep three tabs on one row.
+  The chosen mode and custom width persist locally, separately from topology
+  exports. Selecting a preset preserves the last custom width for later reuse.
+  Resizing preserves mounted pages, active tabs and form drafts. On windows up
+  to 700 px wide the Inspector overlays the map to keep the canvas laid out.
+  Its displayed width is capped to the window without overwriting the saved
+  width; the original width returns when the window grows again.
+  Every routing table has one Routentyp
+  info button explaining Connected, Static and RIP. Hover or keyboard focus opens
+  the help without moving focus; click/touch keeps it open. Escape or an outside
+  interaction dismisses it. Hosts retain their directly connected routes too.
 - **Terminal dock** (bottom): double-click a host/router/server/firewall to
   open its terminal, or use the small terminal button revealed when hovering
   or keyboard-focusing the device. In **Free panels**, each new session creates
@@ -140,37 +237,65 @@ request's visual path finishes. The display retains at most 150 events and
 omits waits beyond 12 seconds. Missing predecessors animate independently, so
 this is a bounded teaching visualization rather than a complete traffic replay.
 
-Open the **Live ▾** menu beside Packet animation to switch to **Guided**,
-a learning view that immediately clears Live dots and arms observation, without
-stopping any command. Run `ping <IP>` or `ping -c 4 <IP>`, or wait for the next
-request of an already running ping. Guided collects up to four consecutive real requests from that
-session and their matching replies, then automatically plays each outward path
-followed by its return path. **Ping 2/4** identifies the current attempt.
-**Pause/Play** controls only replay; **Replay** repeats the observed sequence
-without sending packets. After four attempts it holds the last endpoint;
-later requests do not start a new cycle. Choose Observe next ping for another
-sequence, or return to Live for simultaneous animations.
+Open the **Live ?** menu beside Packet animation to switch to **Guided**.
+Guided follows the **newest ping command**, on any host. A new command immediately
+replaces the previous visualization, even before DNS or ARP completes. Older
+commands keep running and Packet Inspector still captures all traffic; their
+late packets cannot reclaim Guided focus. Each Echo Request belongs to its
+command, so it does not restart the view independently.
 
-Guided playback can continue while the simulation is paused; collecting a new
-sequence requires the network to run. Missing return paths are identified;
-Guided never invents replies or requests that were not transmitted. If the
-command stops early, only the observed attempts are replayed. ARP or routing
-failures that prevent any ICMP transmission produce an explanatory message.
-Collection retains at most 256 related transmissions. It starts replay as soon
-as the four attempts have outcomes, using the ping's actual replies/errors and
-two-second timeouts. If the selected command ends early, the observed remainder
-can replay immediately. Already observed frames in flight are still awaited.
-The ten-second safety window (and five-second per-request fallback for traffic
-without command lifecycle information) is not a mandatory delay and does not
-change real ping timing. Removed paths are discarded. The view
-shows link transmissions, not proof of IP acceptance. No sequence data is saved;
-terminal commands and Packet Inspector capture are unaffected.
+Animation starts with the first observed ICMP link transmission, without waiting
+for four requests or replies. Continuous Linux ping and Windows `ping -t` keep
+being followed beyond the fourth request. Three successive commands work without
+switching modes or rearming observation. Entering Guided during an existing
+command observes its future attempts; traffic from before activation is not
+reconstructed. The newest command started in Live retains priority.
 
-Use **Packets** in the main toolbar to open or close the Packet Inspector in
-the device Inspector's side area. Opening or closing the panel does not change
-capture, device selection or running terminals. On smaller screens the panel
-overlays the main editor area; the terminal dock stays accessible. Close it
-with its × button, the toolbar button or Escape while focused inside the panel.
+**Play/Pause** and **Step** affect visual playback only. **Replay** freezes a view
+of the focused command's latest four observed attempts, using only actual paths.
+Observation continues independently during Replay and Pause. **Follow** returns
+to subsequent live observations. Starting another ping always interrupts either
+view and takes focus automatically. Missing replies are never invented. Local
+ping or a command ending without an observed ICMP link transmission shows an
+explanation instead of an empty replay.
+
+Observation stores at most 256 hops within a rolling four-attempt window; the
+progressive display queues at most 32 hops. At overload or a long visual pause,
+additional visual hops can be omitted with an explicit indicator. Packet Inspector
+capture is unaffected. Follow displays correlated transmissions in emission order,
+including real flooded branches; Replay uses the identified destination path or
+only an unambiguous prefix. Link animation is illustrative, not proof of IP
+acceptance. The visual speed setting still applies; network timing is unchanged.
+Playback can continue with the simulation paused, but no new network events occur
+until it resumes. Changing topology clears observation, Replay and session focus.
+After F5 the mode returns to Live and terminal commands are not reopened.
+
+Use **Packets** in the main toolbar to open or close the Packet Inspector.
+While open, the device palette temporarily gives its space to the selected
+device Inspector on the left, with the canvas in the centre and Packets on the
+right. Use **⇄** in the Packet Inspector header to invert the sides, placing
+Packets on the left and the device Inspector on the right. The preference is
+saved locally; closing Packets always restores the normal layout.
+Selecting a device still opens its configuration without closing Packets.
+The same device Inspector stays mounted, preserving its active tab, IPv4 drafts
+and preferred width. Its resize handle moves to the right edge while on the left.
+Closing Packets restores the normal palette and right-hand device Inspector.
+Opening or closing does not change capture, device selection or running terminals.
+The **Compact / Full** selector uses the same records, selection and details.
+Compact shows Time, Protocol and Summary; Full retains all six original columns.
+It does not change packet data or interpretation. Full is the initial default.
+Drag Packets' inner edge to resize, or focus its handle and use Left/Right
+(5 px, or 20 px with Shift), Home/End. Compact and Full remember separate widths
+(initially 370 and 600 px), independently of the device Inspector preference.
+Widths start at 300 px, with maxima of 680 px for Compact and 800 px for Full when space permits, with at least 280 px reserved
+for the canvas in the three-column layout. Larger saved widths are temporarily
+capped when space is insufficient and return when the window grows. In the
+two-row layout a narrower packet panel can leave unused space between panels.
+At widths up to 1100 px the canvas sits above the two panels; up to 700 px the
+canvas and panels stack vertically with scrolling. Panels have their own scrolling,
+and the existing packet table may require horizontal scrolling to read all columns.
+The terminal dock stays accessible. Close Packets with its × button, the toolbar
+button or Escape while focused inside the panel.
 
 **Start capture** begins a new global trace; **Pause capture** freezes collection
 without pausing the simulation, and **Resume capture** continues it. **Stop capture**
@@ -446,7 +571,10 @@ The small Linux/Win badge identifies hosts without changing their device type.
 The Inspector's **Operating system** selector changes an individual host and
 supports Undo/Redo. It does not reboot the device or replace its terminal. An idle,
 empty prompt updates immediately; an active command, typed draft or selected text
-is preserved and the new profile applies at the next prompt. Other device types
+is preserved and the new profile applies at the next prompt. A selection alone
+does not bind the next new command to the old OS: typing adopts the current
+profile. A draft already being edited and a running ping keep their original
+syntax and output until completion or Ctrl+C. Other device types
 retain their Linux command interface. Existing examples and Labs remain Linux.
 
 Windows hosts use a simulated CMD prompt (`C:\>`) and case-insensitive command

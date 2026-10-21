@@ -12,7 +12,7 @@ export const LEGACY_TERMINAL_FONT_SIZE = 13;
 export const MIN_TERMINAL_FONT_SIZE = 12;
 export const MAX_TERMINAL_FONT_SIZE = 18;
 export const TERMINAL_FONTS = {
-  system: { label: 'System (default)', family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
+  system: { label: 'System (default)', family: 'Consolas, "Cascadia Mono", "Liberation Mono", monospace' },
   consolas: { label: 'Consolas', family: 'Consolas, ui-monospace, monospace' },
   cascadia: { label: 'Cascadia Code', family: '"Cascadia Code", "Cascadia Mono", Consolas, monospace' },
   courier: { label: 'Courier New', family: '"Courier New", Courier, monospace' },
@@ -80,6 +80,16 @@ export const TERMINAL_BASE = '#06080c';
 const rgb = (hex: string) => [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
 const hex = (channels: number[]) => '#' + channels.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
 const mix = (from: number[], to: number[], fraction: number) => from.map((v, i) => v + (to[i] - v) * fraction);
+
+// Tabs contain UI text, not the ANSI palette. Mixing with their own neutral
+// surface keeps selection visible without the much darker xterm tint limit.
+export function terminalTabPalette(color: string): { active: string; hover: string; activeHover: string } {
+  const base = rgb('#0b1220');
+  const target = rgb(normalizeTerminalColor(color) ?? DEFAULT_TERMINAL_COLORS.host);
+  return { active: hex(mix(base, target, 0.24)), hover: hex(mix(base, target, 0.06)),
+    activeHover: hex(mix(base, target, 0.30)) };
+}
+
 const luminance = (channels: number[]) => channels.map((v) => v / 255).map((v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
   .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
 

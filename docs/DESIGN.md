@@ -626,49 +626,41 @@ toolbar. packetAnimationWidget.ts valida e limita a posição à janela e persis
 em netlab:packet-animation-widget:v1. O fallback initialPlacement permite definir
 uma posição inicial futura, sem integração com exercícios nesta etapa.
 
-### Guided: quatro tentativas de ping observadas
+### Guided: observação contínua, Latest Ping Wins e Replay
 
-guidedPacket.ts mantém uma máquina de estados de apresentação, separada dos
-pacotes Live e da captura. Observe next ping seleciona a próxima raiz Echo Request,
-identificando a sessão pelo dispositivo de origem e ID ICMP (allocIcmpId é local
-ao dispositivo). Conserva até quatro sequências ICMP consecutivas a partir dessa
-seleção. Saltos usam parentTransferId. Para respostas, Network associa em WeakMap
-o objeto ICMP Echo Reply à transmissão do pedido recebido ao gerá-lo em deliverLocal.
-O terceiro argumento de onWireTransfer inclui echoRequestTransferId, fora do quadro
-e do contexto da captura. A associação é preservada pelas cópias de encaminhamento,
-NAT e conntrack antes da entrega local. ID, sequência e essa identidade explícita
-ligam ida/volta sem heurísticas de IP ou tempo, inclusive entre sessões simultâneas.
+`guidedPacket.ts` separa `observation` (identidade, tentativas e transmissões)
+de `playback` (Follow/Replay, fila, posição, pausa). `onWireTransfer` observa
+independentemente do estado de reprodução. Não há gate waiting/collecting nem
+espera pela quarta resposta para animar. O primeiro salto já entra na fila visual.
 
-A reprodução começa após a coleta das quatro tentativas: ida e volta de cada uma,
-na ordem ICMP, sem serializar a comunicação real. O clique Live → Guided limpa as
-animações Live e arma a observação automaticamente, sem cancelar o ping real.
-runPing publica somente dois avisos observacionais em Network.onPingProgress:
-resultado definido de uma tentativa e término da execução. O Guided associa esses
-avisos pelo dispositivo e ID ICMP, iniciando o replay assim que há quatro resultados,
-ou quando uma execução menor terminou. Usa os timeouts reais do comando (dois
-segundos), sem criar timers nem alterar a ordem/latência dos eventos da rede.
-Quadros observados com end futuro impedem a conclusão; novos saltos são observados
-antes de avaliar o término no limite de uma entrega. São no máximo 256 transmissões.
-Os dez segundos globais são salvaguarda para coletas incompletas sem informações
-suficientes; cinco segundos por tentativa são apenas fallback para tráfego sem
-avisos de comando. Redes substituídas perdem seus callbacks e avisos antigos são ignorados.
-Ausência de tráfego ICMP também termina em dez segundos, com explicação de ARP/rotas.
-Havendo flooding, extrai-se o ramo correlacionado conhecido; uma trajetória incompleta
-sem destino usa somente o prefixo sem bifurcação, nunca um ramo escolhido arbitrariamente.
-Respostas parciais não são contadas como caminhos completos até a origem. Se há menos
-de quatro pedidos reais, não se fabricam os restantes. Os limites são visuais, sem mudar
-timeouts reais. Guardam-se IDs, nomes, interfaces e tempos, sem quadros ou instâncias.
-Nova topologia limpa o Guided; restaurar cabos não ressuscita trajetórias descartadas.
+`runPing` aloca a identidade ICMP e publica `started` antes de resolver o nome
+ou ARP. Dispositivo + ID ICMP identificam a sessão. Somente esse início pode
+substituir uma seleção existente; tentativas subsequentes, fim e respostas antigas
+não retomam o foco. O store conserva um único marcador do início mais recente,
+também em Live, para não selecionar uma sessão mais antiga ao entrar em Guided.
+Uma nova sessão interrompe Follow, Pause ou Replay apenas na apresentação.
+Comandos reais, Scheduler, links, captura e timestamps não são modificados.
 
-O store usa o mesmo tick de Flow para avançar uma posição fracionária por salto,
-na velocidade visual existente, sem timers adicionais. Play/Pause é independente
-da rede; com a simulação pausada ainda é possível reproduzir um caminho coletado.
-A interface oferece Play/Pause, Replay e Observe next ping, com progresso Ping n/4.
-O último ponto permanece no final; novas transmissões não iniciam outro ciclo.
-Em Guided não se acumulam eventos Live ocultos; ao voltar a Live, as próximas
-transmissões seguem a implementação existente. O widget abre os controles em
-FloatingPopover, preservando arraste e limites da janela. O modo é temporário,
-sempre Live após recarregar; velocidade e posição continuam persistidas.
+Saltos usam `parentTransferId`; respostas usam `echoRequestTransferId`,
+associado ao pedido recebido no motor. Não há correlação por IP ou proximidade
+temporal. Follow apresenta somente transmissões reais da sessão focada, na ordem
+de emissão. Replay extrai caminhos até o destino conhecido; em flooding incompleto
+usa apenas um prefixo sem bifurcação. O replay é uma lista imutável de saltos;
+a observação continua recebendo transmissões sem alterar o cursor dessa lista.
+
+A observação conserva uma janela móvel de quatro tentativas, com até 256 saltos;
+ping contínuo não encerra o observador. Follow mantém até 32 saltos pendentes,
+descartando novos saltos visuais quando a fila está cheia e indicando a omissão.
+Esses limites não afetam Packet Inspector. Não há timers novos nem filas globais.
+O tick existente avança a reprodução na velocidade visual configurada. Pausa da
+reprodução não pausa a rede; pausa da simulação ainda permite rever dados existentes.
+
+Tentativas locais não geram quadros fictícios. Eventos de término e resultado
+atualizam a informação observada, sem iniciar Replay automaticamente. Remoção ou
+reconexão invalida caminhos e mantém a identidade antiga bloqueada até um novo
+comando. Troca de topologia limpa observação, cursor e marcador do último início;
+callbacks da Network anterior são ignorados. O modo não é persistido: F5 retorna
+a Live, mantendo as preferências de velocidade e posição do widget.
 
 ### Hosts Linux, Windows e Mixed
 

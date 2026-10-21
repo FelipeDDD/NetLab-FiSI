@@ -74,7 +74,7 @@ export function PacketAnimationControl({ initialPlacement }: { initialPlacement?
         onChange={(event) => useStore.getState().setPacketAnimationSpeed(PACKET_ANIMATION_SPEEDS[Number(event.target.value)])} />
       <output htmlFor="packet-animation-speed">{speed}×</output>
       <span id="packet-animation-help" className="sr-only">Packet animation speed; 1× is one second per link. Network timing is unchanged. {mode === 'guided'
-        ? 'Guided replays up to four requests and replies from one ping session.' : 'Untracked packets and replies animate independently.'}</span>
+        ? 'Guided follows the newest ping command progressively. Replay retains its latest four attempts.' : 'Untracked packets and replies animate independently.'}</span>
     </div>
     <button type="button" className="packet-animation-restore" style={{ visibility: placement.mode === 'floating' ? 'visible' : 'hidden' }}
       disabled={placement.mode !== 'floating'} title="Restore to toolbar" aria-label="Restore packet animation to toolbar" onClick={dock}>↶</button>
@@ -86,7 +86,6 @@ export function PacketAnimationControl({ initialPlacement }: { initialPlacement?
           const state = useStore.getState();
           if (state.packetVisualizationMode === 'guided') return;
           state.setPacketVisualizationMode('guided');
-          state.observeNextGuidedPacket();
         }}>Guided</button>
       </div>
       {mode === 'guided' ? <GuidedPacketControls /> : <p>Live: simultaneous packet animations. Network timing is unchanged.</p>}

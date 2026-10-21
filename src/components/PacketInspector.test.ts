@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import { PacketDetails, PacketInspector } from './PacketInspector';
 import type { CapturedPacket } from '../packetCapture';
+import { normalizePacketInspector } from '../packetInspectorLayout';
 
 // Details are a pure view: do not initialize the live network or browser xterm.
 const view = vi.hoisted(() => ({ packetInspectorOpen: false, packetCapture: {
@@ -73,4 +74,14 @@ it('opens on the latest 50-record page with Follow Live and clear pagination', (
   expect(html).toContain('Inspect packet 151,');
   expect(html).not.toContain('Inspect packet 150,');
   expect(html).not.toContain('Jump to latest');
+});
+
+it('offers both table modes on the same captured rows with all fields retained for Full/details', () => {
+  view.packetInspectorOpen = true;
+  const layout = normalizePacketInspector({ side: 'left', mode: 'compact' });
+  const html = renderToStaticMarkup(createElement(PacketInspector, { layout, onLayoutChange: vi.fn() }));
+  expect(html).toContain('packet-table is-compact'); expect(html).toContain('packet-full-column');
+  for (const label of ['Time', 'Protocol', 'Summary', 'Source', 'Destination', 'Link']) expect(html).toContain(`>${label}</th>`);
+  expect(html).toContain('aria-label="Swap packet panel position"'); expect(html).toContain('aria-label="Packet table view"');
+  expect(html).toContain('value="compact" selected=""');
 });

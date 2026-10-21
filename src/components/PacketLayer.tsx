@@ -19,7 +19,7 @@ export function PacketLayer() {
   const clock = useStore((s) => s.clock);
   const animationClock = useStore((s) => s.packetAnimationClock);
   const mode = useStore((s) => s.packetVisualizationMode);
-  const guided = useStore((s) => s.guidedPacket);
+  const guided = useStore((s) => s.guidedPacket.playback);
   const nodes = useStore((s) => s.nodes);
 
   if (!packets.length && !dropFlashes.length && !guided.hops.length) return null;
