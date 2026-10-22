@@ -56,6 +56,7 @@ export interface DropFlash {
 export type DevNode = Node<DevNodeData>;
 
 const AUTOSAVE_KEY = 'netsim:autosave:v1';
+import { loadCableStyle, type CableStyle } from './cableGeometry';
 const MAX_PACKETS = 150;
 
 function deviceNode(id: string, kind: DeviceKind, label: string, x: number, y: number): DevNode {
@@ -98,6 +99,11 @@ interface NetsimState {
   redoTopology(): void;
   nodes: DevNode[];
   edges: Edge[];
+  hoveredLinkId: string | null;
+  cableStyle: CableStyle;
+  setCableStyle(style: CableStyle): void;
+  hoverLink(id: string | null): void;
+  clearLinkSelection(): void;
   packets: AnimatedTransfer[];
   packetAnimationClock: number;
   packetAnimationSpeed: number;
@@ -164,6 +170,7 @@ interface NetsimState {
   setHttpBody(deviceId: string, text: string): void;
   toggleRip(deviceId: string): void;
   setPortVlan(deviceId: string, port: string, text: string): string | null;
+  resizeSwitch(deviceId: string, delta: 1 | -1): string | null;
   setSsid(deviceId: string, text: string): string | null;
   openTerminal(id: string): void;
   closeTerminal(id: string): void;
@@ -272,6 +279,12 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!nodes) { get().invalidateTopologyHistory(); return; }
       set({ nodes });
     } else if (isInspectorOperation(operation)) {
+      if (operation.type === 'resize-switch') {
+        const device = sim.net.devices.get(operation.deviceId);
+        const delta = (direction === 'undo' ? operation.before - operation.after : operation.after - operation.before) > 0 ? 1 : -1;
+        const error = device instanceof SwitchDevice ? device.portChangeError(delta) : 'Switch nicht verfügbar.';
+        if (error) { get().setNotice(error); return; }
+      }
       if (!applyInspectorEdit(sim.net, operation, direction)) { get().invalidateTopologyHistory(); return; }
       if (operation.type === 'set-host-os') refreshSessionProfile(operation.deviceId);
       get().refresh();
@@ -488,6 +501,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     set({
       nodes,
       edges: edgesFromEngine(),
+      hoveredLinkId: null,
       packets: [],
       guidedPacket: emptyGuidedPacket(),
       dropFlashes: [],
@@ -512,6 +526,12 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
 
   return {
+    cableStyle: loadCableStyle(),
+    setCableStyle(style) {
+      const cableStyle = style === 'hybrid' ? 'hybrid' : 'straight';
+      set({ cableStyle });
+      try { localStorage.setItem('netlab-cable-style', cableStyle); } catch { /* Session preference still works. */ }
+    },
     packetVisualizationMode: 'live',
     guidedPacket: emptyGuidedPacket(),
     setPacketVisualizationMode(packetVisualizationMode) {
@@ -588,6 +608,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     clock: 0,
     uiPulse: 0,
     selected: null,
+    hoveredLinkId: null,
+    hoverLink(id) { set({ hoveredLinkId: id }); },
+    clearLinkSelection() { set({ hoveredLinkId: null, edges: get().edges.map(e => e.selected ? { ...e, selected: false } : e) }); },
     terminals: [],
     activeTerminal: null,
     terminalPanels: [],
@@ -916,6 +939,20 @@ export const useStore = create<NetsimState>()((set, get) => {
       saveSoon();
     },
 
+    resizeSwitch(deviceId, delta) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof SwitchDevice) || (delta !== 1 && delta !== -1)) return 'Kein anpassbarer Switch.';
+      const error = d.portChangeError(delta);
+      if (error) return error;
+      prepareEdit();
+      const before = d.interfaces.length;
+      const port = delta === 1 ? d.addPort() : d.removeLastPort();
+      get().refresh();
+      commitEdit({ type: 'resize-switch', label: delta === 1 ? 'Add switch port' : 'Remove switch port', deviceId, before, after: d.interfaces.length, port: { name: port.name, mac: port.mac } });
+      saveSoon();
+      return null;
+    },
+
     setPortVlan(deviceId, port, text) {
       const d = sim.net.devices.get(deviceId);
       if (!(d instanceof SwitchDevice) || d.disposed) return 'not a switch';
@@ -1195,6 +1232,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({
         nodes: [],
         edges: [],
+        hoveredLinkId: null,
         packets: [],
         guidedPacket: emptyGuidedPacket(),
         dropFlashes: [],

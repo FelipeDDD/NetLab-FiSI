@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { Children, createElement, isValidElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Inspector, HostOverview, RouterOverview, ServerOverview, OverviewServices, OverviewInterface, SwitchOverview, ApOverview, ApClients, FirewallSummary } from './Inspector';
+import { Inspector, HostOverview, RouterOverview, ServerOverview, OverviewServices, OverviewInterface, SwitchOverview, SwitchCapacity, ApOverview, ApClients, FirewallSummary } from './Inspector';
 import { ApDevice, SwitchDevice } from '../engine/switch';
 import { Palette } from './Palette';
 import { createDevice } from '../engine/factory';
@@ -16,6 +16,24 @@ const view = vi.hoisted(() => ({ selected: null as string | null, nodes: [], uiP
 vi.mock('../store', () => ({ useStore: Object.assign((select: (s: typeof view) => unknown) => select(view), { getState: () => view }) }));
 beforeEach(() => { sim.net = new Network(); view.selected = null; vi.clearAllMocks(); });
 const render = () => renderToStaticMarkup(createElement(Inspector));
+
+it('shows switch capacity and explains why the last port cannot be removed', () => {
+  const sw = createDevice(sim.net, 'switch') as SwitchDevice;
+  const host = createDevice(sim.net, 'host');
+  sim.net.connect(sw.id, host.id, { aIface: 'eth7' });
+  const html = renderToStaticMarkup(createElement(SwitchCapacity, { device: sw }));
+  expect(html).toContain('8 gesamt'); expect(html).toContain('1 belegt');
+  expect(html).toMatch(/aria-label="Letzten Port entfernen"[^>]*disabled/);
+  expect(html).toContain('eth7: Kabel zuerst entfernen.');
+  expect(html).toContain('aria-label="Port hinzufügen"');
+});
+
+it('disables addition at 24 ports without adding canvas handles', () => {
+  const sw = createDevice(sim.net, 'switch', { switchPorts: 24 }) as SwitchDevice;
+  const html = renderToStaticMarkup(createElement(SwitchCapacity, { device: sw }));
+  expect(html).toContain('24 gesamt');
+  expect(html).toMatch(/aria-label="Port hinzufügen"[^>]*disabled/);
+});
 
 it('organizes the AP into three persistent pages with existing settings and no invented security controls', () => {
   const ap = createDevice(sim.net, 'ap') as ApDevice; view.selected = ap.id;
@@ -305,6 +323,28 @@ it('derives the switch overview from ports, configured VLANs and current MAC lea
   for (const value of ['1 von 8', '1, 20', `Verbunden mit ${host.name}`, 'VLAN 20', 'Gelernte MACs', 'Port eth0 bearbeiten']) expect(html).toContain(value);
   expect(html).not.toContain('<input class="iface-ip"');
   sim.net.disconnect(link.id); expect(summary()).toContain('0 von 8');
+});
+
+it('groups real switch neighbors numerically, independently of link state, and hides empty groups', () => {
+  const device = createDevice(sim.net, 'switch', { switchPorts: 24 }) as SwitchDevice;
+  const summary = () => renderToStaticMarkup(createElement(SwitchOverview, { device, onPort: vi.fn(), onMac: vi.fn() }));
+  expect(summary()).not.toContain('switch-connection-heading');
+  const kinds = ['host', 'router', 'ap', 'server', 'firewall', 'switch', 'host'] as const;
+  const ports = [1, 10, 2, 6, 3, 5, 11];
+  const links = kinds.map((kind, index) => {
+    const peer = createDevice(sim.net, kind, { os: index === 6 ? 'windows' : 'linux' });
+    return sim.net.connect(device.id, peer.id, { aIface: `eth${ports[index]}` });
+  });
+  const order = () => [...summary().matchAll(/data-interface-name="(eth\d+)"/g)].map(m => m[1]);
+  const initial = order();
+  expect(initial.slice(0, 7)).toEqual(['eth2', 'eth3', 'eth5', 'eth6', 'eth10', 'eth1', 'eth11']);
+  expect(summary().indexOf('Infrastruktur')).toBeLessThan(summary().indexOf('Clients'));
+  expect(summary()).toMatch(/<details class="host-inspector-details"><summary>Ports ohne Verbindung/);
+  device.interfaces[2].up = false; expect(order()).toEqual(initial);
+  for (const link of links.filter((_, i) => kinds[i] !== 'host')) sim.net.disconnect(link.id);
+  expect(summary()).not.toContain('Infrastruktur'); expect(summary()).toContain('Clients');
+  expect(order().slice(0, 2)).toEqual(['eth1', 'eth11']);
+  expect(device.interfaces.map(i => i.name)).toEqual(Array.from({ length: 24 }, (_, i) => `eth${i}`));
 });
 
 it('organizes the dedicated Firewall into five persistent pages without duplicating IPv4 editors', () => {

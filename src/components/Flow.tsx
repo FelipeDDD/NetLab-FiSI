@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   ConnectionMode,
@@ -14,6 +14,9 @@ import type { DeviceKind } from '../engine/device';
 import { DeviceNode } from './DeviceNode';
 import { FloatingEdge } from './FloatingEdge';
 import { PacketLayer } from './PacketLayer';
+import { LinkDetails } from './LinkDetails';
+import { linkPresentation } from '../linkPresentation';
+import { sim } from '../sim';
 import { protectsTopologyKeys, topologyHistoryDirection } from '../topologyShortcuts';
 
 const nodeTypes = { device: DeviceNode };
@@ -33,6 +36,12 @@ const DROPPABLE_KINDS = new Set(['host', 'switch', 'router', 'firewall', 'server
 export function Flow() {
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
+  const labeledEdges = useMemo(() => edges.map(e => ({ ...e, ariaLabel: linkPresentation(sim.net, e.id)?.title })), [edges, nodes]);
+  const hovered = useStore(s => s.hoveredLinkId);
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (hovered && !edges.some(e => e.id === hovered)) useStore.getState().hoverLink(null);
+  }, [edges, hovered]);
   const onNodesChange = useStore((s) => s.onNodesChange);
   const onEdgesChange = useStore((s) => s.onEdgesChange);
   const onConnect = useStore((s) => s.onConnect);
@@ -43,6 +52,7 @@ export function Flow() {
   const { screenToFlowPosition } = useReactFlow();
   const keyboardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyboardMoving = useRef(false);
+  const cableBeforeDrag = useRef<string | null>(null);
   const finishKeyboard = () => {
     if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
     keyboardTimer.current = null;
@@ -62,11 +72,13 @@ export function Flow() {
         keyboardTimer.current = null;
         keyboardMoving.current = false;
         useStore.getState().cancelNodeMovement();
+        useStore.getState().clearLinkSelection();
       }
     };
     const blur = () => {
       finishKeyboard();
       useStore.getState().cancelNodeMovement();
+      useStore.getState().hoverLink(null);
     };
     // Bubble phase respects controls which already handled the event.
     window.addEventListener('keydown', shortcut);
@@ -115,7 +127,7 @@ export function Flow() {
   return (
     <ReactFlow
       nodes={nodes}
-      edges={edges}
+      edges={labeledEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
@@ -127,13 +139,27 @@ export function Flow() {
         useStore.getState().deleteTopologyElements(nodes.map((n) => n.id), edges.map((e) => e.id));
         return false;
       }}
-      onNodeDragStart={() => { finishKeyboard(); useStore.getState().beginNodeMovement('drag'); }}
-      onNodeDragStop={() => useStore.getState().finishNodeMovement()}
+      onNodeDragStart={() => {
+        finishKeyboard();
+        useStore.getState().beginNodeMovement('drag');
+        if (cableBeforeDrag.current) useStore.getState().onEdgesChange([{ type: 'select', id: cableBeforeDrag.current, selected: true }]);
+      }}
+      onNodeDragStop={() => { cableBeforeDrag.current = null; useStore.getState().finishNodeMovement(); }}
       onSelectionDragStart={() => { finishKeyboard(); useStore.getState().beginNodeMovement('drag'); }}
       onSelectionDragStop={() => useStore.getState().finishNodeMovement()}
-      onPointerDownCapture={finishKeyboard}
+      onPointerDownCapture={(event) => {
+        finishKeyboard();
+        cableBeforeDrag.current = (event.target as Element).closest('.react-flow__node') ? useStore.getState().edges.find(e => e.selected)?.id ?? null : null;
+      }}
       onPointerCancelCapture={() => useStore.getState().cancelNodeMovement()}
-      onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) finishKeyboard(); }}
+      onFocusCapture={(event) => {
+        const edge = (event.target as Element).closest('.react-flow__edge');
+        if (edge) { setPointer(null); useStore.getState().hoverLink(edge.getAttribute('data-id')); }
+      }}
+      onBlurCapture={(event) => {
+        if ((event.target as Element).closest('.react-flow__edge')) useStore.getState().hoverLink(null);
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) finishKeyboard();
+      }}
       onKeyDownCapture={(event) => {
         const target = event.target as Element;
         if (!event.defaultPrevented && !event.nativeEvent.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey
@@ -151,7 +177,11 @@ export function Flow() {
         keyboardTimer.current = setTimeout(finishKeyboard, 350);
       }}
       onNodeClick={(_, n) => select(n.id)}
-      onPaneClick={() => select(null)}
+      onEdgeMouseEnter={(event, edge) => { setPointer({ x: event.clientX, y: event.clientY }); useStore.getState().hoverLink(edge.id); }}
+      onEdgeMouseMove={(event) => setPointer({ x: event.clientX, y: event.clientY })}
+      onEdgeMouseLeave={() => { setPointer(null); useStore.getState().hoverLink(null); }}
+      onEdgeClick={(_, edge) => useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id })))}
+      onPaneClick={() => { select(null); useStore.getState().clearLinkSelection(); }}
       onNodeDoubleClick={(_, n: DevNode) => {
         if (n.data.kind !== 'switch') openTerminal(n.id);
       }}
@@ -179,6 +209,7 @@ export function Flow() {
         bgColor="#0d1526"
       />
       <PacketLayer />
+      <LinkDetails pointer={pointer} />
     </ReactFlow>
   );
 }

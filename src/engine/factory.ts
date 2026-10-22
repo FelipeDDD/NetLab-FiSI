@@ -7,7 +7,7 @@ import { normalizeHostOs, type HostOs } from '../hostOs';
 export function createDevice(
   net: Network,
   kind: DeviceKind,
-  opts: { id?: string; name?: string; os?: HostOs } = {},
+  opts: { id?: string; name?: string; os?: HostOs; switchPorts?: number } = {},
 ): Device {
   const id = opts.id ?? net.allocId('dev-');
   const name = opts.name ?? net.allocName(kind);
@@ -17,7 +17,7 @@ export function createDevice(
   else if (kind === 'router') d = new RouterDevice(net, id, name);
   else if (kind === 'firewall') d = new FirewallDevice(net, id, name);
   else if (kind === 'ap') d = new ApDevice(net, id, name);
-  else d = new SwitchDevice(net, id, name);
+  else d = new SwitchDevice(net, id, name, 'switch', opts.switchPorts);
   if (d instanceof Host) d.os = normalizeHostOs(opts.os);
   net.register(d);
   return d;

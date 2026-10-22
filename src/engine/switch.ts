@@ -3,6 +3,8 @@ import type { Network } from './network';
 import type { EthernetFrame } from './types';
 import { BROADCAST_MAC } from './ip';
 
+export const CUSTOM_SWITCH_PORTS = { min: 1, max: 24, default: 8 } as const;
+
 // L2 learning switch with access-port VLANs: every port belongs to exactly
 // one VLAN (default 1) and frames never cross VLAN boundaries — two hosts in
 // the same subnet but different VLANs cannot even ARP for each other.
@@ -12,14 +14,48 @@ export class SwitchDevice extends Device {
   macTable = new Map<string, NetInterface>();
   vlans = new Map<string, number>();
 
-  constructor(network: Network, id: string, name: string, kind: 'switch' | 'ap' = 'switch', ports = 8) {
+  constructor(network: Network, id: string, name: string, kind: 'switch' | 'ap' = 'switch', ports: number = CUSTOM_SWITCH_PORTS.default) {
     super(network, id, name);
+    if (kind === 'switch' && (!Number.isInteger(ports) || ports < CUSTOM_SWITCH_PORTS.min || ports > CUSTOM_SWITCH_PORTS.max)) throw new Error('Invalid switch capacity');
     this.kind = kind;
     this.addInterfaces('eth', ports);
   }
 
   vlanOf(portName: string): number {
     return this.vlans.get(portName) ?? 1;
+  }
+
+  // Capacity policy is separate from forwarding; APs remain fixed-capacity.
+  portChangeError(delta: 1 | -1): string | null {
+    if (this.disposed || this.kind !== 'switch') return 'Portanzahl ist nicht anpassbar.';
+    if (delta === 1) return this.interfaces.length >= CUSTOM_SWITCH_PORTS.max ? 'Maximal 24 Ports.' : null;
+    if (this.interfaces.length <= CUSTOM_SWITCH_PORTS.min) return 'Mindestens ein Port muss bleiben.';
+    const port = this.interfaces[this.interfaces.length - 1];
+    if (port.link || [...this.network.links.values()].some(l => l.a === port || l.b === port)) return `${port.name}: Kabel zuerst entfernen.`;
+    if (this.vlanOf(port.name) !== 1) return `${port.name}: VLAN zuerst auf 1 setzen.`;
+    if (!port.up) return `${port.name}: Admin zuerst auf UP setzen.`;
+    if (port.ip || port.ipv4Mode !== 'unconfigured' || port.gateway !== null || port.dns !== null || port.dhcpLease || port.cancelDhcp) return `${port.name}: IP-Konfiguration oder DHCP-Zustand vorhanden.`;
+    if ([...this.macTable.values()].includes(port)) return `${port.name}: Noch in der MAC-Tabelle referenziert.`;
+    return null;
+  }
+
+  addPort(mac?: string): NetInterface {
+    const error = this.portChangeError(1);
+    if (error) throw new Error(error);
+    const name = `eth${this.interfaces.length}`;
+    if (this.getInterface(name)) throw new Error('Portname bereits vorhanden.');
+    if (mac && (!/^([\da-f]{2}:){5}[\da-f]{2}$/i.test(mac) || [...this.network.devices.values()].some(d => d.interfaces.some(i => i.mac.toLowerCase() === mac.toLowerCase())))) throw new Error('MAC-Adresse bereits belegt oder ungültig.');
+    const port = new NetInterface(this, name, mac ?? this.network.nextMac());
+    this.interfaces.push(port);
+    return port;
+  }
+
+  removeLastPort(): NetInterface {
+    const error = this.portChangeError(-1);
+    if (error) throw new Error(error);
+    const port = this.interfaces.pop()!;
+    this.vlans.delete(port.name);
+    return port;
   }
 
   receiveFrame(iface: NetInterface, frame: EthernetFrame): void {

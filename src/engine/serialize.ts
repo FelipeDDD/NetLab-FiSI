@@ -2,7 +2,7 @@ import { Network } from './network';
 import { createDevice } from './factory';
 import { Host, IpDevice } from './ipdevice';
 import type { HostOs } from '../hostOs';
-import { ApDevice, SwitchDevice } from './switch';
+import { ApDevice, SwitchDevice, CUSTOM_SWITCH_PORTS } from './switch';
 import type { DeviceKind } from './device';
 import { validIpv4, type Ipv4Mode } from './ipv4Config';
 import { cidrToString, ipToString, networkOf, parseCidr, parseIp } from './ip';
@@ -148,7 +148,11 @@ export function serializeNetwork(
 // Restore one fresh device into an existing network, without replacing survivors.
 export function restoreDevice(net: Network, sd: SavedDevice) {
   if (net.devices.has(sd.id)) throw new Error('device ID already exists');
-  const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name, os: sd.os });
+  // v1 already records every interface: no duplicate count or format migration.
+  const switchPorts = sd.kind === 'switch' ? sd.ifaces.length : undefined;
+  if (switchPorts !== undefined && (switchPorts < CUSTOM_SWITCH_PORTS.min || switchPorts > CUSTOM_SWITCH_PORTS.max ||
+      sd.ifaces.some((iface, index) => iface.name !== `eth${index}`))) throw new Error('Invalid switch port layout');
+  const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name, os: sd.os, switchPorts });
   for (const si of sd.ifaces) {
     const iface = d.getInterface(si.name);
     if (!iface) continue;

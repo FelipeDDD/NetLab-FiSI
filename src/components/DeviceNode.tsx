@@ -73,9 +73,10 @@ export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: numbe
 
 function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
   const openTerminal = useStore((s) => s.openTerminal);
+  const cableHighlighted = useStore(s => s.edges.some(e => (e.selected || e.id === s.hoveredLinkId) && (e.source === id || e.target === id)));
   const hasShell = data.kind !== 'switch' && data.kind !== 'ap';
   return (
-    <div className={`device-node kind-${data.kind}${selected ? ' selected' : ''}`}>
+    <div className={`device-node kind-${data.kind}${selected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}`}>
       <Handle type="source" position={Position.Top} id="t" />
       <Handle type="source" position={Position.Right} id="r" />
       <Handle type="source" position={Position.Bottom} id="b" />

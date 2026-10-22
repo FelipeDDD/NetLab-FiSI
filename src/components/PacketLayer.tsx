@@ -1,4 +1,6 @@
 import { useViewport } from '@xyflow/react';
+import { useMemo } from 'react';
+import { cableGeometry } from '../cableGeometry';
 import { useStore } from '../store';
 import { NODE_H, NODE_W } from './DeviceNode';
 import { packetAnimationProgress } from '../packetAnimation';
@@ -21,6 +23,18 @@ export function PacketLayer() {
   const mode = useStore((s) => s.packetVisualizationMode);
   const guided = useStore((s) => s.guidedPacket.playback);
   const nodes = useStore((s) => s.nodes);
+  const edges = useStore(s => s.edges);
+  const cableStyle = useStore(s => s.cableStyle);
+  const paths = useMemo(() => {
+    const result = new Map<string, { source: string; geometry: ReturnType<typeof cableGeometry> }>();
+    if (cableStyle !== 'hybrid') return result;
+    const boxes = new Map(nodes.map(n => [n.id, { ...n.position, width: n.measured?.width ?? NODE_W, height: n.measured?.height ?? NODE_H }]));
+    for (const edge of edges) {
+      const a = boxes.get(edge.source), b = boxes.get(edge.target);
+      if (a && b) result.set(edge.id, { source: edge.source, geometry: cableGeometry(a, b, cableStyle) });
+    }
+    return result;
+  }, [nodes, edges, cableStyle]);
 
   if (!packets.length && !dropFlashes.length && !guided.hops.length) return null;
 
@@ -40,9 +54,10 @@ export function PacketLayer() {
       const a = centers.get(p.fromDeviceId);
       const b = centers.get(p.toDeviceId);
       if (!a || !b) return null;
-      const px = a.x + (b.x - a.x) * t;
-      const py = a.y + (b.y - a.y) * t;
-      return <circle key={p.id} cx={px} cy={py} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;
+      const path = paths.get(p.linkId);
+      const point = path ? path.geometry.pointAt(path.source === p.fromDeviceId ? t : 1 - t)
+        : { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      return <circle key={p.id} data-link-id={p.linkId} cx={point.x} cy={point.y} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;
     });
 
   // Expanding red ring where a firewall chain dropped or rejected a packet.

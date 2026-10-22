@@ -1,9 +1,22 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Network } from '../engine/network';
 import { createDevice } from '../engine/factory';
 import { InterfaceConnection, InterfaceSummary, interfaceConnection } from './InterfaceConnection';
+
+const view = vi.hoisted(() => ({ hoveredLinkId: null as string | null, edges: [] as { id: string; selected?: boolean }[] }));
+vi.mock('../store', () => ({ useStore: Object.assign((select: (s: typeof view) => unknown) => select(view), { getState: () => view }) }));
+
+it('marks only the matching real interface for hovered or selected cables', () => {
+  const { a, link } = pair();
+  const render = () => renderToStaticMarkup(createElement(InterfaceSummary, { iface: a }));
+  view.hoveredLinkId = 'different'; expect(render()).not.toContain('cable-interface-highlighted');
+  view.hoveredLinkId = link.id; expect(render()).toContain('cable-interface-highlighted');
+  view.hoveredLinkId = null; view.edges = [{ id: link.id, selected: true }];
+  expect(render()).toContain('cable-interface-highlighted');
+  view.edges = [];
+});
 
 function pair() {
   const net = new Network(), a = createDevice(net, 'router'), b = createDevice(net, 'server');
@@ -14,6 +27,17 @@ it('reports an active modeled link only when both ends are UP', () => {
   a.up = false; expect(interfaceConnection(a)).toMatchObject({ state: 'inactive', text: expect.stringContaining('lokale Schnittstelle DOWN') });
   a.up = true; b.up = false; expect(interfaceConnection(a)).toMatchObject({ state: 'inactive', text: expect.stringContaining('Gegenstelle DOWN') });
   a.up = false; expect(interfaceConnection(a).text).toContain('beide Schnittstellen DOWN');
+});
+it('uses a decorative connector independently of the category-colored peer name', () => {
+  const { a } = pair();
+  const html = renderToStaticMarkup(createElement(InterfaceSummary, { iface: a }));
+  expect(html).toMatch(/<svg class="interface-peer-connector"[^>]*aria-hidden="true"/);
+  expect(html).toContain('var(--server, var(--text))');
+  expect(html).toContain('</svg><strong');
+  expect(html).toContain('class="sr-only">Verbunden mit </span>');
+  expect(html).toContain('width="17" height="17"');
+  expect(html).not.toContain('>Mit ');
+  expect(html).toContain('is-connected');
 });
 it('distinguishes no cable from a cable disabled at an endpoint', () => {
   const { a, b, net, link } = pair(); b.up = false;

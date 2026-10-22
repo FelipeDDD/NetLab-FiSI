@@ -511,8 +511,11 @@ function SwitchPortSummary({ device, iface, onEdit }: { device: SwitchDevice; if
 }
 
 export function SwitchOverview({ device, onPort, onMac }: { device: SwitchDevice; onPort: (port: string) => void; onMac: () => void }) {
-  const connected = device.interfaces.filter(iface => interfaceConnection(iface).link);
-  const unplugged = device.interfaces.filter(iface => !interfaceConnection(iface).link);
+  const ordered = [...device.interfaces].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const connected = ordered.filter(iface => interfaceConnection(iface).link);
+  const unplugged = ordered.filter(iface => !interfaceConnection(iface).link);
+  const clients = connected.filter(iface => interfaceConnection(iface).link!.other(iface).device.kind === 'host');
+  const infrastructure = connected.filter(iface => interfaceConnection(iface).link!.other(iface).device.kind !== 'host');
   const vlans = [...new Set(device.interfaces.map(iface => device.vlanOf(iface.name)))].sort((a, b) => a - b);
   return <section>
     <label className="host-field-label">Name<DeviceName deviceId={device.id} name={device.name} /></label>
@@ -523,7 +526,11 @@ export function SwitchOverview({ device, onPort, onMac }: { device: SwitchDevice
     </dl>
     <button type="button" className="mini-btn" onClick={onMac}>MAC-Tabelle anzeigen</button>
     <h3>Ports</h3>
-    {connected.map(iface => <SwitchPortSummary key={iface.name} device={device} iface={iface} onEdit={onPort} />)}
+    {[{ title: 'Infrastruktur', ports: infrastructure }, { title: 'Clients', ports: clients }].map(group => group.ports.length > 0 &&
+      <div key={group.title} className="switch-connection-group">
+        <h4 className="switch-connection-heading">{group.title}</h4>
+        {group.ports.map(iface => <SwitchPortSummary key={iface.name} device={device} iface={iface} onEdit={onPort} />)}
+      </div>)}
     {!!unplugged.length && <details className="host-inspector-details"><summary>Ports ohne Verbindung ({unplugged.length})</summary>
       {unplugged.map(iface => <SwitchPortSummary key={iface.name} device={device} iface={iface} onEdit={onPort} />)}
     </details>}
@@ -531,6 +538,7 @@ export function SwitchOverview({ device, onPort, onMac }: { device: SwitchDevice
 }
 
 function SwitchInspector({ device, hidden }: { device: SwitchDevice; hidden: boolean }) {
+  useStore(s => s.edges);
   const [active, setActive] = useState('general');
   const [target, setTarget] = useState<{ tab: 'ports' | 'vlan'; port: string } | null>(null);
   const ports = useRef(new Map<string, HTMLDetailsElement>());
@@ -551,6 +559,7 @@ function SwitchInspector({ device, hidden }: { device: SwitchDevice; hidden: boo
     <InspectorTabs label="Switch-Einstellungen" active={active} onChange={setActive} tabs={[
       { id: 'general', label: 'Allgemein', content: <SwitchOverview device={device} onPort={port => edit('ports', port)} onMac={() => setActive('mac')} /> },
       { id: 'ports', label: 'Ports', content: <section><h3>Ports</h3>
+        <SwitchCapacity device={device} />
         {device.interfaces.map(iface => <details key={iface.name} className="switch-port-details"
           ref={element => { if (element) ports.current.set(iface.name, element); else ports.current.delete(iface.name); }}>
           <summary><InterfaceSummary iface={iface} vlan={device.vlanOf(iface.name)} /></summary>
@@ -579,6 +588,24 @@ function SwitchInspector({ device, hidden }: { device: SwitchDevice; hidden: boo
     ]} />
     <div className="inspector-actions"><button type="button" className="btn danger" onClick={() => useStore.getState().deleteDevice(device.id)}>Delete device</button></div>
   </aside>;
+}
+
+export function SwitchCapacity({ device }: { device: SwitchDevice }) {
+  const occupied = device.interfaces.filter(iface => iface.link).length;
+  const removalError = device.portChangeError(-1);
+  const change = (delta: 1 | -1) => {
+    const error = useStore.getState().resizeSwitch(device.id, delta);
+    if (error) useStore.getState().setNotice(error);
+  };
+  return <div className="switch-capacity">
+    <div className="switch-capacity-controls">
+      <span>{device.interfaces.length} gesamt · {occupied} belegt · {device.interfaces.length - occupied}&nbsp;frei</span>
+      <button type="button" className="mini-btn" aria-label="Letzten Port entfernen" aria-describedby={`port-limit-${device.id}`}
+        disabled={!!removalError} onClick={() => change(-1)}>−</button>
+      <button type="button" className="mini-btn" aria-label="Port hinzufügen" disabled={!!device.portChangeError(1)} onClick={() => change(1)}>+</button>
+    </div>
+    <p id={`port-limit-${device.id}`} className="hint">{removalError ?? '1–24 Ports. Nur der letzte, unkonfigurierte Port kann entfernt werden.'}</p>
+  </div>;
 }
 
 // Match edgesFromEngine: only AP-to-Host/Server links represent wireless clients.

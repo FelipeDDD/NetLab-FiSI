@@ -27,7 +27,18 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   const device = net.devices.get(operation.deviceId);
   if (!device || device.disposed) return false;
   const from = direction === 'undo' ? 'after' : 'before', to = direction === 'undo' ? 'before' : 'after';
-  if (operation.type === 'set-interface-ipv4') {
+  if (operation.type === 'resize-switch') {
+    if (!(device instanceof SwitchDevice) || device.kind !== 'switch' || device.interfaces.length !== operation[from] || Math.abs(operation[to] - operation[from]) !== 1) return false;
+    const adding = operation[to] > operation[from];
+    if (operation.port.name !== `eth${Math.max(operation.before, operation.after) - 1}` || device.portChangeError(adding ? 1 : -1)) return false;
+    try {
+      if (adding) device.addPort(operation.port.mac);
+      else {
+        if (device.interfaces.at(-1)?.mac !== operation.port.mac) return false;
+        device.removeLastPort();
+      }
+    } catch { return false; }
+  } else if (operation.type === 'set-interface-ipv4') {
     const iface = device.getInterface(operation.ifaceName);
     if (!(device instanceof IpDevice) || !iface || !sameIpv4(iface.ipv4, operation[from]) || !validIpv4(operation[to])) return false;
     iface.configureIpv4(operation[to]);
