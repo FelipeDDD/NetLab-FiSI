@@ -20,7 +20,7 @@ export function applyAccessVlan(device: SwitchDevice, port: string, vlan: number
   // Entries learned on the moved port no longer describe its broadcast domain.
   // Keep unrelated learning; never restore historical MAC-table snapshots.
   const iface = device.getInterface(port);
-  for (const [key, learnedPort] of device.macTable) if (learnedPort === iface) device.macTable.delete(key);
+  if (iface) device.invalidateInterface(iface);
 }
 
 export function applyInspectorEdit(net: Network, operation: InspectorOperation, direction: 'undo' | 'redo'): boolean {

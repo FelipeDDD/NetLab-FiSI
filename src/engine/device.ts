@@ -8,7 +8,12 @@ export type DeviceKind = 'host' | 'switch' | 'router' | 'firewall' | 'server' | 
 
 export class NetInterface {
   link: Link | null = null;
-  up = true;
+  private adminUp = true;
+  get up(): boolean { return this.adminUp; }
+  set up(value: boolean) {
+    this.adminUp = value;
+    if (!value) this.device.invalidateInterface(this);
+  }
   ip: { addr: U32; prefix: number } | null = null;
   private configuredMode: Ipv4Mode | undefined;
   gateway: U32 | null = null;
@@ -41,6 +46,7 @@ export class NetInterface {
 }
 
 export abstract class Device {
+  invalidateInterface(_iface: NetInterface): void {}
   abstract readonly kind: DeviceKind;
   interfaces: NetInterface[] = [];
   private removed = false;
@@ -109,6 +115,8 @@ export class Link {
 
   detach(): void {
     this.network.scheduler.cancelOwner(this);
+    this.a.device.invalidateInterface(this.a);
+    this.b.device.invalidateInterface(this.b);
     this.a.link = null;
     this.b.link = null;
   }

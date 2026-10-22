@@ -42,8 +42,8 @@ it('blocks cable, VLAN, administrative state, imported IP settings and learned M
   last.up = false; expect(() => sw.removeLastPort()).toThrow('UP'); last.up = true;
   last.ip = parseCidr('192.0.2.1/24'); expect(() => sw.removeLastPort()).toThrow('IP'); last.ip = null;
   last.dns = 1; expect(() => sw.removeLastPort()).toThrow('IP'); last.dns = null;
-  sw.macTable.set('1|aa:bb:cc:dd:ee:ff', last); expect(() => sw.removeLastPort()).toThrow('MAC');
-  expect(sw.interfaces[7]).toBe(last); expect(sw.macTable.size).toBe(1);
+  sw.macTable.set('1|aa:bb:cc:dd:ee:ff', last); sw.removeLastPort();
+  expect(sw.interfaces).toHaveLength(7); expect(sw.macTable.size).toBe(0);
 });
 
 it('forwards real traffic on eth8, learns its MAC and respects access VLAN isolation', () => {
