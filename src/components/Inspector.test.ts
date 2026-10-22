@@ -1,11 +1,11 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { Children, createElement, isValidElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Inspector, HostOverview, RouterOverview, ServerOverview, OverviewServices, OverviewInterface, SwitchOverview } from './Inspector';
-import { SwitchDevice } from '../engine/switch';
+import { Inspector, HostOverview, RouterOverview, ServerOverview, OverviewServices, OverviewInterface, SwitchOverview, ApOverview, ApClients, FirewallSummary } from './Inspector';
+import { ApDevice, SwitchDevice } from '../engine/switch';
 import { Palette } from './Palette';
 import { createDevice } from '../engine/factory';
-import { Host, IpDevice, RouterDevice, ServerDevice } from '../engine/ipdevice';
+import { FirewallDevice, Host, IpDevice, RouterDevice, ServerDevice } from '../engine/ipdevice';
 import { Network } from '../engine/network';
 import { sim } from '../sim';
 import { parseStaticIpv4, emptyIpv4 } from '../engine/ipv4Config';
@@ -16,6 +16,78 @@ const view = vi.hoisted(() => ({ selected: null as string | null, nodes: [], uiP
 vi.mock('../store', () => ({ useStore: Object.assign((select: (s: typeof view) => unknown) => select(view), { getState: () => view }) }));
 beforeEach(() => { sim.net = new Network(); view.selected = null; vi.clearAllMocks(); });
 const render = () => renderToStaticMarkup(createElement(Inspector));
+
+it('organizes the AP into three persistent pages with existing settings and no invented security controls', () => {
+  const ap = createDevice(sim.net, 'ap') as ApDevice; view.selected = ap.id;
+  ap.ssid = 'NetLab WLAN'; ap.vlans.set('eth0', 20);
+  ap.interfaces[0].configureIpv4(parseStaticIpv4('192.0.2.1', '/24', '192.0.2.254', '192.0.2.53')!);
+  const html = render();
+  expect(html).toContain('aria-label="Wi-Fi AP Inspector"');
+  const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
+  expect(tabs).toHaveLength(3);
+  expect(tabs[0]).toContain('Allgemein'); expect(tabs[0]).toContain('aria-selected="true"');
+  expect(tabs[1]).toContain('WLAN'); expect(tabs[2]).toContain('Clients');
+  expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(2);
+  expect(html.match(/aria-label="Access point SSID"/g)).toHaveLength(1);
+  expect(html).toContain('NetLab WLAN'); expect(html).toContain('VLAN 20');
+  expect(html).toContain('Nicht belegt'); expect(html).not.toContain('Kein Kabel');
+  for (const iface of ap.interfaces) {
+    expect(html).not.toContain(`aria-label="IP-Adresse ${iface.name}"`);
+    expect(html).toContain(`aria-label="Access VLAN for ${iface.name}"`);
+    expect(html).toContain(`aria-label="Admin ${iface.name}"`);
+  }
+  for (const value of ['Gespeicherte IPv4-Daten', '192.0.2.1/24', '192.0.2.254', '192.0.2.53']) expect(html).toContain(value);
+  expect(html).not.toContain('automatisch beziehen');
+  for (const label of ['SSID erklären', 'Bridging erklären', 'Port-Konfiguration erklären', 'Gelernte MAC-Adressen', 'Delete device']) expect(html).toContain(label);
+  expect(html).toContain('Authentifizierung und Verschlüsselung werden nicht simuliert');
+  for (const label of ['WPA', 'RSSI', 'Open terminal', 'IP forwarding:', 'RIP routing', 'role="switch"']) expect(html).not.toContain(label);
+});
+
+it('keeps AP cable summaries separate from wireless links and counts inactive clients without claiming authentication', () => {
+  const ap = createDevice(sim.net, 'ap') as ApDevice;
+  const sw = createDevice(sim.net, 'switch'), host = createDevice(sim.net, 'host'), server = createDevice(sim.net, 'server');
+  const summary = () => renderToStaticMarkup(createElement(ApOverview, { device: ap, onWlan: vi.fn(), onClients: vi.fn() }));
+  expect(summary()).toContain('Keine Kabelverbindung'); expect(summary()).toContain('0 verbunden');
+  sim.net.connect(ap.id, sw.id); sim.net.connect(ap.id, host.id); sim.net.connect(ap.id, server.id);
+  server.interfaces[0].up = false;
+  const html = summary();
+  expect(html).toContain('2 verbunden · 1 aktiv'); expect(html).toContain('2 von 8');
+  expect(html).toContain(sw.name); expect(html).not.toContain(`Mit <strong style="color:var(--host`);
+  expect(html).not.toContain('WLAN aktiv');
+});
+
+it('lists only valid direct wireless endpoints with their actual interface data, not learned MACs or wired hosts', () => {
+  const ap = createDevice(sim.net, 'ap') as ApDevice;
+  const sw = createDevice(sim.net, 'switch'), host = createDevice(sim.net, 'host'), server = createDevice(sim.net, 'server');
+  const behind = createDevice(sim.net, 'host', { name: 'wired-only' });
+  sim.net.connect(ap.id, sw.id); sim.net.connect(sw.id, behind.id);
+  const hostLink = sim.net.connect(ap.id, host.id); sim.net.connect(ap.id, server.id);
+  host.interfaces[0].ip = parseCidr('192.0.2.42/24'); server.interfaces[0].up = false;
+  ap.macTable.set(`1|${behind.interfaces[0].mac}`, ap.interfaces[0]);
+  const clients = () => renderToStaticMarkup(createElement(ApClients, { device: ap }));
+  let html = clients();
+  for (const value of [host.name, server.name, host.interfaces[0].mac, '192.0.2.42/24', 'WLAN aktiv', 'WLAN inaktiv', 'Admin: DOWN']) expect(html).toContain(value);
+  for (const value of [behind.name, behind.interfaces[0].mac, sw.name, 'Kabel zu', '>Link aktiv<']) expect(html).not.toContain(value);
+  sim.net.disconnect(hostLink.id); html = clients(); expect(html).not.toContain(host.interfaces[0].mac);
+  server.interfaces[0].link = null; html = clients(); expect(html).toContain('Keine WLAN-Clients verbunden');
+});
+
+it('classifies AP links from current neighbors and returns disconnected ports to an undetermined medium', () => {
+  const ap = createDevice(sim.net, 'ap') as ApDevice; view.selected = ap.id;
+  const sw = createDevice(sim.net, 'switch'), host = createDevice(sim.net, 'host');
+  const cable = sim.net.connect(ap.id, sw.id), wireless = sim.net.connect(ap.id, host.id);
+  let html = render();
+  expect(html).toContain('>Link aktiv<'); expect(html).toContain('>WLAN aktiv<');
+  sw.interfaces[0].up = false; host.interfaces[0].up = false; html = render();
+  expect(html).toContain('>Link inaktiv<'); expect(html).toContain('>WLAN inaktiv<');
+  expect(html).not.toContain('Kein Kabel');
+  sim.net.disconnect(cable.id); sim.net.disconnect(wireless.id); html = render();
+  expect(html).toContain('>Nicht belegt<');
+  const overview = renderToStaticMarkup(createElement(ApOverview, { device: ap, onWlan: vi.fn(), onClients: vi.fn() }));
+  expect(overview).toContain('>Nicht belegt<'); expect(overview).not.toContain('Kein Kabel');
+  expect(html).toContain('0 verbunden'); expect(html).not.toContain('WLAN inaktiv');
+  expect(html).not.toContain('Kein Kabel');
+});
 
 it('keeps draggable device controls without the permanent cabling instruction', () => {
   const html = renderToStaticMarkup(createElement(Palette));
@@ -164,7 +236,7 @@ it('shows server interface and service states from the engine without adding for
   expect(html.match(/aria-checked="true"/g)).toHaveLength(1);
 });
 
-it.each(['server', 'router'] as const)('dispatches each %s quick switch to the existing service action', (kind) => {
+it.each(['server', 'router', 'firewall'] as const)('dispatches each %s quick switch to the existing service action', (kind) => {
   const server = createDevice(sim.net, kind) as IpDevice;
   const switches: { onClick?: () => void }[] = [];
   const visit = (nodes: ReactNode) => Children.forEach(nodes, node => {
@@ -235,10 +307,48 @@ it('derives the switch overview from ports, configured VLANs and current MAC lea
   sim.net.disconnect(link.id); expect(summary()).toContain('0 von 8');
 });
 
-it.each(['firewall', 'ap'] as const)('keeps the existing %s Inspector without new tabs', (kind) => {
-  const device = createDevice(sim.net, kind); view.selected = device.id;
+it('organizes the dedicated Firewall into five persistent pages without duplicating IPv4 editors', () => {
+  const device = createDevice(sim.net, 'firewall') as FirewallDevice; view.selected = device.id;
+  device.interfaces[0].ip = parseCidr('192.168.1.1/24'); device.interfaces[1].ip = parseCidr('10.0.0.1/24');
+  device.dnsServer = { enabled: true, records: new Map([['lab.local', parseIp('10.0.0.10')!]]) };
   const html = render();
-  expect(html).not.toContain('role="tablist"'); expect(html).toContain('Delete device');
-  if (device instanceof IpDevice) { expect(html).toContain('Open terminal'); expect(html).toContain('Firewall (nftables)'); }
-  expect(html).toContain('Interfaces');
+  const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>(.*?)<\/button>/g)].map(match => match[1]);
+  expect(tabs).toEqual(['Allgemein', 'Interfaces', 'Firewall', 'Routing', 'Dienste']);
+  expect(html).toContain('aria-label="Firewall Inspector"');
+  expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(4);
+  const general = html.slice(html.indexOf('role="tabpanel"'), html.indexOf('-panel-interfaces" aria-labelledby'));
+  expect(general).not.toContain('IP-Adresse eth0');
+  for (const iface of device.interfaces) expect(html.match(new RegExp(`aria-label="IP-Adresse ${iface.name}"`, 'g'))).toHaveLength(1);
+  expect(html.match(/<details class="router-interface-editor"/g)).toHaveLength(4);
+  expect(html).not.toMatch(/<details class="router-interface-editor" open/);
+  expect(html.match(/role="switch" aria-label="DNS Server" aria-checked="true"/g)).toHaveLength(2);
+  for (const value of ['Firewall (nftables)', 'Copy config', 'Conntrack erklären', 'Firewall-Begriffe erklären', 'Firewall logs', 'Routing-Tabelle', 'ARP-Tabelle', 'RIP aktivieren',
+    'sysctl -w net.ipv4.ip_forward=1', 'DHCP server', 'DNS server', 'Web server', 'lab.local', 'Delete device']) expect(html).toContain(value);
+  expect(html).not.toContain('Open terminal');
+});
+
+it('reports actual per-hook Firewall policies and declared filter/NAT rules, including flushed and mixed configurations', () => {
+  const device = createDevice(sim.net, 'firewall') as FirewallDevice;
+  const summary = () => renderToStaticMarkup(createElement(FirewallSummary, { device }));
+  expect(summary().match(/<code>ACCEPT<\/code>/g)).toHaveLength(3);
+  device.fw.filter.forward.policy = 'drop';
+  device.fw.addFilterRule('forward', { proto: 'icmp' }, 'accept');
+  device.fw.declareNat('postrouting', 'postrouting'); device.fw.addNatRule('postrouting', {}, { type: 'masquerade' });
+  let html = summary(); expect(html.match(/<code>ACCEPT<\/code>/g)).toHaveLength(2);
+  expect(html).toContain('<code>DROP</code>'); expect(html).toContain('1 Filterregeln · 1 NAT-Regeln');
+  device.fw.filter.input.declared = false; html = summary();
+  expect(html).toContain('Keine Basiskette'); expect(html.match(/<code>ACCEPT<\/code>/g)).toHaveLength(1);
+});
+
+it('uses shared interface states and live Firewall information in Allgemein', () => {
+  const device = createDevice(sim.net, 'firewall') as FirewallDevice;
+  const host = createDevice(sim.net, 'host'), server = createDevice(sim.net, 'server');
+  sim.net.connect(device.id, host.id); sim.net.connect(device.id, server.id); server.interfaces[0].up = false;
+  const summary = () => renderToStaticMarkup(createElement(RouterOverview, { device, onEdit: vi.fn() }));
+  let html = summary();
+  for (const value of ['Link aktiv', 'Link inaktiv', 'Kein Kabel', host.name, server.name, 'Admin: UP', 'Standardpolitik', 'IP-Forwarding: <strong>Aktiv', 'RIP: <strong>Inaktiv']) expect(html).toContain(value);
+  expect(html).not.toContain('IP-Adresse eth0');
+  device.interfaces[1].up = false; device.forwarding = false; device.enableRip(true);
+  html = summary();
+  for (const value of ['Admin: DOWN', 'IP-Forwarding: <strong>Inaktiv', 'RIP: <strong>Aktiv']) expect(html).toContain(value);
 });
