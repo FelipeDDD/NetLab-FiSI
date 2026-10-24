@@ -1,11 +1,22 @@
 type Anchor = { left: number; right: number; top: number; bottom: number };
 
 // Fixed coordinates in the viewport, independent of any scrolling ancestor.
-export function floatingPosition(anchor: Anchor, viewport: { width: number; height: number }, width: number, contentHeight: number, preferredSide: 'auto' | 'above' = 'auto') {
+export function floatingPosition(anchor: Anchor, viewport: { width: number; height: number }, width: number, contentHeight: number, preferredSide: 'auto' | 'above' | 'right' = 'auto') {
   const gutter = 8;
   const gap = 6;
   const availableWidth = Math.max(0, viewport.width - gutter * 2);
   const popupWidth = Math.min(width, availableWidth);
+  if (preferredSide === 'right') {
+    const right = anchor.right + 4;
+    const left = anchor.left - 4 - popupWidth;
+    return {
+      left: right + popupWidth <= viewport.width - gutter ? right
+        : left >= gutter ? left : Math.max(gutter, viewport.width - gutter - popupWidth),
+      top: Math.max(gutter, Math.min(anchor.top, viewport.height - gutter - Math.min(contentHeight, viewport.height - gutter * 2))),
+      width: popupWidth,
+      maxHeight: Math.max(0, viewport.height - gutter * 2),
+    };
+  }
   const below = Math.max(0, viewport.height - gutter - Math.max(gutter, anchor.bottom + gap));
   const above = Math.max(0, Math.min(viewport.height - gutter, anchor.top - gap) - gutter);
   // Scrollable settings need room for their visible height, not the full form.

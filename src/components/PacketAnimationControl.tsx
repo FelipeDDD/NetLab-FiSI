@@ -1,12 +1,17 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import type { PointerEvent } from 'react';
+import type { PointerEvent, RefObject } from 'react';
 import { PACKET_ANIMATION_SPEEDS } from '../packetAnimation';
 import { clampPacketWidget, readPacketAnimationPlacement, savePacketAnimationPlacement, type PacketAnimationPlacement } from '../packetAnimationWidget';
 import { useStore } from '../store';
 import { FloatingPopover } from './FloatingPopover';
 import { GuidedPacketControls } from './GuidedPacketControls';
 
-export function PacketAnimationControl({ initialPlacement }: { initialPlacement?: PacketAnimationPlacement }) {
+export function PacketAnimationControl({ initialPlacement, menuAnchor, settingsOpen = false, onSettingsClose }: {
+  initialPlacement?: PacketAnimationPlacement;
+  menuAnchor?: RefObject<HTMLElement>;
+  settingsOpen?: boolean;
+  onSettingsClose?: () => void;
+}) {
   const speed = useStore((s) => s.packetAnimationSpeed);
   const mode = useStore((s) => s.packetVisualizationMode);
   const [controlsOpen, setControlsOpen] = useState(false);
@@ -15,8 +20,8 @@ export function PacketAnimationControl({ initialPlacement }: { initialPlacement?
   const widget = useRef<HTMLDivElement>(null), handle = useRef<HTMLButtonElement>(null);
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number; moved: boolean; last: PacketAnimationPlacement } | null>(null);
   const clamp = (x: number, y: number) => clampPacketWidget({ x, y }, { width: window.innerWidth, height: window.innerHeight },
-    { width: widget.current?.offsetWidth ?? 234,
-      height: widget.current ? widget.current.offsetHeight + (widget.current.classList.contains('is-floating') ? 0 : 8) : 43 });
+    { width: widget.current?.offsetWidth || 234,
+      height: widget.current?.offsetHeight ? widget.current.offsetHeight + (widget.current.classList.contains('is-floating') ? 0 : 8) : 43 });
   useLayoutEffect(() => {
     const resize = () => setPlacement((current) => {
       if (current.mode !== 'floating') return current;
@@ -29,7 +34,8 @@ export function PacketAnimationControl({ initialPlacement }: { initialPlacement?
   }, []);
   const dock = () => {
     const next = { mode: 'toolbar' } as const;
-    setPlacement(next); savePacketAnimationPlacement(next); handle.current?.focus({ preventScroll: true });
+    setPlacement(next); savePacketAnimationPlacement(next);
+    (menuAnchor?.current ?? handle.current)?.focus({ preventScroll: true });
   };
   const finishDrag = (event: PointerEvent<HTMLButtonElement>) => {
     const current = drag.current;
@@ -38,10 +44,10 @@ export function PacketAnimationControl({ initialPlacement }: { initialPlacement?
     if (current.moved) savePacketAnimationPlacement(current.last);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  return <div ref={widget} className={`packet-animation-widget${placement.mode === 'floating' ? ' is-floating' : ''}`}
+  return <div ref={widget} className={`packet-animation-widget${placement.mode === 'floating' ? ' is-floating' : menuAnchor ? ' is-menu-docked' : ''}`}
     style={placement.mode === 'floating' ? { left: placement.x, top: placement.y } : undefined}>
     <button ref={handle} type="button" className="packet-animation-handle" aria-label="Move packet animation control"
-      title="Drag to move. Arrow keys move; Home restores the toolbar."
+      title={menuAnchor ? 'Drag to move. Arrow keys move; Home restores Packets.' : 'Drag to move. Arrow keys move; Home restores the toolbar.'}
       onKeyDown={(event) => {
         if (event.key === 'Home') { event.preventDefault(); dock(); return; }
         const delta: Record<string, [number, number]> = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
@@ -77,9 +83,18 @@ export function PacketAnimationControl({ initialPlacement }: { initialPlacement?
         ? 'Guided follows the newest ping command progressively. Replay retains its latest four attempts.' : 'Untracked packets and replies animate independently.'}</span>
     </div>
     <button type="button" className="packet-animation-restore" style={{ visibility: placement.mode === 'floating' ? 'visible' : 'hidden' }}
-      disabled={placement.mode !== 'floating'} title="Restore to toolbar" aria-label="Restore packet animation to toolbar" onClick={dock}>↶</button>
-    {controlsOpen && <FloatingPopover anchor={modeButton} onClose={() => setControlsOpen(false)}
+      disabled={placement.mode !== 'floating'} title={menuAnchor ? 'Restore to Packets' : 'Restore to toolbar'}
+      aria-label={menuAnchor ? 'Restore packet animation to Packets' : 'Restore packet animation to toolbar'} onClick={dock}>↶</button>
+    {(settingsOpen || controlsOpen) && <FloatingPopover anchor={settingsOpen && menuAnchor ? menuAnchor : modeButton}
+      onClose={() => { setControlsOpen(false); onSettingsClose?.(); }}
       id="packet-visualization-settings" label="Packet visualization" width={310} className="packet-visualization-settings">
+      <h2 className="toolbar-dialog-title">Paketdarstellung</h2>
+      <label className="packet-settings-speed" htmlFor="packet-settings-speed">Animationsgeschwindigkeit <output>{speed}×</output></label>
+      <input id="packet-settings-speed" className="packet-settings-range" type="range" min={0} max={PACKET_ANIMATION_SPEEDS.length - 1} step={1}
+        value={PACKET_ANIMATION_SPEEDS.indexOf(speed as typeof PACKET_ANIMATION_SPEEDS[number])}
+        aria-valuetext={`${speed}× visual speed`}
+        onChange={event => useStore.getState().setPacketAnimationSpeed(PACKET_ANIMATION_SPEEDS[Number(event.target.value)])} />
+      <p>Diese Geschwindigkeit und Guided steuern nur die Darstellung. Die Simulationsuhr hat eigene Run/Pause-Regler.</p>
       <div role="group" aria-label="Visualization mode" className="guided-playback-actions">
         <button type="button" className="btn" aria-pressed={mode === 'live'} onClick={() => useStore.getState().setPacketVisualizationMode('live')}>Live</button>
         <button type="button" className="btn" aria-pressed={mode === 'guided'} onClick={() => {
@@ -89,6 +104,11 @@ export function PacketAnimationControl({ initialPlacement }: { initialPlacement?
         }}>Guided</button>
       </div>
       {mode === 'guided' ? <GuidedPacketControls /> : <p>Live: simultaneous packet animations. Network timing is unchanged.</p>}
+      {menuAnchor && <button type="button" className="btn" onClick={() => {
+        if (placement.mode === 'floating') { dock(); return; }
+        const next = clamp(window.innerWidth - 260, 70);
+        setPlacement(next); savePacketAnimationPlacement(next);
+      }}>{placement.mode === 'floating' ? 'Steuerung zu Packets zurücksetzen' : 'Schwebende Steuerung anzeigen'}</button>}
     </FloatingPopover>}
   </div>;
 }

@@ -8,15 +8,24 @@ import { BackgroundSettings } from './BackgroundSettings';
 export function InspectorLayoutSettings({ value, onChange }: {
   value: InspectorLayoutPreference; onChange: (value: InspectorLayoutPreference) => void;
 }) {
-  const coverage = useWifiCoverage();
   const [open, setOpen] = useState(false);
-  const cableStyle = useStore(s => s.cableStyle);
   const anchor = useRef<HTMLButtonElement>(null);
   return <>
     <button ref={anchor} className="btn" aria-haspopup="dialog" aria-expanded={open}
       aria-controls={open ? 'inspector-layout-settings' : undefined} onClick={() => setOpen(!open)}>⚙ Settings</button>
     {open && <FloatingPopover anchor={anchor} id="inspector-layout-settings" label="Settings" width={300}
       className="inspector-layout-settings" onClose={() => setOpen(false)}>
+      <InspectorSettingsContent value={value} onChange={onChange} />
+    </FloatingPopover>}
+  </>;
+}
+
+export function InspectorSettingsContent({ value, onChange }: {
+  value: InspectorLayoutPreference; onChange: (value: InspectorLayoutPreference) => void;
+}) {
+  const coverage = useWifiCoverage();
+  const cableStyle = useStore(s => s.cableStyle);
+  return <>
       <label htmlFor="inspector-layout-choice">Inspector layout · Experiment</label>
       <select id="inspector-layout-choice" value={value.layout} onChange={event => onChange({ ...value, layout: event.target.value as InspectorLayout })}>
         {Object.entries(INSPECTOR_LAYOUTS).map(([id, layout]) => <option key={id} value={id}>{layout.label}</option>)}
@@ -32,6 +41,5 @@ export function InspectorLayoutSettings({ value, onChange }: {
         <option value="auto">Auto</option><option value="always">Always</option><option value="hidden">Hidden</option>
       </select>
       <BackgroundSettings />
-    </FloatingPopover>}
   </>;
 }

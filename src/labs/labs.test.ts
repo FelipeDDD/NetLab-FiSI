@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { restoreNetwork } from '../engine/serialize';
+import { restoreNetwork, serializeNetwork } from '../engine/serialize';
 import type { Network } from '../engine/network';
 import { Host, IpDevice } from '../engine/ipdevice';
 import { parseCidr, parseIp } from '../engine/ip';
@@ -10,6 +10,27 @@ import { runChecks, type CheckResult } from './checker';
 import type { Objective } from './types';
 
 const ip = (s: string) => parseIp(s)!;
+
+const topologies = [...LABS.map(file => ({ title: file.lab!.title, file })), ...EXAMPLES.map(example => ({ title: example.title, file: example.file }))];
+it.each(topologies)('$title restores every endpoint and round-trips a complete, stable snapshot', ({ file }) => {
+  const original = structuredClone(file), net = restoreNetwork(JSON.parse(JSON.stringify(file)));
+  expect(net.devices.size).toBe(file.devices.length);
+  expect(net.links.size).toBe(file.links.length);
+  for (const device of file.devices.filter(device => device.kind === 'switch')) {
+    expect(device.ifaces.map(iface => iface.name)).toEqual(Array.from({ length: 8 }, (_, i) => `eth${i}`));
+    expect(net.devices.get(device.id)!.interfaces).toHaveLength(8);
+  }
+  for (const saved of file.links) {
+    const link = net.links.get(saved.id)!;
+    expect([link.a.device.id, link.a.name]).toEqual(saved.a);
+    expect([link.b.device.id, link.b.name]).toEqual(saved.b);
+    expect(link.a.link).toBe(link); expect(link.b.link).toBe(link);
+  }
+  const positions = Object.fromEntries(file.devices.map(device => [device.id, { x: device.x, y: device.y }]));
+  const canonical = serializeNetwork(net, positions);
+  expect(serializeNetwork(restoreNetwork(JSON.parse(JSON.stringify(canonical))), positions)).toEqual(canonical);
+  expect(file).toEqual(original);
+});
 
 function labFile(id: string) {
   const f = LABS.find((l) => l.lab?.id === id);

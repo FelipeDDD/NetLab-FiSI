@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { floatingPosition } from './floatingPosition';
 
 describe('floating popup viewport placement', () => {
+  it('opens a nested export menu beside its item', () => {
+    expect(floatingPosition({ left: 160, right: 360, top: 110, bottom: 145 }, { width: 1440, height: 900 }, 300, 350, 'right'))
+      .toEqual({ left: 364, top: 110, width: 300, maxHeight: 884 });
+  });
+  it('flips nested menus to the left when there is no room on the right', () => {
+    const p = floatingPosition({ left: 700, right: 900, top: 110, bottom: 145 }, { width: 1024, height: 768 }, 300, 350, 'right');
+    expect(p.left).toBe(396); expect(p.top).toBe(110);
+  });
+  it('keeps a readable submenu inside narrow and short viewports', () => {
+    const p = floatingPosition({ left: 14, right: 212, top: 160, bottom: 195 }, { width: 320, height: 240 }, 300, 450, 'right');
+    expect(p).toEqual({ left: 12, top: 8, width: 300, maxHeight: 224 });
+  });
   it('places toolbar menus below their button', () => {
     expect(floatingPosition({ left: 200, right: 270, top: 10, bottom: 40 }, { width: 1000, height: 700 }, 320, 450))
       .toEqual({ left: 200, top: 46, width: 320, maxHeight: 646 });

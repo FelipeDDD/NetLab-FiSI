@@ -500,8 +500,9 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
 
   const adoptSave = (data: AppearanceSaveFile) => {
+    const restored = restoreNetwork(data);
     disposeAllSessions();
-    sim.net = restoreNetwork(data);
+    sim.net = restored;
     labCheckGeneration++;
     tabLayouts = readTabLayouts(tabDevices());
     wireNet(sim.net);

@@ -1,11 +1,11 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import type { ReactNode, RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import type { KeyboardEventHandler, MutableRefObject, PointerEventHandler, ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { floatingPosition } from './floatingPosition';
 
-const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]';
+const FOCUSABLE = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]:not(:disabled)';
 
-export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', preferredSide = 'auto', className = '', onPointerEnter, onPointerLeave }: {
+export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', preferredSide = 'auto', className = '', onPointerEnter, onPointerLeave, onKeyDown, popupRef, relatedRefs = [] }: {
   anchor: RefObject<HTMLElement>;
   children: ReactNode;
   onClose: () => void;
@@ -14,12 +14,21 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
   role?: 'menu' | 'dialog' | 'tooltip';
   width?: number;
   initialFocus?: 'first' | 'last' | 'none';
-  preferredSide?: 'auto' | 'above';
+  preferredSide?: 'auto' | 'above' | 'right';
   className?: string;
-  onPointerEnter?: () => void;
-  onPointerLeave?: () => void;
+  onPointerEnter?: PointerEventHandler<HTMLDivElement>;
+  onPointerLeave?: PointerEventHandler<HTMLDivElement>;
+  onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
+  popupRef?: MutableRefObject<HTMLDivElement | null>;
+  relatedRefs?: readonly RefObject<HTMLElement>[];
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const related = useRef(relatedRefs);
+  related.current = relatedRefs;
+  const attach = useCallback((element: HTMLDivElement | null) => {
+    ref.current = element;
+    if (popupRef) popupRef.current = element;
+  }, [popupRef]);
   const close = useRef(onClose);
   const focused = useRef(false);
   close.current = onClose;
@@ -43,7 +52,7 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
     update();
     const outside = (event: Event) => {
       const node = event.target as Node;
-      if (!popup.contains(node) && !trigger.contains(node)) close.current();
+      if (!popup.contains(node) && !trigger.contains(node) && !related.current.some(other => other.current?.contains(node))) close.current();
     };
     const observer = new ResizeObserver(update);
     observer.observe(popup);
@@ -69,10 +78,12 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
   }, [position, initialFocus]);
 
   return createPortal(
-    <div ref={ref} id={id} role={role} tabIndex={role === 'tooltip' ? undefined : -1} aria-label={label} className={`floating-popover ${className}`}
+    <div ref={attach} id={id} role={role} tabIndex={role === 'tooltip' ? undefined : -1} aria-label={label} className={`floating-popover ${className}`}
       onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave}
       data-floating-popover="" style={position ?? { visibility: 'hidden', top: 0, left: 0, width }}
       onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented) return;
         if (event.key === 'Escape') {
           event.preventDefault();
           event.stopPropagation();

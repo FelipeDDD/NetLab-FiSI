@@ -4,6 +4,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { InspectorLayoutSettings } from './components/InspectorLayoutSettings';
 import { INSPECTOR_LAYOUT_KEY, INSPECTOR_LAYOUTS, clampInspectorWidth, inspectorKeyboardWidth, inspectorPreferredWidth, loadInspectorLayout, normalizeInspectorLayout, saveInspectorLayout } from './inspectorLayout';
 
+// Settings presentation does not need the browser terminal renderer imported by
+// the real store. Keep that integration in terminals.test.ts.
+vi.mock('./store', () => ({ useStore: (select: (state: { cableStyle: string }) => unknown) => select({ cableStyle: 'straight' }) }));
+
 afterEach(() => vi.unstubAllGlobals());
 it('defaults to B and preserves old preset IDs', () => {
   expect(INSPECTOR_LAYOUTS.compact.width).toBe(290);

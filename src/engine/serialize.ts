@@ -161,13 +161,27 @@ export function serializeNetwork(
   return { app: 'netsim', version: 1, devices, links };
 }
 
+function savedSwitchPortCount(sd: SavedDevice): number | undefined {
+  if (sd.kind !== 'switch') return undefined;
+  if (!Array.isArray(sd.ifaces)) throw new Error('Invalid switch port layout: ' + sd.id);
+  // Early v1 templates used [] for the factory's eight default ports. Only
+  // that exact shorthand is legacy; nonempty lists describe the full capacity.
+  const count = sd.ifaces.length === 0 ? CUSTOM_SWITCH_PORTS.default : sd.ifaces.length;
+  if (count < CUSTOM_SWITCH_PORTS.min || count > CUSTOM_SWITCH_PORTS.max ||
+      Array.from(sd.ifaces).some((iface, index) => iface?.name !== `eth${index}`)) {
+    throw new Error('Invalid switch port layout: ' + sd.id);
+  }
+  const ports = new Set(Array.from({ length: count }, (_, index) => `eth${index}`));
+  if (Object.keys(sd.vlans ?? {}).some(port => !ports.has(port))) {
+    throw new Error('Invalid switch port layout: ' + sd.id + ' has VLANs on nonexistent ports');
+  }
+  return count;
+}
+
 // Restore one fresh device into an existing network, without replacing survivors.
 export function restoreDevice(net: Network, sd: SavedDevice) {
   if (net.devices.has(sd.id)) throw new Error('device ID already exists');
-  // v1 already records every interface: no duplicate count or format migration.
-  const switchPorts = sd.kind === 'switch' ? sd.ifaces.length : undefined;
-  if (switchPorts !== undefined && (switchPorts < CUSTOM_SWITCH_PORTS.min || switchPorts > CUSTOM_SWITCH_PORTS.max ||
-      sd.ifaces.some((iface, index) => iface.name !== `eth${index}`))) throw new Error('Invalid switch port layout');
+  const switchPorts = savedSwitchPortCount(sd);
   const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name, os: sd.os, switchPorts });
   d.position = { x: sd.x, y: sd.y };
   for (const si of sd.ifaces) {
@@ -251,7 +265,19 @@ export function restoreNetwork(data: SaveFile): Network {
   if (data.app !== 'netsim' || data.version !== 1) throw new Error('not a NetSim v1 topology file');
   const net = new Network();
   for (const sd of data.devices) restoreDevice(net, sd);
+  const switches = new Set(data.devices.filter(sd => sd.kind === 'switch').map(sd => sd.id));
   for (const sl of data.links) {
+    // A nonexistent physical switch port is a layout error, not a cable to
+    // silently skip or a reason to guess a larger switch capacity.
+    if (switches.size) {
+      for (const endpoint of [sl?.a, sl?.b]) {
+        if (!Array.isArray(endpoint)) continue;
+        const [id, port] = endpoint;
+        if (switches.has(id) && !net.devices.get(id)!.getInterface(port)) {
+          throw new Error('Invalid switch port layout: ' + id + ' references nonexistent port ' + port);
+        }
+      }
+    }
     try {
       const link = sl.medium === 'wireless'
         ? net.associate(sl.a[0], sl.b[0], { id: sl.id, ssid: sl.ssid, apPort: sl.b[1], apMac: sl.apMac, apUp: sl.apUp, apVlan: sl.apVlan, restore: true })

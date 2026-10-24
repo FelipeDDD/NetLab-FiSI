@@ -4,6 +4,7 @@
 // bases for building your own scenarios.
 import type { SaveFile, SavedDevice, SavedLink } from '../engine/serialize';
 import type { DeviceKind } from '../engine/device';
+import { CUSTOM_SWITCH_PORTS } from '../engine/switch';
 
 function dev(
   kind: DeviceKind,
@@ -19,7 +20,7 @@ function dev(
     x,
     y,
     forwarding: kind === 'router' || kind === 'firewall',
-    ifaces: [],
+    ifaces: kind === 'switch' ? Array.from({ length: CUSTOM_SWITCH_PORTS.default }, (_, index) => ({ name: `eth${index}`, ip: null, up: true })) : [],
     routes: [],
     ...extra,
   };

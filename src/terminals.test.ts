@@ -281,6 +281,21 @@ describe('host OS profiles', () => {
 });
 
 describe('terminal session lifetime', () => {
+  it('keeps the current session and running ping alive when an import has an invalid switch layout', () => {
+    const { a, net } = pair(), session = open(a);
+    input(session, 'ping 10.0.0.2\r');
+    const invalid = serializeNetwork(net, {});
+    invalid.devices.push({ id: 'invalid-switch', kind: 'switch', name: 'sw1', x: 0, y: 0, forwarding: false,
+      ifaces: [{ name: 'eth1', ip: null, up: true }], routes: [] });
+    expect(useStore.getState().importJson(JSON.stringify(invalid))).toContain('Invalid switch port layout');
+    expect(sim.net).toBe(net); expect(getSession(a)).toBe(session);
+    expect(session.term.dispose).not.toHaveBeenCalled();
+    net.scheduler.advanceTo(2400);
+    expect(output(session)).toContain('icmp_seq=3');
+    input(session, '\x03');
+    expect(output(session)).toContain('ping statistics');
+  });
+
   it.each(['ctrlKey', 'metaKey'] as const)('leaves selected-text copy to the browser (%s) without cancelling ping', (modifier) => {
     const { a, net } = pair();
     const session = open(a);
