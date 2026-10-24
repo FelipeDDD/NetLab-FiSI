@@ -5,6 +5,8 @@ import { DeviceIcon } from './DeviceNode';
 import type { HostCreationMode } from '../hostOs';
 
 const ITEMS: { kind: DeviceKind; label: string; blurb: string }[] = [
+  { kind: 'notebook', label: 'Notebook', blurb: 'Ethernet / WLAN' },
+  { kind: 'smartphone', label: 'Smartphone', blurb: 'WLAN client' },
   { kind: 'host', label: 'Host', blurb: 'Linux workstation' },
   { kind: 'server', label: 'Server', blurb: 'DHCP / DNS / web services' },
   { kind: 'switch', label: 'Switch', blurb: 'L2 learning switch' },

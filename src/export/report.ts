@@ -51,7 +51,7 @@ export function networkReport(net: Network, positions: NodePos[], generatedAt: s
     if (d instanceof IpDevice) {
       if (d.forwarding) services.push('IP forwarding');
       if (d.fw.active()) services.push('firewall');
-      if (d.dhcpServer?.enabled) services.push('DHCP server');
+      if (d.dhcpServiceEnabled) services.push('DHCP server');
       if (d.dnsServer?.enabled) services.push('DNS server');
       if (d.httpServer?.enabled) services.push(`web (:${d.httpServer.port})`);
       if (d.services.tcp.size) services.push(`tcp ports ${[...d.services.tcp].join(',')}`);
@@ -78,18 +78,19 @@ export function networkReport(net: Network, positions: NodePos[], generatedAt: s
     const hasRoutes = d.routes().length > 0;
     const hasFw = d.fw.active();
     const dnsRecords = d.dnsServer?.enabled ? [...d.dnsServer.records.entries()] : [];
-    if (!hasRoutes && !hasFw && !dnsRecords.length && !d.dhcpServer?.enabled) continue;
+    if (!hasRoutes && !hasFw && !dnsRecords.length && !d.dhcpServiceEnabled) continue;
     parts.push(`<h2>${esc(d.name)} <span class="kind">${d.kind}</span></h2>`);
     if (hasRoutes) {
       parts.push('<h3>Routing table</h3>');
       parts.push(`<pre>${esc(formatRoutes(d))}</pre>`);
     }
-    if (d.dhcpServer?.enabled) {
-      const c = d.dhcpServer;
-      parts.push('<h3>DHCP server</h3>');
-      parts.push(
-        `<pre>range ${ipToString(c.rangeStart)} – ${ipToString(c.rangeEnd)}\nrouter ${c.router !== null ? ipToString(c.router) : '—'}\ndns    ${c.dns !== null ? ipToString(c.dns) : '—'}</pre>`,
-      );
+    if (d.dhcpServiceEnabled) {
+      const pools=d.configuredDhcpPools().filter(([,c])=>c.enabled);
+      // Keep legacy details available even when an old binding is ambiguous.
+      const configs=pools.length ? pools : d.dhcpServer ? [['nicht zugeordnet',d.dhcpServer] as const] : [];
+      for(const [iface,c] of configs) {
+        parts.push(`<h3>DHCP server - ${esc(iface)}</h3><pre>range ${ipToString(c.rangeStart)} - ${ipToString(c.rangeEnd)}\nrouter ${c.router!==null?ipToString(c.router):'-'}\ndns ${c.dns!==null?ipToString(c.dns):'-'}</pre>`);
+      }
     }
     if (dnsRecords.length) {
       parts.push('<h3>DNS records</h3>');

@@ -12,6 +12,7 @@ import { LabPanel } from './components/LabPanel';
 import { useStore } from './store';
 import { loadPacketInspector, savePacketInspector, packetPanelGeometry, type PacketInspectorPreference } from './packetInspectorLayout';
 import { ResizablePacketPanel } from './components/ResizablePacketPanel';
+import { protectsTopologyKeys } from './topologyShortcuts';
 
 export default function App() {
   const [packetLayout, setPacketLayout] = useState(loadPacketInspector);
@@ -33,6 +34,15 @@ export default function App() {
   return (
     <ReactFlowProvider>
       <div className={`app${hasTerminals ? ' with-dock' : ''}`} data-inspector-layout={inspectorLayout.layout}
+        onKeyDown={event => {
+          if (event.key !== "'" || event.repeat || event.defaultPrevented || event.nativeEvent.isComposing ||
+              event.ctrlKey || event.altKey || event.metaKey || event.shiftKey ||
+              protectsTopologyKeys(event.target as Element) || protectsTopologyKeys(document.activeElement)) return;
+          const state = useStore.getState();
+          if (!state.terminals.length) return;
+          event.preventDefault();
+          state.setTerminalDockCollapsed(!state.terminalDockCollapsed);
+        }}
         style={{ '--inspector-width': `${inspectorPreferredWidth(inspectorLayout)}px` } as React.CSSProperties}>
         <Toolbar inspectorLayout={inspectorLayout} onInspectorLayoutChange={changeInspectorLayout} />
         <div className={`main${packetInspectorOpen ? ' is-analyzing-packets' : ''}${selected ? ' has-device-inspector' : ''}`}

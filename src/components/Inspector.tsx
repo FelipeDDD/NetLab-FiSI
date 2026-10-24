@@ -1,7 +1,12 @@
+import { DhcpPoolsPanel } from './DhcpPoolsPanel';
+import { isClientKind } from '../engine/device';
+import { ClientDiagnostics } from './ClientDiagnostics';
+import { ApRangeControl } from './ApRangeControl';
+import { HostWireless } from './HostWireless';
 import { createRef, Fragment, useEffect, useRef, useState, type RefObject } from 'react';
 import { useStore } from '../store';
 import { sim } from '../sim';
-import { FirewallDevice, Host, IpDevice, RouterDevice, ServerDevice } from '../engine/ipdevice';
+import { FirewallDevice, SmartphoneDevice, Host, IpDevice, RouterDevice, ServerDevice } from '../engine/ipdevice';
 import type { HostOs } from '../hostOs';
 import { ApDevice, SwitchDevice } from '../engine/switch';
 import { ipToString, maskOf } from '../engine/ip';
@@ -78,41 +83,9 @@ function InspectorSettingTextarea({ identity, value, readCurrent, onCommit, labe
     value={draft.value} onChange={(e) => draft.onChange(e.target.value)} onBlur={draft.commit} />;
 }
 
-function dhcpFieldValue(id: string, field: 'rangeStart' | 'rangeEnd' | 'router' | 'dns'): string | undefined {
-  const d = sim.net.devices.get(id), c = d instanceof IpDevice ? d.dhcpServer : null;
-  return c ? c[field] === null ? '' : ipToString(c[field]) : undefined;
-}
 function dnsRecordsValue(id: string): string | undefined {
   const d = sim.net.devices.get(id), c = d instanceof IpDevice ? d.dnsServer : null;
   return c ? sortedDnsRecords(c.records).map(([name, addr]) => ipToString(addr) + ' ' + name).join('\n') : undefined;
-}
-
-function DhcpPanel({ device }: { device: IpDevice }) {
-  const toggle = useStore((s) => s.toggleDhcpServer), setField = useStore((s) => s.setDhcpField);
-  const cfg = device.dhcpServer;
-  return (
-    <details className="svc" open={cfg?.enabled}>
-      <summary>DHCP server <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{cfg?.enabled ? 'on' : 'off'}</span></summary>
-      <label className="svc-toggle">
-        <input type="checkbox" checked={cfg?.enabled ?? false} onChange={() => toggle(device.id)} />
-        serve leases on this device
-      </label>
-      {cfg && <>
-        <div className="svc-grid">
-          {(['rangeStart', 'rangeEnd', 'router', 'dns'] as const).map((field) => <Fragment key={field}>
-            <span>{field === 'rangeStart' ? 'range' : field === 'rangeEnd' ? 'to' : field}</span>
-            <InspectorSettingInput identity={device.id + ':dhcp:' + field} label={'DHCP ' + field}
-              value={dhcpFieldValue(device.id, field) ?? ''}
-              readCurrent={() => dhcpFieldValue(device.id, field)}
-              placeholder={field === 'router' || field === 'dns' ? 'none advertised' : undefined}
-              onCommit={(text) => setField(device.id, field, text)} />
-          </Fragment>)}
-        </div>
-        {cfg.leases.size > 0 && <pre className="table-pre">{[...cfg.leases.entries()].map(([mac, ip]) => mac + '  ' + ipToString(ip) + '\n').join('')}</pre>}
-        <span className="hint">Clients run &#96;dhclient&#96; to get a lease.</span>
-      </>}
-    </details>
-  );
 }
 
 function DnsPanel({ device }: { device: IpDevice }) {
@@ -186,11 +159,14 @@ export function HostOverview({ device, editing = null, onEdit, editorSlot }: {
 }) {
   return <section className="host-overview">
     <label className="host-field-label">Name<DeviceName deviceId={device.id} name={device.name} /></label>
+    <div className="host-os-terminal">
     <label className="host-os-setting">Betriebssystem
       <select aria-label="Betriebssystem" value={device.os} onChange={(e) => useStore.getState().setHostOs(device.id, e.target.value as HostOs)}>
         <option value="linux">Linux</option><option value="windows">Windows (CMD)</option>
       </select>
     </label>
+    <button type="button" className="mini-btn" onClick={() => useStore.getState().openTerminal(device.id)}>Terminal</button>
+    </div>
     <h3>Schnittstellen</h3>
     {device.interfaces.map((iface) => {
       const gateways = hostGatewaySummary(device, iface), dns = hostDnsSummary(device, iface);
@@ -216,7 +192,7 @@ export function HostOverview({ device, editing = null, onEdit, editorSlot }: {
     })}
     <div className="host-quick-actions">
       <details className="host-quick-arp"><summary>ARP-Tabelle</summary><ArpTable device={device} /></details>
-      <button type="button" className="mini-btn" onClick={() => useStore.getState().openTerminal(device.id)}>Terminal</button>
+
     </div>
   </section>;
 }
@@ -229,11 +205,12 @@ function HostInspector({ device, hidden }: { device: Host; hidden: boolean }) {
   for (const iface of device.interfaces) if (!networkSlots.current.has(iface.name)) networkSlots.current.set(iface.name, createRef<HTMLDivElement>());
   return <aside className="inspector host-inspector" hidden={hidden} aria-label="Host Inspector">
     <div className="inspector-head host-inspector-head"><strong>{device.name}</strong>
-      <span className="inspector-kind kind-host">{device.os === 'windows' ? 'Windows' : 'Linux'} · Host</span>
+      <span className="inspector-kind kind-host">{device.os === 'windows' ? 'Windows' : 'Linux'} · {device.kind === 'notebook' ? 'Notebook' : 'Host'}</span>
     </div>
     <InspectorTabs active={active} onChange={setActive} tabs={[
       { id: 'general', label: 'Allgemein', content: <HostOverview device={device} editing={editing} onEdit={setEditing} editorSlot={quickSlot} /> },
       { id: 'network', label: 'Netzwerk', content: <>
+        <HostWireless device={device} />
         <section><h3>Interfaces · IPv4</h3>
           {device.interfaces.map((iface) => <div key={iface.name} ref={networkSlots.current.get(iface.name)} />)}
         </section>
@@ -252,7 +229,7 @@ function HostInspector({ device, hidden }: { device: Host; hidden: boolean }) {
           </div>
         </details>
         <details className="host-inspector-details"><summary>Erweiterte Einstellungen · Dienste</summary>
-          <DhcpPanel device={device} /><DnsPanel device={device} /><HttpPanel device={device} />
+          <DhcpPoolsPanel device={device} /><DnsPanel device={device} /><HttpPanel device={device} />
           <h3>Extra open ports</h3>
           <ServicesRow deviceId={device.id} proto="tcp" /><ServicesRow deviceId={device.id} proto="udp" />
           <span className="hint">Open ports answer TCP connects / accept UDP; test them with nc.</span>
@@ -290,7 +267,6 @@ export function OverviewServices({ device, onServices }: { device: IpDevice; onS
     <h3>Dienste</h3>
     <dl className="overview-service-summary">
       {([
-        ['DHCP', device.dhcpServer?.enabled, 'toggleDhcpServer'],
         ['DNS', device.dnsServer?.enabled, 'toggleDnsServer'],
         ['HTTP', device.httpServer?.enabled, 'toggleHttpServer'],
       ] as const).map(([name, enabled, action]) => <Fragment key={name}>
@@ -364,7 +340,7 @@ function RouterInspector({ device, hidden }: { device: RouterDevice | FirewallDe
         setEditTarget(iface); setActive('interfaces');
       }} onServices={() => setActive('services')} /> },
       { id: 'interfaces', label: 'Interfaces', content: <section>
-        {device.interfaces.map((iface, index) => <details key={iface.name} className="router-interface-editor" open={!dedicatedFirewall && index === 0}
+        {device.interfaces.map(iface => <details key={iface.name} className="router-interface-editor"
           ref={element => { if (element) interfaces.current.set(iface.name, element); else interfaces.current.delete(iface.name); }}>
           <summary><InterfaceSummary iface={iface} /></summary>
           <InterfaceIpv4Panel deviceId={device.id} ifaceName={iface.name} />
@@ -381,7 +357,7 @@ function RouterInspector({ device, hidden }: { device: RouterDevice | FirewallDe
       </section> },
       { id: 'services', label: 'Dienste', content: <>
         {dedicatedFirewall && <OverviewServices device={device} />}
-        <DhcpPanel device={device} /><DnsPanel device={device} /><HttpPanel device={device} />
+        <DhcpPoolsPanel device={device} /><DnsPanel device={device} /><HttpPanel device={device} />
         <details className="router-inspector-details"><summary>Zusätzliche TCP/UDP-Ports</summary>
           <ServicesRow deviceId={device.id} proto="tcp" /><ServicesRow deviceId={device.id} proto="udp" />
         </details>
@@ -476,7 +452,7 @@ function ServerInspector({ device, hidden }: { device: ServerDevice; hidden: boo
         </details>
       </> },
       { id: 'services', label: 'Dienste', content: <>
-        <DhcpPanel device={device} /><DnsPanel device={device} /><HttpPanel device={device} />
+        <DhcpPoolsPanel device={device} /><DnsPanel device={device} /><HttpPanel device={device} />
         <details className="host-inspector-details"><summary>Zusätzliche TCP/UDP-Ports</summary>
           <ServicesRow deviceId={device.id} proto="tcp" /><ServicesRow deviceId={device.id} proto="udp" />
           <span className="hint">Open ports answer TCP connects / accept UDP; test them with nc.</span>
@@ -514,8 +490,8 @@ export function SwitchOverview({ device, onPort, onMac }: { device: SwitchDevice
   const ordered = [...device.interfaces].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   const connected = ordered.filter(iface => interfaceConnection(iface).link);
   const unplugged = ordered.filter(iface => !interfaceConnection(iface).link);
-  const clients = connected.filter(iface => interfaceConnection(iface).link!.other(iface).device.kind === 'host');
-  const infrastructure = connected.filter(iface => interfaceConnection(iface).link!.other(iface).device.kind !== 'host');
+  const clients = connected.filter(iface => isClientKind(interfaceConnection(iface).link!.other(iface).device.kind));
+  const infrastructure = connected.filter(iface => !isClientKind(interfaceConnection(iface).link!.other(iface).device.kind));
   const vlans = [...new Set(device.interfaces.map(iface => device.vlanOf(iface.name)))].sort((a, b) => a - b);
   return <section>
     <label className="host-field-label">Name<DeviceName deviceId={device.id} name={device.name} /></label>
@@ -608,12 +584,10 @@ export function SwitchCapacity({ device }: { device: SwitchDevice }) {
   </div>;
 }
 
-// Match edgesFromEngine: only AP-to-Host/Server links represent wireless clients.
-// There is no separate 802.11 association table; a learned MAC is not a client.
+// Only explicit wireless bridge endpoints represent associated clients.
 function apConnectionMedium(iface: NetInterface) {
-  const peer = interfaceConnection(iface).link?.other(iface).device;
-  if (!peer) return 'unspecified';
-  return peer.kind === 'host' || peer.kind === 'server' ? 'wireless' : 'wired';
+  if (iface.medium === 'wireless') return 'wireless';
+  return iface.link ? 'wired' : 'unspecified';
 }
 
 function apWirelessPort(iface: NetInterface) {
@@ -631,7 +605,7 @@ export function ApOverview({ device, onWlan, onClients }: { device: ApDevice; on
     <dl className="ap-facts">
       <dt>SSID</dt><dd>{device.ssid}</dd>
       <dt>Betrieb</dt><dd>Layer-2-Bridge</dd>
-      <dt>Links aktiv</dt><dd>{active} von {device.interfaces.length}</dd>
+      <dt>Links aktiv</dt><dd>{active} von {device.interfaces.filter(iface => iface.link).length} Verbindungen</dd>
       <dt>WLAN-Clients</dt><dd>{clients.length} verbunden · {clients.filter(iface => interfaceConnection(iface).state === 'connected').length} aktiv</dd>
     </dl>
     <div className="ap-shortcuts"><button type="button" className="mini-btn" onClick={onWlan}>WLAN bearbeiten</button>
@@ -642,17 +616,18 @@ export function ApOverview({ device, onWlan, onClients }: { device: ApDevice; on
     {!!other.length && <details className="ap-details"><summary>Weitere Ports ({other.length})</summary>
       {other.map(iface => <InterfaceSummary key={iface.name} iface={iface} vlan={device.vlanOf(iface.name)} medium={apConnectionMedium(iface)} />)}
     </details>}
+    <details className="ap-details"><summary>Gelernte MAC-Adressen</summary><MacTable device={device} /></details>
   </section>;
 }
 
 export function ApClients({ device }: { device: ApDevice }) {
-  const clients = device.interfaces.filter(apWirelessPort);
+  const clients = device.interfaces.filter(iface => apWirelessPort(iface) && !!interfaceConnection(iface).link);
   return <section>
     <h3>WLAN-Clients ({clients.length})<InfoTooltip label="WLAN-Clients erklären">
-      Host- und Server-Links zum AP werden als WLAN dargestellt. Eine separate Anmeldung oder Zuordnung anhand des SSID wird nicht simuliert.
+      Clients verbinden sich ?ber wlan0 mit einer SSID. Die Verbindung verwendet einen virtuellen Bridge-Port, keinen Ethernet-Port.
     </InfoTooltip></h3>
-    <p className="ap-note">WLAN-Verbindungen im Modell; keine separate 802.11-Assoziation.</p>
-    {!clients.length && <p className="ap-note">Keine WLAN-Clients verbunden. Host oder Server im Topologie-Editor mit dem AP verbinden.</p>}
+    <p className="ap-note">SSID-basierte Verbindung; ohne Funkmodell, Authentifizierung oder Verschl?sselung.</p>
+    {!clients.length && <p className="ap-note">Keine WLAN-Clients verbunden. Im Host unter Netzwerk eine WLAN-Verbindung ausw?hlen.</p>}
     <ul className="ap-clients">{clients.map(iface => {
       const peer = interfaceConnection(iface).link!.other(iface);
       return <li key={iface.name}>
@@ -667,32 +642,8 @@ export function ApClients({ device }: { device: ApDevice }) {
   </section>;
 }
 
-function ApInspector({ device, hidden }: { device: ApDevice; hidden: boolean }) {
-  useStore(s => s.edges); // Link edits must refresh labels/counts even while simulation is paused.
-  const [active, setActive] = useState('general');
-  return <aside className="inspector ap-inspector" hidden={hidden} aria-label="Wi-Fi AP Inspector">
-    <div className="inspector-head host-inspector-head"><strong>{device.name}</strong><span className="inspector-kind kind-ap">Wi-Fi AP</span></div>
-    <InspectorTabs label="Access-Point-Einstellungen" active={active} onChange={setActive} tabs={[
-      { id: 'general', label: 'Allgemein', content: <ApOverview device={device} onWlan={() => setActive('wlan')} onClients={() => setActive('clients')} /> },
-      { id: 'wlan', label: 'WLAN', content: <section>
-        <h3>WLAN-Einstellungen</h3>
-        <div className="ap-setting"><label htmlFor={`${device.id}-ssid`}>SSID</label><InfoTooltip label="SSID erklären">
-          Die SSID ist der Name des WLANs. Im Modell ist sie eine gespeicherte Bezeichnung; eine Änderung trennt keine Links und meldet keine Clients neu an.
-        </InfoTooltip>
-          <InspectorSettingInput id={`${device.id}-ssid`} identity={`${device.id}:ssid`} label="Access point SSID" value={device.ssid}
-            readCurrent={() => { const current = sim.net.devices.get(device.id); return current instanceof ApDevice ? current.ssid : undefined; }}
-            onCommit={text => useStore.getState().setSsid(device.id, text)} mono={false} />
-        </div>
-        <p className="ap-note">Die SSID darf nicht leer sein. Änderungen werden beim Verlassen des Felds oder mit Enter übernommen.</p>
-        <h3>Bridging<InfoTooltip label="Bridging erklären">
-          Die Bridge lernt Quell-MAC-Adressen und leitet Ethernet-Frames zwischen ihren Ports im selben VLAN weiter. Das gilt für Kabel- und WLAN-Links. Sie routet keine IP-Pakete.
-        </InfoTooltip></h3>
-        <p className="ap-note">Kabel und WLAN teilen dieselbe Layer-2-Bridge. Jeder Port gehört einem Access-VLAN.</p>
-        <p className="ap-note ap-security-note"><strong>Wireless-Sicherheit:</strong> Authentifizierung und Verschlüsselung werden nicht simuliert.</p>
-        <h3>Ports · Konfiguration<InfoTooltip label="Port-Konfiguration erklären">
-          Admin UP/DOWN steuert die jeweilige Schnittstelle. VLANs trennen den Bridge-Verkehr. Der AP hat keinen eigenen IP-Stack für Routing, DHCP oder Management. IPv4 wird an Clients und Routern konfiguriert.
-        </InfoTooltip></h3>
-        {device.interfaces.map(iface => <details key={iface.name} className="ap-port-details">
+function ApPorts({ device }: { device: ApDevice }) {
+  const renderPort = (iface: NetInterface) => (<details key={iface.name} className="ap-port-details">
           <summary><InterfaceSummary iface={iface} vlan={device.vlanOf(iface.name)} medium={apConnectionMedium(iface)} /></summary>
           <div className="ap-setting"><span>Access-VLAN</span><InfoTooltip label={`Access-VLAN ${iface.name} erklären`}>
             Nur Ports im selben VLAN tauschen Frames aus. Gültige VLAN-IDs: 1 bis 4094.
@@ -715,8 +666,42 @@ function ApInspector({ device, hidden }: { device: ApDevice; hidden: boolean }) 
               <dt>DNS</dt><dd><code>{iface.dns === null ? '—' : ipToString(iface.dns)}</code></dd>
             </dl>
           </details>}
-        </details>)}
-        <details className="ap-details"><summary>Gelernte MAC-Adressen</summary><MacTable device={device} /></details>
+        </details>);
+  const unused = device.interfaces.filter(iface => !iface.link);
+  return <>
+    {device.interfaces.filter(iface => iface.link).map(renderPort)}
+    {!!unused.length && <details className="ap-details"><summary>Ports ohne Verbindung ({unused.length})</summary>{unused.map(renderPort)}</details>}
+  </>;
+}
+
+function ApInspector({ device, hidden }: { device: ApDevice; hidden: boolean }) {
+  useStore(s => s.edges); // Link edits must refresh labels/counts even while simulation is paused.
+  const [active, setActive] = useState('general');
+  return <aside className="inspector ap-inspector" hidden={hidden} aria-label="Wi-Fi AP Inspector">
+    <div className="inspector-head host-inspector-head"><strong>{device.name}</strong><span className="inspector-kind kind-ap">Wi-Fi AP</span></div>
+    <InspectorTabs label="Access-Point-Einstellungen" active={active} onChange={setActive} tabs={[
+      { id: 'general', label: 'Allgemein', content: <ApOverview device={device} onWlan={() => setActive('wlan')} onClients={() => setActive('clients')} /> },
+      { id: 'wlan', label: 'WLAN', content: <section>
+        <h3>WLAN-Einstellungen</h3>
+        <ApRangeControl device={device} />
+        <div className="ap-setting"><label htmlFor={`${device.id}-ssid`}>SSID</label><InfoTooltip label="SSID erklären">
+          Die SSID ist der Name des WLANs. Eine Änderung macht bisherige Verbindungen inaktiv. Clients wählen die neue SSID selbst aus.
+        </InfoTooltip>
+          <InspectorSettingInput id={`${device.id}-ssid`} identity={`${device.id}:ssid`} label="Access point SSID" value={device.ssid}
+            readCurrent={() => { const current = sim.net.devices.get(device.id); return current instanceof ApDevice ? current.ssid : undefined; }}
+            onCommit={text => useStore.getState().setSsid(device.id, text)} mono={false} />
+        </div>
+        <p className="ap-note">Die SSID darf nicht leer sein. Änderungen werden beim Verlassen des Felds oder mit Enter übernommen.</p>
+        <h3>Bridging<InfoTooltip label="Bridging erklären">
+          Die Bridge lernt Quell-MAC-Adressen und leitet Ethernet-Frames zwischen ihren Ports im selben VLAN weiter. Das gilt für Kabel- und WLAN-Links. Sie routet keine IP-Pakete.
+        </InfoTooltip></h3>
+        <p className="ap-note">Kabel und WLAN teilen dieselbe Layer-2-Bridge. Jeder Port gehört einem Access-VLAN.</p>
+        <p className="ap-note ap-security-note"><strong>Wireless-Sicherheit:</strong> Authentifizierung und Verschlüsselung werden nicht simuliert.</p>
+        <h3>Ports · Konfiguration<InfoTooltip label="Port-Konfiguration erklären">
+          Admin UP/DOWN steuert die jeweilige Schnittstelle. VLANs trennen den Bridge-Verkehr. Der AP hat keinen eigenen IP-Stack für Routing, DHCP oder Management. IPv4 wird an Clients und Routern konfiguriert.
+        </InfoTooltip></h3>
+        <ApPorts device={device} />
+
       </section> },
       { id: 'clients', label: 'Clients', content: <ApClients device={device} /> },
     ]} />
@@ -734,6 +719,17 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
   if (!selected) return null;
   const device = sim.net.devices.get(selected);
   if (!device) return null;
+  if (device instanceof SmartphoneDevice) return <aside className="inspector host-inspector" hidden={hidden} aria-label="Smartphone Inspector">
+    <div className="inspector-head"><strong>{device.name}</strong><span>Smartphone</span></div>
+    <label className="host-field-label">Name<DeviceName deviceId={device.id} name={device.name} /></label>
+    <HostWireless device={device} />
+    <InterfaceSummary iface={device.interfaces[0]} showMode />
+    <InterfaceIpv4Panel deviceId={device.id} ifaceName="wlan0" />
+    <ClientDiagnostics device={device} />
+    <details><summary>ARP-Tabelle</summary><ArpTable device={device} /></details>
+    <details><summary>Routing-Tabelle</summary><RoutingTable device={device} /></details>
+    <div className="inspector-actions"><button type="button" className="btn danger" onClick={() => deleteDevice(device.id)}>Delete device</button></div>
+  </aside>;
   if (device instanceof Host) return <HostInspector key={device.id} device={device} hidden={hidden} />;
   if (device instanceof RouterDevice) return <RouterInspector key={device.id} device={device} hidden={hidden} />;
   if (device instanceof FirewallDevice) return <RouterInspector key={device.id} device={device} hidden={hidden} />;
@@ -807,7 +803,7 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
       {ipd && (
         <section>
           <h3>Services</h3>
-          <DhcpPanel key={ipd.id + 'dhcp'} device={ipd} />
+          <DhcpPoolsPanel key={ipd.id + 'dhcp'} device={ipd} />
           <DnsPanel key={ipd.id + 'dns'} device={ipd} />
           <HttpPanel key={ipd.id + 'http'} device={ipd} />
           <h3 style={{ marginTop: 10 }}>Extra open ports</h3>

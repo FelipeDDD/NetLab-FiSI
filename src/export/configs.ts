@@ -28,7 +28,7 @@ export function setupScript(d: IpDevice): string {
   }
   if (d.forwarding) lines.push('sysctl -w net.ipv4.ip_forward=1');
   if (d.fw.active()) lines.push('nft -f ./nftables.conf');
-  if (d.dhcpServer?.enabled || d.dnsServer?.enabled) {
+  if (d.dhcpServiceEnabled || d.dnsServer?.enabled) {
     lines.push('# start DHCP/DNS: dnsmasq --conf-file=./dnsmasq.conf --no-daemon');
   }
   if (d.httpServer?.enabled) {
@@ -46,7 +46,7 @@ export function nftablesConf(d: IpDevice): string | null {
 export function dnsmasqConf(d: IpDevice): string | null {
   const dhcp = d.dhcpServer?.enabled ? d.dhcpServer : null;
   const dns = d.dnsServer?.enabled ? d.dnsServer : null;
-  if (!dhcp && !dns) return null;
+  if (!dhcp && !dns && !d.dhcpServiceEnabled) return null;
   const lines: string[] = [`# NetSim generated dnsmasq.conf for ${d.name}`];
   for (const i of d.interfaces) {
     if (i.ip) lines.push(`interface=${i.name}`);
@@ -59,7 +59,13 @@ export function dnsmasqConf(d: IpDevice): string | null {
       lines.push(`host-record=${name},${ipToString(addr)}`);
     }
   }
-  if (dhcp) {
+  if(d.dhcpPools.size) {
+    for(const [name,c] of d.configuredDhcpPools().filter(([,c])=>c.enabled)) {
+      lines.push(`dhcp-range=tag:${name},set:pool-${name},${ipToString(c.rangeStart)},${ipToString(c.rangeEnd)},12h`);
+      if(c.router!==null)lines.push(`dhcp-option=tag:pool-${name},option:router,${ipToString(c.router)}`);
+      if(c.dns!==null)lines.push(`dhcp-option=tag:pool-${name},option:dns-server,${ipToString(c.dns)}`);
+    }
+  } else if (dhcp) {
     lines.push(`dhcp-range=${ipToString(dhcp.rangeStart)},${ipToString(dhcp.rangeEnd)},12h`);
     if (dhcp.router !== null) lines.push(`dhcp-option=option:router,${ipToString(dhcp.router)}`);
     if (dhcp.dns !== null) lines.push(`dhcp-option=option:dns-server,${ipToString(dhcp.dns)}`);

@@ -3,18 +3,25 @@ import type { EdgeProps } from '@xyflow/react';
 import { useStore } from '../store';
 
 import { cableGeometry } from '../cableGeometry';
+import { linkAttachment } from '../deviceArtwork';
+import type { DevNode } from '../store';
+import { sim } from '../sim';
+import { inactiveWireless } from '../wirelessPresentation';
 
 export function FloatingEdge({ id, source, target, style, selected }: EdgeProps) {
+  const nodes = useStore(s => s.nodes);
+  const edges = useStore(s => s.edges);
   const cableStyle = useStore(s => s.cableStyle);
   const hovered = useStore(s => s.hoveredLinkId === id);
-  const sourceNode = useInternalNode(source);
-  const targetNode = useInternalNode(target);
+  const sourceNode = useInternalNode<DevNode>(source);
+  const targetNode = useInternalNode<DevNode>(target);
   if (!sourceNode || !targetNode) return null;
 
   const geometry = cableGeometry(
-    { ...sourceNode.internals.positionAbsolute, width: sourceNode.measured.width ?? 96, height: sourceNode.measured.height ?? 78 },
-    { ...targetNode.internals.positionAbsolute, width: targetNode.measured.width ?? 96, height: targetNode.measured.height ?? 78 }, cableStyle);
+    linkAttachment({ ...sourceNode, position: sourceNode.internals.positionAbsolute }, id, nodes, edges),
+    linkAttachment({ ...targetNode, position: targetNode.internals.positionAbsolute }, id, nodes, edges), cableStyle);
   const path = geometry.path;
+  const inactive = inactiveWireless(sim.net.links.get(id));
   return <BaseEdge id={id} path={path} style={style} interactionWidth={18}
-    className={hovered || selected ? 'cable-emphasized' : undefined} />;
+    className={[inactive ? 'wlan-inactive' : '', hovered || selected ? 'cable-emphasized' : ''].filter(Boolean).join(' ')} />;
 }

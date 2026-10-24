@@ -1,3 +1,5 @@
+import { dhcpConfiguration, applyDhcpConfiguration } from './engine/dhcpPools';
+import { isClientKind } from './engine/device';
 import type { Device, Link } from './engine/device';
 import { sameIpv4, validIpv4 } from './engine/ipv4Config';
 import { Network } from './engine/network';
@@ -27,7 +29,14 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   const device = net.devices.get(operation.deviceId);
   if (!device || device.disposed) return false;
   const from = direction === 'undo' ? 'after' : 'before', to = direction === 'undo' ? 'before' : 'after';
-  if (operation.type === 'resize-switch') {
+  if (operation.type === 'set-dhcp-configuration') {
+    if (!(device instanceof IpDevice) || !sameValue(dhcpConfiguration(device),operation[from])) return false;
+    applyDhcpConfiguration(device,operation[to]);
+  } else if (operation.type === 'enable-wireless') {
+    if (!(device instanceof Host)) return false;
+    if (direction === 'redo') { if (device.getInterface('wlan0')) return false; net.enableWireless(device.id, operation.mac); }
+    else { const iface = device.getInterface('wlan0'); if (!iface || iface.link || iface.ipv4Mode !== 'unconfigured') return false; device.interfaces = device.interfaces.filter(i => i !== iface); }
+  } else if (operation.type === 'resize-switch') {
     if (!(device instanceof SwitchDevice) || device.kind !== 'switch' || device.interfaces.length !== operation[from] || Math.abs(operation[to] - operation[from]) !== 1) return false;
     const adding = operation[to] > operation[from];
     if (operation.port.name !== `eth${Math.max(operation.before, operation.after) - 1}` || device.portChangeError(adding ? 1 : -1)) return false;
@@ -57,6 +66,9 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   } else if (operation.type === 'set-services') {
     if (!(device instanceof IpDevice) || !sameServicePorts(device.services[operation.proto], operation[from])) return false;
     device.services[operation.proto] = new Set(operation[to]);
+  } else if (operation.type === 'set-wifi-range') {
+    if (!(device instanceof ApDevice) || device.rangeMeters !== operation[from]) return false;
+    device.rangeMeters = operation[to];
   } else if (operation.type === 'set-ssid') {
     if (!(device instanceof ApDevice) || device.ssid !== operation[from]) return false;
     device.ssid = operation[to];
@@ -126,6 +138,7 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
 }
 
 export const captureLink = (link: Link): HistoryLink => ({
+  ...(link.medium === 'wireless' ? { medium: 'wireless' as const, ssid: link.ssid, apMac: link.b.mac, apUp: link.b.up, apVlan: (link.b.device as ApDevice).vlanOf(link.b.name) } : {}),
   id: link.id, a: [link.a.device.id, link.a.name], b: [link.b.device.id, link.b.name], latency: link.latency,
 });
 
@@ -154,11 +167,16 @@ export function canApplyLinkEdit(net: Network, links: HistoryLink[], add: boolea
       if (!current || JSON.stringify(captureLink(current)) !== JSON.stringify(link)) return false;
       continue;
     }
+    if (link.medium === 'wireless') {
+      const host = staged.get(link.a[0]) ?? net.devices.get(link.a[0]);
+      const ap = staged.get(link.b[0]) ?? net.devices.get(link.b[0]);
+      if ((!host || !isClientKind(host.kind)) || ap?.kind !== 'ap' || host.getInterface(link.a[1])?.medium !== 'wireless' || host.interfaces.some(i => i.medium === 'ethernet' && i.link)) return false;
+    }
     if (net.links.has(link.id) || link.a[0] === link.b[0] || !Number.isFinite(link.latency) || link.latency < 0) return false;
     for (const [id, name] of [link.a, link.b]) {
       const device = staged.get(id) ?? net.devices.get(id), iface = device?.getInterface(name);
       const key = JSON.stringify([id, name]);
-      if (!device || device.disposed || !iface || iface.link || ports.has(key)) return false;
+      if (!device || device.disposed || (!iface && !(link.medium === 'wireless' && device.kind === 'ap' && name.startsWith('wifi-'))) || iface?.link || ports.has(key)) return false;
       ports.add(key);
     }
   }
@@ -168,7 +186,12 @@ export function canApplyLinkEdit(net: Network, links: HistoryLink[], add: boolea
 export function applyLinkEdit(net: Network, links: HistoryLink[], add: boolean): boolean {
   if (!canApplyLinkEdit(net, links, add)) return false;
   for (const link of links) {
-    if (add) net.connect(link.a[0], link.b[0], { id: link.id, aIface: link.a[1], bIface: link.b[1] }).latency = link.latency;
+    if (add) {
+      const restored = link.medium === 'wireless'
+        ? net.associate(link.a[0], link.b[0], { id: link.id, ssid: link.ssid, apPort: link.b[1], apMac: link.apMac, apUp: link.apUp, apVlan: link.apVlan, restore: true })
+        : net.connect(link.a[0], link.b[0], { id: link.id, aIface: link.a[1], bIface: link.b[1] });
+      restored.latency = link.latency;
+    }
     else net.disconnect(link.id);
   }
   return true;

@@ -2347,6 +2347,17 @@ describe('Inspector server configuration history', () => {
   const store = () => useStore.getState();
   function setup() { const result = pair(); store().invalidateTopologyHistory(); return result; }
 
+  it('keeps the compatibility DHCP action reversible even when configured pools cannot currently serve', () => {
+    const { b } = setup();
+    const config = {enabled:true,rangeStart:parseIp('192.168.7.100')!,rangeEnd:parseIp('192.168.7.150')!,router:null,dns:null,leases:new Map<string,number>()};
+    b.dhcpPools.set('eth0', config); store().invalidateTopologyHistory();
+    expect(b.dhcpServiceEnabled).toBe(false); // Outside the interface subnet.
+    store().toggleDhcpServer(b.id); expect(config.enabled).toBe(false);
+    store().undoTopology(); expect(config.enabled).toBe(true);
+    store().redoTopology(); expect(config.enabled).toBe(false);
+    expect(b.dhcpPools.get('eth0')).toBe(config);
+  });
+
   it.each(['dhcpServer', 'dnsServer', 'httpServer'] as const)('restores absent %s configurations and toggles existing ones without resetting dynamic state', (server) => {
     const { b, net } = setup();
     const toggle = () => server === 'dhcpServer' ? store().toggleDhcpServer(b.id) : server === 'dnsServer' ? store().toggleDnsServer(b.id) : store().toggleHttpServer(b.id);

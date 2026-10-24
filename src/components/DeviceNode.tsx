@@ -1,15 +1,18 @@
+import { hasTerminalKind } from '../engine/device';
+import { useWifiCoverage } from '../wifiCoverage';
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
 import { useStore, type DevNode } from '../store';
 import type { DeviceKind } from '../engine/device';
-import { CopyIpButton } from './CopyIpButton';
+import { NodeNetworkLabel } from './NodeNetworkLabel';
+import { DeviceArtwork, hasDeviceArtwork } from './DeviceArtwork';
 
 export const NODE_W = 96;
 export const NODE_H = 78;
 
 export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: number }) {
-  if (kind === 'host') {
+  if (kind === 'host' || kind === 'notebook') {
     return (
       <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden>
         <rect x="4" y="6" width="24" height="15" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -19,6 +22,7 @@ export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: numbe
       </svg>
     );
   }
+  if (kind === 'smartphone') return <svg width="20" height="30" viewBox="0 0 20 30" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="1" width="14" height="28" rx="3" /><path d="M8 4h4M9 26h2" /></svg>;
   if (kind === 'switch') {
     return (
       <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden>
@@ -74,9 +78,10 @@ export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: numbe
 function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
   const openTerminal = useStore((s) => s.openTerminal);
   const cableHighlighted = useStore(s => s.edges.some(e => (e.selected || e.id === s.hoveredLinkId) && (e.source === id || e.target === id)));
-  const hasShell = data.kind !== 'switch' && data.kind !== 'ap';
+  const hasShell = hasTerminalKind(data.kind);
+  const artwork = hasDeviceArtwork(data.kind);
   return (
-    <div className={`device-node kind-${data.kind}${selected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}`}>
+    <div onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}`}>
       <Handle type="source" position={Position.Top} id="t" />
       <Handle type="source" position={Position.Right} id="r" />
       <Handle type="source" position={Position.Bottom} id="b" />
@@ -102,7 +107,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
         </button>
       )}
       <div className="dev-icon">
-        <DeviceIcon kind={data.kind} />
+        {hasDeviceArtwork(data.kind) ? <DeviceArtwork id={id} kind={data.kind} fallback={<DeviceIcon kind={data.kind} />} /> : <DeviceIcon kind={data.kind} />}
       </div>
       {data.fw === true && (
         <span className="dev-fw-badge" title="firewall rules active">
@@ -110,13 +115,8 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
         </span>
       )}
       <div className="dev-label">{data.label}</div>
-      {data.kind === 'host' && <span className="dev-os-badge" title={data.os === 'windows' ? 'Windows CMD' : 'Linux shell'}>{data.os === 'windows' ? 'Win' : 'Linux'}</span>}
-      <div className="dev-ip">
-        {data.ips.length ? <>
-          <CopyIpButton address={data.ips[0]} context={data.label}>{data.ips[0]}</CopyIpButton>
-          {data.ips.length > 1 && <span title="More interface addresses in the Inspector"> +</span>}
-        </> : ' '}
-      </div>
+      {(data.kind === 'host' || data.kind === 'notebook') && <span className="dev-os-badge" title={data.os === 'windows' ? 'Windows CMD' : 'Linux shell'}>{data.os === 'windows' ? 'Win' : 'Linux'}</span>}
+      <NodeNetworkLabel id={id} name={data.label} />
     </div>
   );
 }

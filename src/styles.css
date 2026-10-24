@@ -180,6 +180,32 @@ body,
 }
 
 .canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.minimap-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-panel); color: var(--text-dim); font-size: 12px; cursor: pointer; }
+.minimap-toggle:hover, .minimap-toggle[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
+.minimap-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Fixed attachment sizes/positions cover against the window, clipped by the canvas.
+   Dock and inspectors reveal/cover the image without changing its framing. */
+.react-flow.experimental-canvas-background {
+  background-attachment: fixed;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.background-settings { border: 0; border-top: 1px solid var(--border); margin: 16px 0 0; padding: 10px 0 0; min-width: 0; }
+.background-settings legend { padding: 0 6px 0 0; font-weight: 600; }
+.background-settings > label { display: block; margin-top: 10px; }
+.background-settings output { float: right; }
+.background-settings input[type="range"] { width: 100%; margin: 8px 0; accent-color: var(--accent); }
+.background-settings input:disabled { opacity: .4; }
+.background-settings .background-dots-choice { display: flex; gap: 8px; align-items: center; }
+.background-particles-clip { position: absolute; inset: 0; clip-path: inset(0); pointer-events: none; z-index: 0; }
+.background-particles { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+.background-particles canvas { pointer-events: none; }
+.background-particles.is-fireflies canvas { filter: drop-shadow(0 0 2px #74d7a650); }
+.shooting-star { position: absolute; height: 1px; opacity: 0; transform-origin: right center; border-radius: 100%; background: linear-gradient(90deg, transparent, #55b68c80 60%, #99e7b9); pointer-events: none; }
+.shooting-star::after { content: ''; position: absolute; right: 0; top: -.5px; width: 2px; height: 2px; border-radius: 50%; background: #a1edc1; box-shadow: 0 0 3px #55b68c70; }
+@media (prefers-reduced-motion: reduce) { .background-particles-clip { display: none; } }
 
 /* ---------- palette ---------- */
 
@@ -287,6 +313,19 @@ body,
 .device-node.selected {
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
 }
+
+/* Visual landing regions in deviceArtwork.ts use this 5px padding + 1px border. */
+.device-node.has-device-artwork { background: transparent; padding: 5px 6px; border: 1px solid transparent; }
+.device-node.has-device-artwork.kind-switch { width: 152px; }
+.device-node.has-device-artwork.kind-router { width: 132px; }
+.device-node.has-device-artwork.kind-server { width: 100px; }
+.device-node.has-device-artwork.kind-host { width: 124px; }
+.device-node.has-device-artwork.kind-firewall { width: 146px; }
+.device-node.has-device-artwork.kind-ap { width: 124px; }
+.has-device-artwork .dev-icon { display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.device-artwork { display: block; overflow: visible; pointer-events: none; filter: drop-shadow(0 2px 3px #0008); }
+.has-device-artwork .dev-label, .has-device-artwork .dev-ip { text-shadow: 0 1px 3px var(--bg), 0 0 5px var(--bg); }
+.has-device-artwork .device-terminal { z-index: 1; }
 
 .device-terminal {
   position: absolute;
@@ -512,6 +551,10 @@ body,
   filter: drop-shadow(0 0 6px currentColor);
 }
 
+/* PNG alpha naturally occludes both cables and packets, including antenna gaps. */
+.react-flow__nodes { z-index: 1; }
+.packet-layer-underlay { z-index: 0; }
+
 /* ---------- inspector ---------- */
 
 .inspector {
@@ -541,7 +584,7 @@ body,
 .inspector-shell[hidden] { display: none; }
 .inspector-shell > .inspector { width: 100%; height: 100%; }
 .inspector-resizer { position: absolute; z-index: 10; top: 0; bottom: 0; left: -5px; width: 10px; cursor: col-resize; touch-action: none; }
-.inspector-resizer::after { content: ''; position: absolute; top: 50%; left: 4px; width: 2px; height: 40px; transform: translateY(-50%); border-radius: 2px; background: var(--text-dim); opacity: 0; pointer-events: none; transition: opacity 140ms ease, background-color 140ms ease; }
+.inspector-resizer::after { content: ''; position: absolute; top: 50%; left: 4px; width: 2px; height: 40px; transform: translateY(-50%); border-radius: 2px; background: var(--text-dim); opacity: .35; pointer-events: none; transition: opacity 140ms ease, background-color 140ms ease; }
 .inspector-resizer:hover::after { opacity: .8; }
 .inspector-resizer:focus-visible::after { background: var(--accent); opacity: .8; }
 .is-resizing > .inspector-resizer::after { background: var(--accent); opacity: 1; }
@@ -1294,13 +1337,13 @@ a.btn {
 
 .terminal-dock-toggle {
   position: absolute;
-  top: -13px;
-  right: 8px;
+  top: -15px;
+  right: 24px;
   z-index: 5;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 26px;
+  width: 40px;
+  height: 30px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1311,12 +1354,23 @@ a.btn {
 .terminal-dock-toggle:hover { color: var(--text); border-color: var(--accent); }
 .terminal-dock-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .terminal-dock.is-collapsed { background: var(--bg-panel); }
-.terminal-dock.is-collapsed .terminal-settings-trigger,
-.terminal-dock.is-collapsed .terminal-dock-toggle { top: 3px; }
+.terminal-dock.is-collapsed .terminal-settings-trigger { top: 3px; }
+.terminal-dock.is-collapsed .terminal-dock-toggle {
+  top: 0;
+  bottom: 0;
+  left: 160px;
+  right: 0;
+  width: auto;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.terminal-dock.is-collapsed .terminal-dock-toggle:hover { background: #38bdf80c; }
+.terminal-dock.is-collapsed .terminal-dock-toggle > svg { position: absolute; right: 24px; }
 /* Leave the existing fixed Home link reachable in the collapsed control bar. */
 .terminal-dock.is-collapsed .terminal-settings-trigger { left: 64px; }
-.terminal-collapsed-label { align-self: center; line-height: 32px; color: var(--text-dim); font-size: 12px; }
-@media (max-width: 440px) { .terminal-collapsed-label { display: none; } }
+.terminal-collapsed-label { line-height: 32px; color: var(--text-dim); font-size: 12px; }
 
 .terminal-resizer {
   height: 8px;
@@ -1816,3 +1870,47 @@ body.packet-panel-resizing, body.packet-panel-resizing * { cursor: col-resize !i
 .switch-capacity-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .switch-capacity-controls > span { flex: 1 1 150px; }
 .switch-capacity .hint { font-size: 12px; overflow-wrap: anywhere; }
+
+/* Visual coverage only, below edges and devices; no hit testing or animation. */
+.wifi-coverage-layer { position: absolute; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: -1; }
+.wifi-coverage-layer circle { fill: #38cba009; stroke: #51d4c04d; stroke-width: 1; filter: drop-shadow(0 0 3px #32baa344); }
+
+.ap-range-control label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.ap-range-control input { width: 100%; margin: 8px 0; }
+.ap-range-control output { font-weight: bold; }
+.ap-range-limits { display: flex; justify-content: space-between; color: var(--text-dim); font-size: 12px; margin-top: -5px; }
+.react-flow__edge-path.wlan-inactive { stroke: #53657c; opacity: 0.45; }
+.react-flow__edge-path.wlan-inactive.cable-emphasized { opacity: 0.85; }
+
+:root { --notebook: var(--host); --smartphone: var(--host); }
+.device-node.has-device-artwork.kind-notebook { width: 128px; color: var(--host); }
+.device-node.has-device-artwork.kind-smartphone { width: 80px; color: var(--host); }
+.device-node.kind-notebook:hover, .device-node.kind-notebook.selected, .device-node.kind-smartphone:hover, .device-node.kind-smartphone.selected { border-color: var(--host); }
+.palette-item.kind-notebook .palette-item-icon, .palette-item.kind-smartphone .palette-item-icon { color: var(--host); }
+
+.host-os-terminal { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 10px; }
+.host-os-terminal .host-os-setting { flex: 1; min-width: 0; margin: 0; }
+.host-os-terminal .host-os-setting select { max-width: 100%; }
+.host-os-terminal .mini-btn { flex: none; margin: 0; min-height: 28px; }
+.dev-ip { position: relative; height: 13px; flex: none; width: 100%; }
+.node-network-label { position: absolute; top: 0; left: 50%; transform-origin: top center; display: inline-flex; align-items: center; gap: 3px; width: max-content; white-space: nowrap; font: 12px/14px var(--font-mono); color: #c3d7ed; text-shadow: 0 1px 3px #07101e, 0 0 4px #07101e; }
+.node-network-label .copy-ip { min-width: 0; display: inline-flex; white-space: nowrap; }
+.node-ip-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-network-indicator { flex: none; display: inline-flex; color: #deb95e; }
+.node-network-indicator svg { pointer-events: none; }
+
+.dhcp-pool-card { background: #14213a; border: 1px solid var(--border); border-radius: 7px; padding: 10px; margin: 9px 0; font-size: 12px; }
+.dhcp-pool-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.dhcp-pool-head strong { min-width: 0; overflow-wrap: anywhere; font: 12px/1.5 var(--font-mono); }
+.dhcp-pool-head strong span { color: var(--text-dim); font-weight: normal; }
+.dhcp-pool-toggle { display: flex; flex: none; align-items: center; gap: 5px; font-size: 12px; }
+.dhcp-pool-toggle button { padding: 0; }
+.dhcp-pool-summary { font: 12px/1.5 var(--font-mono); overflow-wrap: anywhere; margin: 6px 0; }
+.dhcp-pool-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.dhcp-pool-actions button { font-size: 12px; }
+.dhcp-pool-actions svg { vertical-align: middle; }
+.dhcp-pool-editor > summary { display: none; }
+.dhcp-pool-editor .svc-grid { grid-template-columns: minmax(0,1fr); gap: 7px; margin: 10px 0; }
+.dhcp-pool-editor label { display: grid; gap: 3px; font-size: 12px; }
+.dhcp-pool-editor input { max-width: 100%; min-width: 0; width: 100%; }
+.dhcp-lease-scroll { overflow-x: auto; max-width: 100%; }

@@ -3,6 +3,7 @@ import type { Network } from './network';
 import type { EthernetFrame } from './types';
 import { BROADCAST_MAC } from './ip';
 import type { ScheduledEvent } from './scheduler';
+import { WIFI_RANGE } from './wirelessRange';
 
 export const MAC_AGE_MS = 300_000;
 
@@ -114,10 +115,11 @@ export class SwitchDevice extends Device {
   }
 }
 
-// A wireless access point behaves as a bridge for its associated clients;
-// links to hosts render as wireless (dashed) in the UI.
+// Ethernet uplinks and virtual wireless client ports share this L2 bridge.
+// Wireless ports are created by Network.associate, independently of RJ45 capacity.
 export class ApDevice extends SwitchDevice {
   ssid = 'netsim-wifi';
+  rangeMeters: number = WIFI_RANGE.default;
 
   constructor(network: Network, id: string, name: string, ports = 8) {
     super(network, id, name, 'ap', ports);

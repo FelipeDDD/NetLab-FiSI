@@ -10,8 +10,8 @@ export function interfaceConnection(iface: NetInterface) {
   if (iface.device.network.links.get(link.id) !== link || peer.link !== link || iface.device.disposed || peer.device.disposed) {
     return { link: null, state: 'unknown', text: 'Verbindungszustand unbekannt' } as const;
   }
-  if (!iface.up || !peer.up) {
-    const reason = !iface.up && !peer.up ? 'beide Schnittstellen DOWN' : !iface.up ? 'lokale Schnittstelle DOWN' : 'Gegenstelle DOWN';
+  if (!link.operational) {
+    const reason = iface.up && peer.up ? link.wirelessError ?? 'Verbindung inaktiv' : !iface.up && !peer.up ? 'beide Schnittstellen DOWN' : !iface.up ? 'lokale Schnittstelle DOWN' : 'Gegenstelle DOWN';
     return { link, state: 'inactive', text: `Kabel zu ${peer.device.name} · ${reason}` } as const;
   }
   return { link, state: 'connected', text: `Verbunden mit ${peer.device.name} · Link aktiv` } as const;
@@ -27,7 +27,7 @@ export function InterfaceConnection({ iface }: { iface: NetInterface }) {
 }
 
 // Device identity shares the canvas category palette, not terminal preferences.
-export function InterfaceSummary({ iface, vlan, showMode = false, action, medium = 'wired' }: {
+export function InterfaceSummary({ iface, vlan, showMode = false, action, medium = iface.medium === 'wireless' ? 'wireless' : 'wired' }: {
   iface: NetInterface; vlan?: number; showMode?: boolean; action?: ReactNode; medium?: 'wired' | 'wireless' | 'unspecified';
 }) {
   const connection = interfaceConnection(iface);

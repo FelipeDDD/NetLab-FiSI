@@ -1,9 +1,12 @@
-import { useViewport } from '@xyflow/react';
+import { useViewport, ViewportPortal } from '@xyflow/react';
 import { useMemo } from 'react';
 import { cableGeometry } from '../cableGeometry';
+import { linkAttachment } from '../deviceArtwork';
 import { useStore } from '../store';
 import { NODE_H, NODE_W } from './DeviceNode';
 import { packetAnimationProgress } from '../packetAnimation';
+import { sim } from '../sim';
+import { inactiveWireless } from '../wirelessPresentation';
 
 const COLORS: Record<string, string> = {
   arp: '#f59e0b',
@@ -27,10 +30,9 @@ export function PacketLayer() {
   const cableStyle = useStore(s => s.cableStyle);
   const paths = useMemo(() => {
     const result = new Map<string, { source: string; geometry: ReturnType<typeof cableGeometry> }>();
-    if (cableStyle !== 'hybrid') return result;
-    const boxes = new Map(nodes.map(n => [n.id, { ...n.position, width: n.measured?.width ?? NODE_W, height: n.measured?.height ?? NODE_H }]));
     for (const edge of edges) {
-      const a = boxes.get(edge.source), b = boxes.get(edge.target);
+      const source = nodes.find(n => n.id === edge.source), target = nodes.find(n => n.id === edge.target);
+      const a = source && linkAttachment(source, edge.id, nodes, edges), b = target && linkAttachment(target, edge.id, nodes, edges);
       if (a && b) result.set(edge.id, { source: edge.source, geometry: cableGeometry(a, b, cableStyle) });
     }
     return result;
@@ -48,16 +50,21 @@ export function PacketLayer() {
 
   const visible = mode === 'live' ? packets.map((p) => ({ p, t: packetAnimationProgress(p, animationClock) }))
     : guided.hops[guided.index] ? [{ p: guided.hops[guided.index], t: guided.progress }] : [];
+  const frontDots: React.ReactNode[] = [];
   const dots = visible
     .map(({ p, t }) => {
-      if (t === null) return null;
+      if (t === null || inactiveWireless(sim.net.links.get(p.linkId))) return null;
       const a = centers.get(p.fromDeviceId);
       const b = centers.get(p.toDeviceId);
       if (!a || !b) return null;
       const path = paths.get(p.linkId);
       const point = path ? path.geometry.pointAt(path.source === p.fromDeviceId ? t : 1 - t)
         : { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-      return <circle key={p.id} data-link-id={p.linkId} cx={point.x} cy={point.y} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;
+      const dot = <circle key={p.id} data-link-id={p.linkId} cx={point.x} cy={point.y} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;
+      if (path?.geometry.isFrontAt(path.source === p.fromDeviceId ? t : 1 - t)) {
+        frontDots.push(dot); return null;
+      }
+      return dot;
     });
 
   // Expanding red ring where a firewall chain dropped or rejected a packet.
@@ -82,11 +89,16 @@ export function PacketLayer() {
     });
 
   return (
-    <svg className="packet-layer">
-      <g transform={`translate(${x} ${y}) scale(${zoom})`}>
-        {dots}
-        {rings}
-      </g>
-    </svg>
+    <>
+      <ViewportPortal>
+        <svg className="packet-layer packet-layer-underlay">{dots}</svg>
+      </ViewportPortal>
+      <svg className="packet-layer">
+        <g transform={`translate(${x} ${y}) scale(${zoom})`}>
+          {frontDots}
+          {rings}
+        </g>
+      </svg>
+    </>
   );
 }

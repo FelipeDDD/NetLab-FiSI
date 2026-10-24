@@ -24,6 +24,6 @@ export function hostGatewaySummary(device: IpDevice, iface: NetInterface): Netwo
 
 export function hostDnsSummary(device: IpDevice, iface: NetInterface): NetworkValueSource | null {
   if (device.manualNameserver !== null) return { value: device.manualNameserver, source: 'Globaler Override' };
-  const owner = device.interfaces.find((candidate) => candidate.up && candidate.ip && candidate.dns !== null);
+  const owner = device.interfaces.find((candidate) => candidate.up && candidate.ip && candidate.dns !== null && (device.kind !== 'notebook' && device.kind !== 'smartphone' || candidate.link?.operational));
   return owner ? { value: owner.dns!, source: `${ownSource(owner)}${owner === iface ? '' : ` · ${owner.name}`}` } : null;
 }

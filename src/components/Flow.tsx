@@ -1,9 +1,12 @@
+import { hasTerminalKind } from '../engine/device';
+import { WifiCoverage } from './WifiCoverage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   ConnectionMode,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
   useReactFlow,
 } from '@xyflow/react';
@@ -18,12 +21,14 @@ import { LinkDetails } from './LinkDetails';
 import { linkPresentation } from '../linkPresentation';
 import { sim } from '../sim';
 import { protectsTopologyKeys, topologyHistoryDirection } from '../topologyShortcuts';
+import { useCanvasBackground } from '../canvasBackground';
+import { BackgroundParticles } from './BackgroundParticles';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { floating: FloatingEdge };
 
 const MINIMAP_COLORS: Record<string, string> = {
-  host: '#38bdf8',
+  host: '#38bdf8', notebook: '#38bdf8', smartphone: '#38bdf8',
   switch: '#a78bfa',
   router: '#34d399',
   firewall: '#fb923c',
@@ -31,9 +36,14 @@ const MINIMAP_COLORS: Record<string, string> = {
   ap: '#f472b6',
 };
 
-const DROPPABLE_KINDS = new Set(['host', 'switch', 'router', 'firewall', 'server', 'ap']);
+const DROPPABLE_KINDS = new Set(['host', 'notebook', 'smartphone', 'switch', 'router', 'firewall', 'server', 'ap']);
 
 export function Flow() {
+  const [minimapOpen, setMinimapOpen] = useState(false);
+  const background = useCanvasBackground(s => s.preference);
+  const experimentalBackground = background.choice === 'original' ? null
+    : `${import.meta.env.BASE_URL}assets/backgrounds/background-${background.choice}.png`;
+  const shade = `rgba(10, 15, 28, ${1 - background.intensity / 100})`;
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
   const labeledEdges = useMemo(() => edges.map(e => ({ ...e, ariaLabel: linkPresentation(sim.net, e.id)?.title })), [edges, nodes]);
@@ -126,6 +136,8 @@ export function Flow() {
 
   return (
     <ReactFlow
+      className={experimentalBackground ? 'experimental-canvas-background' : undefined}
+      style={experimentalBackground ? { backgroundImage: `linear-gradient(${shade}, ${shade}), url("${experimentalBackground}")` } : undefined}
       nodes={nodes}
       edges={labeledEdges}
       nodeTypes={nodeTypes}
@@ -183,7 +195,7 @@ export function Flow() {
       onEdgeClick={(_, edge) => useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id })))}
       onPaneClick={() => { select(null); useStore.getState().clearLinkSelection(); }}
       onNodeDoubleClick={(_, n: DevNode) => {
-        if (n.data.kind !== 'switch') openTerminal(n.id);
+        if (hasTerminalKind(n.data.kind)) openTerminal(n.id);
       }}
       onDrop={onDrop}
       onDragOver={(e) => {
@@ -194,20 +206,37 @@ export function Flow() {
       connectionRadius={45}
       deleteKeyCode={['Backspace', 'Delete']}
       defaultEdgeOptions={{ type: 'floating' }}
+      elevateEdgesOnSelect={false}
+      proOptions={{ hideAttribution: true }}
       minZoom={0.25}
       maxZoom={2.5}
       fitView
       fitViewOptions={{ padding: 0.25, maxZoom: 1.25 }}
     >
-      <Background gap={26} size={1.6} />
+      {background.dots && <Background gap={26} size={1.6} bgColor={experimentalBackground ? 'transparent' : undefined}
+        style={experimentalBackground ? { opacity: 0.4, pointerEvents: 'none' } : undefined} />}
       <Controls showInteractive={false} />
-      <MiniMap
+      <BackgroundParticles />
+      {minimapOpen && <MiniMap
+        id="topology-minimap"
+        style={{ bottom: 40 }}
         pannable
         zoomable
         nodeColor={(n) => MINIMAP_COLORS[(n as DevNode).data.kind] ?? '#888'}
         maskColor="rgba(10, 15, 28, 0.72)"
         bgColor="#0d1526"
-      />
+      />}
+      <Panel position="bottom-right">
+        <button type="button" className="minimap-toggle" aria-expanded={minimapOpen}
+          aria-controls={minimapOpen ? 'topology-minimap' : undefined}
+          title={minimapOpen ? 'Hide minimap' : 'Show minimap'} onClick={() => setMinimapOpen(!minimapOpen)}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15" />
+          </svg>
+          Minimap
+        </button>
+      </Panel>
+      <WifiCoverage />
       <PacketLayer />
       <LinkDetails pointer={pointer} />
     </ReactFlow>

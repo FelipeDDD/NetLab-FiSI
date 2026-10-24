@@ -63,40 +63,40 @@ it('organizes the AP into three persistent pages with existing settings and no i
 
 it('keeps AP cable summaries separate from wireless links and counts inactive clients without claiming authentication', () => {
   const ap = createDevice(sim.net, 'ap') as ApDevice;
-  const sw = createDevice(sim.net, 'switch'), host = createDevice(sim.net, 'host'), server = createDevice(sim.net, 'server');
+  const sw = createDevice(sim.net, 'switch'), host = createDevice(sim.net, 'host'), server = createDevice(sim.net, 'host', {name:'wireless-client'});
   const summary = () => renderToStaticMarkup(createElement(ApOverview, { device: ap, onWlan: vi.fn(), onClients: vi.fn() }));
   expect(summary()).toContain('Keine Kabelverbindung'); expect(summary()).toContain('0 verbunden');
-  sim.net.connect(ap.id, sw.id); sim.net.connect(ap.id, host.id); sim.net.connect(ap.id, server.id);
-  server.interfaces[0].up = false;
+  sim.net.connect(ap.id, sw.id); sim.net.enableWireless(host.id); sim.net.enableWireless(server.id); sim.net.associate(host.id,ap.id); sim.net.associate(server.id,ap.id);
+  server.getInterface('wlan0')!.up = false;
   const html = summary();
-  expect(html).toContain('2 verbunden · 1 aktiv'); expect(html).toContain('2 von 8');
+  expect(html).toContain('2 verbunden · 1 aktiv'); expect(html).toContain('2 von 3');
   expect(html).toContain(sw.name); expect(html).not.toContain(`Mit <strong style="color:var(--host`);
   expect(html).not.toContain('WLAN aktiv');
 });
 
 it('lists only valid direct wireless endpoints with their actual interface data, not learned MACs or wired hosts', () => {
   const ap = createDevice(sim.net, 'ap') as ApDevice;
-  const sw = createDevice(sim.net, 'switch'), host = createDevice(sim.net, 'host'), server = createDevice(sim.net, 'server');
+  const sw = createDevice(sim.net, 'switch'), host = createDevice(sim.net, 'host'), server = createDevice(sim.net, 'host', {name:'wireless-client'});
   const behind = createDevice(sim.net, 'host', { name: 'wired-only' });
   sim.net.connect(ap.id, sw.id); sim.net.connect(sw.id, behind.id);
-  const hostLink = sim.net.connect(ap.id, host.id); sim.net.connect(ap.id, server.id);
-  host.interfaces[0].ip = parseCidr('192.0.2.42/24'); server.interfaces[0].up = false;
+  sim.net.enableWireless(host.id); sim.net.enableWireless(server.id); const hostLink = sim.net.associate(host.id,ap.id); sim.net.associate(server.id,ap.id);
+  host.getInterface('wlan0')!.ip = parseCidr('192.0.2.42/24'); server.getInterface('wlan0')!.up = false;
   ap.macTable.set(`1|${behind.interfaces[0].mac}`, ap.interfaces[0]);
   const clients = () => renderToStaticMarkup(createElement(ApClients, { device: ap }));
   let html = clients();
-  for (const value of [host.name, server.name, host.interfaces[0].mac, '192.0.2.42/24', 'WLAN aktiv', 'WLAN inaktiv', 'Admin: DOWN']) expect(html).toContain(value);
+  for (const value of [host.name, server.name, host.getInterface('wlan0')!.mac, '192.0.2.42/24', 'WLAN aktiv', 'WLAN inaktiv', 'Admin: DOWN']) expect(html).toContain(value);
   for (const value of [behind.name, behind.interfaces[0].mac, sw.name, 'Kabel zu', '>Link aktiv<']) expect(html).not.toContain(value);
-  sim.net.disconnect(hostLink.id); html = clients(); expect(html).not.toContain(host.interfaces[0].mac);
-  server.interfaces[0].link = null; html = clients(); expect(html).toContain('Keine WLAN-Clients verbunden');
+  sim.net.disconnect(hostLink.id); html = clients(); expect(html).not.toContain(host.getInterface('wlan0')!.mac);
+  server.getInterface('wlan0')!.link = null; html = clients(); expect(html).toContain('Keine WLAN-Clients verbunden');
 });
 
 it('classifies AP links from current neighbors and returns disconnected ports to an undetermined medium', () => {
   const ap = createDevice(sim.net, 'ap') as ApDevice; view.selected = ap.id;
   const sw = createDevice(sim.net, 'switch'), host = createDevice(sim.net, 'host');
-  const cable = sim.net.connect(ap.id, sw.id), wireless = sim.net.connect(ap.id, host.id);
+  sim.net.enableWireless(host.id); const cable = sim.net.connect(ap.id, sw.id), wireless = sim.net.associate(host.id,ap.id);
   let html = render();
   expect(html).toContain('>Link aktiv<'); expect(html).toContain('>WLAN aktiv<');
-  sw.interfaces[0].up = false; host.interfaces[0].up = false; html = render();
+  sw.interfaces[0].up = false; host.getInterface('wlan0')!.up = false; html = render();
   expect(html).toContain('>Link inaktiv<'); expect(html).toContain('>WLAN inaktiv<');
   expect(html).not.toContain('Kein Kabel');
   sim.net.disconnect(cable.id); sim.net.disconnect(wireless.id); html = render();
@@ -110,7 +110,7 @@ it('classifies AP links from current neighbors and returns disconnected ports to
 it('keeps draggable device controls without the permanent cabling instruction', () => {
   const html = renderToStaticMarkup(createElement(Palette));
   expect(html).not.toContain('Drag between the dots'); expect(html).not.toContain('palette-hint');
-  expect(html.match(/draggable="true"/g)).toHaveLength(6);
+  expect(html.match(/draggable="true"/g)).toHaveLength(8);
 });
 
 it('starts hosts on Allgemein and keeps all three pages mounted with matching accessible tab/panel relationships', () => {
@@ -136,7 +136,7 @@ it('preserves services, ports, routing, ARP, global DNS, simulated rules, conntr
   host.dnsServer = { enabled: true, records: new Map() };
   host.httpServer = { enabled: true, port: 8080, body: 'Saved draft' };
   const html = render();
-  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'DNS global override', 'Erweiterte Einstellungen', 'DHCP server', 'DNS server', 'Web server',
+  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'DNS global override', 'Erweiterte Einstellungen', 'DHCP · Schnittstellen', 'DNS server', 'Web server',
     'Additional TCP ports', 'Additional UDP ports', 'HTTP response body', 'Conntrack', 'Firewall log', 'Copy firewall config']) expect(html).toContain(label);
   expect(html).toContain('Saved draft'); expect(html).toContain('8080');
   expect(html).toMatch(/<details class="host-inspector-details"><summary>Erweiterte Einstellungen/);
@@ -195,6 +195,8 @@ it('starts routers on Allgemein with five accessible, mounted pages and one IPv4
   expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(4);
   for (const iface of router.interfaces) expect(html.match(new RegExp(`aria-label="IP-Adresse ${iface.name}"`, 'g'))).toHaveLength(1);
   expect(html.match(/aria-label="Device name"/g)).toHaveLength(1);
+  expect(html).not.toMatch(/<details class="router-interface-editor" open/);
+  expect(html).not.toContain('aria-label="DHCP Server"');
   expect(html).not.toContain('Open terminal'); expect(html).toContain('Delete device');
 });
 
@@ -219,7 +221,7 @@ it('preserves router services, diagnostics, filtering, logs and DNS override in 
   router.fw.tables.filter = true; router.fw.declareFilter('forward', 'forward', 'accept');
   const html = render();
   for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'RIP aktivieren', 'Firewall (nftables)', 'Copy config', 'Conntrack',
-    'Firewall logs', 'DHCP server', 'DNS server', 'Web server', 'DNS global override', 'Additional TCP ports', 'Additional UDP ports']) expect(html).toContain(label);
+    'Firewall logs', 'DHCP · Schnittstellen', 'DNS server', 'Web server', 'DNS global override', 'Additional TCP ports', 'Additional UDP ports']) expect(html).toContain(label);
   for (const value of ['Router response draft', '8080', '2222', '5353', '203.0.113.53', 'chain forward']) expect(html).toContain(value);
 });
 
@@ -247,8 +249,8 @@ it('shows server interface and service states from the engine without adding for
   const summary = () => renderToStaticMarkup(createElement(ServerOverview, { device: server, onEdit: vi.fn(), onServices: vi.fn() }));
   let html = summary();
   for (const label of ['10.0.0.20/24', 'UP', 'Static', `Verbunden mit ${peer.name}`, 'Bearbeiten eth0', 'Dienste bearbeiten']) expect(html).toContain(label);
-  expect(html.match(/role="switch"/g)).toHaveLength(3); expect(html.match(/aria-checked="false"/g)).toHaveLength(3);
-  expect(html.match(/>AUS</g)).toHaveLength(3); expect(html).not.toContain('IP-Adresse eth0'); expect(html).not.toContain('<table');
+  expect(html.match(/role="switch"/g)).toHaveLength(2); expect(html.match(/aria-checked="false"/g)).toHaveLength(2);
+  expect(html.match(/>AUS</g)).toHaveLength(2); expect(html).not.toContain('IP-Adresse eth0'); expect(html).not.toContain('<table');
   server.httpServer = { enabled: true, port: 8080, body: 'Response' }; server.interfaces[0].up = false;
   html = summary(); expect(html).toContain('DOWN'); expect(html.match(/>AN</g)).toHaveLength(1);
   expect(html.match(/aria-checked="true"/g)).toHaveLength(1);
@@ -263,8 +265,9 @@ it.each(['server', 'router', 'firewall'] as const)('dispatches each %s quick swi
     visit(node.props.children);
   });
   visit(OverviewServices({ device: server, onServices: vi.fn() }));
-  expect(switches).toHaveLength(3); switches.forEach(control => control.onClick?.());
-  for (const action of [view.toggleDhcpServer, view.toggleDnsServer, view.toggleHttpServer]) {
+  expect(switches).toHaveLength(2); switches.forEach(control => control.onClick?.());
+  expect(view.toggleDhcpServer).not.toHaveBeenCalled();
+  for (const action of [view.toggleDnsServer, view.toggleHttpServer]) {
     expect(action).toHaveBeenCalledTimes(1); expect(action).toHaveBeenCalledWith(server.id);
   }
 });
@@ -289,10 +292,10 @@ it('preserves every existing server editor and diagnostic with independent servi
   server.httpServer = { enabled: true, port: 8080, body: 'Server response draft' };
   server.services.tcp.add(2222); server.services.udp.add(5353); server.nameserver = parseIp('203.0.113.53');
   const html = render();
-  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'DNS global override', 'IP forwarding:', 'DHCP server', 'DNS server', 'Web server',
+  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'DNS global override', 'IP forwarding:', 'DHCP · Schnittstellen', 'DNS server', 'Web server',
     'Additional TCP ports', 'Additional UDP ports', 'Firewall (nftables)', 'Conntrack', 'Firewall log', 'Copy firewall config']) expect(html).toContain(label);
   for (const value of ['10.0.0.100', '10.0.0.150', 'web.lan', 'Server response draft', '8080', '2222', '5353', '203.0.113.53']) expect(html).toContain(value);
-  for (const label of ['DNS A records', 'HTTP port', 'HTTP response body', 'DHCP rangeStart']) expect(html.match(new RegExp(`aria-label="${label}"`, 'g'))).toHaveLength(1);
+  for (const label of ['DNS A records', 'HTTP port', 'HTTP response body', 'eth0 Pool-Anfang']) expect(html.match(new RegExp(`aria-label="${label}"`, 'g'))).toHaveLength(1);
   expect(html).toContain('aria-label="Firewall-Begriffe erklären"'); expect(html).toContain('aria-label="Conntrack erklären"');
 });
 
@@ -363,7 +366,7 @@ it('organizes the dedicated Firewall into five persistent pages without duplicat
   expect(html).not.toMatch(/<details class="router-interface-editor" open/);
   expect(html.match(/role="switch" aria-label="DNS Server" aria-checked="true"/g)).toHaveLength(2);
   for (const value of ['Firewall (nftables)', 'Copy config', 'Conntrack erklären', 'Firewall-Begriffe erklären', 'Firewall logs', 'Routing-Tabelle', 'ARP-Tabelle', 'RIP aktivieren',
-    'sysctl -w net.ipv4.ip_forward=1', 'DHCP server', 'DNS server', 'Web server', 'lab.local', 'Delete device']) expect(html).toContain(value);
+    'sysctl -w net.ipv4.ip_forward=1', 'DHCP · Schnittstellen', 'DNS server', 'Web server', 'lab.local', 'Delete device']) expect(html).toContain(value);
   expect(html).not.toContain('Open terminal');
 });
 

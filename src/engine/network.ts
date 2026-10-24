@@ -1,5 +1,7 @@
+import { isClientKind } from './device';
+import { wirelessError } from './wirelessRange';
 import { Scheduler } from './scheduler';
-import { Link } from './device';
+import { Link, NetInterface as Interface } from './device';
 import type { Device, DeviceKind, NetInterface } from './device';
 import type { EthernetFrame, FramePayload, IcmpMessage, Ipv4Packet } from './types';
 
@@ -34,7 +36,7 @@ export type PingProgress = { deviceId: string; icmpId: number } &
    { type: 'settled'; seq: number } | { type: 'finished' });
 
 const NAME_PREFIX: Record<DeviceKind, string> = {
-  host: 'pc',
+  host: 'pc', notebook: 'nb', smartphone: 'phone',
   switch: 'sw',
   router: 'r',
   firewall: 'fw',
@@ -43,6 +45,33 @@ const NAME_PREFIX: Record<DeviceKind, string> = {
 };
 
 export class Network {
+  enableWireless(hostId: string, mac?: string): NetInterface {
+    const host = this.devices.get(hostId);
+    if (!host || !isClientKind(host.kind) || host.disposed) throw new Error('Host nicht verfügbar.');
+    const existing = host.getInterface('wlan0');
+    if (existing) return existing;
+    const iface = new Interface(host, 'wlan0', mac ?? this.nextMac());
+    iface.medium = 'wireless'; host.interfaces.push(iface); return iface;
+  }
+
+  associate(hostId: string, apId: string, opts: { id?: string; ssid?: string; apPort?: string; apMac?: string; apUp?: boolean; apVlan?: number; restore?: boolean } = {}): Link {
+    const host = this.devices.get(hostId), ap = this.devices.get(apId);
+    const wlan = host?.getInterface('wlan0');
+    if (!host || !isClientKind(host.kind) || !ap || ap.kind !== 'ap' || host.disposed || ap.disposed || !wlan || wlan.medium !== 'wireless') throw new Error('WLAN nicht verfügbar.');
+    if (wlan.link || host.interfaces.some(i => i.medium === 'ethernet' && i.link)) throw new Error('Zuerst bestehende Verbindung trennen.');
+    if (opts.id && this.links.has(opts.id)) throw new Error('Link-ID bereits belegt.');
+    const error = wirelessError(ap, host, opts.ssid ?? (ap as Device & { ssid: string }).ssid);
+    if (!opts.restore && error) throw new Error(error);
+    const name = opts.apPort ?? `wifi-${hostId}`;
+    let port = ap.getInterface(name);
+    if (port && (port.medium !== 'wireless' || port.link)) throw new Error('WLAN-Port belegt.');
+    if (!port) { port = new Interface(ap, name, opts.apMac ?? this.nextMac()); port.medium = 'wireless'; ap.interfaces.push(port); }
+    if (opts.apUp !== undefined) port.up = opts.apUp;
+    if (opts.apVlan !== undefined) (ap as Device & { vlans: Map<string, number> }).vlans.set(port.name, opts.apVlan);
+    const link = new Link(this, opts.id ?? this.allocId('wifi-'), wlan, port);
+    link.medium = 'wireless'; link.ssid = opts.ssid ?? (ap as Device & { ssid: string }).ssid;
+    this.links.set(link.id, link); return link;
+  }
   scheduler = new Scheduler();
   devices = new Map<string, Device>();
   links = new Map<string, Link>();
@@ -126,6 +155,8 @@ export class Network {
     const ib = opts.bIface ? b.getInterface(opts.bIface) : b.freeInterface();
     if (!ia) throw new Error(`${a.name}: no free interface`);
     if (!ib) throw new Error(`${b.name}: no free interface`);
+    if (ia.medium !== 'ethernet' || ib.medium !== 'ethernet') throw new Error('Ethernet benötigt Ethernet-Interfaces.');
+    if ([a, b].some(d => isClientKind(d.kind) && d.interfaces.some(i => i.medium === 'wireless' && i.link))) throw new Error('WLAN zuerst trennen.');
     if (ia.link || ib.link) throw new Error('interface already connected');
     const link = new Link(this, opts.id ?? this.allocId('link-'), ia, ib);
     this.links.set(link.id, link);
@@ -137,6 +168,10 @@ export class Network {
     if (!l) return;
     l.detach();
     this.links.delete(linkId);
+    if (l.medium === 'wireless') for (const iface of [l.a, l.b]) if (iface.device.kind === 'ap') {
+      iface.device.interfaces = iface.device.interfaces.filter(i => i !== iface);
+      (iface.device as Device & { vlans: Map<string, number> }).vlans.delete(iface.name);
+    }
   }
 
   interfaceOwner(iface: NetInterface): Device {

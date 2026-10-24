@@ -138,11 +138,11 @@ export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
           useStore.getState().setTerminalDockCollapsed(!collapsed);
           if (!collapsed) onFocusEditor();
         }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        {collapsed && <span className="terminal-collapsed-label">{count} {count === 1 ? 'terminal' : 'terminals'}</span>}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d={collapsed ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} />
         </svg>
       </button>
-      {collapsed && <span className="terminal-collapsed-label">{count} {count === 1 ? 'terminal' : 'terminals'}</span>}
       <div className="terminal-body" id="terminal-body" hidden={collapsed}>
         <div className="terminal-panels" ref={columns}>
           {panels.map((panel, index) => <Fragment key={panel.id}>

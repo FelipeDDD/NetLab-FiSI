@@ -15,6 +15,7 @@ samples/
 /.playwright-mcp/
 /playwright-report/
 /test-results/
+/assets-tests/
 /coverage/
 *.tsbuildinfo
 

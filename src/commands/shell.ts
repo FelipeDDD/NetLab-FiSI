@@ -92,7 +92,7 @@ export function formatSockets(device: IpDevice): string {
   for (const p of device.services.udp) udp.set(p, '');
   for (const p of device.ncUdp.keys()) udp.set(p, 'nc');
   if (device.dnsServer?.enabled) udp.set(53, 'dnsmasq');
-  if (device.dhcpServer?.enabled) udp.set(67, 'dnsmasq');
+  if (device.dhcpServiceEnabled) udp.set(67, 'dnsmasq');
   const rows: string[] = [];
   for (const [p, proc] of [...tcp.entries()].sort((a, b) => a[0] - b[0])) {
     rows.push(`tcp    LISTEN  0.0.0.0:${String(p).padEnd(14)}${proc}\n`);

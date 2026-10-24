@@ -15,6 +15,9 @@ export type DhcpFieldEdit =
   | { field: 'rangeStart' | 'rangeEnd'; before: number; after: number }
   | { field: 'router' | 'dns'; before: number | null; after: number | null };
 export type InspectorOperation =
+  | {type:'set-dhcp-configuration';label:string;deviceId:string;before:import('./engine/dhcpPools').DhcpConfiguration;after:import('./engine/dhcpPools').DhcpConfiguration}
+  | { type: 'set-wifi-range'; label: string; deviceId: string; before: number; after: number }
+  | { type: 'enable-wireless'; label: string; deviceId: string; mac: string }
   | { type: 'resize-switch'; label: string; deviceId: string; before: number; after: number; port: { name: string; mac: string } }
   | { type: 'set-interface-ipv4'; label: string; deviceId: string; ifaceName: string; before: import('./engine/ipv4Config').InterfaceIpv4; after: import('./engine/ipv4Config').InterfaceIpv4 }
   | { type: 'set-host-os'; label: string; deviceId: string; before: import('./hostOs').HostOs; after: import('./hostOs').HostOs }

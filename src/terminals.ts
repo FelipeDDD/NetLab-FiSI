@@ -1,3 +1,4 @@
+import { hasTerminalKind } from './engine/device';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Shell, type Running } from './commands/shell';
@@ -22,6 +23,7 @@ export interface Session {
 const sessions = new Map<string, Session>();
 
 export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
+  if (!hasTerminalKind(device.kind)) throw new Error('No terminal for this device');
   const existing = sessions.get(device.id);
   if (existing) return existing;
 

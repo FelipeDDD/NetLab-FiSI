@@ -9,9 +9,10 @@ const view = vi.hoisted(() => ({
   packetVisualizationMode: 'guided' as PacketVisualizationMode, guidedPacket: null as unknown as GuidedPacketState,
   packets: [] as AnimatedTransfer[], dropFlashes: [], clock: 0, packetAnimationClock: 500,
   nodes: ['a', 'switch', 'b'].map((id, index) => ({ id, position: { x: index * 100, y: 0 }, measured: { width: 10, height: 10 } })),
+  edges: [], cableStyle: 'straight',
 }));
 vi.mock('../store', () => ({ useStore: (select: (state: typeof view) => unknown) => select(view) }));
-vi.mock('@xyflow/react', () => ({ useViewport: () => ({ x: 0, y: 0, zoom: 1 }) }));
+vi.mock('@xyflow/react', () => ({ useViewport: () => ({ x: 0, y: 0, zoom: 1 }), ViewportPortal: ({children}: {children: React.ReactNode}) => children }));
 const first: GuidedHop = { id: 1, start: 0, end: 80, linkId: '1', fromDeviceId: 'a', toDeviceId: 'switch', kind: 'icmp',
   fromDeviceName: 'PC1', toDeviceName: 'SW1', fromInterface: 'eth0', toInterface: 'eth1', ping: 1, direction: 'request' };
 const second = { ...first, id: 2, linkId: '2', parentTransferId: 1, fromDeviceId: 'switch', toDeviceId: 'b', fromDeviceName: 'SW1', toDeviceName: 'PC2' };

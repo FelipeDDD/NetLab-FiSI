@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { copyIpv4, ipv4WithoutPrefix } from '../clipboard';
 
-export function CopyIpButton({ address, context, children }: {
+export function CopyIpButton({ address, context, children, title }: {
   address: string;
   context: string;
   children?: ReactNode;
+  title?: string;
 }) {
   const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const sequence = useRef(0);
@@ -36,8 +37,8 @@ export function CopyIpButton({ address, context, children }: {
     <button
       type="button"
       className={`copy-ip ${iconOnly ? 'copy-ip-icon' : 'copy-ip-text'} ${status} nodrag nopan nowheel nokey`}
-      aria-label={label}
-      title={label}
+      aria-label={title ? `${label}. ${title}` : label}
+      title={title ?? label}
       disabled={ip === null}
       onPointerDown={(e) => {
         e.stopPropagation();

@@ -1,3 +1,6 @@
+import { dhcpConfiguration, applyDhcpConfiguration, legacyPoolInterface, validateDhcpPool, type PoolSettings } from './engine/dhcpPools';
+import { hasTerminalKind } from './engine/device';
+import { normalizeWifiRange } from './engine/wirelessRange';
 import { create } from 'zustand';
 import { applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import type { Connection, Edge, EdgeChange, Node, NodeChange } from '@xyflow/react';
@@ -66,10 +69,7 @@ function deviceNode(id: string, kind: DeviceKind, label: string, x: number, y: n
 
 function edgesFromEngine(): Edge[] {
   return [...sim.net.links.values()].map((l) => {
-    // AP-to-endpoint links are wireless associations: draw them dashed.
-    const kinds = [l.a.device.kind, l.b.device.kind];
-    const wireless =
-      kinds.includes('ap') && kinds.some((k) => k === 'host' || k === 'server');
+    const wireless = l.medium === 'wireless';
     return {
       id: l.id,
       source: l.a.device.id,
@@ -83,7 +83,9 @@ function edgesFromEngine(): Edge[] {
 function deviceIps(id: string): string[] {
   const d = sim.net.devices.get(id);
   if (!d) return [];
-  return d.interfaces.filter((i) => i.ip).map((i) => cidrToString(i.ip!.addr, i.ip!.prefix));
+  const configured = d.interfaces.filter((i) => i.ip);
+  if (d.kind === 'notebook' || d.kind === 'smartphone') configured.sort((a,b) => Number(!!b.link?.operational) - Number(!!a.link?.operational));
+  return configured.map((i) => cidrToString(i.ip!.addr, i.ip!.prefix));
 }
 
 interface NetsimState {
@@ -161,6 +163,8 @@ interface NetsimState {
   setServices(deviceId: string, proto: 'tcp' | 'udp', text: string): string | null;
   copyDeviceConfig(deviceId: string): void;
   setNameserver(deviceId: string, text: string): string | null;
+  bindLegacyDhcp(deviceId:string,ifaceName:string):string|null;
+  setDhcpPool(deviceId:string,ifaceName:string,settings:PoolSettings):string|null;
   toggleDhcpServer(deviceId: string): void;
   setDhcpField(deviceId: string, field: 'rangeStart' | 'rangeEnd' | 'router' | 'dns', text: string): string | null;
   toggleDnsServer(deviceId: string): void;
@@ -171,7 +175,10 @@ interface NetsimState {
   toggleRip(deviceId: string): void;
   setPortVlan(deviceId: string, port: string, text: string): string | null;
   resizeSwitch(deviceId: string, delta: 1 | -1): string | null;
+  setWifiRange(deviceId: string, meters: number, editGroup?: object): void;
   setSsid(deviceId: string, text: string): string | null;
+  enableWireless(deviceId: string): void;
+  associateWireless(deviceId: string, apId: string | null): string | null;
   openTerminal(id: string): void;
   closeTerminal(id: string): void;
   setActiveTerminal(id: string): void;
@@ -248,6 +255,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   let historyConfiguration = '';
   // Only this form's consecutive confirmations may merge. Any other history
   // edit/navigation or invalidation breaks the group without a second history.
+  let rangeEditGroup: { token: object; history: TopologyHistory } | null = null;
   let ipv4EditGroup: { token: object; history: TopologyHistory } | null = null;
   const checkHistoryConfiguration = () => {
     const current = configuration();
@@ -647,7 +655,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
     addDeviceAt(kind, pos) {
       prepareEdit();
-      const d = createDevice(sim.net, kind, kind === 'host' ? { os: chooseHostOs(get().hostCreationMode) } : {});
+      const d = createDevice(sim.net, kind, (kind === 'host' || kind === 'notebook') ? { os: chooseHostOs(get().hostCreationMode) } : {});
       const creation = captureCreation(sim.net, d, pos, get().nodes.length);
       set({ nodes: [...get().nodes, deviceNode(d.id, kind, d.name, pos.x, pos.y)] });
       commitEdit({ type: 'create-device', label: `Create ${d.name}`, device: creation });
@@ -838,9 +846,45 @@ export const useStore = create<NetsimState>()((set, get) => {
       return null;
     },
 
+    bindLegacyDhcp(deviceId,ifaceName) {
+      const d=sim.net.devices.get(deviceId);if(!(d instanceof IpDevice)||!d.dhcpServer)return 'Kein alter Pool vorhanden.';
+      if(d.dhcpPools.has(ifaceName))return 'Diese Schnittstelle besitzt bereits einen Pool.';
+      const error=validateDhcpPool(d,ifaceName,d.dhcpServer);if(error)return error;
+      prepareEdit();const before=dhcpConfiguration(d),after=structuredClone(before);after.legacy!.interfaceName=ifaceName;
+      applyDhcpConfiguration(d,after);get().refresh();commitEdit({type:'set-dhcp-configuration',label:'DHCP zuordnen',deviceId,before,after});saveSoon();return null;
+    },
+    setDhcpPool(deviceId,ifaceName,settings) {
+      const d=sim.net.devices.get(deviceId);
+      if(!(d instanceof IpDevice) || d.disposed || !d.getInterface(ifaceName)) return 'Schnittstelle nicht verfügbar.';
+      const error=validateDhcpPool(d,ifaceName,settings); if(error && settings.enabled) return error;
+      // Disabled drafts still require valid addresses/subnet when IPv4 exists.
+      const current=d.dhcpPool(ifaceName);
+      const onlyDisabling=current && !settings.enabled && settings.rangeStart===current.rangeStart && settings.rangeEnd===current.rangeEnd && settings.router===current.router && settings.dns===current.dns;
+      if(error && d.getInterface(ifaceName)!.ip && !onlyDisabling) return error;
+      prepareEdit(); const before=dhcpConfiguration(d),after=structuredClone(before);
+      if(legacyPoolInterface(d)===ifaceName && !d.dhcpPools.has(ifaceName)) after.legacy={...settings,interfaceName:ifaceName};
+      else after.pools[ifaceName]={...settings};
+      applyDhcpConfiguration(d,after); get().refresh();
+      commitEdit({type:'set-dhcp-configuration',label:'DHCP '+ifaceName,deviceId,before,after});saveSoon();return null;
+    },
     toggleDhcpServer(deviceId) {
       const d = sim.net.devices.get(deviceId);
       if (!(d instanceof IpDevice) || d.disposed) return;
+      if (d.dhcpPools.size) {
+        prepareEdit(); const before=dhcpConfiguration(d),after=structuredClone(before);
+        // Compatibility action: disabling must also work for configured pools
+        // that are currently invalid/unbound and therefore cannot serve DHCP.
+        const enabled=![...Object.values(before.pools), ...(before.legacy ? [before.legacy] : [])].some(c=>c.enabled);
+        for(const c of Object.values(after.pools)) c.enabled=enabled;
+        if(after.legacy) after.legacy.enabled=enabled;
+        if(enabled) {
+          const entries:[string,PoolSettings][]=Object.entries(after.pools);
+          const legacy=legacyPoolInterface(d);if(legacy && after.legacy && !after.pools[legacy])entries.push([legacy,after.legacy]);
+          for(const [name,c] of entries) {const error=validateDhcpPool(d,name,c,entries);if(error){get().setNotice(error);return;}}
+        }
+        applyDhcpConfiguration(d,after);get().refresh();
+        commitEdit({type:'set-dhcp-configuration',label:'DHCP-Dienst',deviceId,before,after});saveSoon();return;
+      }
       if (toggleExistingServer(d, 'dhcpServer')) return;
       prepareEdit();
       const iface = d.interfaces.find((i) => i.ip);
@@ -969,6 +1013,43 @@ export const useStore = create<NetsimState>()((set, get) => {
       return null;
     },
 
+    enableWireless(deviceId) {
+      if (sim.net.devices.get(deviceId)?.getInterface('wlan0')) return;
+      prepareEdit();
+      const iface = sim.net.enableWireless(deviceId);
+      get().refresh();
+      commitEdit({ type: 'enable-wireless', label: 'WLAN hinzuf?gen', deviceId, mac: iface.mac }); saveSoon();
+    },
+    associateWireless(deviceId, apId) {
+      const host = sim.net.devices.get(deviceId), wlan = host?.getInterface('wlan0');
+      if (!wlan) return 'WLAN zuerst hinzuf?gen.';
+      if (apId && (wlan.link || host!.interfaces.some(i => i.medium === 'ethernet' && i.link))) return 'Zuerst bestehende Verbindung trennen.';
+      prepareEdit();
+      try {
+        if (apId) {
+          const link = sim.net.associate(deviceId, apId);
+          commitEdit({ type: 'add-links', label: 'WLAN verbinden', links: [captureLink(link)] });
+        } else if (wlan.link) {
+          const link = captureLink(wlan.link); sim.net.disconnect(link.id);
+          commitEdit({ type: 'remove-links', label: 'WLAN trennen', links: [link] });
+        }
+        set({ edges: edgesFromEngine() }); get().refresh(); saveSoon(); return null;
+      } catch (e) { return String(e); }
+    },
+    setWifiRange(deviceId, meters, editGroup) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof ApDevice)) return;
+      const after = normalizeWifiRange(meters); if (d.rangeMeters === after) return;
+      prepareEdit(); const before = d.rangeMeters; d.rangeMeters = after; get().refresh();
+      const history = get().topologyHistory, last = history.past.at(-1);
+      const merge = editGroup && rangeEditGroup?.token === editGroup && rangeEditGroup.history === history && last?.type === 'set-wifi-range' && last.deviceId === deviceId;
+      if (merge) {
+        historyConfiguration = configuration();
+        set({ topologyHistory: { past: [...history.past.slice(0, -1), { ...last, after }], future: [] } });
+      } else commitEdit({ type: 'set-wifi-range', label: 'WLAN-Reichweite', deviceId, before, after });
+      rangeEditGroup = editGroup ? { token: editGroup, history: get().topologyHistory } : null;
+      saveSoon();
+    },
     setSsid(deviceId, text) {
       const d = sim.net.devices.get(deviceId);
       if (!(d instanceof ApDevice) || d.disposed) return 'not an access point';
@@ -985,6 +1066,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     openTerminal(id) {
+      if (!hasTerminalKind(sim.net.devices.get(id)?.kind ?? 'smartphone')) return;
       const d = sim.net.devices.get(id);
       if (!d || !(d instanceof IpDevice)) return;
       getSession(d, {
@@ -1463,4 +1545,13 @@ export const useStore = create<NetsimState>()((set, get) => {
       saveSoon();
     },
   };
+});
+
+// World positions are shared with the engine, including drag, keyboard and Undo/Redo.
+useStore.subscribe((state, previous) => {
+  if (state.nodes === previous.nodes) return;
+  for (const node of state.nodes) {
+    const device = sim.net.devices.get(node.id);
+    if (device) device.position = { ...node.position };
+  }
 });

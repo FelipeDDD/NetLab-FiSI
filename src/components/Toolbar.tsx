@@ -92,8 +92,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   return (
     <header className="toolbar">
       <div className="brand">
-        <span className="brand-name">NetSim</span>
-        <span className="brand-sub">real Linux syntax · in your browser</span>
+        <span className="brand-name">NetLab - FiSi</span>
       </div>
 
       <div className="toolbar-group">

@@ -104,9 +104,13 @@ export function runDhclient(
       state = 'done';
       cleanup();
       if (!windows) write(`DHCPACK of ${ipToString(app.yourIp)} from ${ipToString(app.serverIp ?? 0)}\n`);
+      const previousAddress = iface.ip?.addr;
       iface.configureIpv4({ mode: 'dhcp', ip: { addr: app.yourIp, prefix: app.prefix ?? 24 },
         gateway: app.router ?? null, dns: app.dns ?? null });
       if (app.serverIp !== undefined) iface.dhcpLease = { serverIp: app.serverIp, address: app.yourIp };
+      // Announce a newly acquired address on its actual L2 segment, using the
+      // ARP Request form from RFC 5227. Peers update through ARP, not a cache reset.
+      if (previousAddress !== app.yourIp) device.announceIpv4(iface);
       device.network.onClientConfiguration?.();
       write(windows ? `Ethernet adapter ${ifname}:\n   IPv4 Address: ${ipToString(app.yourIp)}\n   Subnet Mask: ${ipToString(maskOf(app.prefix ?? 24))}\n` : `bound to ${ipToString(app.yourIp)} -- renewal in 43200 seconds.\n`);
       done();

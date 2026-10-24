@@ -1,3 +1,6 @@
+import { legacyPoolInterface } from './dhcpPools';
+import { normalizeWifiRange } from './wirelessRange';
+import { NetInterface } from './device';
 import { Network } from './network';
 import { createDevice } from './factory';
 import { Host, IpDevice } from './ipdevice';
@@ -10,6 +13,7 @@ import { firewallFromJSON, firewallToJSON, type FirewallJSON } from './firewall'
 import type { LabDef, LabProgress } from '../labs/types';
 
 export interface SavedIface {
+  medium?: 'wireless';
   ipv4Mode?: Ipv4Mode;
   gateway?: string | null;
   dns?: string | null;
@@ -38,7 +42,9 @@ export interface SavedDevice {
   services?: { tcp: number[]; udp: number[] };
   firewall?: FirewallJSON;
   nameserver?: string | null;
+  dhcpPools?: Record<string, NonNullable<SavedDevice['dhcpServer']>>;
   dhcpServer?: {
+    interfaceName?: string;
     enabled: boolean;
     rangeStart: string;
     rangeEnd: string;
@@ -50,9 +56,15 @@ export interface SavedDevice {
   ripEnabled?: boolean;
   vlans?: Record<string, number>;
   ssid?: string;
+  rangeMeters?: number;
 }
 
 export interface SavedLink {
+  medium?: 'wireless';
+  ssid?: string;
+  apMac?: string;
+  apUp?: boolean;
+  apVlan?: number;
   id: string;
   latency?: number;
   a: [deviceId: string, ifaceName: string];
@@ -85,6 +97,7 @@ export function serializeNetwork(
       forwarding: ipd?.forwarding ?? false,
       ifaces: d.interfaces.map((i) => ({
         name: i.name,
+        ...(i.medium === 'wireless' ? { medium: 'wireless' as const } : {}),
         mac: i.mac,
         ip: i.ip ? cidrToString(i.ip.addr, i.ip.prefix) : null,
         up: i.up,
@@ -106,6 +119,7 @@ export function serializeNetwork(
       if (ipd.manualNameserver !== null) saved.nameserver = ipToString(ipd.manualNameserver);
       if (ipd.dhcpServer) {
         saved.dhcpServer = {
+          ...(legacyPoolInterface(ipd) ? {interfaceName:legacyPoolInterface(ipd)!} : {}),
           enabled: ipd.dhcpServer.enabled,
           rangeStart: ipToString(ipd.dhcpServer.rangeStart),
           rangeEnd: ipToString(ipd.dhcpServer.rangeEnd),
@@ -113,6 +127,7 @@ export function serializeNetwork(
           dns: ipd.dhcpServer.dns !== null ? ipToString(ipd.dhcpServer.dns) : null,
         };
       }
+      if (ipd.dhcpPools.size) saved.dhcpPools = Object.fromEntries([...ipd.dhcpPools].map(([name,c])=>[name,{enabled:c.enabled,rangeStart:ipToString(c.rangeStart),rangeEnd:ipToString(c.rangeEnd),router:c.router===null?null:ipToString(c.router),dns:c.dns===null?null:ipToString(c.dns)}]));
       if (ipd.dnsServer) {
         saved.dnsServer = {
           enabled: ipd.dnsServer.enabled,
@@ -132,12 +147,13 @@ export function serializeNetwork(
       const vlans: Record<string, number> = {};
       for (const [port, vlan] of d.vlans) if (vlan !== 1) vlans[port] = vlan;
       if (Object.keys(vlans).length) saved.vlans = vlans;
-      if (d instanceof ApDevice) saved.ssid = d.ssid;
+      if (d instanceof ApDevice) { saved.ssid = d.ssid; saved.rangeMeters = d.rangeMeters; }
     }
     return saved;
   });
   const links: SavedLink[] = [...net.links.values()].map((l) => ({
     id: l.id,
+    ...(l.medium === 'wireless' ? { medium: 'wireless' as const, ssid: l.ssid, apMac: l.b.mac, apUp: l.b.up, apVlan: (l.b.device as ApDevice).vlanOf(l.b.name) } : {}),
     latency: l.latency,
     a: [l.a.device.id, l.a.name],
     b: [l.b.device.id, l.b.name],
@@ -153,8 +169,13 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
   if (switchPorts !== undefined && (switchPorts < CUSTOM_SWITCH_PORTS.min || switchPorts > CUSTOM_SWITCH_PORTS.max ||
       sd.ifaces.some((iface, index) => iface.name !== `eth${index}`))) throw new Error('Invalid switch port layout');
   const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name, os: sd.os, switchPorts });
+  d.position = { x: sd.x, y: sd.y };
   for (const si of sd.ifaces) {
-    const iface = d.getInterface(si.name);
+    let iface = d.getInterface(si.name);
+    if (!iface && si.medium === 'wireless') {
+      if (d instanceof Host && si.name === 'wlan0') iface = net.enableWireless(d.id, si.mac);
+      else if (d instanceof ApDevice && si.name.startsWith('wifi-')) { iface = new NetInterface(d, si.name, si.mac ?? net.nextMac()); iface.medium = 'wireless'; d.interfaces.push(iface); }
+    }
     if (!iface) continue;
     if (typeof si.mac === 'string' && /^([\da-f]{2}:){5}[\da-f]{2}$/i.test(si.mac)) iface.mac = si.mac;
     iface.up = si.up;
@@ -180,6 +201,7 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
       const end = parseIp(sd.dhcpServer.rangeEnd);
       if (start !== null && end !== null) {
         d.dhcpServer = {
+          ...(sd.dhcpServer.interfaceName ? {interfaceName:sd.dhcpServer.interfaceName} : {}),
           enabled: sd.dhcpServer.enabled,
           rangeStart: start,
           rangeEnd: end,
@@ -188,6 +210,13 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
           leases: new Map(),
         };
       }
+    }
+    if (sd.dhcpPools) for (const [name,c] of Object.entries(sd.dhcpPools)) {
+      const start=parseIp(c.rangeStart),end=parseIp(c.rangeEnd);
+      if(start!==null && end!==null) d.dhcpPools.set(name,{enabled:c.enabled,rangeStart:start,rangeEnd:end,router:c.router===null?null:parseIp(c.router),dns:c.dns===null?null:parseIp(c.dns),leases:new Map()});
+    }
+    if (d.dhcpServer && !d.dhcpServer.interfaceName) {
+      const name=legacyPoolInterface(d); if(name) d.dhcpServer.interfaceName=name;
     }
     if (sd.dnsServer) {
       const records = new Map<string, number>();
@@ -213,7 +242,7 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
   }
   if (d instanceof SwitchDevice) {
     if (sd.vlans) for (const [port, vlan] of Object.entries(sd.vlans)) d.vlans.set(port, vlan);
-    if (d instanceof ApDevice && sd.ssid) d.ssid = sd.ssid;
+    if (d instanceof ApDevice) { if (typeof sd.ssid === 'string') d.ssid = sd.ssid; d.rangeMeters = normalizeWifiRange(sd.rangeMeters); }
   }
   return d;
 }
@@ -224,7 +253,9 @@ export function restoreNetwork(data: SaveFile): Network {
   for (const sd of data.devices) restoreDevice(net, sd);
   for (const sl of data.links) {
     try {
-      const link = net.connect(sl.a[0], sl.b[0], { id: sl.id, aIface: sl.a[1], bIface: sl.b[1] });
+      const link = sl.medium === 'wireless'
+        ? net.associate(sl.a[0], sl.b[0], { id: sl.id, ssid: sl.ssid, apPort: sl.b[1], apMac: sl.apMac, apUp: sl.apUp, apVlan: sl.apVlan, restore: true })
+        : net.connect(sl.a[0], sl.b[0], { id: sl.id, aIface: sl.a[1], bIface: sl.b[1] });
       if (typeof sl.latency === 'number' && Number.isFinite(sl.latency) && sl.latency >= 0) link.latency = sl.latency;
     } catch {
       // Skip malformed links rather than failing the whole import.

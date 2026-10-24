@@ -1,11 +1,14 @@
+import { useWifiCoverage } from '../wifiCoverage';
 import { useRef, useState } from 'react';
 import { INSPECTOR_LAYOUTS, type InspectorLayout, type InspectorLayoutPreference } from '../inspectorLayout';
 import { FloatingPopover } from './FloatingPopover';
 import { useStore } from '../store';
+import { BackgroundSettings } from './BackgroundSettings';
 
 export function InspectorLayoutSettings({ value, onChange }: {
   value: InspectorLayoutPreference; onChange: (value: InspectorLayoutPreference) => void;
 }) {
+  const coverage = useWifiCoverage();
   const [open, setOpen] = useState(false);
   const cableStyle = useStore(s => s.cableStyle);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -24,6 +27,11 @@ export function InspectorLayoutSettings({ value, onChange }: {
       <select id="cable-style-choice" value={cableStyle} onChange={event => useStore.getState().setCableStyle(event.target.value === 'hybrid' ? 'hybrid' : 'straight')}>
         <option value="straight">Straight — Standard</option><option value="hybrid">Hybrid — Experiment</option>
       </select>
+      <label htmlFor="wifi-coverage-mode">Wi-Fi Coverage</label>
+      <select id="wifi-coverage-mode" value={coverage.mode} onChange={e => coverage.setMode(e.target.value as 'auto' | 'always' | 'hidden')}>
+        <option value="auto">Auto</option><option value="always">Always</option><option value="hidden">Hidden</option>
+      </select>
+      <BackgroundSettings />
     </FloatingPopover>}
   </>;
 }

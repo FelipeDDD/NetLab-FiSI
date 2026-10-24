@@ -1,10 +1,10 @@
 export const MIN_TERMINAL_PANEL_WIDTH = 280;
 export const TERMINAL_PANEL_SEPARATOR_WIDTH = 6;
 export type TerminalLayoutMode = 'free' | 'by-type';
-export const TERMINAL_PANEL_TYPES = ['host', 'server', 'router', 'firewall'] as const;
+export const TERMINAL_PANEL_TYPES = ['host', 'notebook', 'server', 'router', 'firewall'] as const;
 export type TerminalPanelType = typeof TERMINAL_PANEL_TYPES[number];
 export const TERMINAL_GROUP_LABELS: Record<TerminalPanelType, string> = {
-  host: 'Hosts', server: 'Servers', router: 'Routers', firewall: 'Firewalls',
+  host: 'Hosts', notebook: 'Notebooks', server: 'Servers', router: 'Routers', firewall: 'Firewalls',
 };
 export function normalizeTerminalLayoutMode(value: unknown): TerminalLayoutMode {
   return value === 'by-type' ? 'by-type' : 'free';

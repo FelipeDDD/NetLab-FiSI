@@ -1,4 +1,5 @@
 import { Device, NetInterface } from './device';
+import { legacyPoolInterface, validateDhcpPool } from './dhcpPools';
 import type { ScheduledEvent } from './scheduler';
 import type {
   AppData,
@@ -81,6 +82,7 @@ export interface FwLogEntry {
 }
 
 export interface DhcpServerConfig {
+  interfaceName?: string; // Explicit binding for migrated legacy pools.
   enabled: boolean;
   rangeStart: U32;
   rangeEnd: U32;
@@ -174,10 +176,25 @@ export abstract class IpDevice extends Device {
   // Explicit device-wide DNS remains independent of interface-owned options.
   manualNameserver: U32 | null = null;
   get nameserver(): U32 | null {
-    return this.manualNameserver ?? this.interfaces.find((i) => i.up && i.ip && i.dns !== null)?.dns ?? null;
+    return this.manualNameserver ?? this.interfaces.find((i) => i.up && i.ip && i.dns !== null && (this.kind !== 'notebook' && this.kind !== 'smartphone' || i.link?.operational))?.dns ?? null;
   }
   set nameserver(value: U32 | null) { this.manualNameserver = value; }
   dhcpServer: DhcpServerConfig | null = null;
+  dhcpPools = new Map<string, DhcpServerConfig>();
+  configuredDhcpPools(): [string,DhcpServerConfig][] {
+    const entries=[...this.dhcpPools.entries()];
+    const legacy=legacyPoolInterface(this);
+    if(legacy && this.dhcpServer && !this.dhcpPools.has(legacy)) entries.push([legacy,this.dhcpServer]);
+    return entries;
+  }
+  dhcpPool(name:string):DhcpServerConfig|null {
+    return this.dhcpPools.get(name) ?? (legacyPoolInterface(this)===name ? this.dhcpServer : null);
+  }
+  // Derived availability, not a master switch. Unbound/shadowed legacy pools
+  // and invalid configurations cannot serve requests and must not advertise UDP 67.
+  get dhcpServiceEnabled():boolean {
+    return this.configuredDhcpPools().some(([name, cfg]) => cfg.enabled && !validateDhcpPool(this, name, cfg));
+  }
   dnsServer: DnsServerConfig | null = null;
   httpServer: HttpServerConfig | null = null;
   // DHCP client sessions (dhclient) register here to hear offers/acks.
@@ -345,7 +362,7 @@ export abstract class IpDevice extends Device {
     for (const r of this.routes()) {
       if (networkOf(dst, r.prefix) !== r.dest) continue;
       const iface = this.getInterface(r.ifaceName);
-      if (!iface || !iface.up || !iface.link) continue;
+      if (!iface || !iface.up || !iface.link || ((this.kind === 'notebook' || this.kind === 'smartphone') && !iface.link.operational)) continue;
       if (!best || r.prefix > best.prefix) best = r;
     }
     return best;
@@ -721,10 +738,11 @@ export abstract class IpDevice extends Device {
   }
 
   private handleDhcpServer(app: DhcpApp, iif: string): void {
-    const cfg = this.dhcpServer;
-    if (!cfg?.enabled) return;
+    const cfg = this.dhcpPool(iif);
+    if (!cfg?.enabled || validateDhcpPool(this,iif,cfg)) return;
     const iface = this.getInterface(iif);
     if (!iface?.ip) return;
+    if (app.op === 'request' && app.serverIp !== undefined && app.serverIp !== iface.ip.addr) return;
     if (app.op === 'release') {
       if (app.serverIp === iface.ip.addr && app.yourIp !== undefined && cfg.leases.get(app.clientMac) === app.yourIp) {
         cfg.leases.delete(app.clientMac);
@@ -773,7 +791,7 @@ export abstract class IpDevice extends Device {
           offer.timer = this.schedule(DHCP_PROBE_MS, () => {
             offer.timer = null;
             if (offers.get(app.clientMac) !== offer) return;
-            if (this.dhcpServer !== cfg || !cfg.enabled || !iface.up || !iface.ip || iface.link !== link || offer.until <= this.network.now) {
+            if (this.dhcpPool(iif) !== cfg || !cfg.enabled || validateDhcpPool(this,iif,cfg) || !iface.up || !iface.ip || iface.link !== link || offer.until <= this.network.now) {
               offers.delete(app.clientMac); return;
             }
             // Only replies learned since this probe on this interface count.
@@ -874,6 +892,20 @@ export abstract class IpDevice extends Device {
 
   // ---------- ARP ----------
 
+  announceIpv4(iface: NetInterface): void {
+    if (iface.device === this && iface.ip) this.sendArpRequest(iface, iface.ip.addr);
+  }
+
+  override invalidateInterface(iface: NetInterface): void {
+    if (this.kind !== 'notebook' && this.kind !== 'smartphone') return;
+    iface.cancelDhcp?.();
+    for (const [ip, entry] of this.arpTable) if (entry.ifaceName === iface.name) this.arpTable.delete(ip);
+    for (const [ip, entry] of this.pendingArp) if (entry.iface === iface) {
+      if (entry.timer) this.network.scheduler.cancel(entry.timer);
+      this.pendingArp.delete(ip);
+    }
+  }
+
   private routePacket(pkt: Ipv4Packet, route: Route): void {
     const iface = this.getInterface(route.ifaceName)!;
     const nextHop = route.via ?? pkt.dst;
@@ -943,6 +975,13 @@ export abstract class IpDevice extends Device {
 
   private handleArp(iface: NetInterface, arp: ArpPayload): void {
     if (arp.op === 'request') {
+      // RFC 826 merges an existing sender mapping before checking the target.
+      // This includes gratuitous ARP after a DHCP address changes owners.
+      // Do not import a neighbor learned on a different local interface.
+      const known = this.arpTable.get(arp.senderIp);
+      if (arp.senderIp !== 0 && known?.ifaceName === iface.name) {
+        this.arpTable.set(arp.senderIp, { mac: arp.senderMac, ifaceName: iface.name, at: this.network.now });
+      }
       if (iface.ip && arp.targetIp === iface.ip.addr) {
         this.arpTable.set(arp.senderIp, { mac: arp.senderMac, ifaceName: iface.name, at: this.network.now });
         iface.send({
@@ -1140,11 +1179,26 @@ export abstract class IpDevice extends Device {
 export class Host extends IpDevice {
   // Command-line presentation only; protocol behavior is shared by all hosts.
   os: import('../hostOs').HostOs = 'linux';
-  readonly kind = 'host' as const;
+  readonly kind: 'host' | 'notebook';
 
+  constructor(network: Network, id: string, name: string, kind: 'host' | 'notebook' = 'host') {
+    super(network, id, name);
+    this.kind = kind;
+    this.addInterfaces('eth', 1);
+  }
+}
+
+export class NotebookDevice extends Host {
+  constructor(network: Network, id: string, name: string) {
+    super(network, id, name, 'notebook');
+    this.addInterfaces('wlan', 1); this.interfaces[1].medium = 'wireless';
+  }
+}
+export class SmartphoneDevice extends IpDevice {
+  readonly kind = 'smartphone' as const;
   constructor(network: Network, id: string, name: string) {
     super(network, id, name);
-    this.addInterfaces('eth', 1);
+    this.addInterfaces('wlan', 1); this.interfaces[0].medium = 'wireless';
   }
 }
 

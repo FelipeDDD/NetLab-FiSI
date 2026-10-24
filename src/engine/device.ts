@@ -3,10 +3,14 @@ import type { EthernetFrame } from './types';
 import type { U32 } from './ip';
 import type { ScheduledEvent } from './scheduler';
 import type { InterfaceIpv4, Ipv4Mode } from './ipv4Config';
+import { wirelessError } from './wirelessRange';
 
-export type DeviceKind = 'host' | 'switch' | 'router' | 'firewall' | 'server' | 'ap';
+export type DeviceKind = 'host' | 'notebook' | 'smartphone' | 'switch' | 'router' | 'firewall' | 'server' | 'ap';
+export const isClientKind = (kind: string): boolean => kind === 'host' || kind === 'notebook' || kind === 'smartphone';
+export const hasTerminalKind = (kind: string): boolean => kind !== 'smartphone' && kind !== 'ap' && kind !== 'switch';
 
 export class NetInterface {
+  medium: 'ethernet' | 'wireless' = 'ethernet';
   link: Link | null = null;
   private adminUp = true;
   get up(): boolean { return this.adminUp; }
@@ -46,6 +50,7 @@ export class NetInterface {
 }
 
 export abstract class Device {
+  position = { x: 0, y: 0 }; // World/canvas coordinates, never viewport pixels.
   invalidateInterface(_iface: NetInterface): void {}
   abstract readonly kind: DeviceKind;
   interfaces: NetInterface[] = [];
@@ -79,13 +84,25 @@ export abstract class Device {
   }
 
   freeInterface(): NetInterface | null {
-    return this.interfaces.find((i) => !i.link) ?? null;
+    return this.interfaces.find((i) => i.medium === 'ethernet' && !i.link) ?? null;
   }
 
   abstract receiveFrame(iface: NetInterface, frame: EthernetFrame): void;
 }
 
 export class Link {
+  medium: 'ethernet' | 'wireless' = 'ethernet';
+  ssid?: string;
+  get wirelessError(): string | null {
+    if (this.medium !== 'wireless') return null;
+    const ap = this.a.device.kind === 'ap' ? this.a.device : this.b.device;
+    const client = ap === this.a.device ? this.b.device : this.a.device;
+    return wirelessError(ap, client, this.ssid);
+  }
+  get operational(): boolean {
+    return this.a.up && this.b.up && !this.a.device.disposed && !this.b.device.disposed &&
+      this.wirelessError === null;
+  }
   constructor(
     public network: Network,
     public id: string,
@@ -102,11 +119,12 @@ export class Link {
   }
 
   transmit(from: NetInterface, frame: EthernetFrame): void {
+    if (!this.operational) return;
     if (this.network.links.get(this.id) !== this || this.a.link !== this || this.b.link !== this) return;
     const to = this.other(from);
     const transferId = this.network.emitWire(this, from.device, to.device, frame);
     this.network.scheduler.schedule(this.latency, () => {
-      if (this.network.links.get(this.id) === this && to.link === this && to.up && !to.device.disposed) {
+      if (this.network.links.get(this.id) === this && to.link === this && this.operational) {
         this.network.recordVisualArrival(frame.payload, to.device.id, transferId);
         to.device.receiveFrame(to, frame);
       }
