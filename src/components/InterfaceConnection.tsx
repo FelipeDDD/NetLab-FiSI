@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { ipToString } from '../engine/ip';
 import type { NetInterface } from '../engine/device';
 import { useStore } from '../store';
+import { interfaceCableColor } from '../cableAppearance';
 
 export function interfaceConnection(iface: NetInterface) {
   const link = iface.link;
@@ -33,7 +34,11 @@ export function InterfaceSummary({ iface, vlan, showMode = false, action, medium
   const connection = interfaceConnection(iface);
   const peer = connection.link?.other(iface).device;
   const linkId = connection.link?.id;
-  const highlighted = useStore(s => !!linkId && (s.hoveredLinkId === linkId || !!s.edges?.some(e => e.id === linkId && e.selected)));
+  const selected = useStore(s => !!linkId && !!s.edges?.some(e => e.id === linkId && e.selected));
+  const colors = useStore(s => s.cableColors);
+  const cableColor = interfaceCableColor(iface, colors);
+  const hovered = useStore(s => !!linkId && s.hoveredLinkId === linkId);
+  const highlighted = hovered || selected;
   const label = { connected: 'Link aktiv', inactive: 'Link inaktiv', disconnected: 'Kein Kabel', unknown: 'Unbekannt' }[connection.state];
   // The AP models wireless endpoints as links too. Preserve detection while
   // avoiding cable terminology in their visible and accessible descriptions.
@@ -43,9 +48,11 @@ export function InterfaceSummary({ iface, vlan, showMode = false, action, medium
   const stateLabel = unoccupied ? 'Nicht belegt'
     : medium === 'wireless' ? { connected: 'WLAN aktiv', inactive: 'WLAN inaktiv', disconnected: 'Kein WLAN-Link', unknown: 'Unbekannt' }[connection.state] : label;
   return <span className={`interface-summary is-${connection.state}${highlighted ? ' cable-interface-highlighted' : ''}`} data-interface-name={iface.name}
+    style={{ '--interface-identity': cableColor ?? `var(--${peer?.kind ?? iface.device.kind}, var(--ui-accent))`,
+      '--interface-cable-color': cableColor ?? 'var(--ui-link-empty)' } as CSSProperties} data-cable-color={cableColor}
     onMouseEnter={() => { if (linkId) useStore.getState().hoverLink(linkId); }}
     onMouseLeave={() => { if (linkId && useStore.getState().hoveredLinkId === linkId) useStore.getState().hoverLink(null); }}
-    data-device-id={iface.device.id} data-link-state={connection.state} data-link-id={connection.link?.id}>
+    data-device-id={iface.device.id} data-link-state={connection.state} data-link-id={connection.link?.id} data-link-selected={selected || undefined}>
     <strong className="interface-summary-name">{iface.name}</strong>
     <span className="interface-summary-state" title={text}
       aria-label={`Verbindungszustand ${iface.name}: ${text}`}>{stateLabel}</span>

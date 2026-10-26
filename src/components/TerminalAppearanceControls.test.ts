@@ -7,6 +7,7 @@ import { TERMINAL_EFFECT_GROUPS } from '../terminalEffects';
 import { terminalStyleFamilies, terminalStyleForFamily } from '../terminalStyleOptions';
 
 const view = vi.hoisted(() => ({ nodes: [], uiPulse: 0, activeTerminal: null, terminalColors: {},
+  terminalPanels: [] as { lockedWidth?: number }[],
   terminalAppearance: null as unknown as TerminalAppearance, terminalLayoutMode: 'free', setTerminalColor: vi.fn(), setTerminalAppearance: vi.fn(),
 }));
 vi.mock('../store', () => ({ useStore: Object.assign((selector: (state: typeof view) => unknown) => selector(view), { getState: () => view }) }));
@@ -64,4 +65,21 @@ it('reveals all styles on request and keeps a selected experiment when hiding th
   const signal = terminalStyleFamilies('diagonal', true).find((item) => item.id === 'Signal / Wireframe')!;
   expect(terminalStyleForFamily(signal, 'diagonal')).toBe('fx-signal-matrix');
   expect(terminalStyleForFamily(signal, 'fx-signal-pulse')).toBe('fx-signal-pulse');
+});
+
+it('offers equal distribution in terminal settings and disables it when fewer than two panels are unlocked', () => {
+  view.terminalAppearance = DEFAULT_TERMINAL_APPEARANCE;
+  view.terminalPanels = [{ lockedWidth: 400 }, {}];
+  let html = renderToStaticMarkup(createElement(TerminalSettingsControls, { includeLayout: true }));
+  expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Gleichmäßig verteilen<\/button>/);
+  view.terminalPanels = [{ lockedWidth: 400 }, {}, {}];
+  html = renderToStaticMarkup(createElement(TerminalSettingsControls, { includeLayout: true }));
+  expect(html).toContain('Gleichmäßig verteilen');
+  expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Gleichmäßig verteilen<\/button>/);
+  expect(html).toContain('Maximal 5 Panels.');
+  view.terminalLayoutMode = 'by-type';
+  html = renderToStaticMarkup(createElement(TerminalSettingsControls, { includeLayout: true }));
+  expect(html).toContain('Tabs ihrer Gerätegruppe');
+  view.terminalLayoutMode = 'free';
+  view.terminalPanels = [];
 });

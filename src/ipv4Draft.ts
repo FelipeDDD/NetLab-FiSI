@@ -46,6 +46,14 @@ export function editIpv4Draft(draft: Ipv4Draft, field: keyof Ipv4Fields, text: s
   return { ...draft, fields, dirty: true };
 }
 
+// Consume the IP/prefix shortcut after typing settles, or on blur/Enter.
+// Keep /0–/3 while focused: a slow typist may still be entering /24 or /32.
+export function normalizeIpv4Shortcut(fields: Ipv4Fields, editingFinished = true): Ipv4Fields {
+  const cidr = cidrInAddress(fields.ip);
+  if (!cidr || (!editingFinished && /\/\d$/.test(fields.ip.trim()))) return fields;
+  return { ...fields, ip: cidr.address, mask: ipToString(maskOf(cidr.prefix)) };
+}
+
 export function parseIpv4Draft(fields: Ipv4Fields): InterfaceIpv4 | null {
   if (Object.values(fields).every((text) => !text.trim())) return emptyIpv4('unconfigured');
   const cidr = cidrInAddress(fields.ip);

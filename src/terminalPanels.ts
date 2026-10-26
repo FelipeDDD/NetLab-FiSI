@@ -1,4 +1,5 @@
-export const MIN_TERMINAL_PANEL_WIDTH = 280;
+export const MIN_TERMINAL_PANEL_WIDTH = 220;
+export const MAX_TERMINAL_PANELS = 5;
 export const TERMINAL_PANEL_SEPARATOR_WIDTH = 6;
 export type TerminalLayoutMode = 'free' | 'by-type';
 export const TERMINAL_PANEL_TYPES = ['host', 'notebook', 'server', 'router', 'firewall'] as const;
@@ -21,6 +22,13 @@ export interface TerminalPanel {
   lockedWidth?: number;
 }
 
+// Locks own fixed pixels; only free columns share the remaining width equally.
+// Call on structural changes or an explicit action, never while typing/resizing.
+export function equalizeTerminalPanels(panels: TerminalPanel[]): TerminalPanel[] {
+  const next = panels.map(panel => panel.lockedWidth === undefined && panel.weight !== 1 ? { ...panel, weight: 1 } : panel);
+  return next.some((panel, i) => panel !== panels[i]) ? next : panels;
+}
+
 export function groupPanelSessions(sessions: readonly { id: string; kind: string }[], focused: string | null, previous: readonly TerminalPanel[] = []): TerminalPanel[] {
   const groups = TERMINAL_PANEL_TYPES.flatMap((kind) => {
     const available = sessions.filter((session) => session.kind === kind).map((session) => session.id);
@@ -34,7 +42,7 @@ export function groupPanelSessions(sessions: readonly { id: string; kind: string
       ...(old?.lockedWidth !== undefined ? { lockedWidth: old.lockedWidth } : {}) }];
   });
   // As with free panels, adding a column starts an equal distribution.
-  return groups.length > previous.length ? groups.map((panel) => ({ ...panel, weight: 1 })) : groups;
+  return groups.length !== previous.length ? equalizeTerminalPanels(groups) : groups;
 }
 
 export interface TerminalTabDestination { panelId: string | null; beforeId?: string | null }
@@ -42,7 +50,7 @@ export interface TerminalTabDestination { panelId: string | null; beforeId?: str
 export function canMovePanelSession(panels: readonly TerminalPanel[], id: string, destination: TerminalTabDestination, mode: TerminalLayoutMode): boolean {
   const source = panels.find((panel) => panel.tabs.includes(id));
   if (!source) return false;
-  if (destination.panelId === null) return mode === 'free' && source.tabs.length > 1;
+  if (destination.panelId === null) return mode === 'free' && source.tabs.length > 1 && panels.length < MAX_TERMINAL_PANELS;
   const target = panels.find((panel) => panel.id === destination.panelId);
   return !!target && (mode === 'free' || target.id === source.id)
     && (!destination.beforeId || target.tabs.includes(destination.beforeId));
@@ -81,13 +89,17 @@ export function activatePanelSession(panels: readonly TerminalPanel[], id: strin
 
 export function openPanelSession(panels: readonly TerminalPanel[], id: string, _focused: string | null, reserved: readonly string[] = []): TerminalPanel[] {
   if (panels.some((panel) => panel.tabs.includes(id))) return activatePanelSession(panels, id);
+  // Additional sessions reuse the last column's existing tab strip. No session
+  // is closed, and changing the active tab must not redistribute manual widths.
+  if (panels.length >= MAX_TERMINAL_PANELS) return panels.map((panel, index) => index === panels.length - 1
+    ? { ...panel, tabs: [...panel.tabs, id], active: id } : panel);
   let suffix = 1;
   while (panels.some((panel) => panel.id === `terminal-pane-${suffix}`) || reserved.includes(`terminal-pane-${suffix}`)) suffix++;
   // A newly split layout starts with equal columns; subsequent resizes only
   // change weights. Existing tabs/sessions stay in their original panels.
-  return [...panels.map((panel) => ({ ...panel, weight: 1 })), {
+  return equalizeTerminalPanels([...panels, {
     id: `terminal-pane-${suffix}`, tabs: [id], active: id, weight: 1,
-  }];
+  }]);
 }
 
 // Panel identity owns its width/lock; reordering changes no panel objects.
@@ -111,7 +123,8 @@ export function prunePanelSessions(panels: readonly TerminalPanel[], valid: read
   });
   const survivingPanel = terminalPanels.find((panel) => panel.id === panels[focusedIndex]?.id);
   const fallback = survivingPanel ?? terminalPanels[Math.min(Math.max(0, focusedIndex), terminalPanels.length - 1)];
-  return { terminalPanels, activeTerminal: focused && allowed.has(focused) ? focused : fallback?.active ?? null };
+  return { terminalPanels: terminalPanels.length !== panels.length ? equalizeTerminalPanels(terminalPanels) : terminalPanels,
+    activeTerminal: focused && allowed.has(focused) ? focused : fallback?.active ?? null };
 }
 
 // A manual boundary always adjusts its immediate neighbors. Locks protect

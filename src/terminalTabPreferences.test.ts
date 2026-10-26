@@ -4,11 +4,11 @@ import { movePanelSession, moveTerminalPanel, type TerminalPanel } from './termi
 
 afterEach(() => vi.unstubAllGlobals());
 
-it('round-trips more than four reordered panels and reserves pending slots for explicit reopening', () => {
+it('round-trips reordered panels with overflow tabs and reserves pending slots for explicit reopening', () => {
   storage();
   const all = Array.from({ length: 10 }, (_, i) => ({ id: 'd' + i, kind: i % 2 ? 'server' : 'host' }));
   let panels = all.slice(0, 8).reduce<TerminalPanel[]>((p, d) => insertSavedTab(p, d.id, null, 'free', all), []);
-  panels = moveTerminalPanel(panels, panels[7].id, panels[1].id);
+  panels = moveTerminalPanel(panels, panels[4].id, panels[1].id);
   panels = movePanelSession(panels, 'd2', { panelId: panels[0].id }, 'free');
   const free = mergeTabLayouts(undefined, panels, all.slice(0, 8).map((d) => d.id));
   writeTabLayouts(all, { free, 'by-type': [{ id: 'terminal-group-server', tabs: ['d3', 'd1'] }, { id: 'terminal-group-host', tabs: ['d2', 'd0'] }] });
@@ -30,6 +30,27 @@ function storage() {
   vi.stubGlobal('localStorage', { getItem: () => saved || null, setItem: (key: string, data: string) => { expect(key).toBe(TAB_LAYOUT_KEY); saved = data; } });
   return { get: () => JSON.parse(saved), set: (data: unknown) => { saved = JSON.stringify(data); } };
 }
+
+it('folds legacy layouts with eight columns into five without losing tabs on reopening', () => {
+  storage();
+  const all = Array.from({ length: 8 }, (_, i) => ({ id: 'd' + i, kind: 'host' }));
+  writeTabLayouts(all, { free: all.map((d, i) => ({ id: `terminal-pane-${i + 1}`, tabs: [d.id] })) });
+  const saved = readTabLayouts(all).free!;
+  expect(saved).toHaveLength(5);
+  expect(saved[4].tabs).toEqual(['d4', 'd5', 'd6', 'd7']);
+  const opened = [...all].reverse().reduce<TerminalPanel[]>((panels, d) => insertSavedTab(panels, d.id, null, 'free', all, saved), []);
+  expect(opened.map(({ id, tabs }) => ({ id, tabs }))).toEqual(saved);
+  const extra = insertSavedTab(opened, 'new', null, 'free', [...all, { id: 'new', kind: 'host' }], saved);
+  expect(extra).toHaveLength(5);
+  expect(extra.flatMap(panel => panel.tabs).sort()).toEqual([...all.map(d => d.id), 'new'].sort());
+});
+
+it('restores notebook tabs alongside the other four supported device groups', () => {
+  storage();
+  const all = [{ id: 'note', kind: 'notebook' }, ...devices];
+  writeTabLayouts(all, { 'by-type': [{ id: 'terminal-group-notebook', tabs: ['note'] }] });
+  expect(readTabLayouts(all)['by-type']).toEqual([{ id: 'terminal-group-notebook', tabs: ['note'] }]);
+});
 
 it('restores manual membership and visual order as individual sessions reopen, separately by mode', () => {
   storage();

@@ -11,7 +11,7 @@ export const DEVICE_ARTWORK = {
   firewall: { file: 'firewall1.png', viewBox: '45 285 1170 675', width: 128, height: 74 },
   ap: { file: 'ap1.png', viewBox: '90 285 1075 705', width: 106, height: 70 },
   notebook: { file: 'note1.png', viewBox: '175 325 910 660', width: 110, height: 80 },
-  smartphone: { file: 'phone1.png', viewBox: '415 205 450 880', width: 50, height: 98 },
+  smartphone: { file: 'phone1.png', viewBox: '415 205 450 880', width: 44, height: 86 },
 } as const;
 export function hasDeviceArtwork(kind: DeviceKind): kind is keyof typeof DEVICE_ARTWORK {
   return EXPERIMENTAL_DEVICE_ARTWORK && kind in DEVICE_ARTWORK;

@@ -25,3 +25,12 @@ it('works with corrupt or unavailable browser storage', () => {
   vi.stubGlobal('localStorage', { getItem: () => { throw Error('blocked'); } });
   expect(readBackground('?background=verde1').choice).toBe('verde1');
 });
+it.each(['bg1', 'bg2', 'bg3', 'gray1', 'gray3', 'graphite-clean', 'azure1'] as const)('persists %s and supports a temporary URL override', choice => {
+  const values = new Map<string, string>();
+  vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) });
+  useCanvasBackground.getState().update({ choice, intensity: 65, dots: false });
+  expect(readBackground()).toMatchObject({ choice, intensity: 65, dots: false });
+  expect(readBackground('?background=original').choice).toBe('original');
+  expect(readBackground(`?background=${choice}`).choice).toBe(choice);
+  expect(JSON.parse(values.get(BACKGROUND_KEY)!).choice).toBe(choice);
+});

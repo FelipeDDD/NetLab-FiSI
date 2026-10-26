@@ -1007,7 +1007,7 @@ describe('split terminal sessions', () => {
     return { hosts, net };
   }
 
-  it('opens six independent panels regardless of which panel was focused', () => {
+  it('opens five columns and puts the sixth session in the last column, regardless of focus', () => {
     const { hosts } = devices();
     hosts.slice(0, 4).forEach(open);
     expect(useStore.getState().terminalPanels.map((panel) => panel.tabs)).toEqual(hosts.slice(0, 4).map((host) => [host.id]));
@@ -1017,8 +1017,8 @@ describe('split terminal sessions', () => {
     open(hosts[4]);
     open(hosts[5]);
     const panels = useStore.getState().terminalPanels;
-    expect(panels).toHaveLength(6);
-    expect(panels.map((p) => p.tabs)).toEqual(hosts.map((h) => [h.id]));
+    expect(panels).toHaveLength(5);
+    expect(panels.map((p) => p.tabs)).toEqual([...hosts.slice(0, 4).map(h => [h.id]), hosts.slice(4).map(h => h.id)]);
     useStore.getState().noteTerminalPanelFocus(panels[0].id);
     expect(useStore.getState().activeTerminal).toBe(hosts[0].id);
     expect(useStore.getState().terminalHasFocus).toBe(false);
@@ -1055,6 +1055,48 @@ describe('split terminal sessions', () => {
     net.scheduler.advanceTo(3300);
     expect(sends[1]).toHaveBeenCalledTimes(3);
     [0, 2, 3].forEach((index) => expect(sends[index]).toHaveBeenCalledTimes(4));
+  });
+
+  it('equalizes only unlocked columns while preserving running commands, focus, input and dock state', () => {
+    const { hosts, net } = devices();
+    const sessions = hosts.slice(0, 3).map(open);
+    const store = useStore.getState();
+    input(sessions[0], 'host'); input(sessions[1], 'ping 10.0.0.2\r');
+    let panels = useStore.getState().terminalPanels;
+    store.toggleTerminalPanelLock(panels[0].id, Object.fromEntries(panels.map(p => [p.id, 400])));
+    panels = useStore.getState().terminalPanels;
+    store.setTerminalPanels(panels.map((p, i) => i ? { ...p, weight: i === 1 ? 3 : 7 } : p));
+    const before = serializeNetwork(net, {}), active = useStore.getState().activeTerminal, focus = useStore.getState().terminalFocusRequest;
+    store.distributeTerminalPanels();
+    expect(useStore.getState().terminalPanels.map(p => p.weight)).toEqual([400, 1, 1]);
+    expect(useStore.getState().terminalPanels[0].lockedWidth).toBe(400);
+    expect(useStore.getState().activeTerminal).toBe(active);
+    expect(useStore.getState().terminalFocusRequest).toBe(focus);
+    expect(useStore.getState().terminalDockCollapsed).toBe(false);
+    const equal = useStore.getState().terminalPanels;
+    store.distributeTerminalPanels(); expect(useStore.getState().terminalPanels).toBe(equal);
+    net.scheduler.advanceTo(2200);
+    expect(output(sessions[1])).toContain('icmp_seq=2');
+    const exec = vi.spyOn(Shell.prototype, 'exec'); input(sessions[0], 'name\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('hostname');
+    sessions.forEach((session, i) => { expect(getSession(hosts[i])).toBe(session); expect(session.term.dispose).not.toHaveBeenCalled(); });
+    expect(serializeNetwork(net, {})).toEqual(before);
+  });
+
+  it('keeps all five locks intact when opening a sixth session and refuses an additional split', () => {
+    const { hosts } = devices();
+    const sessions = hosts.slice(0, 5).map(open), store = useStore.getState();
+    const widths = Object.fromEntries(useStore.getState().terminalPanels.map((p, i) => [p.id, 300 + i * 10]));
+    useStore.getState().terminalPanels.forEach(p => store.toggleTerminalPanelLock(p.id, widths));
+    const before = useStore.getState().terminalPanels;
+    open(hosts[5]);
+    expect(useStore.getState().terminalPanels.map(p => p.lockedWidth)).toEqual(before.map(p => p.lockedWidth));
+    expect(useStore.getState().terminalPanels).toHaveLength(5);
+    store.moveTerminalTab(hosts[5].id, { panelId: null });
+    expect(useStore.getState().terminalPanels).toHaveLength(5);
+    const locked = useStore.getState().terminalPanels;
+    store.distributeTerminalPanels(); expect(useStore.getState().terminalPanels).toBe(locked);
+    sessions.forEach((session, i) => { expect(getSession(hosts[i])).toBe(session); expect(session.term.dispose).not.toHaveBeenCalled(); });
   });
 
   it('keeps partial Unicode input/history in excess tabs and selects the local neighbor on close', () => {
@@ -1100,9 +1142,9 @@ describe('manual terminal tab movement', () => {
     for (const kind of ['router', 'firewall', 'host', 'server', 'host', 'server'] as const) store.addDeviceAt(kind, { x: 300, y: 200 });
     const ids = useStore.getState().nodes.map((n) => n.id);
     ids.forEach(store.openTerminal);
-    store.toggleTerminalPanelLock('terminal-pane-6', Object.fromEntries(useStore.getState().terminalPanels.map((p) => [p.id, 350])));
-    store.reorderTerminalPanel('terminal-pane-6', 'terminal-pane-1');
-    store.moveTerminalTab(ids[7], { panelId: 'terminal-pane-6' });
+    store.toggleTerminalPanelLock('terminal-pane-5', Object.fromEntries(useStore.getState().terminalPanels.map((p) => [p.id, 350])));
+    store.reorderTerminalPanel('terminal-pane-5', 'terminal-pane-1');
+    store.moveTerminalTab(ids[7], { panelId: 'terminal-pane-5', beforeId: ids[4] });
     const free = useStore.getState().terminalPanels.map(({ id, tabs, lockedWidth }) => ({ id, tabs, lockedWidth }));
     store.setTerminalLayoutMode('by-type');
     store.reorderTerminalPanel('terminal-group-firewall', 'terminal-group-host');
@@ -1137,11 +1179,11 @@ describe('manual terminal tab movement', () => {
     const before = serializeNetwork(net, {});
     const focusRequest = useStore.getState().terminalFocusRequest;
     const active = useStore.getState().activeTerminal;
-    store.reorderTerminalPanel('terminal-pane-6', 'terminal-pane-3');
+    store.reorderTerminalPanel('terminal-pane-5', 'terminal-pane-3');
     expect(useStore.getState().activeTerminal).toBe(active);
     expect(useStore.getState().terminalFocusRequest).toBe(focusRequest + 1);
     store.moveTerminalTab(devices[2].id, { panelId: 'terminal-pane-4' });
-    expect(useStore.getState().terminalPanels).toHaveLength(5);
+    expect(useStore.getState().terminalPanels).toHaveLength(4);
     store.moveTerminalTab(devices[4].id, { panelId: 'terminal-pane-1' });
     expect(useStore.getState().terminalPanels[0]).toMatchObject({ tabs: [devices[0].id, devices[4].id], lockedWidth: 350 });
     store.cycleTerminal(-1);
@@ -1622,6 +1664,7 @@ describe('per-device terminal appearance persistence', () => {
 
   it('does not save unchanged preferences and keeps the explicit font default when resetting styles', () => {
     pair();
+    const cableColors = structuredClone(useStore.getState().cableColors);
     useStore.getState().setTerminalAppearance({ ...DEFAULT_TERMINAL_APPEARANCE });
     vi.advanceTimersByTime(500);
     expect(setItem).not.toHaveBeenCalled();
@@ -1629,7 +1672,8 @@ describe('per-device terminal appearance persistence', () => {
     useStore.getState().setTerminalAppearance({ ...DEFAULT_TERMINAL_APPEARANCE });
     vi.advanceTimersByTime(500);
     expect(setItem).toHaveBeenCalledOnce();
-    expect(JSON.parse(storage.get('netsim:autosave:v1')!).ui).toEqual({ terminalAppearance: DEFAULT_TERMINAL_APPEARANCE });
+    expect(useStore.getState().cableColors).toEqual(cableColors);
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!).ui).toEqual({ terminalAppearance: DEFAULT_TERMINAL_APPEARANCE, cableColors });
   });
 
   it.each([12, 13, 14, 18])('persists a font-only change (%ipx) and restores it after boot without changing the engine', (fontSize) => {
@@ -1676,6 +1720,7 @@ describe('per-device terminal appearance persistence', () => {
     const first = open(a), second = open(b);
     const before = serializeNetwork(net, {});
     const store = useStore.getState();
+    const cableColors = structuredClone(store.cableColors);
     input(first, 'host');
     input(second, 'ping 10.0.0.2\r');
     store.setTerminalColor(a.id, '#123456');
@@ -1686,6 +1731,7 @@ describe('per-device terminal appearance persistence', () => {
     const panels = useStore.getState().terminalPanels;
     const off = vi.spyOn(b, 'offIcmp');
     store.resetTerminalAppearance();
+    expect(useStore.getState().cableColors).toEqual(cableColors);
     expect(useStore.getState().terminalColors).toEqual({});
     expect(useStore.getState().terminalAppearance).toEqual(DEFAULT_TERMINAL_APPEARANCE);
     expect(useStore.getState().terminalPanels).toBe(panels);
@@ -1700,8 +1746,9 @@ describe('per-device terminal appearance persistence', () => {
     expect(exec.mock.calls.at(-1)?.[0]).toBe('hostname');
     vi.advanceTimersByTime(500);
     expect(setItem).toHaveBeenCalledOnce();
-    expect(JSON.parse(storage.get('netsim:autosave:v1')!).ui).toEqual({ terminalAppearance: DEFAULT_TERMINAL_APPEARANCE });
+    expect(JSON.parse(storage.get('netsim:autosave:v1')!).ui).toEqual({ terminalAppearance: DEFAULT_TERMINAL_APPEARANCE, cableColors });
     store.boot();
+    expect(useStore.getState().cableColors).toEqual(cableColors);
     expect(useStore.getState().terminalAppearance).toEqual(DEFAULT_TERMINAL_APPEARANCE);
     expect(useStore.getState().terminalColors).toEqual({});
     setItem.mockClear();

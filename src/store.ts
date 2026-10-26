@@ -32,7 +32,7 @@ import { composeYaml } from './export/compose';
 import { svgToPngBlob, topologySvg } from './export/diagram';
 import { networkReport } from './export/report';
 import { adjacentTerminal, type TerminalDirection } from './terminalShortcuts';
-import { activatePanelSession, prunePanelSessions, normalizeTerminalLayoutMode, MIN_TERMINAL_PANEL_WIDTH, movePanelSession, type TerminalTabDestination, type TerminalPanel, type TerminalLayoutMode } from './terminalPanels';
+import { activatePanelSession, equalizeTerminalPanels, prunePanelSessions, normalizeTerminalLayoutMode, MIN_TERMINAL_PANEL_WIDTH, movePanelSession, type TerminalTabDestination, type TerminalPanel, type TerminalLayoutMode } from './terminalPanels';
 import { DEFAULT_TERMINAL_COLORS, DEFAULT_TERMINAL_APPEARANCE, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, type AppearanceSaveFile, type TerminalAppearance } from './terminalAppearance';
 import { applyPanelPreferences, readPanelPreferences, rememberPanelPreferences, writePanelPreferences } from './terminalPanelPreferences';
 import { forgetSavedTabs, insertSavedTab, mergeTabLayouts, readTabLayouts, TAB_LAYOUT_KEY, writeTabLayouts, type TerminalTabLayouts } from './terminalTabPreferences';
@@ -40,6 +40,9 @@ import { capturePresentationSelection } from './terminalPresentationSelection';
 import { moveTerminalPanel } from './terminalPanels';
 import { applyMovement, emptyTopologyHistory, recordMovement, recordOperation, isInspectorOperation, sameServicePorts, sortedServicePorts, type Point, type TopologyHistory, type TopologyOperation } from './topologyHistory';
 import { applyAccessVlan, applyInspectorEdit, applyLinkEdit, canApplyLinkEdit, dhcpSettings, sortedDnsRecords, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
+import { CABLE_COLORS, automaticCableAppearance, initialCableColors, isCableColor, readCableColors, sameCableAppearance, type CableColor, type CableAppearances } from './cableAppearance';
+import { firstReconnectInterface, reconnectTargetError } from './cableInteraction';
+import type { HistoryLink } from './topologyHistory';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -101,6 +104,13 @@ interface NetsimState {
   redoTopology(): void;
   nodes: DevNode[];
   edges: Edge[];
+  cableColors: CableAppearances;
+  setCableColor(id: string, color: CableColor): void;
+  resetCableColor(id: string): void;
+  reconnectingCable: { id: string; end: 'a' | 'b'; before: HistoryLink } | null;
+  beginCableReconnect(id: string, end: 'a' | 'b'): void;
+  cancelCableReconnect(): void;
+  reconnectCable(deviceId: string, ifaceName?: string): string | null;
   hoveredLinkId: string | null;
   cableStyle: CableStyle;
   setCableStyle(style: CableStyle): void;
@@ -187,6 +197,7 @@ interface NetsimState {
   releaseTerminalFocus(): void;
   setTerminalDockCollapsed(collapsed: boolean): void;
   setTerminalPanels(panels: TerminalPanel[]): void;
+  distributeTerminalPanels(): void;
   toggleTerminalPanelLock(id: string, widths: Record<string, number>): void;
   moveTerminalTab(id: string, destination: TerminalTabDestination): void;
   reorderTerminalPanel(id: string, beforeId: string | null): void;
@@ -275,6 +286,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     saveSoon(); return true;
   };
   const navigateHistory = (direction: 'undo' | 'redo') => {
+    get().cancelCableReconnect();
     if (movement?.source === 'drag' || ignoreDrag) return;
     get().finishNodeMovement();
     checkHistoryConfiguration();
@@ -286,6 +298,28 @@ export const useStore = create<NetsimState>()((set, get) => {
       const nodes = applyMovement(get().nodes, operation, direction);
       if (!nodes) { get().invalidateTopologyHistory(); return; }
       set({ nodes });
+    } else if (operation.type === 'set-cable-color') {
+      const from = direction === 'undo' ? operation.after : operation.before;
+      const to = direction === 'undo' ? operation.before : operation.after;
+      if (!sim.net.links.has(operation.linkId) || !sameCableAppearance(get().cableColors[operation.linkId], from)) { get().invalidateTopologyHistory(); return; }
+      const colors = { ...get().cableColors }; delete colors[operation.linkId];
+      if (to) colors[operation.linkId] = to;
+      set({ cableColors: colors });
+    } else if (operation.type === 'reconnect-link') {
+      const from = direction === 'undo' ? operation.after : operation.before;
+      const to = direction === 'undo' ? operation.before : operation.after;
+      const fromColor = direction === 'undo' ? operation.afterColor : operation.beforeColor;
+      const toColor = direction === 'undo' ? operation.beforeColor : operation.afterColor;
+      const link = sim.net.links.get(from.id);
+      if (!link || JSON.stringify(captureLink(link)) !== JSON.stringify(from) || !sameCableAppearance(get().cableColors[from.id], fromColor)) { get().invalidateTopologyHistory(); return; }
+      const [deviceId, ifaceName] = to[operation.end];
+      const error = sim.net.reconnectError(link.id, operation.end, deviceId, ifaceName);
+      if (error) { get().setNotice(error); return; }
+      sim.net.reconnect(link.id, operation.end, deviceId, ifaceName);
+      const cableColors = { ...get().cableColors }; delete cableColors[link.id];
+      if (toColor) cableColors[link.id] = toColor;
+      set({ edges: edgesFromEngine(), cableColors, packets: get().packets.filter(p => p.linkId !== link.id), guidedPacket: currentGuided() });
+      get().refresh();
     } else if (isInspectorOperation(operation)) {
       if (operation.type === 'resize-switch') {
         const device = sim.net.devices.get(operation.deviceId);
@@ -325,7 +359,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         for (const { saved, index } of [...operation.devices].sort((a, b) => a.index - b.index)) {
           nodes.splice(index, 0, deviceNode(saved.id, saved.kind, saved.name, saved.x, saved.y));
         }
-        set({ nodes, edges: edgesFromEngine(), terminalColors: { ...get().terminalColors, ...operation.colors } });
+        set({ nodes, edges: edgesFromEngine(), terminalColors: { ...get().terminalColors, ...operation.colors }, cableColors: { ...get().cableColors, ...operation.cableColors } });
         get().refresh();
         if (Object.keys(tabLayouts).length) saveTabs();
       } else {
@@ -342,7 +376,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     } else {
       const add = (operation.type === 'add-links') === (direction === 'redo');
       if (!applyLinkEdit(sim.net, operation.links, add)) { get().invalidateTopologyHistory(); return; }
-      set({ edges: edgesFromEngine(), packets: get().packets.filter((p) => !operation.links.some((l) => l.id === p.linkId)), guidedPacket: currentGuided() });
+      const cableColors = Object.fromEntries(Object.entries(get().cableColors).filter(([id]) => !operation.links.some(l => l.id === id)));
+      set({ edges: edgesFromEngine(), cableColors: add ? { ...cableColors, ...operation.cableColors } : cableColors,
+        packets: get().packets.filter((p) => !operation.links.some((l) => l.id === p.linkId)), guidedPacket: currentGuided() });
     }
     historyConfiguration = configuration();
     set({ topologyHistory: direction === 'undo'
@@ -433,6 +469,8 @@ export const useStore = create<NetsimState>()((set, get) => {
     const appearance = get().terminalAppearance;
     // An explicit size distinguishes new defaults from the legacy 13px files.
     save.ui = { ...save.ui, terminalAppearance: { ...appearance } };
+    const cableColors = readCableColors(get().cableColors, sim.net.links.keys());
+    if (Object.keys(cableColors).length) save.ui.cableColors = cableColors;
     if (get().terminalLayoutMode !== 'free') save.ui.terminalLayoutMode = get().terminalLayoutMode;
     const lab = get().lab;
     if (lab) {
@@ -486,6 +524,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     forgetTabs(nodeIds);
     set({
       nodes: get().nodes.filter((n) => !ids.has(n.id)), edges: edgesFromEngine(),
+      cableColors: readCableColors(get().cableColors, sim.net.links.keys()), reconnectingCable: null,
       packets: get().packets.filter((p) => !ids.has(p.fromDeviceId) && !ids.has(p.toDeviceId) && !links.has(p.linkId)),
       guidedPacket: currentGuided(),
       dropFlashes: get().dropFlashes.filter((f) => !ids.has(f.deviceId)),
@@ -510,6 +549,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     set({
       nodes,
       edges: edgesFromEngine(),
+      cableColors: readCableColors(data.ui?.cableColors, sim.net.links.keys()), reconnectingCable: null,
       hoveredLinkId: null,
       packets: [],
       guidedPacket: emptyGuidedPacket(),
@@ -535,6 +575,56 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
 
   return {
+    cableColors: {},
+    reconnectingCable: null,
+    setCableColor(id, color) {
+      if (!sim.net.links.has(id) || !isCableColor(color)) return;
+      const before = get().cableColors[id] ?? null, after = { mode: 'manual' as const, color: CABLE_COLORS[color].value };
+      if (sameCableAppearance(before, after)) return;
+      prepareEdit();
+      set({ cableColors: { ...get().cableColors, [id]: after } });
+      commitEdit({ type: 'set-cable-color', label: 'Kabelfarbe ändern', linkId: id, before, after });
+      saveSoon();
+    },
+    resetCableColor(id) {
+      if (!sim.net.links.has(id)) return;
+      const before = get().cableColors[id] ?? null, after = automaticCableAppearance(sim.net, id, get().cableColors);
+      if (sameCableAppearance(before, after)) return;
+      prepareEdit();
+      set({ cableColors: { ...get().cableColors, [id]: after } });
+      commitEdit({ type: 'set-cable-color', label: 'Automatische Kabelfarbe', linkId: id, before, after });
+      saveSoon();
+    },
+    beginCableReconnect(id, end) {
+      const link = sim.net.links.get(id);
+      if (!link || link.medium !== 'ethernet' || (end !== 'a' && end !== 'b')) return;
+      get().finishNodeMovement();
+      set({ reconnectingCable: { id, end, before: captureLink(link) }, hoveredLinkId: null });
+    },
+    cancelCableReconnect() { set({ reconnectingCable: null }); },
+    reconnectCable(deviceId, ifaceName) {
+      const draft = get().reconnectingCable, link = draft && sim.net.links.get(draft.id);
+      if (!draft || !link || JSON.stringify(captureLink(link)) !== JSON.stringify(draft.before)) return 'Kabel wurde geändert. Umstecken bitte neu starten.';
+      if (ifaceName === undefined) {
+        const iface = firstReconnectInterface(sim.net, draft, deviceId);
+        if (!iface) return reconnectTargetError(sim.net, draft, deviceId);
+        ifaceName = iface.name;
+      }
+      const error = sim.net.reconnectError(draft.id, draft.end, deviceId, ifaceName);
+      if (error) return error;
+      if (link[draft.end].device.id === deviceId && link[draft.end].name === ifaceName) { get().cancelCableReconnect(); return null; }
+      prepareEdit();
+      const beforeColor = get().cableColors[draft.id] ?? null;
+      sim.net.reconnect(draft.id, draft.end, deviceId, ifaceName);
+      const afterColor = beforeColor?.mode === 'manual' ? beforeColor : automaticCableAppearance(sim.net, draft.id, get().cableColors);
+      set({ edges: edgesFromEngine().map(e => e.id === draft.id ? { ...e, selected: true } : e), reconnectingCable: null,
+        cableColors: { ...get().cableColors, [draft.id]: afterColor },
+        packets: get().packets.filter(p => p.linkId !== draft.id), guidedPacket: currentGuided() });
+      get().refresh();
+      commitEdit({ type: 'reconnect-link', label: 'Kabel umstecken', end: draft.end, before: draft.before, after: captureLink(link), beforeColor, afterColor });
+      saveSoon();
+      return null;
+    },
     cableStyle: loadCableStyle(),
     setCableStyle(style) {
       const cableStyle = style === 'hybrid' ? 'hybrid' : 'straight';
@@ -684,11 +774,13 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (unsupported) get().invalidateTopologyHistory();
       const removed = [...new Set(changes.filter((c) => c.type === 'remove').map((c) => c.id))]
         .flatMap((id) => { const link = sim.net.links.get(id); return link ? [captureLink(link)] : []; });
+      const cableColors = readCableColors(get().cableColors, removed.map(l => l.id));
       for (const ch of changes) {
         if (ch.type === 'remove') sim.net.disconnect(ch.id);
       }
-      set({ edges: applyEdgeChanges(changes, get().edges), packets: get().packets.filter((p) => !removed.some((l) => l.id === p.linkId)), guidedPacket: currentGuided() });
-      if (removed.length && !unsupported) commitEdit({ type: 'remove-links', label: removed.length === 1 ? 'Remove cable' : `Remove ${removed.length} cables`, links: removed });
+      set({ edges: applyEdgeChanges(changes, get().edges), cableColors: readCableColors(get().cableColors, sim.net.links.keys()),
+        ...(removed.length ? { reconnectingCable: null } : {}), packets: get().packets.filter((p) => !removed.some((l) => l.id === p.linkId)), guidedPacket: currentGuided() });
+      if (removed.length && !unsupported) commitEdit({ type: 'remove-links', label: removed.length === 1 ? 'Remove cable' : `Remove ${removed.length} cables`, links: removed, cableColors });
       if (changes.some((c) => c.type === 'remove')) saveSoon();
     },
 
@@ -697,8 +789,9 @@ export const useStore = create<NetsimState>()((set, get) => {
       prepareEdit();
       try {
         const link = sim.net.connect(c.source, c.target);
-        set({ edges: edgesFromEngine() });
-        commitEdit({ type: 'add-links', label: 'Connect devices', links: [captureLink(link)] });
+        const cableColors = { [link.id]: automaticCableAppearance(sim.net, link.id, get().cableColors) };
+        set({ edges: edgesFromEngine(), cableColors: { ...get().cableColors, ...cableColors } });
+        commitEdit({ type: 'add-links', label: 'Connect devices', links: [captureLink(link)], cableColors });
         saveSoon();
       } catch (e) {
         get().setNotice(e instanceof Error ? e.message : String(e));
@@ -721,10 +814,11 @@ export const useStore = create<NetsimState>()((set, get) => {
       const links = [...sim.net.links.values()].filter((l) => edgeIds.includes(l.id) || ids.has(l.a.device.id) || ids.has(l.b.device.id)).map(captureLink);
       if (!devices.length && !links.length) return;
       const colors = Object.fromEntries(Object.entries(get().terminalColors).filter(([id]) => ids.has(id)));
+      const cableColors = readCableColors(get().cableColors, links.map(l => l.id));
       removeElements([...ids], links.map((l) => l.id));
       commitEdit(devices.length ? {
-        type: 'delete-devices', label: devices.length === 1 ? 'Delete device' : `Delete ${devices.length} devices`, devices, links, colors,
-      } : { type: 'remove-links', label: links.length === 1 ? 'Remove cable' : `Remove ${links.length} cables`, links });
+        type: 'delete-devices', label: devices.length === 1 ? 'Delete device' : `Delete ${devices.length} devices`, devices, links, colors, cableColors,
+      } : { type: 'remove-links', label: links.length === 1 ? 'Remove cable' : `Remove ${links.length} cables`, links, cableColors });
     },
 
     renameDevice(id, name) {
@@ -1029,12 +1123,14 @@ export const useStore = create<NetsimState>()((set, get) => {
       try {
         if (apId) {
           const link = sim.net.associate(deviceId, apId);
-          commitEdit({ type: 'add-links', label: 'WLAN verbinden', links: [captureLink(link)] });
+          const cableColors = { [link.id]: automaticCableAppearance(sim.net, link.id, get().cableColors) };
+          set({ cableColors: { ...get().cableColors, ...cableColors } });
+          commitEdit({ type: 'add-links', label: 'WLAN verbinden', links: [captureLink(link)], cableColors });
         } else if (wlan.link) {
-          const link = captureLink(wlan.link); sim.net.disconnect(link.id);
-          commitEdit({ type: 'remove-links', label: 'WLAN trennen', links: [link] });
+          const link = captureLink(wlan.link), cableColors = readCableColors(get().cableColors, [link.id]); sim.net.disconnect(link.id);
+          commitEdit({ type: 'remove-links', label: 'WLAN trennen', links: [link], cableColors });
         }
-        set({ edges: edgesFromEngine() }); get().refresh(); saveSoon(); return null;
+        set({ edges: edgesFromEngine(), cableColors: readCableColors(get().cableColors, sim.net.links.keys()) }); get().refresh(); saveSoon(); return null;
       } catch (e) { return String(e); }
     },
     setWifiRange(deviceId, meters, editGroup) {
@@ -1085,6 +1181,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (terminalPanels.some((panel) => !get().terminalPanels.some((old) => old.id === panel.id) && panelPreferences[get().terminalLayoutMode][panel.id])) {
         terminalPanels = applyPanelPreferences(terminalPanels, panelPreferences, get().terminalLayoutMode);
       }
+      if (terminalPanels.length !== get().terminalPanels.length) terminalPanels = equalizeTerminalPanels(terminalPanels);
       rememberPanels(terminalPanels);
       if (tabLayouts[mode] && !tabLayouts[mode]!.some((panel) => panel.tabs.includes(id))) {
         tabLayouts[mode] = mergeTabLayouts(tabLayouts[mode], terminalPanels, terminals);
@@ -1149,6 +1246,13 @@ export const useStore = create<NetsimState>()((set, get) => {
           ? { ...panel, weight: next.weight, lockedWidth: width } : panel;
       }) });
       rememberPanels(get().terminalPanels, [], true);
+    },
+
+    distributeTerminalPanels() {
+      const panels = equalizeTerminalPanels(get().terminalPanels);
+      if (panels === get().terminalPanels) return;
+      set({ terminalPanels: panels });
+      rememberPanels(panels, [], true);
     },
 
     toggleTerminalPanelLock(id, widths) {
@@ -1315,6 +1419,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({
         nodes: [],
         edges: [],
+        cableColors: {}, reconnectingCable: null,
         hoveredLinkId: null,
         packets: [],
         guidedPacket: emptyGuidedPacket(),
@@ -1386,6 +1491,7 @@ export const useStore = create<NetsimState>()((set, get) => {
           deviceNode(srv1.id, 'server', srv1.name, 730, 220),
         ],
         edges: edgesFromEngine(),
+        cableColors: initialCableColors(net),
       });
       get().refresh();
       saveSoon();

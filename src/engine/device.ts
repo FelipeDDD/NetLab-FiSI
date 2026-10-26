@@ -52,6 +52,8 @@ export class NetInterface {
 export abstract class Device {
   position = { x: 0, y: 0 }; // World/canvas coordinates, never viewport pixels.
   invalidateInterface(_iface: NetInterface): void {}
+  // A confirmed peer change may need stronger cleanup than a temporary link loss.
+  invalidatePeer(iface: NetInterface): void { this.invalidateInterface(iface); }
   abstract readonly kind: DeviceKind;
   interfaces: NetInterface[] = [];
   private removed = false;

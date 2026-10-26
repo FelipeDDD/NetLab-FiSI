@@ -4,7 +4,7 @@ import { sim } from '../sim';
 import { useStore } from '../store';
 import { terminalColor, TERMINAL_FONTS, type TerminalAppearance, type TerminalFont } from '../terminalAppearance';
 import { FloatingPopover } from './FloatingPopover';
-import type { TerminalLayoutMode } from '../terminalPanels';
+import { MAX_TERMINAL_PANELS, type TerminalLayoutMode } from '../terminalPanels';
 import { terminalStyleFamilies, terminalStyleForFamily } from '../terminalStyleOptions';
 
 export function TerminalSettingsControls({ initialDeviceId, includeLayout = false }: { initialDeviceId?: string; includeLayout?: boolean }) {
@@ -23,6 +23,7 @@ export function TerminalSettingsControls({ initialDeviceId, includeLayout = fals
   const variation = family.variations.find((item) => item.id === preference.style)!;
   const setPreference = useStore((s) => s.setTerminalAppearance);
   const layoutMode = useStore((s) => s.terminalLayoutMode);
+  const freePanels = useStore(s => s.terminalPanels.filter(panel => panel.lockedWidth === undefined).length);
   const color = device ? terminalColor(device.kind, custom) : '';
   return (
     <div className="terminal-appearance">
@@ -35,6 +36,11 @@ export function TerminalSettingsControls({ initialDeviceId, includeLayout = fals
             <option value="by-type">Group by type</option>
           </select>
         </label>
+        <button type="button" className="btn" disabled={freePanels < 2}
+          title="Freie Panels gleichmäßig aufteilen. Gesperrte Breiten bleiben erhalten."
+          onClick={() => useStore.getState().distributeTerminalPanels()}>Gleichmäßig verteilen</button>
+        <p className="hint">Maximal {MAX_TERMINAL_PANELS} Panels. {layoutMode === 'free'
+          ? 'Weitere Terminals erscheinen als Tabs im letzten Panel.' : 'Weitere Terminals bleiben als Tabs ihrer Gerätegruppe.'} Gesperrte Breiten bleiben erhalten.</p>
         <span className="hint">Widths and locks are remembered separately for each mode. Sessions keep running.</span>
       </section>}
       <section>
@@ -138,12 +144,12 @@ export function TerminalSettingsButton() {
   const anchor = useRef<HTMLButtonElement>(null);
   return <>
     <button ref={anchor} type="button" className="terminal-settings-trigger"
-      aria-label="Terminal settings" title="Terminal settings"
+      aria-label="Terminal Settings" title="Terminal Settings"
       aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? 'terminal-settings' : undefined}
       onClick={() => setOpen(!open)}>
-      <span aria-hidden="true">⚙</span> Settings
+      <span aria-hidden="true">⚙</span> Terminal Settings
     </button>
-    {open && <FloatingPopover anchor={anchor} id="terminal-settings" label="Terminal settings"
+    {open && <FloatingPopover anchor={anchor} id="terminal-settings" label="Terminal Settings"
       className="terminal-appearance-popup" width={320} preferredSide="above" onClose={() => setOpen(false)}>
       <TerminalSettingsControls includeLayout />
     </FloatingPopover>}

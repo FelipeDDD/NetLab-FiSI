@@ -14,6 +14,8 @@ function SwitchCableTips({ id }: { id: string }) {
   const edges = useStore(s => s.edges);
   const style = useStore(s => s.cableStyle);
   const hovered = useStore(s => s.hoveredLinkId);
+  const colors = useStore(s => s.cableColors);
+  const reconnecting = useStore(s => s.reconnectingCable?.id);
   const node = nodes.find(n => n.id === id);
   if (!node) return null;
   const scale = 136 / 1144;
@@ -21,6 +23,7 @@ function SwitchCableTips({ id }: { id: string }) {
   const top = node.position.y + 6 + (44 - 363 * scale) / 2;
   return <g pointerEvents="none" className="switch-cable-tips">
     {edges.filter(e => e.source === id || e.target === id).map(edge => {
+      if (reconnecting === edge.id) return null;
       const peer = nodes.find(n => n.id === (edge.source === id ? edge.target : edge.source));
       if (!peer) return null;
       const attachment = linkAttachment(node, edge.id, nodes, edges);
@@ -29,9 +32,10 @@ function SwitchCableTips({ id }: { id: string }) {
       const geometry = cableGeometry(linkAttachment(peer, edge.id, nodes, edges), attachment, style);
       if (!geometry.frontEnd) return null;
       const active = edge.selected || hovered === edge.id;
+      const tint = colors[edge.id]?.color;
       return <g key={edge.id} data-cable-tip={edge.id} fill="none" strokeLinecap="round" strokeLinejoin="round" transform={`translate(${55 - left / scale} ${468 - top / scale}) scale(${1 / scale})`}>
 
-        <path d={geometry.frontEnd} stroke={active ? 'var(--accent)' : '#52698f'} strokeWidth={active ? 3 : 2} />
+        <path d={geometry.frontEnd} stroke={tint || (active ? 'var(--accent)' : '#52698f')} strokeWidth={active ? 3 : 2} />
       </g>;
     })}
   </g>;

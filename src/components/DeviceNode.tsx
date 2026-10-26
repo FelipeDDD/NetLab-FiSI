@@ -7,6 +7,8 @@ import { useStore, type DevNode } from '../store';
 import type { DeviceKind } from '../engine/device';
 import { NodeNetworkLabel } from './NodeNetworkLabel';
 import { DeviceArtwork, hasDeviceArtwork } from './DeviceArtwork';
+import { sim } from '../sim';
+import { firstReconnectInterface } from '../cableInteraction';
 
 export const NODE_W = 96;
 export const NODE_H = 78;
@@ -78,10 +80,12 @@ export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: numbe
 function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
   const openTerminal = useStore((s) => s.openTerminal);
   const cableHighlighted = useStore(s => s.edges.some(e => (e.selected || e.id === s.hoveredLinkId) && (e.source === id || e.target === id)));
+  const reconnecting = useStore(s => s.reconnectingCable);
+  const compatible = !!reconnecting && !!firstReconnectInterface(sim.net, reconnecting, id);
   const hasShell = hasTerminalKind(data.kind);
   const artwork = hasDeviceArtwork(data.kind);
   return (
-    <div onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}`}>
+    <div onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}${compatible ? ' cable-compatible' : ''}`}>
       <Handle type="source" position={Position.Top} id="t" />
       <Handle type="source" position={Position.Right} id="r" />
       <Handle type="source" position={Position.Bottom} id="b" />
@@ -115,7 +119,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
         </span>
       )}
       <div className="dev-label">{data.label}</div>
-      {(data.kind === 'host' || data.kind === 'notebook') && <span className="dev-os-badge" title={data.os === 'windows' ? 'Windows CMD' : 'Linux shell'}>{data.os === 'windows' ? 'Win' : 'Linux'}</span>}
+      {(data.kind === 'host' || data.kind === 'notebook') && <span className="dev-os-badge" title={data.os === 'windows' ? 'Windows' : 'Linux'}>{data.os === 'windows' ? 'Windows' : 'Linux'}</span>}
       <NodeNetworkLabel id={id} name={data.label} />
     </div>
   );

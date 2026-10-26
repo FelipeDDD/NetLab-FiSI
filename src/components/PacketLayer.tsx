@@ -28,6 +28,7 @@ export function PacketLayer() {
   const nodes = useStore((s) => s.nodes);
   const edges = useStore(s => s.edges);
   const cableStyle = useStore(s => s.cableStyle);
+  const reconnecting = useStore(s => s.reconnectingCable?.id);
   const paths = useMemo(() => {
     const result = new Map<string, { source: string; geometry: ReturnType<typeof cableGeometry> }>();
     for (const edge of edges) {
@@ -53,7 +54,7 @@ export function PacketLayer() {
   const frontDots: React.ReactNode[] = [];
   const dots = visible
     .map(({ p, t }) => {
-      if (t === null || inactiveWireless(sim.net.links.get(p.linkId))) return null;
+      if (t === null || p.linkId === reconnecting || inactiveWireless(sim.net.links.get(p.linkId))) return null;
       const a = centers.get(p.fromDeviceId);
       const b = centers.get(p.toDeviceId);
       if (!a || !b) return null;

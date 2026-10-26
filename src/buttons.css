@@ -1,0 +1,218 @@
+/* Shared button appearance. styles.css retains existing layout/density.
+   .btn is secondary by default; modifiers are composable (see ui-themes.md).
+   Existing classes are aliases so panels do not need a component rewrite. */
+:is(.btn, .mini-btn, .ui-button, .terminal-settings-trigger, :where(.terminal-dock:not(.is-collapsed)) .terminal-dock-toggle, .toolbar-menu-trigger, .toolbar-quick-speed) {
+  color: var(--button-text);
+  background-color: var(--button-surface);
+  background: var(--button-image, linear-gradient(var(--button-sheen), transparent)) var(--button-surface);
+  border-color: var(--button-border);
+  box-shadow: inset 0 1px 0 var(--button-edge-light), var(--button-shadow);
+  transition: none;
+}
+
+/* New controls can opt in without inheriting a panel's dimensions. */
+.ui-button {
+  padding: 6px 12px;
+  border: 1px solid var(--button-border);
+  border-radius: 7px;
+  font: 12.5px var(--font-ui);
+  cursor: pointer;
+}
+.btn--small { padding: 3px 7px; font-size: 12px; }
+.btn--icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 4px; }
+.btn--icon svg { flex-shrink: 0; }
+.btn--toolbar { white-space: nowrap; }
+
+:is(.btn, .mini-btn, .ui-button, .terminal-settings-trigger, :where(.terminal-dock:not(.is-collapsed)) .terminal-dock-toggle, .toolbar-menu-trigger, .toolbar-quick-speed):hover:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--button-text);
+  background-color: var(--button-hover);
+  border-color: var(--button-hover-border);
+  box-shadow: inset 0 1px 0 var(--button-edge-light), var(--button-accent-shadow);
+}
+
+:is(.btn--primary, .btn--secondary) { color: var(--button-text); }
+.btn--primary {
+  background-color: var(--button-primary-surface);
+  border-color: var(--button-primary-border);
+  box-shadow: inset 0 1px 0 var(--button-edge-light), var(--button-accent-shadow);
+}
+.toolbar-run svg { color: var(--button-accent); }
+
+/* Ghost/menu rows remain quiet until interacted with. No added box dimensions. */
+:is(.btn--ghost, .toolbar-menu-trigger, .labs-menu-item) {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: var(--button-text);
+}
+:is(.btn--ghost, .toolbar-menu-trigger) { border-color: transparent; }
+.labs-menu-item:hover:not(:disabled), .labs-menu-item:focus-visible {
+  background-color: var(--button-hover);
+  box-shadow: inset 2px 0 var(--button-hover-border);
+}
+
+:is(.btn, .mini-btn, .ui-button, .toolbar-menu-trigger, .terminal-settings-trigger):is([aria-pressed="true"], [aria-expanded="true"], [aria-selected="true"]):not(:disabled) {
+  color: var(--button-selected-text);
+  background-color: var(--button-selected-surface);
+  border-color: var(--button-primary-border);
+  box-shadow: inset 0 1px 0 var(--button-edge-light), var(--button-accent-shadow);
+}
+.labs-menu-item[aria-expanded="true"] { background-color: var(--button-selected-surface); box-shadow: inset 2px 0 var(--button-accent); }
+
+:is(.btn, .mini-btn, .ui-button, .terminal-settings-trigger, :where(.terminal-dock:not(.is-collapsed)) .terminal-dock-toggle, .toolbar-menu-trigger, .labs-menu-item):active:not(:disabled):not([aria-disabled="true"]) {
+  background-color: var(--button-pressed);
+  background-image: none;
+  box-shadow: inset 0 1px 2px #0003;
+}
+
+:is(.btn.danger, .btn--danger) { color: var(--button-danger); border-color: var(--button-danger-border); }
+:is(.btn.danger, .btn--danger):is(:hover, :active):not(:disabled) {
+  color: var(--button-danger);
+  background-color: var(--button-danger-surface);
+  border-color: var(--button-danger);
+  box-shadow: inset 0 1px 0 var(--button-edge-light);
+}
+
+/* Inset focus stays visible inside scrollable menus and compact panels. */
+:is(.btn, .mini-btn, .ui-button, .toolbar-menu-trigger, .toolbar-quick-speed, .labs-menu-item, .terminal-settings-trigger, .terminal-dock-toggle):focus-visible {
+  outline: 2px solid var(--button-focus);
+  outline-offset: -3px;
+}
+
+/* Explicit disabled colors (not whole-element opacity) retain readable labels.
+   Context selectors supersede legacy panel-specific opacity/hover rules. */
+:is(.btn, .mini-btn, .ui-button):is(:disabled, [aria-disabled="true"]),
+:is(.toolbar, .guided-playback-actions, .packet-inspector, .terminal-appearance) :is(.btn, .mini-btn):disabled,
+.toolbar .btn.toolbar-history-button:disabled {
+  color: var(--button-disabled-text);
+  background: var(--button-disabled-surface);
+  border-color: var(--button-disabled-border);
+  box-shadow: none;
+  opacity: 1;
+  cursor: default;
+}
+.labs-menu-item:disabled { color: var(--button-disabled-text); background: transparent; box-shadow: none; cursor: default; }
+
+/* Tabs gain a crisp selected edge, without changing their size or the console's
+   custom terminal-tab colors. Terminal header buttons keep their console palette. */
+.inspector-tabs [role="tab"]:hover:not([aria-selected="true"]) { background: var(--button-hover); color: var(--button-text); }
+.inspector-tabs [aria-selected="true"] { box-shadow: inset 0 1px 0 var(--button-edge-light); }
+.terminal-panel-header :is(.terminal-tab, .tab-close, .terminal-color-trigger, .terminal-panel-lock, .terminal-panel-move):focus-visible {
+  outline: 2px solid var(--canvas-accent);
+  outline-offset: -3px;
+}
+
+/* Graphite's illuminated finish is opt-in. Other themes retain their existing
+   pixels; all colors/effect strengths live in themes.css. Background layers
+   draw inside existing boxes and never intercept input or change dimensions. */
+:where([data-ui-theme="graphite-dark"]) .toolbar {
+  background-image: var(--ui-header-image);
+  box-shadow: var(--ui-header-shadow);
+}
+:where([data-ui-theme="graphite-dark"]) :is(.btn--primary, :is(.btn, .mini-btn, .ui-button, .toolbar-menu-trigger, .terminal-settings-trigger):is([aria-pressed="true"], [aria-expanded="true"], [aria-selected="true"])):not(:disabled):not([aria-disabled="true"]):not(:active) {
+  background: var(--button-highlight-image) var(--button-selected-surface);
+}
+:where([data-ui-theme="graphite-dark"]) .palette-item {
+  background: var(--ui-catalog-image) var(--ui-catalog-surface);
+  border-color: var(--ui-catalog-border);
+  box-shadow: var(--ui-catalog-shadow);
+}
+:where([data-ui-theme="graphite-dark"]) .palette .palette-item:is(:hover, :focus-visible) {
+  background: var(--ui-lit-edge-image), var(--ui-catalog-image) var(--ui-catalog-surface);
+  border-color: var(--ui-catalog-hover-border);
+}
+:where([data-ui-theme="graphite-dark"]) .palette .palette-item:active {
+  background-color: var(--button-pressed);
+  box-shadow: var(--ui-control-pressed-shadow);
+}
+:where([data-ui-theme="graphite-dark"]) .inspector-tabs [aria-selected="true"] {
+  background: var(--ui-lit-edge-image), var(--ui-catalog-image) var(--button-selected-surface);
+  border-bottom-color: var(--ui-edge-light);
+  color: var(--button-accent);
+}
+
+/* Only terminal chrome is themed. Reuse the existing per-device tab color;
+   the console/background and persisted appearance values remain independent. */
+:where([data-ui-theme="graphite-dark"]) .terminal-panel-header {
+  --text: var(--ui-terminal-text);
+  --text-dim: var(--ui-terminal-muted);
+  --bg-raised: var(--ui-terminal-tab-hover);
+  background: var(--ui-header-image) var(--ui-terminal-header);
+  border-bottom-color: var(--ui-terminal-tab-border);
+  box-shadow: var(--ui-header-shadow);
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group {
+  /* Readable fallback for browsers without relative color support. The exact
+     custom color stays on the dot; only the chrome's light is bounded. */
+  --terminal-ui-accent: color-mix(in srgb, var(--terminal-tab-color) 50%, var(--ui-terminal-text));
+  --terminal-ui-wash: color-mix(in srgb, var(--terminal-ui-accent) var(--ui-terminal-wash-strength), transparent);
+  --terminal-ui-edge-image: linear-gradient(90deg, transparent, var(--terminal-ui-accent) 25%, var(--terminal-ui-accent) 75%, transparent) bottom / 100% 2px no-repeat, radial-gradient(ellipse at 50% 100%, var(--terminal-ui-wash), transparent 70%) bottom / 100% 20px no-repeat;
+  --terminal-ui-border: color-mix(in srgb, var(--terminal-ui-accent) var(--ui-terminal-border-strength), var(--ui-terminal-tab-border));
+  --terminal-ui-active-surface: color-mix(in srgb, var(--terminal-ui-accent) var(--ui-terminal-active-strength), var(--ui-terminal-tab));
+  --terminal-ui-hover-surface: color-mix(in srgb, var(--terminal-ui-accent) var(--ui-terminal-active-hover-strength), var(--ui-terminal-tab));
+  background: var(--ui-catalog-image) var(--ui-terminal-tab);
+  border-color: var(--ui-terminal-tab-border);
+  box-shadow: inset 0 1px 0 var(--button-edge-light);
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group.is-active {
+  background: var(--terminal-ui-edge-image), var(--ui-catalog-image) var(--terminal-ui-active-surface);
+  border-color: var(--terminal-ui-border);
+  border-top-color: var(--terminal-ui-accent);
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group:not(.is-active):hover,
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group.is-active:hover {
+  background: var(--ui-catalog-image) var(--ui-terminal-tab-hover);
+  border-color: var(--ui-terminal-tab-border);
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group.is-active:hover {
+  background: var(--terminal-ui-edge-image), var(--ui-catalog-image) var(--terminal-ui-hover-surface);
+  border-color: var(--terminal-ui-border);
+  border-top-color: var(--terminal-ui-accent);
+}
+@supports (color: oklch(from red l c h)) {
+  :where([data-ui-theme="graphite-dark"]) .terminal-tab-group {
+    --terminal-ui-accent: oklch(from var(--terminal-tab-color) clamp(var(--ui-terminal-lightness-min), l, var(--ui-terminal-lightness-max)) min(c, var(--ui-terminal-chroma-max)) h);
+  }
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group .tab-close {
+  color: var(--ui-terminal-muted);
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group .tab-close:hover {
+  color: var(--ui-terminal-text);
+  background: var(--ui-terminal-close-hover);
+  box-shadow: inset 0 0 0 1px var(--button-hover-border);
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group .tab-close:active {
+  background: var(--button-pressed);
+  box-shadow: var(--ui-control-pressed-shadow);
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-panel-header :is(.terminal-tab, .tab-close, .terminal-color-trigger, .terminal-panel-lock, .terminal-panel-move):focus-visible {
+  outline-color: var(--button-focus);
+}
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group :is(.terminal-tab, .tab-close, .terminal-color-trigger):focus-visible {
+  outline-color: var(--terminal-ui-accent);
+}
+/* Preserve the existing drop marker when the polished tabs are reordered. */
+:where([data-ui-theme="graphite-dark"]) .terminal-tab-group.is-drop-before {
+  box-shadow: -3px 0 var(--button-accent);
+}
+
+/* Interface-card experiment: A is Elevated, B adds light only to a genuinely
+   selected canvas link. Hover/focus reuse A; the status stripe is untouched.
+   Inset borders preserve the dimensions of every shared summary. */
+:where([data-ui-theme="graphite-dark"]) .interface-summary {
+  background: var(--ui-interface-image) var(--ui-interface-surface);
+  box-shadow: var(--ui-interface-shadow);
+}
+:where([data-ui-theme="graphite-dark"]) .interface-summary:is(:hover, :focus-within) {
+  background-color: var(--ui-interface-hover-surface);
+  box-shadow: inset 0 0 0 1px var(--ui-interface-hover-border), var(--ui-interface-shadow);
+}
+:where([data-ui-theme="graphite-dark"]) .interface-summary[data-link-selected="true"] {
+  --interface-selected-fill: color-mix(in srgb, var(--interface-identity, var(--ui-accent)) var(--ui-interface-selection-tint), var(--ui-interface-selected-surface));
+  background-color: var(--interface-selected-fill);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--interface-identity, var(--ui-accent)) 25%, var(--ui-interface-selected-border)), var(--ui-interface-shadow);
+}
+:where([data-ui-theme="graphite-dark"][data-interface-cards="accent"]) .interface-summary[data-link-selected="true"] {
+  background: var(--ui-interface-accent-image), var(--ui-interface-image) var(--interface-selected-fill);
+}

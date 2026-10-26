@@ -1,0 +1,37 @@
+{
+  "id": "graphite-interface-cards",
+  "title": "Graphite Dark — Interface Cards",
+  "description": "A: Graphite Elevated. B: Graphite Accent, com iluminação inferior apenas no link selecionado. Normal e hover são intencionalmente iguais. As guias dos terminais reutilizam as cores individuais existentes.",
+  "scene": "interfaces",
+  "variants": [
+    { "id": "elevated", "label": "A — Graphite Elevated" },
+    { "id": "accent", "label": "B — Graphite Accent" }
+  ],
+  "states": ["normal", "hover", "selected"],
+  "share": [
+    { "scene": "interfaces", "variant": "elevated", "state": "selected", "width": 1440, "height": 900, "name": "graphite-elevated-1440" },
+    { "scene": "interfaces", "variant": "accent", "state": "selected", "width": 1440, "height": 900, "name": "graphite-accent-1440" }
+  ],
+  "shareContactSheet": true,
+  "captures": [
+    { "source": ".playwright-mcp/graphite-cards-elevated-normal-1440.png", "variant": "elevated", "state": "normal", "width": 1440, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-accent-normal-1440.png", "variant": "accent", "state": "normal", "width": 1440, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-elevated-hover-1440.png", "variant": "elevated", "state": "hover", "width": 1440, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-accent-hover-1440.png", "variant": "accent", "state": "hover", "width": 1440, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-elevated-selected-1440.png", "variant": "elevated", "state": "selected", "width": 1440, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-accent-selected-1440.png", "variant": "accent", "state": "selected", "width": 1440, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-elevated-normal-700.png", "variant": "elevated", "state": "normal", "width": 700, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-accent-normal-700.png", "variant": "accent", "state": "normal", "width": 700, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-elevated-hover-700.png", "variant": "elevated", "state": "hover", "width": 700, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-accent-hover-700.png", "variant": "accent", "state": "hover", "width": 700, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-elevated-selected-700.png", "variant": "elevated", "state": "selected", "width": 700, "height": 900 },
+    { "source": ".playwright-mcp/graphite-cards-accent-selected-700.png", "variant": "accent", "state": "selected", "width": 700, "height": 900 }
+  ],
+  "contactSheet": [
+    { "scene": "interfaces", "state": "selected", "width": 1440, "height": 900, "label": "Visão geral — três cores de terminal · 1440 × 900" },
+    { "scene": "interfaces", "state": "normal", "width": 1440, "height": 900, "label": "Normal — detalhe do card", "crop": { "x": 1110, "y": 294, "width": 310, "height": 104 } },
+    { "scene": "interfaces", "state": "hover", "width": 1440, "height": 900, "label": "Hover — detalhe do card", "crop": { "x": 1110, "y": 294, "width": 310, "height": 104 } },
+    { "scene": "interfaces", "state": "selected", "width": 1440, "height": 900, "label": "Selecionado — detalhe do card", "crop": { "x": 1110, "y": 294, "width": 310, "height": 104 } },
+    { "scene": "interfaces", "state": "selected", "width": 700, "height": 900, "label": "Selecionado — Inspector em 700 px", "crop": { "x": 370, "y": 294, "width": 310, "height": 104 } }
+  ]
+}

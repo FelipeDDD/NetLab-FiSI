@@ -21,38 +21,49 @@ import { LinkDetails } from './LinkDetails';
 import { linkPresentation } from '../linkPresentation';
 import { sim } from '../sim';
 import { protectsTopologyKeys, topologyHistoryDirection } from '../topologyShortcuts';
-import { useCanvasBackground } from '../canvasBackground';
+import { CANVAS_BACKGROUNDS, useCanvasBackground } from '../canvasBackground';
 import { BackgroundParticles } from './BackgroundParticles';
+import { CableManager, type CableMenuPoint } from './CableManager';
+import { cableEndAt } from '../cableInteraction';
+import { DEVICE_COLORS } from '../deviceColors';
+import { AlignmentGuides } from './AlignmentGuides';
+import { useSmartAlignment } from './useSmartAlignment';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { floating: FloatingEdge };
-
-const MINIMAP_COLORS: Record<string, string> = {
-  host: '#38bdf8', notebook: '#38bdf8', smartphone: '#38bdf8',
-  switch: '#a78bfa',
-  router: '#34d399',
-  firewall: '#fb923c',
-  server: '#2dd4bf',
-  ap: '#f472b6',
-};
 
 const DROPPABLE_KINDS = new Set(['host', 'notebook', 'smartphone', 'switch', 'router', 'firewall', 'server', 'ap']);
 
 export function Flow() {
   const [minimapOpen, setMinimapOpen] = useState(false);
   const background = useCanvasBackground(s => s.preference);
-  const experimentalBackground = background.choice === 'original' ? null
-    : `${import.meta.env.BASE_URL}assets/backgrounds/background-${background.choice}.png`;
+  const backgroundImage = CANVAS_BACKGROUNDS[background.choice].image;
+  const experimentalBackground = backgroundImage ? `${import.meta.env.BASE_URL}assets/backgrounds/${backgroundImage}` : null;
   const shade = `rgba(10, 15, 28, ${1 - background.intensity / 100})`;
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
+  const reconnecting = useStore(s => s.reconnectingCable);
+  const alignment = useSmartAlignment(!!reconnecting);
+  const [cableMenu, setCableMenu] = useState<CableMenuPoint | null>(null);
+  const [cableMessage, setCableMessage] = useState<string | null>(null);
+  const openCableMenu = (id: string, element: Element, click?: { x: number; y: number }) => {
+    const path = element.closest('.react-flow__edge')?.querySelector<SVGPathElement>('.react-flow__edge-path');
+    const matrix = path?.getScreenCTM();
+    if (!path || !matrix) return;
+    const length = path.getTotalLength(), midpoint = path.getPointAtLength(length / 2);
+    const position = click ?? new DOMPoint(midpoint.x, midpoint.y).matrixTransform(matrix);
+    const point = new DOMPoint(position.x, position.y).matrixTransform(matrix.inverse());
+    // Freeze the endpoint now, before opening the menu or moving the cursor.
+    const end = click ? cableEndAt({ length, pointAt: t => path.getPointAtLength(t * length) }, point) : 'a';
+    setCableMenu({ id, x: Math.max(8, Math.min(window.innerWidth - 9, position.x)),
+      y: Math.max(8, Math.min(window.innerHeight - 9, position.y)), end });
+  };
   const labeledEdges = useMemo(() => edges.map(e => ({ ...e, ariaLabel: linkPresentation(sim.net, e.id)?.title })), [edges, nodes]);
   const hovered = useStore(s => s.hoveredLinkId);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     if (hovered && !edges.some(e => e.id === hovered)) useStore.getState().hoverLink(null);
   }, [edges, hovered]);
-  const onNodesChange = useStore((s) => s.onNodesChange);
   const onEdgesChange = useStore((s) => s.onEdgesChange);
   const onConnect = useStore((s) => s.onConnect);
   const select = useStore((s) => s.select);
@@ -78,6 +89,9 @@ export function Flow() {
         if (direction === 'undo') useStore.getState().undoTopology();
         else useStore.getState().redoTopology();
       } else if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing && !protectsTopologyKeys(target) && !protectsTopologyKeys(document.activeElement)) {
+        useStore.getState().cancelCableReconnect();
+        alignment.reset();
+        setCableMenu(null); setCableMessage(null);
         if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
         keyboardTimer.current = null;
         keyboardMoving.current = false;
@@ -86,6 +100,7 @@ export function Flow() {
       }
     };
     const blur = () => {
+      alignment.reset();
       finishKeyboard();
       useStore.getState().cancelNodeMovement();
       useStore.getState().hoverLink(null);
@@ -142,28 +157,34 @@ export function Flow() {
       edges={labeledEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
+      onNodesChange={alignment.onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      edgesReconnectable={false}
+      nodesDraggable={!reconnecting}
+      nodesConnectable={!reconnecting}
+      elementsSelectable={!reconnecting}
       onBeforeDelete={async ({ nodes, edges }) => {
+        alignment.reset();
         // Own the entire transaction before React Flow emits edge removals
         // followed by node removals. Returning false prevents duplicate edits.
         useStore.getState().deleteTopologyElements(nodes.map((n) => n.id), edges.map((e) => e.id));
         return false;
       }}
-      onNodeDragStart={() => {
+      onNodeDragStart={(event, _, moving) => {
+        alignment.begin(event, moving);
         finishKeyboard();
         useStore.getState().beginNodeMovement('drag');
         if (cableBeforeDrag.current) useStore.getState().onEdgesChange([{ type: 'select', id: cableBeforeDrag.current, selected: true }]);
       }}
-      onNodeDragStop={() => { cableBeforeDrag.current = null; useStore.getState().finishNodeMovement(); }}
-      onSelectionDragStart={() => { finishKeyboard(); useStore.getState().beginNodeMovement('drag'); }}
-      onSelectionDragStop={() => useStore.getState().finishNodeMovement()}
+      onNodeDragStop={() => { alignment.reset(); cableBeforeDrag.current = null; useStore.getState().finishNodeMovement(); }}
+      onSelectionDragStart={(event, moving) => { alignment.begin(event, moving); finishKeyboard(); useStore.getState().beginNodeMovement('drag'); }}
+      onSelectionDragStop={() => { alignment.reset(); useStore.getState().finishNodeMovement(); }}
       onPointerDownCapture={(event) => {
         finishKeyboard();
         cableBeforeDrag.current = (event.target as Element).closest('.react-flow__node') ? useStore.getState().edges.find(e => e.selected)?.id ?? null : null;
       }}
-      onPointerCancelCapture={() => useStore.getState().cancelNodeMovement()}
+      onPointerCancelCapture={() => { alignment.reset(); useStore.getState().cancelNodeMovement(); }}
       onFocusCapture={(event) => {
         const edge = (event.target as Element).closest('.react-flow__edge');
         if (edge) { setPointer(null); useStore.getState().hoverLink(edge.getAttribute('data-id')); }
@@ -174,6 +195,18 @@ export function Flow() {
       }}
       onKeyDownCapture={(event) => {
         const target = event.target as Element;
+        const reconnectNode = target.closest<HTMLElement>('.react-flow__node');
+        if (reconnecting && reconnectNode && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault(); event.stopPropagation();
+          setCableMessage(useStore.getState().reconnectCable(reconnectNode.dataset.id!));
+          return;
+        }
+        const edge = target.closest<HTMLElement>('.react-flow__edge');
+        if (edge && (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) {
+          event.preventDefault(); event.stopPropagation();
+          openCableMenu(edge.dataset.id!, edge);
+          return;
+        }
         if (!event.defaultPrevented && !event.nativeEvent.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey
           && /^Arrow(Left|Right|Up|Down)$/.test(event.key) && !protectsTopologyKeys(target)
           && !protectsTopologyKeys(document.activeElement) && target.closest('.react-flow__node, .react-flow__nodesselection')) {
@@ -188,14 +221,24 @@ export function Flow() {
         if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
         keyboardTimer.current = setTimeout(finishKeyboard, 350);
       }}
-      onNodeClick={(_, n) => select(n.id)}
+      onNodeClick={(_, n) => {
+        if (reconnecting) { setCableMessage(useStore.getState().reconnectCable(n.id)); return; }
+        select(n.id);
+      }}
       onEdgeMouseEnter={(event, edge) => { setPointer({ x: event.clientX, y: event.clientY }); useStore.getState().hoverLink(edge.id); }}
       onEdgeMouseMove={(event) => setPointer({ x: event.clientX, y: event.clientY })}
       onEdgeMouseLeave={() => { setPointer(null); useStore.getState().hoverLink(null); }}
-      onEdgeClick={(_, edge) => useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id })))}
-      onPaneClick={() => { select(null); useStore.getState().clearLinkSelection(); }}
+      onEdgeClick={(_, edge) => { if (!reconnecting) useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id }))); }}
+      onEdgeContextMenu={(event, edge) => {
+        event.preventDefault();
+        if (reconnecting) return;
+        setPointer(null); useStore.getState().hoverLink(null);
+        useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id })));
+        openCableMenu(edge.id, event.target as Element, { x: event.clientX, y: event.clientY });
+      }}
+      onPaneClick={() => { setCableMenu(null); if (!reconnecting) { select(null); useStore.getState().clearLinkSelection(); } }}
       onNodeDoubleClick={(_, n: DevNode) => {
-        if (hasTerminalKind(n.data.kind)) openTerminal(n.id);
+        if (!reconnecting && hasTerminalKind(n.data.kind)) openTerminal(n.id);
       }}
       onDrop={onDrop}
       onDragOver={(e) => {
@@ -222,7 +265,7 @@ export function Flow() {
         style={{ bottom: 40 }}
         pannable
         zoomable
-        nodeColor={(n) => MINIMAP_COLORS[(n as DevNode).data.kind] ?? '#888'}
+        nodeColor={(n) => DEVICE_COLORS[(n as DevNode).data.kind] ?? '#888'}
         maskColor="rgba(10, 15, 28, 0.72)"
         bgColor="#0d1526"
       />}
@@ -237,8 +280,10 @@ export function Flow() {
         </button>
       </Panel>
       <WifiCoverage />
+      <AlignmentGuides guides={alignment.guides} />
       <PacketLayer />
-      <LinkDetails pointer={pointer} />
+      {!reconnecting && <LinkDetails pointer={pointer} />}
+      <CableManager menu={cableMenu} onMenuChange={setCableMenu} message={cableMessage} onMessageChange={setCableMessage} />
     </ReactFlow>
   );
 }

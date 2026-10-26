@@ -898,6 +898,10 @@ export abstract class IpDevice extends Device {
 
   override invalidateInterface(iface: NetInterface): void {
     if (this.kind !== 'notebook' && this.kind !== 'smartphone') return;
+    this.invalidatePeer(iface);
+  }
+
+  override invalidatePeer(iface: NetInterface): void {
     iface.cancelDhcp?.();
     for (const [ip, entry] of this.arpTable) if (entry.ifaceName === iface.name) this.arpTable.delete(ip);
     for (const [ip, entry] of this.pendingArp) if (entry.iface === iface) {

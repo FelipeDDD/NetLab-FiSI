@@ -155,11 +155,45 @@ export class Network {
     const ib = opts.bIface ? b.getInterface(opts.bIface) : b.freeInterface();
     if (!ia) throw new Error(`${a.name}: no free interface`);
     if (!ib) throw new Error(`${b.name}: no free interface`);
-    if (ia.medium !== 'ethernet' || ib.medium !== 'ethernet') throw new Error('Ethernet benötigt Ethernet-Interfaces.');
-    if ([a, b].some(d => isClientKind(d.kind) && d.interfaces.some(i => i.medium === 'wireless' && i.link))) throw new Error('WLAN zuerst trennen.');
-    if (ia.link || ib.link) throw new Error('interface already connected');
+    const error = this.ethernetConnectionError(ia, ib);
+    if (error) throw new Error(error);
     const link = new Link(this, opts.id ?? this.allocId('link-'), ia, ib);
     this.links.set(link.id, link);
+    return link;
+  }
+
+  private ethernetConnectionError(a: NetInterface, b: NetInterface, current?: Link): string | null {
+    if (a.device.disposed || b.device.disposed) return 'Gerät nicht verfügbar.';
+    if (a.device === b.device) return 'Keine Verbindung zum selben Gerät möglich.';
+    if (a.medium !== 'ethernet' || b.medium !== 'ethernet') return 'Ethernet benötigt Ethernet-Interfaces.';
+    if ([a.device, b.device].some(d => isClientKind(d.kind) && d.interfaces.some(i => i.medium === 'wireless' && i.link))) return 'WLAN zuerst trennen.';
+    if ([a, b].some(i => i.link && i.link !== current)) return 'Schnittstelle bereits belegt.';
+    return null;
+  }
+
+  // Shared by the chooser and the commit. Previewing never detaches anything.
+  reconnectError(linkId: string, end: 'a' | 'b', deviceId: string, ifaceName: string): string | null {
+    if (end !== 'a' && end !== 'b') return 'Ungültige Kabelseite.';
+    const link = this.links.get(linkId), iface = this.devices.get(deviceId)?.getInterface(ifaceName);
+    if (!link || link.a.link !== link || link.b.link !== link) return 'Kabel nicht verfügbar.';
+    if (link.medium !== 'ethernet') return 'WLAN-Verbindungen über die WLAN-Einstellungen ändern.';
+    if (!iface) return 'Schnittstelle nicht verfügbar.';
+    return this.ethernetConnectionError(end === 'a' ? iface : link.a, end === 'b' ? iface : link.b, link);
+  }
+
+  reconnect(linkId: string, end: 'a' | 'b', deviceId: string, ifaceName: string): Link {
+    const error = this.reconnectError(linkId, end, deviceId, ifaceName);
+    if (error) throw new Error(error);
+    const link = this.links.get(linkId)!, iface = this.devices.get(deviceId)!.getInterface(ifaceName)!;
+    if (link[end] === iface) return link;
+    // Cancel in-flight deliveries and invalidate only the affected interfaces.
+    // Retain the object, ID, latency and opposite endpoint; never allocate a cable.
+    const affected = new Set([link.a, link.b, iface]);
+    link.detach();
+    for (const port of affected) port.device.invalidatePeer(port);
+    link[end] = iface;
+    link.a.link = link;
+    link.b.link = link;
     return link;
   }
 

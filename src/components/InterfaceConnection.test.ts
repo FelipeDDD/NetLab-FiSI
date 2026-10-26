@@ -4,8 +4,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Network } from '../engine/network';
 import { createDevice } from '../engine/factory';
 import { InterfaceConnection, InterfaceSummary, interfaceConnection } from './InterfaceConnection';
+import type { CableAppearances } from '../cableAppearance';
 
-const view = vi.hoisted(() => ({ hoveredLinkId: null as string | null, edges: [] as { id: string; selected?: boolean }[] }));
+const view = vi.hoisted(() => ({ hoveredLinkId: null as string | null, edges: [] as { id: string; selected?: boolean }[], cableColors: {} as CableAppearances }));
 vi.mock('../store', () => ({ useStore: Object.assign((select: (s: typeof view) => unknown) => select(view), { getState: () => view }) }));
 
 it('marks only the matching real interface for hovered or selected cables', () => {
@@ -13,8 +14,13 @@ it('marks only the matching real interface for hovered or selected cables', () =
   const render = () => renderToStaticMarkup(createElement(InterfaceSummary, { iface: a }));
   view.hoveredLinkId = 'different'; expect(render()).not.toContain('cable-interface-highlighted');
   view.hoveredLinkId = link.id; expect(render()).toContain('cable-interface-highlighted');
+  expect(render()).not.toContain('data-link-selected');
   view.hoveredLinkId = null; view.edges = [{ id: link.id, selected: true }];
   expect(render()).toContain('cable-interface-highlighted');
+  expect(render()).toContain('data-link-selected="true"');
+  view.hoveredLinkId = link.id; view.edges = [];
+  expect(render()).not.toContain('data-link-selected');
+  view.hoveredLinkId = null;
   view.edges = [];
 });
 
@@ -38,6 +44,19 @@ it('uses a decorative connector independently of the category-colored peer name'
   expect(html).toContain('width="17" height="17"');
   expect(html).not.toContain('>Mit ');
   expect(html).toContain('is-connected');
+});
+
+it('uses the cable identity marker without replacing UP/DOWN status or the neighbor category color', () => {
+  const { a } = pair(), link = a.link!;
+  view.cableColors = { [link.id]: { mode: 'auto', color: '#f472b6' } };
+  let html = renderToStaticMarkup(createElement(InterfaceSummary, { iface: a }));
+  expect(html).toContain('data-cable-color="#f472b6"'); expect(html).toContain('--interface-cable-color:#f472b6');
+  expect(html).toContain('is-connected'); expect(html).toContain('Link aktiv'); expect(html).toContain('var(--server, var(--text))');
+  a.up = false; html = renderToStaticMarkup(createElement(InterfaceSummary, { iface: a }));
+  expect(html).toContain('is-inactive'); expect(html).toContain('Link inaktiv'); expect(html).toContain('data-cable-color="#f472b6"');
+  a.device.network.disconnect(link.id); html = renderToStaticMarkup(createElement(InterfaceSummary, { iface: a }));
+  expect(html).not.toContain('data-cable-color='); expect(html).toContain('--interface-cable-color:var(--ui-link-empty)');
+  view.cableColors = {};
 });
 it('distinguishes no cable from a cable disabled at an endpoint', () => {
   const { a, b, net, link } = pair(); b.up = false;

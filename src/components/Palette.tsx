@@ -54,6 +54,11 @@ export function Palette() {
         </svg>
       </button>
     </div>
+    {preference.collapsed && <button type="button" className="palette-expand-area" aria-label="Seitenleiste erweitern — gesamte Leiste"
+      title="Seitenleiste erweitern" aria-expanded="false" aria-controls={`${prefix}-content`}
+      onClick={() => update({ ...preference, collapsed: false })}>
+      <span aria-hidden="true" />
+    </button>}
     <div id={`${prefix}-content`} className="palette-content" hidden={preference.collapsed}>
       <InspectorTabs active={preference.tab} label="Geräte und Werkzeuge"
         onChange={tab => update({ ...preference, tab: tab as PalettePreference['tab'] })}

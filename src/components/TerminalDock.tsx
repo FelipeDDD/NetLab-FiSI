@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { useStore } from '../store';
 import { clampDockHeight, COLLAPSED_DOCK_HEIGHT, dockHeightBounds, readDockHeight, saveDockHeight } from './terminalDockLayout';
@@ -29,7 +29,7 @@ export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
     update();
     return () => observer.disconnect();
   }, [panels.length, collapsed]);
-  const widths = terminalPanelWidths(panels, Math.max(0, availableWidth - (panels.length - 1) * TERMINAL_PANEL_SEPARATOR_WIDTH));
+  const widths = useMemo(() => terminalPanelWidths(panels, Math.max(0, availableWidth - (panels.length - 1) * TERMINAL_PANEL_SEPARATOR_WIDTH)), [panels, availableWidth]);
   useStore((s) => s.uiPulse); // device renames in panel headers
 
   useEffect(() => {

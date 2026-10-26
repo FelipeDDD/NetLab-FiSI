@@ -191,7 +191,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
           </svg><span className="toolbar-history-label">Redo</span>
         </button>
       </div>
-      <button type="button" className="btn toolbar-run" title={runTitle} aria-label={paused ? 'Run' : 'Pause'}
+      <button type="button" className="btn btn--primary btn--toolbar toolbar-run" title={runTitle} aria-label={paused ? 'Run' : 'Pause'}
         onClick={() => useStore.getState().setPaused(!paused)}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
           {paused ? <path d="m3 1 8 5-8 5Z" /> : <path d="M2 1h3v10H2zm5 0h3v10H7z" />}

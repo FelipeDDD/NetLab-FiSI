@@ -1,16 +1,21 @@
 import { useRef } from 'react';
+import type { CSSProperties } from 'react';
 import { useViewport } from '@xyflow/react';
 import { useStore } from '../store';
 import { sim } from '../sim';
 import { canvasNetwork, networkLabelScale } from '../canvasNetwork';
 import { CopyIpButton } from './CopyIpButton';
+import { interfaceCableColor } from '../cableAppearance';
 
 export function NodeNetworkLabel({ id, name }: { id: string; name: string }) {
   const nodes = useStore(s => s.nodes);
+  const colors = useStore(s => s.cableColors);
   useStore(s => s.uiPulse);
   const { zoom } = useViewport();
   const previous = useRef<string>();
-  const summary = canvasNetwork(sim.net.devices.get(id), previous.current);
+  const device = sim.net.devices.get(id);
+  const summary = canvasNetwork(device, previous.current);
+  const color = (name?: string) => interfaceCableColor(name ? device?.getInterface(name) : undefined, colors);
   if (summary?.interfaceName) previous.current = summary.interfaceName;
   const scale = networkLabelScale(zoom);
   const node = nodes.find(n => n.id === id);
@@ -19,7 +24,7 @@ export function NodeNetworkLabel({ id, name }: { id: string; name: string }) {
   const nearest = Math.min(Infinity, ...nodes.filter(n => n.id !== id && Math.abs(n.position.y + (n.measured?.height ?? 78) - y) < 20)
     .map(n => Math.abs(n.position.x + (n.measured?.width ?? 96) / 2 - x)));
   const width = Math.max(60, Math.min(150, (nearest - 10) / scale));
-  return <div className="dev-ip">{summary && <span className={`node-network-label${summary.stored ? ' is-stored' : ''}`}
+  return <div className="dev-ip">{summary && <span className={`node-network-label${summary.stored ? ' is-stored' : ''}${summary.addresses.length > 1 ? ' is-multiple' : ''}`}
     style={{ transform: `translateX(-50%) scale(${scale})`, maxWidth: width }} title={summary.tooltip}>
     {summary.icon && <span className="node-network-indicator" title={summary.tooltip} aria-label={summary.tooltip} role="img">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -29,7 +34,14 @@ export function NodeNetworkLabel({ id, name }: { id: string; name: string }) {
           : <><circle cx="12" cy="12" r="8" /><path d="M12 7v6M12 17h.01" /></>}
       </svg>
     </span>}
-    {summary.address ? <CopyIpButton address={summary.address} context={name} title={`${summary.tooltip}\nKlicken: IPv4 kopieren`}><span className="node-ip-value">{summary.address}</span></CopyIpButton>
+    {summary.addresses.length > 1 ? <span className="node-network-addresses">{summary.addresses.map(row => <span
+      key={row.interfaceName} className={`node-network-row${row.stored ? ' is-stored' : ''}`} data-interface-name={row.interfaceName} data-operational={row.active}
+      data-cable-color={color(row.interfaceName)} style={{ '--interface-cable-color': color(row.interfaceName) ?? 'var(--canvas-text-muted)' } as CSSProperties} title={row.tooltip}>
+      <span className="node-network-interface">{row.interfaceName}</span>
+      <CopyIpButton address={row.address} context={`${name} ${row.interfaceName}`} title={`${row.tooltip}\nKlicken: IPv4 kopieren`}><span className="node-ip-value">{row.address}</span></CopyIpButton>
+    </span>)}</span> : summary.address ? <><span className="node-single-address-marker" aria-hidden="true" data-cable-color={color(summary.interfaceName)}
+      style={{ background: color(summary.interfaceName) ?? 'var(--canvas-text-muted)' }} />
+      <CopyIpButton address={summary.address} context={name} title={`${summary.tooltip}\nKlicken: IPv4 kopieren`}><span className="node-ip-value">{summary.address}</span></CopyIpButton></>
       : <span>{summary.state === 'DHCP ausstehend' ? 'DHCP…' : 'Kein IPv4'}</span>}
   </span>}</div>;
 }

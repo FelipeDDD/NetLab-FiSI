@@ -1,4 +1,4 @@
-import { useCanvasBackground } from '../canvasBackground';
+import { CANVAS_BACKGROUNDS, useCanvasBackground } from '../canvasBackground';
 import { BACKGROUND_ANIMATIONS, normalizeAnimation } from '../backgroundParticles';
 
 export function BackgroundSettings() {
@@ -8,7 +8,7 @@ export function BackgroundSettings() {
     <label htmlFor="canvas-background-choice">Background</label>
     <select id="canvas-background-choice" value={preference.choice}
       onChange={event => update({ choice: event.target.value as typeof preference.choice })}>
-      <option value="original">Original</option><option value="verde1">Verde 1</option><option value="verde2">Verde 2</option>
+      {Object.entries(CANVAS_BACKGROUNDS).map(([id, { label }]) => <option key={id} value={id}>{label}</option>)}
     </select>
     <label htmlFor="canvas-background-intensity">Intensity <output>{preference.intensity}%</output></label>
     <input id="canvas-background-intensity" type="range" min="0" max="100" value={preference.intensity}

@@ -4,6 +4,8 @@ import { INSPECTOR_LAYOUTS, type InspectorLayout, type InspectorLayoutPreference
 import { FloatingPopover } from './FloatingPopover';
 import { useStore } from '../store';
 import { BackgroundSettings } from './BackgroundSettings';
+import { UI_THEMES, useUiTheme, type UiTheme } from '../uiTheme';
+import { useAlignmentPreference } from '../alignmentPreferences';
 
 export function InspectorLayoutSettings({ value, onChange }: {
   value: InspectorLayoutPreference; onChange: (value: InspectorLayoutPreference) => void;
@@ -25,7 +27,18 @@ export function InspectorSettingsContent({ value, onChange }: {
 }) {
   const coverage = useWifiCoverage();
   const cableStyle = useStore(s => s.cableStyle);
+  const { theme, setTheme } = useUiTheme();
+  const alignment = useAlignmentPreference();
   return <>
+      <fieldset className="theme-settings">
+        <legend>Darstellung</legend>
+        <label htmlFor="ui-theme-choice">UI Theme</label>
+        <select id="ui-theme-choice" value={theme} onChange={event => setTheme(event.target.value as UiTheme)}>
+          {(['dark', 'light'] as const).map(group => <optgroup key={group} label={group === 'light' ? 'Helle Themes' : 'Dunkle Themes'}>
+            {Object.entries(UI_THEMES).filter(([, option]) => option.group === group).map(([id, option]) => <option key={id} value={id}>{option.label}</option>)}
+          </optgroup>)}
+        </select>
+      </fieldset>
       <label htmlFor="inspector-layout-choice">Inspector layout · Experiment</label>
       <select id="inspector-layout-choice" value={value.layout} onChange={event => onChange({ ...value, layout: event.target.value as InspectorLayout })}>
         {Object.entries(INSPECTOR_LAYOUTS).map(([id, layout]) => <option key={id} value={id}>{layout.label}</option>)}
@@ -40,6 +53,11 @@ export function InspectorSettingsContent({ value, onChange }: {
       <select id="wifi-coverage-mode" value={coverage.mode} onChange={e => coverage.setMode(e.target.value as 'auto' | 'always' | 'hidden')}>
         <option value="auto">Auto</option><option value="always">Always</option><option value="hidden">Hidden</option>
       </select>
+      <label className="alignment-guides-setting" htmlFor="alignment-guides-enabled">
+        <input id="alignment-guides-enabled" type="checkbox" checked={alignment.enabled}
+          onChange={event => alignment.setEnabled(event.target.checked)} />Ausrichtungshilfen
+      </label>
+      <p className="hint">Mittelpunkte beim Ziehen ausrichten. Alt gedrückt halten: frei bewegen.</p>
       <BackgroundSettings />
   </>;
 }

@@ -162,7 +162,7 @@ export function HostOverview({ device, editing = null, onEdit, editorSlot }: {
     <div className="host-os-terminal">
     <label className="host-os-setting">Betriebssystem
       <select aria-label="Betriebssystem" value={device.os} onChange={(e) => useStore.getState().setHostOs(device.id, e.target.value as HostOs)}>
-        <option value="linux">Linux</option><option value="windows">Windows (CMD)</option>
+        <option value="linux">Linux</option><option value="windows">Windows</option>
       </select>
     </label>
     <button type="button" className="mini-btn" onClick={() => useStore.getState().openTerminal(device.id)}>Terminal</button>

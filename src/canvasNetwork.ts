@@ -1,6 +1,6 @@
 import type { Device } from './engine/device';
 import { IpDevice } from './engine/ipdevice';
-import { cidrToString } from './engine/ip';
+import { cidrToString, ipToString } from './engine/ip';
 
 export const networkLabelScale = (zoom: number) => Math.max(1, Math.min(1.5, 1 / Math.sqrt(Math.max(.01, zoom))));
 export function canvasNetwork(device: Device | undefined, previousInterface?: string) {
@@ -20,7 +20,16 @@ export function canvasNetwork(device: Device | undefined, previousInterface?: st
     const reason = active ? 'Link aktiv' : !i.up ? 'Admin DOWN' : i.link?.wirelessError ?? 'Kein Link';
     return `${i.name}: ${i.ip ? cidrToString(i.ip.addr, i.ip.prefix) : 'Kein IPv4'} · ${reason}${i.ip && !active ? ' · gespeichert' : ''}${i.cancelDhcp || (i.ipv4Mode === 'dhcp' && !i.ip) ? ' · DHCP ausstehend' : ''}`;
   });
-  return { address: addressOwner?.ip ? cidrToString(addressOwner.ip.addr, addressOwner.ip.prefix) : null,
+  // Presentation only: keep the operational/main interface first, and show
+  // other stored addresses explicitly rather than treating them as live.
+  const ordered = addressOwner ? [addressOwner, ...configured.filter(i => i !== addressOwner)] : [];
+  const addresses = ordered.filter(i => i.ip).map(i => ({
+    address: ipToString(i.ip!.addr), interfaceName: i.name,
+    active: live.includes(i), stored: !live.includes(i),
+    tooltip: lines[device.interfaces.indexOf(i)],
+  }));
+  return { address: addressOwner?.ip ? ipToString(addressOwner.ip.addr) : null,
+    addresses,
     interfaceName: addressOwner?.name, stored, state, tooltip: `${state}${stored ? ' · IPv4 gespeichert' : ''}\n${lines.join('\n')}`,
     icon: noLink ? wireless ? 'wifi-off' : 'unplug' : pending ? 'pending' : !main?.ip ? 'address' : null } as const;
 }

@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { sim } from '../sim';
 import { ipToString } from '../engine/ip';
 import { emptyIpv4, sameIpv4 } from '../engine/ipv4Config';
-import { editIpv4Draft, newIpv4Draft, parseIpv4Draft, syncIpv4Draft, type Ipv4Fields } from '../ipv4Draft';
+import { editIpv4Draft, newIpv4Draft, normalizeIpv4Shortcut, parseIpv4Draft, syncIpv4Draft, type Ipv4Fields } from '../ipv4Draft';
 import { CopyIpButton } from './CopyIpButton';
 
 const labels = { ip: 'IP-Adresse', mask: 'Subnetzmaske', gateway: 'Standardgateway', dns: 'DNS-Server' };
@@ -33,9 +33,14 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
   const commit = (blur = false) => {
     clearPending();
     if (composing.current) return;
-    const pending = current.current;
+    let pending = current.current;
     const latest = sim.net.devices.get(deviceId)?.getInterface(ifaceName);
-    if (latest !== iface || latest.ipv4Mode === 'dhcp' || !pending.dirty) return;
+    if (latest !== iface || latest.ipv4Mode === 'dhcp') return;
+    if (!pending.dirty) {
+      const fields = normalizeIpv4Shortcut(pending.fields, blur);
+      if (fields !== pending.fields) update({ ...pending, fields });
+      return;
+    }
     if (pending.stale || !sameIpv4(pending.source, latest.ipv4)) {
       group.current = undefined;
       if (blur) {
@@ -44,6 +49,8 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
       } else update({ ...pending, stale: true });
       return;
     }
+    const fields = normalizeIpv4Shortcut(pending.fields, blur);
+    if (fields !== pending.fields) { pending = { ...pending, fields }; update(pending); }
     const value = parseIpv4Draft(pending.fields);
     if (!value) {
       if (blur) setError('Ungültige oder unvollständige IPv4-Konfiguration. Gateway muss im selben Subnetz liegen.');
@@ -51,8 +58,8 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
     }
     const failure = useStore.getState().setInterfaceIpv4(deviceId, ifaceName, value, group.current);
     if (failure) { setError(failure); return; }
-    // Keep raw committed text while typing, including CIDR and /prefix. A
-    // canonical render here would move the cursor or eat the next digit.
+    // Preserve other raw fields/cursor positions; the consumed IP shortcut
+    // already transferred its prefix into the separate subnet-mask field.
     update({ ...newIpv4Draft(latest.ipv4), fields: pending.fields });
     setError('');
   };

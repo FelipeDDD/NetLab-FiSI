@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { ipToString, maskOf } from './engine/ip';
 import { emptyIpv4, parseStaticIpv4 } from './engine/ipv4Config';
-import { editIpv4Draft, newIpv4Draft, parseIpv4Draft, syncIpv4Draft } from './ipv4Draft';
+import { editIpv4Draft, newIpv4Draft, normalizeIpv4Shortcut, parseIpv4Draft, syncIpv4Draft } from './ipv4Draft';
 
 it('accepts all CIDR prefixes /0 through /32 and fills the decimal mask without changing the source', () => {
   for (let prefix = 0; prefix <= 32; prefix++) {
@@ -12,6 +12,28 @@ it('accepts all CIDR prefixes /0 through /32 and fills the decimal mask without 
     expect(draft.source).toEqual(emptyIpv4('unconfigured'));
     const withoutCidr = editIpv4Draft(editIpv4Draft(draft, 'ip', '192.168.1.10'), 'mask', `/${prefix}`);
     expect(parseIpv4Draft(withoutCidr.fields)).toEqual(parseIpv4Draft(draft.fields));
+  }
+});
+
+it('consumes valid IP/prefix shortcuts without losing the configured subnet', () => {
+  for (let prefix = 0; prefix <= 32; prefix++) {
+    const draft = editIpv4Draft(newIpv4Draft(emptyIpv4('unconfigured')), 'ip', `192.168.1.10/${prefix}`);
+    const fields = normalizeIpv4Shortcut(draft.fields);
+    expect(fields.ip).toBe('192.168.1.10');
+    expect(fields.mask).toBe(ipToString(maskOf(prefix)));
+    expect(parseIpv4Draft(fields)).toEqual(parseIpv4Draft(draft.fields));
+  }
+});
+
+it('does not eat the first prefix digit or erase incomplete/invalid shortcuts', () => {
+  const draft = newIpv4Draft(emptyIpv4('unconfigured'));
+  const firstDigit = editIpv4Draft(draft, 'ip', '192.168.1.10/2');
+  expect(normalizeIpv4Shortcut(firstDigit.fields, false)).toBe(firstDigit.fields);
+  const complete = editIpv4Draft(firstDigit, 'ip', firstDigit.fields.ip + '4');
+  expect(normalizeIpv4Shortcut(complete.fields, false)).toMatchObject({ ip: '192.168.1.10', mask: '255.255.255.0' });
+  for (const text of ['192.168.1.10/', '192.168.1.10/33', '192.168.1.10/240', '192.168.1.999/24']) {
+    const fields = editIpv4Draft(draft, 'ip', text).fields;
+    expect(normalizeIpv4Shortcut(fields)).toBe(fields);
   }
 });
 

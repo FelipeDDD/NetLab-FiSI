@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activatePanelSession, openPanelSession, prunePanelSessions, resizePanelPair, groupPanelSessions, freePanelSessions, normalizeTerminalLayoutMode, resizablePanelPair, terminalPanelWidths, movePanelSession, moveTerminalPanel, type TerminalPanel } from './terminalPanels';
+import { activatePanelSession, equalizeTerminalPanels, MAX_TERMINAL_PANELS, MIN_TERMINAL_PANEL_WIDTH, openPanelSession, prunePanelSessions, resizePanelPair, groupPanelSessions, freePanelSessions, normalizeTerminalLayoutMode, resizablePanelPair, terminalPanelWidths, movePanelSession, moveTerminalPanel, type TerminalPanel } from './terminalPanels';
 
 function four(): TerminalPanel[] {
   return ['a', 'b', 'c', 'd'].reduce<TerminalPanel[]>((panels, id) => openPanelSession(panels, id, null), []);
@@ -61,10 +61,10 @@ describe('terminal groups by device type', () => {
   it('rebuilds independent free panels with every session exactly once', () => {
     const ids = sessions.map((s) => s.id);
     const panels = freePanelSessions(ids, 'host3');
-    expect(panels).toHaveLength(6);
+    expect(panels).toHaveLength(5);
     expect(panels.flatMap((p) => p.tabs).sort()).toEqual([...ids].sort());
     expect(panels.find((p) => p.tabs.includes('host3'))?.active).toBe('host3');
-    expect(panels.map((p) => p.weight)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(panels.map((p) => p.weight)).toEqual([1, 1, 1, 1, 1]);
   });
   it.each([undefined, null, 'free', 'bogus', {}, 1])('uses free panels for missing or invalid layout mode %j', (value) => {
     expect(normalizeTerminalLayoutMode(value)).toBe('free');
@@ -75,23 +75,67 @@ describe('terminal groups by device type', () => {
 });
 
 describe('automatic terminal panel distribution', () => {
-  it('creates arbitrarily many equal columns with stable panel identities', () => {
+  it.each([1, 2, 3, 4, 5])('shares available space equally between %s free panels', count => {
+    const panels = freePanelSessions(Array.from({ length: count }, (_, i) => String(i)), null);
+    expect(terminalPanelWidths(panels, 1400)).toEqual(Array.from({ length: count }, () => 1400 / count));
+  });
+
+  it('equalizes only free columns and preserves locked pixels and already-equal objects', () => {
+    const panels = four();
+    panels[0].lockedWidth = 470; panels[0].weight = 470;
+    panels[1].weight = 2; panels[2].weight = 5;
+    const equal = equalizeTerminalPanels(panels);
+    expect(equal[0]).toBe(panels[0]);
+    expect(terminalPanelWidths(equal, 1400)).toEqual([470, 310, 310, 310]);
+    expect(equalizeTerminalPanels(equal)).toBe(equal);
+    panels.forEach(panel => { panel.lockedWidth = 350; });
+    expect(equalizeTerminalPanels(panels)).toBe(panels);
+    expect(terminalPanelWidths(panels, 1400)).toEqual([350, 350, 350, 350]);
+  });
+
+  it('does not redistribute manual widths when adding, switching or closing an overflow tab', () => {
+    const panels = freePanelSessions(['a', 'b', 'c', 'd', 'e'], null);
+    panels[0].lockedWidth = 450; panels[1].weight = 2; panels[3].weight = 3;
+    const opened = openPanelSession(panels, 'f', 'a');
+    expect(terminalPanelWidths(opened, 1800)).toEqual(terminalPanelWidths(panels, 1800));
+    const switched = activatePanelSession(opened, 'e');
+    const closed = prunePanelSessions(switched, ['a', 'b', 'c', 'd', 'e'], 'f').terminalPanels;
+    expect(terminalPanelWidths(closed, 1800)).toEqual(terminalPanelWidths(panels, 1800));
+    expect(movePanelSession(opened, 'f', { panelId: null }, 'free')).toBe(opened);
+    const fewer = prunePanelSessions(opened, ['b', 'c', 'd', 'e', 'f'], 'f').terminalPanels;
+    expect(movePanelSession(fewer, 'f', { panelId: null }, 'free')).toHaveLength(5);
+  });
+
+  it('retains individual locks when a grouped column is added or removed', () => {
+    const sessions = [{ id: 'a', kind: 'host' }, { id: 'n', kind: 'notebook' }, { id: 's', kind: 'server' }];
+    const previous = groupPanelSessions(sessions, 'n');
+    previous[0].lockedWidth = 480; previous[0].weight = 480; previous[1].weight = 4;
+    const added = groupPanelSessions([...sessions, { id: 'r', kind: 'router' }], 'r', previous);
+    expect(added[0]).toMatchObject({ lockedWidth: 480, weight: 480 });
+    expect(added.slice(1).map(panel => panel.weight)).toEqual([1, 1, 1]);
+    const removed = groupPanelSessions(sessions.slice(0, 2), 'n', added);
+    expect(terminalPanelWidths(removed, 1400)).toEqual([480, 920]);
+  });
+
+  it('creates at most five equal columns and retains extra sessions as tabs with stable identities', () => {
     let panels: TerminalPanel[] = [];
-    for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']) {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+    for (const [index, id] of ids.entries()) {
       const previous = panels.map((panel) => panel.id);
       panels = openPanelSession(panels, id, null);
       expect(panels.map((panel) => panel.id).slice(0, previous.length)).toEqual(previous);
       expect(panels.map((panel) => panel.weight)).toEqual(panels.map(() => 1));
-      expect(panels.at(-1)?.tabs).toEqual([id]);
+      expect(panels).toHaveLength(Math.min(index + 1, MAX_TERMINAL_PANELS));
+      expect(panels.at(-1)?.tabs).toEqual(index < 5 ? [id] : ids.slice(4, index + 1));
     }
   });
 
-  it('opens independent panels beyond four and overflows at the readable minimum', () => {
+  it('keeps fixed widths and scrolls five columns at the 220px minimum', () => {
     const initial = four();
     initial[0].lockedWidth = 420;
     const panels = openPanelSession(openPanelSession(initial, 'e', 'b'), 'f', 'e');
-    expect(panels.map((p) => p.tabs)).toEqual([['a'], ['b'], ['c'], ['d'], ['e'], ['f']]);
-    expect(terminalPanelWidths(panels, 1000)).toEqual([420, 280, 280, 280, 280, 280]);
+    expect(panels.map((p) => p.tabs)).toEqual([['a'], ['b'], ['c'], ['d'], ['e', 'f']]);
+    expect(terminalPanelWidths(panels, 1000)).toEqual([420, 220, 220, 220, 220]);
   });
 
   it('reopening a session activates it in its existing panel', () => {
@@ -116,11 +160,11 @@ describe('automatic terminal panel distribution', () => {
     expect(result.activeTerminal).toBe('e');
   });
 
-  it('removes empty panels and retains remaining width proportions', () => {
+  it('redistributes free columns after removing an empty panel', () => {
     const panels = resizePanelPair(four(), 'terminal-pane-1', 'terminal-pane-2', 0.4, 0.2);
     const result = prunePanelSessions(panels, ['a', 'b', 'd'], 'c');
     expect(result.terminalPanels.map((panel) => panel.active)).toEqual(['a', 'b', 'd']);
-    expect(result.terminalPanels.map((panel) => panel.weight)).toEqual([0.8, 1.2, 1]);
+    expect(result.terminalPanels.map((panel) => panel.weight)).toEqual([1, 1, 1]);
     expect(result.activeTerminal).toBe('d');
   });
 
@@ -180,8 +224,8 @@ describe('proportional panel resizing', () => {
     panels[2].lockedWidth = 350;
     panels[3].weight = 2;
     expect(terminalPanelWidths(panels, 1800)).toEqual([400, 350, 350, 700]);
-    expect(terminalPanelWidths(panels, 1400)).toEqual([400, 280, 350, 370]);
-    expect(terminalPanelWidths(panels, 1000)).toEqual([400, 280, 350, 280]);
+    expect(terminalPanelWidths(panels, 1400)).toEqual([400, 220, 350, 430]);
+    expect(terminalPanelWidths(panels, 1000)).toEqual([400, 220, 350, 220]);
     expect(terminalPanelWidths(prunePanelSessions(panels, ['a', 'b', 'c'], 'b').terminalPanels, 1400))
       .toEqual([400, 650, 350]);
     panels.forEach((panel) => { panel.lockedWidth = 350; });
@@ -190,8 +234,8 @@ describe('proportional panel resizing', () => {
 
   it.each([[false, false], [true, false], [false, true], [true, true]])(
     'manually resizes only adjacent panels with left/right locks %s/%s, retaining locks and other widths', (leftLocked, rightLocked) => {
-      const panels = freePanelSessions(['a', 'b', 'c', 'd', 'e', 'f'], 'a');
-      const widths = [400, 380, 420, 300, 500, 280];
+      const panels = freePanelSessions(['a', 'b', 'c', 'd', 'e'], 'a');
+      const widths = [400, 380, 420, 300, 500];
       if (leftLocked) panels[0].lockedWidth = widths[0];
       if (rightLocked) panels[1].lockedWidth = widths[1];
       panels[3].lockedWidth = widths[3];
@@ -199,7 +243,7 @@ describe('proportional panel resizing', () => {
       const total = widths[0] + widths[1];
       expect(resizablePanelPair(panels, panels[0].id, panels[1].id)).toEqual({ left: 0, right: 1 });
       const resized = resizePanelPair(panels, panels[0].id, panels[1].id, 430 / total, 280 / total, widths);
-      terminalPanelWidths(resized, 2280).forEach((width, i) => expect(width).toBeCloseTo([430, 350, 420, 300, 500, 280][i]));
+      terminalPanelWidths(resized, 2000).forEach((width, i) => expect(width).toBeCloseTo([430, 350, 420, 300, 500][i]));
       if (leftLocked) expect(resized[0].lockedWidth).toBeCloseTo(430);
       else expect(resized[0].lockedWidth).toBeUndefined();
       if (rightLocked) expect(resized[1].lockedWidth).toBeCloseTo(350);
@@ -208,7 +252,7 @@ describe('proportional panel resizing', () => {
       expect(resized[4]).toBe(panels[4]);
       for (const fraction of [-5, 5]) {
         const edge = resizePanelPair(panels, panels[0].id, panels[1].id, fraction, 280 / total, widths);
-        const result = terminalPanelWidths(edge, 2280);
+        const result = terminalPanelWidths(edge, 2000);
         expect(result[0]).toBeCloseTo(fraction < 0 ? 280 : 500);
         expect(result[1]).toBeCloseTo(fraction < 0 ? 500 : 280);
         expect(result.every((width) => width >= 280)).toBe(true);
@@ -223,9 +267,9 @@ describe('proportional panel resizing', () => {
     panels[1].weight = 1;
     panels[2].weight = 1;
     const widths = terminalPanelWidths(panels, 1400);
-    expect(widths).toEqual([280, 560, 560]);
-    const resized = resizePanelPair(panels, panels[0].id, panels[1].id, 0.5, 280 / 840, widths);
-    expect(terminalPanelWidths(resized, 1400)).toEqual([420, 420, 560]);
+    expect(widths).toEqual([220, 590, 590]);
+    const resized = resizePanelPair(panels, panels[0].id, panels[1].id, 0.5, MIN_TERMINAL_PANEL_WIDTH / 810, widths);
+    expect(terminalPanelWidths(resized, 1400)).toEqual([405, 405, 590]);
   });
 
   it('changes only the adjacent pair, conserving its total share', () => {

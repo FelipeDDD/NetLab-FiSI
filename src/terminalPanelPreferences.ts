@@ -1,9 +1,9 @@
-import { MIN_TERMINAL_PANEL_WIDTH, type TerminalLayoutMode, type TerminalPanel } from './terminalPanels';
+import { MIN_TERMINAL_PANEL_WIDTH, TERMINAL_PANEL_TYPES, type TerminalLayoutMode, type TerminalPanel } from './terminalPanels';
 
 export const PANEL_LAYOUT_KEY = 'netlab:terminal-panel-layout:v1';
 type PanelPreference = Pick<TerminalPanel, 'weight' | 'lockedWidth'>;
 export type PanelPreferences = Record<TerminalLayoutMode, Record<string, PanelPreference>>;
-const groups = ['terminal-group-host', 'terminal-group-server', 'terminal-group-router', 'terminal-group-firewall'];
+const groups = TERMINAL_PANEL_TYPES.map(kind => `terminal-group-${kind}`);
 
 export function readPanelPreferences(): PanelPreferences {
   const result: PanelPreferences = { free: {}, 'by-type': {} };

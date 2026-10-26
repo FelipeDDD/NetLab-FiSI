@@ -1,4 +1,4 @@
-import { groupPanelSessions, openPanelSession, type TerminalLayoutMode, type TerminalPanel } from './terminalPanels';
+import { equalizeTerminalPanels, groupPanelSessions, openPanelSession, MAX_TERMINAL_PANELS, TERMINAL_PANEL_TYPES, type TerminalLayoutMode, type TerminalPanel } from './terminalPanels';
 
 export const TAB_LAYOUT_KEY = 'netlab:terminal-tab-layout:v1';
 export type TerminalTabLayouts = Partial<Record<TerminalLayoutMode, Pick<TerminalPanel, 'id' | 'tabs'>[]>>;
@@ -13,7 +13,7 @@ export function readTabLayouts(devices: readonly TabLayoutDevice[]): TerminalTab
     for (const mode of ['free', 'by-type'] as const) {
       if (!Array.isArray(data.modes?.[mode])) continue;
       const seen = new Set<string>(), panels = new Set<string>();
-      const groups = ['host', 'server', 'router', 'firewall'];
+      const groups: readonly string[] = TERMINAL_PANEL_TYPES;
       const saved: NonNullable<TerminalTabLayouts['free']> = [];
       for (const panel of data.modes[mode]) {
         if (!panel || typeof panel.id !== 'string' || panels.has(panel.id) || !Array.isArray(panel.tabs)) continue;
@@ -24,6 +24,12 @@ export function readTabLayouts(devices: readonly TabLayoutDevice[]): TerminalTab
           seen.add(id); return true;
         });
         if (tabs.length) { saved.push({ id: panel.id, tabs }); panels.add(panel.id); }
+      }
+      // Older layouts may have unlimited columns. Retain their first five slots
+      // and fold every excess session into the final slot's ordinary tabs.
+      if (mode === 'free' && saved.length > MAX_TERMINAL_PANELS) {
+        const overflow = saved.splice(MAX_TERMINAL_PANELS);
+        saved[MAX_TERMINAL_PANELS - 1].tabs.push(...overflow.flatMap(panel => panel.tabs));
       }
       if (saved.length) result[mode] = saved;
     }
@@ -52,6 +58,7 @@ export function insertSavedTab(panels: TerminalPanel[], id: string, focused: str
   const slot = saved?.find((p) => p.tabs.includes(id));
   if (!slot || panels.some((p) => p.tabs.includes(id))) return openPanelSession(panels, id, focused, saved?.map((p) => p.id));
   const existing = panels.find((p) => p.id === slot.id);
+  if (!existing && panels.length >= MAX_TERMINAL_PANELS) return openPanelSession(panels, id, focused);
   const target = existing ?? { id: slot.id, tabs: [], active: id, weight: 1 };
   const tabs = [...target.tabs, id].sort((a, b) => {
     const ai = slot.tabs.indexOf(a), bi = slot.tabs.indexOf(b);
@@ -59,10 +66,11 @@ export function insertSavedTab(panels: TerminalPanel[], id: string, focused: str
   });
   const next = existing ? panels.map((p) => p.id === slot.id ? { ...p, tabs, active: id } : p)
     : [...panels, { ...target, tabs, active: id }];
-  return next.sort((a, b) => {
+  const ordered = next.sort((a, b) => {
     const ai = saved!.findIndex((p) => p.id === a.id), bi = saved!.findIndex((p) => p.id === b.id);
     return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
   });
+  return existing ? ordered : equalizeTerminalPanels(ordered);
 }
 
 function mergePending<T>(current: T[], previous: readonly T[], key: (value: T) => string, pending: (value: T) => boolean): T[] {

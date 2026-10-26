@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DragEvent, ReactNode, RefObject } from 'react';
 import { useStore } from '../store';
-import { canMovePanelSession, type TerminalTabDestination, type TerminalPanel } from '../terminalPanels';
+import { canMovePanelSession, MAX_TERMINAL_PANELS, type TerminalTabDestination, type TerminalPanel } from '../terminalPanels';
 import { FloatingPopover } from './FloatingPopover';
 import { edgeScrollSpeed, insertionAnchor, sortPreviewOffsets } from './terminalSortPreview';
 
@@ -145,7 +145,7 @@ export function TerminalNewPanelDrop() {
         prevent Chromium from completing its native drag initialization. */}
     {movement.target && <div className="terminal-drag-surface" aria-hidden="true" />}
     {movement.dragging && mode === 'free' && <div className={`terminal-new-panel-drop${allowed ? '' : ' is-forbidden'}${movement.target?.panelId === null ? ' is-over' : ''}`}>
-      <strong>+ New panel</strong><span>{allowed ? 'Drop to separate this tab' : 'Already a separate panel'}</span>
+      <strong>+ New panel</strong><span>{allowed ? 'Drop to separate this tab' : panels.length >= MAX_TERMINAL_PANELS ? 'Maximal 5 Panels – Tabs weiterverwenden' : 'Already a separate panel'}</span>
     </div>}
     <span role="status" aria-live="polite" className="terminal-move-status">
       {movement.target?.allowed === false ? 'This destination is not allowed.' : movement.target ? 'Drop to confirm the new position.' : 'Drag to move. Escape cancels.'}
@@ -197,7 +197,9 @@ export function TerminalTabMoveMenu({ id, panel, anchor, onClose }: {
     {mode === 'free' && panels.filter((p) => p.id !== panel.id).map((p) => <button key={p.id} type="button" role="menuitem" className="labs-menu-item"
       onClick={() => move({ panelId: p.id })}>Move to panel {panels.indexOf(p) + 1}</button>)}
     {mode === 'free' && <button type="button" role="menuitem" className="labs-menu-item"
-      disabled={!canMovePanelSession(panels, id, { panelId: null }, mode)} onClick={() => move({ panelId: null })}>Move to new panel</button>}
+      disabled={!canMovePanelSession(panels, id, { panelId: null }, mode)}
+      title={panels.length >= MAX_TERMINAL_PANELS ? 'Maximal 5 sichtbare Panels. Terminals bleiben als Tabs verfügbar.' : undefined}
+      onClick={() => move({ panelId: null })}>Move to new panel</button>}
     <p className="hint">{mode === 'by-type' ? 'Tabs stay within their device type.' : 'Move the tab without restarting its terminal.'}</p>
   </FloatingPopover>;
 }
