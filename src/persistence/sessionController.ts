@@ -16,6 +16,7 @@ function take<T>(result: SessionResult<T>): T { if (!result.ok) throw new Sessio
 function fault(code: 'not-started' | 'disposed' | 'runtime-changed' | 'unapplied-forms', message: string): never { throw new SessionFault({ code, message }); }
 const failure = (error: unknown): SessionError => error instanceof SessionFault ? error.detail : classifyError(error);
 const empty: ProjectDocument = { schemaVersion: 1, topology: { app: 'netsim', version: 1, devices: [], links: [] } };
+export type SessionStartOptions = SessionBootstrapOptions & { discardStartupChanges?: boolean; expectedRuntimeDocument?: ProjectDocument };
 
 interface Entry {
   persisted: OpenDraft;
@@ -44,12 +45,14 @@ export class SessionController {
   private disconnect?: () => void;
   private startupChanged = false;
   private readonly writes = new AbortController();
+  private pendingCommands = 0;
 
   constructor(private readonly repository: ProjectRepository, private readonly runtime: SessionRuntime, private readonly debounceMs = 500) {
     if (!Number.isFinite(debounceMs) || debounceMs < 0) throw new Error('Invalid debounce.');
     this.workspace = repository.workspace;
   }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  hasPendingOperations(): boolean { return this.pendingCommands > 0; }
   getState(): SessionControllerState {
     const drafts: DraftControllerState[] = (this.session?.draftIds ?? []).flatMap(id => {
       const e = this.entries.get(id); if (!e) return [];
@@ -65,11 +68,13 @@ export class SessionController {
   private checkAlive(): void { if (this.phase === 'disposed') fault('disposed', 'Controller was disposed; no delayed operation may activate a topology.'); }
   private ready(): void { this.checkAlive(); if (this.phase !== 'ready' || !this.session) fault('not-started', 'Start the session explicitly first.'); }
   private command<T>(work: () => Promise<T>): Promise<SessionResult<T>> {
+    this.pendingCommands++;
     const result = this.commandTail.then(async () => {
       try { this.checkAlive(); return { ok: true as const, value: await work() }; }
       catch (error) { const detail = failure(error); if (this.phase !== 'disposed') { this.error = detail; this.publish(); } return { ok: false as const, error: detail }; }
     });
-    this.commandTail = result; return result;
+    const settled = result.finally(() => { this.pendingCommands--; this.publish(); });
+    this.commandTail = settled; return settled;
   }
   private entry(draft: OpenDraft): Entry {
     const encoded = encodeDraftDocument(draft.document);
@@ -133,7 +138,7 @@ export class SessionController {
       this.checkAlive(); this.error = null; this.publish(); return { ok: true, value: undefined };
     } catch (error) { const detail = failure(error); if (this.phase !== 'disposed') { this.error = detail; this.publish(); } return { ok: false, error: detail }; }
   }
-  start(options: SessionBootstrapOptions & { discardStartupChanges?: boolean } = {}): Promise<SessionResult<SessionControllerState>> {
+  start(options: SessionStartOptions = {}): Promise<SessionResult<SessionControllerState>> {
     return this.command(async () => {
       if (this.phase === 'ready') return this.getState();
       if (this.startupChanged && !options.discardStartupChanges) fault('runtime-changed', 'Recover/export edits made during startup, or explicitly discard them before retrying restoration.');
@@ -141,6 +146,7 @@ export class SessionController {
       let prepared: ReturnType<typeof prepareTopologyDocument> | undefined;
       try {
         const initial = encodeDraftDocument(this.runtime.capture());
+        if (options.expectedRuntimeDocument && initial.json !== encodeDraftDocument(options.expectedRuntimeDocument).json) fault('runtime-changed', 'Local work changed while opening storage; export it before explicitly discarding and retrying.');
         if (this.runtime.hasPendingForms()) fault('unapplied-forms', 'Apply or discard form values before restoring a session.');
         const { snapshot } = take(await bootstrapSession(this.repository, initial.document, options)); this.checkAlive();
         const selected = snapshot.drafts.find(d => d.id === snapshot.session.activeDraftId);

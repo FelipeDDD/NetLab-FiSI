@@ -4,6 +4,12 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: './',
+  server: {
+    // Existing browser data belongs to this origin. Never silently change it.
+    host: 'localhost',
+    port: 5173,
+    strictPort: true,
+  },
   build: {
     rollupOptions: {
       // Two pages: the marketing/landing page at / and the app at /app.html.

@@ -89,10 +89,23 @@ export async function runWorkspaceUIReview({ page, url, root, report, openPage }
       await page.evaluate(`[...document.querySelectorAll('.workspace-plan-open')].find(e=>e.querySelector('strong').textContent==='Büro-Netz').click();`); await tabs(2);
       await menu('Neu'); await tabs(3); await capture('04-three-plans-graphite-1440.png');
     });
+    await test('ui: a pristine unnamed draft closes immediately, including from an inactive tab', async () => {
+      await click('.workspace-tab-wrap[data-active="true"] .workspace-tab-close'); await tabs(2);
+      assert.equal(await page.evaluate(`return !!document.querySelector('dialog[open]');`), false);
+      await menu('Neu'); await tabs(3);
+      const emptyId = await page.evaluate(`return workspaceReview.controller.getState().activeDraftId;`);
+      await page.evaluate(`const c=workspaceReview.controller;const other=c.getState().session.draftIds.find(id=>id!==c.getState().activeDraftId);const r=await c.switchDraft(other);if(!r.ok)throw Error(JSON.stringify(r));`);
+      await idle(); const active = await page.evaluate(`return workspaceReview.controller.getState().activeDraftId;`);
+      await page.evaluate(`const index=workspaceReview.controller.getState().session.draftIds.indexOf(${JSON.stringify(emptyId)});document.querySelectorAll('.workspace-tab-close')[index].click();`); await tabs(2);
+      assert.equal(await page.evaluate(`return workspaceReview.controller.getState().activeDraftId;`), active);
+      assert.equal(await page.evaluate(`return !!document.querySelector('dialog[open]');`), false);
+      await menu('Neu'); await tabs(3);
+    });
     await test('ui: close Cancel, Discard and Save choices preserve their contracts', async () => {
+      await page.evaluate(`store.getState().addDeviceAt('host',{x:0,y:0});`);
       await click('.workspace-tab-wrap[data-active="true"] .workspace-tab-close'); await capture('18-close-unsaved-graphite-1440.png'); await textButton('Abbrechen', 'dialog[open]'); await tabs(3);
       await click('.workspace-tab-wrap[data-active="true"] .workspace-tab-close'); await textButton('Verwerfen', 'dialog[open]'); await tabs(2);
-      await menu('Neu'); await tabs(3); await click('.workspace-tab-wrap[data-active="true"] .workspace-tab-close'); await textButton('Speichern', 'dialog[open]');
+      await menu('Neu'); await tabs(3); await page.evaluate(`store.getState().addDeviceAt('host',{x:0,y:0});`); await click('.workspace-tab-wrap[data-active="true"] .workspace-tab-close'); await textButton('Speichern', 'dialog[open]');
       await input('.workspace-name-label input', 'Versuch'); await textButton('Speichern', 'dialog[open]'); await tabs(2);
       await menu('Öffnen…'); await wait(`document.querySelector('.workspace-plan-row')`);
       await page.evaluate(`[...document.querySelectorAll('.workspace-plan-open')].find(e=>e.querySelector('strong').textContent==='Versuch').click();`); await tabs(3);
@@ -227,11 +240,12 @@ export async function runWorkspaceUIReview({ page, url, root, report, openPage }
       await page.evaluate(`const r=indexedDB.open(${JSON.stringify(mainDatabase)});const db=await new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});const tx=db.transaction('meta','readwrite');const store=tx.objectStore('meta'),request=store.getAll();request.onsuccess=()=>{const draft=request.result.find(r=>r.key.startsWith('workspace:v1:draft:')&&r.value.state==='open');draft.value.document.schemaVersion=2;store.put(draft);};await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error)});db.close();`);
       await prepare(page, mainDatabase); await wait(`document.querySelector('[data-error-code="incompatible-document"]')`); await capture('15-incompatible-session-classic-1440.png', 1440, 'classic-light'); await page.evaluate(`workspaceReview.dispose();`);
     });
-    await test('ui: ordinary boot never enables the workspace or opens the default database', async () => {
+    await test('ui: ordinary boot fails closed with recovery when IndexedDB is unavailable', async () => {
       const ordinary = await openPage(); pages.push(ordinary);
-      await ordinary.send('Page.navigate', { url: new URL('/app.html', url).href }); await wait(`document.querySelector('.toolbar')`, ordinary);
+      await ordinary.send('Page.addScriptToEvaluateOnNewDocument', { source: `Object.defineProperty(window,'indexedDB',{value:undefined,configurable:true});` });
+      await ordinary.send('Page.navigate', { url: new URL('/app.html', url).href }); await wait(`document.querySelector('[data-error-code="unavailable"]')`, ordinary);
       assert.equal(await ordinary.evaluate(`return !!document.querySelector('.workspace-tabs');`), false);
-      assert.equal(await ordinary.evaluate(`return (await indexedDB.databases()).some(d=>d.name==='netlab-projects');`), false);
+      assert.equal(await ordinary.evaluate(`return [...document.querySelectorAll('.workspace-start button')].some(b=>b.textContent==='Original exportieren');`), true);
       await ordinary.send('Page.close'); ordinary.close(); pages.splice(pages.indexOf(ordinary), 1);
     });
   } finally {

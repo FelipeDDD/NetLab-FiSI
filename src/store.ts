@@ -101,6 +101,7 @@ interface NetsimState {
   captureWorkspaceDocument(): ProjectDocument;
   activateWorkspaceDocument(prepared: PreparedTopology, identity: WorkspaceIdentity): void;
   attachWorkspacePersistence(sink: WorkspacePersistenceSink): () => void;
+  protectLegacyAutosave(): void;
   topologyGeneration: number;
   autosavePending: boolean;
   autosaveBlocked: boolean;
@@ -266,6 +267,7 @@ let lastPulse = 0;
 
 export const useStore = create<NetsimState>()((set, get) => {
   let workspacePersistence: WorkspacePersistenceSink | null = null;
+  let legacyReadOnly = false;
   const capture = new PacketCapture((packetCapture) => set({ packetCapture }));
   // Set before advancing the scheduler so new emissions use this frame's
   // presentation time, including after a long gap in browser callbacks.
@@ -507,7 +509,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     if (workspacePersistence) { workspacePersistence.flush(); return; }
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = null;
-    if (get().autosaveBlocked) return;
+    if (legacyReadOnly || get().autosaveBlocked) return;
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(currentSave()));
       set({ autosavePending: false, autosaveError: null });
@@ -603,6 +605,14 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
 
   return {
+    // Normal workspace boot claims this protection before any asynchronous I/O.
+    // It is permanent for this page, even if opening/restoring IDB later fails.
+    protectLegacyAutosave() {
+      legacyReadOnly = true;
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = null;
+      set({ autosaveBlocked: true, autosavePending: false });
+    },
     workspaceIdentity: null,
     captureWorkspaceDocument: () => ({ schemaVersion: 1, topology: currentSave() }),
     activateWorkspaceDocument: (prepared, identity) => activatePrepared(prepared, identity),
@@ -625,6 +635,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     pendingShare: null,
     shareLink: null,
     retryAutosave() {
+      if (legacyReadOnly) return;
       if (get().autosaveBlocked) {
         try {
           const original = localStorage.getItem(AUTOSAVE_KEY);
@@ -642,6 +653,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
     // Explicit recovery action; the UI confirms replacement after offering the original.
     saveTemporaryTopology() {
+      if (legacyReadOnly) return;
       try {
         const original = localStorage.getItem(AUTOSAVE_KEY);
         if (original !== get().protectedAutosave) {
@@ -1647,6 +1659,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     boot() {
+      if (legacyReadOnly) return;
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = null;
       set({ autosavePending: false, autosaveBlocked: false, autosaveError: null, protectedAutosave: null, pendingShare: null, rejectedDocument: null, shareLink: null });

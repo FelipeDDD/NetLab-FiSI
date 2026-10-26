@@ -8,11 +8,13 @@ import { assert, equal, take, code, document, changed, request, dump, fixture } 
 import { migrationBrowserCases } from './legacyMigration.browser';
 import { workspaceBrowserCases } from './workspace.browser';
 import { controllerBrowserCases } from '../persistence/sessionController.browser';
+import { recoveryBrowserCases } from './recoveryArchive.browser';
 
 export const browserCases: Record<string, () => Promise<void>> = {
   ...migrationBrowserCases,
   ...workspaceBrowserCases,
   ...controllerBrowserCases,
+  ...recoveryBrowserCases,
   'four stores, independent versions and explicit opening': () => fixture(async ({ open, raw }) => {
     const repo = await open(), db = await raw();
     equal([...db.objectStoreNames], ['documents', 'meta', 'projects', 'revisions']); equal(db.version, PROJECT_DATABASE_VERSION);

@@ -1,8 +1,9 @@
 # Controller de sessão — Fase 5B1
 
-Controller modular, sem interface de gerenciamento e **desativado no aplicativo
-normal**. `main.tsx`, boot, hashchange e pagehide não o importam/iniciam. Não há
-parâmetro de URL, flag persistida ou detecção de ambiente que o habilite.
+Controller modular, integrado à interface existente e ao aplicativo normal na
+Fase 5B2-B. `WorkspaceApplication.tsx` é o único proprietário do boot e dos
+listeners. Importar os módulos do controller continua sem efeitos de boot.
+Ver [ativação e recuperação](application-boot.md).
 
 ## Entrada e módulos
 
@@ -17,7 +18,7 @@ parâmetro de URL, flag persistida ou detecção de ambiente que o habilite.
 
 Construir controller/adaptador não inicia persistência. `start()` recebe uma
 conexão já aberta. `openSessionController({ runtime, repositoryOptions, bootstrap })`
-oferece abertura + start para uma futura entrada assíncrona. O chamador deve
+oferece abertura + start para a entrada assíncrona. O chamador deve
 encerrar controller e conexão explicitamente.
 
 O store oferece `captureWorkspaceDocument`, `activateWorkspaceDocument`,
@@ -40,7 +41,7 @@ Operações retornam `SessionResult<T>`, incluindo os erros do repositório e
 
 | API | Contrato |
 | --- | --- |
-| `start({ sessionId?, legacy?, discardStartupChanges? }?)` | Restaura sessão/foco; repetir no controller pronto é idempotente. |
+| `start({ sessionId?, legacy?, discardStartupChanges?, expectedRuntimeDocument? }?)` | Restaura sessão/foco; repetir no controller pronto é idempotente. O snapshot esperado protege edições anteriores à abertura do banco. |
 | `getState()` / `subscribe(listener)` | Snapshot independente e notificações de identidade, sessão, rascunhos, erros e oferta de Share Link. |
 | `flush(draftId?)` | Captura configurações aplicadas e aguarda a fila; também permite retry explícito com a revisão original. Sem ID, usa o ativo. |
 | `switchDraft(id, { discardUnappliedForms? }?)` | Troca segura entre rascunhos abertos, sem Save manual. |
@@ -136,19 +137,14 @@ valores originais. Não há persistência por campo.
 
 `unapplied-forms` impede troca até aplicação ou decisão explícita de descarte.
 O chamador do override `discardUnappliedForms` deve coordenar os controles durante
-a transição. O mesmo registro poderá ser usado na guarda de fechamento futura.
+a transição. O mesmo registro é usado na guarda de fechamento do boot normal.
 
-Faltam para 5B2: interface de abas/Save/Load/Delete/fechamento, diálogos de formulários
-e conflitos, recuperação por cópia/exportação, roteamento de New/Demo/Labs/Import/
-Share e decisão de ativar a nova entrada no boot. Substituir topologia por fora
-do controller muda a identidade e bloqueia gravações/trocas até recuperação;
-os comandos legados ainda não devem ser ligados à interface experimental.
+As [Fases 5B2-A/B](workspace-ui.md) implementam abas/Save/Load/fechamento,
+diálogos, recuperação, roteamento de fontes externas e integração ao boot.
+Substituir topologia por fora do controller muda a identidade e bloqueia
+gravações/trocas até recuperação; comandos legados não devem contornar essa fronteira.
 
-A [Fase 5B2-A](workspace-ui.md) implementa essa interface e os comandos de
-fechamento/reordenação em uma entrada de teste isolada. O parágrafo anterior
-registra a fronteira original da Fase 5B1; o boot normal permanece desativado.
-
-Também faltam listeners de ciclo de página e UX de edições pendentes ao sair.
+`applicationLifecycle.ts` instala a guarda e os flush antecipados no boot normal.
 IndexedDB é assíncrono: não garante flush ao encerrar, nem recuperação de edição
 sem commit. Os testes F5/reinício recuperam rascunhos confirmados, incluindo
 alterações sem Save manual. Não simulam queda de energia, fsync ou eviction.
@@ -162,8 +158,9 @@ Zustand, xterm e formulário IPv4 React reais. Verifica terminais, Scheduler,
 histórico, Labs e invariância do autosave legado.
 
 O runner existente inclui F5 e encerramento/reabertura do Chromium com perfil,
-portas e bancos descartáveis `netlab-idb-test-<UUID>`. A página não executa boot e
-o banco padrão não abre. `sessionController.test.ts` cobre indisponibilidade e
+portas e bancos descartáveis `netlab-idb-test-<UUID>`. Casos do repositório não
+executam boot. A suíte adicional `applicationBoot.test.ts` executa o boot real
+com banco redirecionado no harness. `sessionController.test.ts` cobre indisponibilidade e
 registro de checks. Não há dependências novas.
 
 ```powershell

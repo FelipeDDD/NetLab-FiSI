@@ -1,12 +1,20 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionController } from '../persistence/sessionController';
-import type { SessionControllerState, SessionError, SessionResult } from '../persistence/sessionTypes';
+import type { DraftControllerState, SessionControllerState, SessionError, SessionResult } from '../persistence/sessionTypes';
 import type { ProjectRepository } from '../projects/repository';
 import type { ProjectDocument, ProjectMetadata } from '../projects/types';
 import { hasPendingForms } from '../persistence/pendingForms';
+import { encodeDraftDocument } from '../projects/workspaceDocument';
 
 export const emptyPlan: ProjectDocument = { schemaVersion: 1, topology: { app: 'netsim', version: 1, devices: [], links: [] } };
+/** An unnamed draft still needs Save As, even when it contains nothing to lose.
+ * Keep that persistence meaning intact; this exception belongs to close UX. */
+export function canCloseEmptyDraft(draft: DraftControllerState, document: ProjectDocument | null): boolean {
+  if (draft.base || draft.pendingPersistence || draft.saving || draft.error || !document) return false;
+  try { return encodeDraftDocument(document).json === encodeDraftDocument(emptyPlan).json; }
+  catch { return false; } // An unreadable copy must remain recoverable.
+}
 export function workspaceStatus(state: SessionControllerState): string {
   const draft = state.drafts.find(d => d.id === state.activeDraftId);
   if (state.error || draft?.error) return 'Speicherfehler';
@@ -106,8 +114,9 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
     if (!id || working.current) return;
     const current = controller.getState(), draft = current.drafts.find(d => d.id === id); if (!draft) return;
     const forms = current.activeDraftId === id && hasPendingForms();
-    if (draft.manualSavePending || forms || draft.pendingPersistence) setDialog({ kind: 'close', id, sequence: draft.editSequence, forms });
-    else void run(() => controller.closeDraft(id, { expectedEditSequence: draft.editSequence }), id).then(result => {
+    const empty = !forms && draft.base === null && canCloseEmptyDraft(draft, controller.recoveryDocument(current.activeDraftId === id ? undefined : id));
+    if (!empty && (draft.manualSavePending || forms || draft.pendingPersistence)) setDialog({ kind: 'close', id, sequence: draft.editSequence, forms });
+    else void run(() => controller.closeDraft(id, { expectedEditSequence: draft.editSequence, discardChanges: empty }), id).then(result => {
       if (result && !result.ok && result.error.code === 'deleted') setDialog({ kind: 'close', id, sequence: draft.editSequence, forms });
     });
   };

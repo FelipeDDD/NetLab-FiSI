@@ -1,5 +1,11 @@
 # Persistência: proteção do formato v1 e ciclo de ativação
 
+Estado atual: a [Fase 5B2-B](application-boot.md) ativa o controller e a interface
+no boot normal. O autosave legado fica permanentemente somente leitura nessa
+entrada; falhas oferecem recuperação sem demo nem fallback gravável automático.
+Os parágrafos sobre boot/fallback legado abaixo registram os contratos históricos
+das Fases 1–2, ainda cobertos por testes e APIs explícitas.
+
 Implementação das Fases 1 e 2 da auditoria. A infraestrutura isolada da Fase 3
 está descrita em [project-repository.md](project-repository.md); ela ainda não
 substitui o autosave. O [serviço explícito da Fase 4](legacy-migration.md)

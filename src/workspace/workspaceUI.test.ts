@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
-import { sessionErrorMessage, workspaceStatus } from './WorkspaceUI';
+import { canCloseEmptyDraft, emptyPlan, sessionErrorMessage, workspaceStatus } from './WorkspaceUI';
+import { encodeDraftDocument } from '../projects/workspaceDocument';
 import type { SessionControllerState } from '../persistence/sessionTypes';
 
 const state = (): SessionControllerState => ({ phase: 'ready', activeDraftId: 'draft', session: null, pendingShare: false, error: null,
@@ -18,6 +19,28 @@ it('gives recoverable German messages without exposing storage internals', () =>
   expect(sessionErrorMessage({ code: 'quota-exceeded', message: 'internal exception' })).toContain('Backup');
   expect(sessionErrorMessage({ code: 'session-conflict', id: 'session', expectedRevision: 1, actualRevision: 2, message: 'internal exception' })).toContain('anderen Tab');
   expect(sessionErrorMessage({ code: 'incompatible-document', message: 'internal exception' })).not.toContain('internal exception');
+});
+
+it('allows immediate close for a new canonical empty draft without changing its Save As status', () => {
+  const draft = state().drafts[0];
+  expect(canCloseEmptyDraft(draft, emptyPlan)).toBe(true);
+  expect(canCloseEmptyDraft(draft, encodeDraftDocument(emptyPlan).document)).toBe(true);
+  expect(draft.manualSavePending).toBe(true);
+});
+it.each([
+  { terminalLayoutMode: 'by-type' as const },
+  { terminalAppearance: { fontSize: 18 } },
+])('does not confuse zero devices with an unmodified document (%j)', ui => {
+  expect(canCloseEmptyDraft(state().drafts[0], { ...emptyPlan, topology: { ...emptyPlan.topology, ui } })).toBe(false);
+});
+it('keeps saved plans, pending writes, errors and unreadable drafts on the existing guarded path', () => {
+  const draft = state().drafts[0];
+  expect(canCloseEmptyDraft({ ...draft, base: { planId: 'saved', planRevision: 1, planName: 'Saved', saveId: 'saved@1', savedAt: 0, documentJson: encodeDraftDocument(emptyPlan).json } }, emptyPlan)).toBe(false);
+  expect(canCloseEmptyDraft({ ...draft, pendingPersistence: true }, emptyPlan)).toBe(false);
+  expect(canCloseEmptyDraft({ ...draft, saving: true }, emptyPlan)).toBe(false);
+  expect(canCloseEmptyDraft({ ...draft, error: { code: 'quota-exceeded', message: 'failure' } }, emptyPlan)).toBe(false);
+  expect(canCloseEmptyDraft(draft, null)).toBe(false);
+  expect(canCloseEmptyDraft(draft, { schemaVersion: 99 } as never)).toBe(false);
 });
 
 const chromium = process.env.NETLAB_CHROMIUM_PATH ?? [

@@ -5,12 +5,10 @@ explícita de `openProjectRepository`. Importar o módulo não abre bancos, não
 localStorage nem ativa redes. Esta fase não instala controller, boot, autosave,
 migração, abas ou comandos visuais de Save/Load.
 
-O controller opt-in da Fase 5B1 está documentado em
-[session-controller.md](session-controller.md). Os itens de integração futura
-abaixo descrevem a fronteira original da Fase 5A; a entrada normal segue desativada.
-
-A [interface da Fase 5B2-A](workspace-ui.md) usa esses contratos apenas em
-ambiente de revisão com perfil/bancos descartáveis.
+O controller da Fase 5B1 está documentado em
+[session-controller.md](session-controller.md). A [interface da Fase 5B2-A](workspace-ui.md)
+foi ativada no aplicativo pela [Fase 5B2-B](application-boot.md). As referências
+a integração futura abaixo descrevem a fronteira original da Fase 5A.
 
 ## Dados e versões
 

@@ -1,13 +1,14 @@
 # Migração recuperável do autosave legado — Fase 4
 
-Serviço explícito, independente do boot e da interface. **Não está ativado no
-aplicativo**, não escolhe um projeto ativo e não substitui o autosave atual.
+Serviço explícito, independente do boot e da interface. O boot da Fase 5B2-B
+o chama na preparação da primeira sessão; o serviço não escolhe o projeto ativo.
 Não abre um banco sozinho: recebe um repositório já aberto e uma capacidade
 somente de leitura para `netsim:autosave:v1`.
 
 A preparação da primeira sessão no [controller 5B1](session-controller.md)
 reutiliza este serviço somente com `legacy.migrate: true` explícito. A integração
-normal permanece desativada; os testes usam apenas perfil/bancos descartáveis.
+normal está descrita em [application-boot.md](application-boot.md); os testes
+usam apenas perfil/bancos descartáveis e o original permanece somente leitura.
 
 ## Contratos e arquivos
 

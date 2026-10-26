@@ -74,7 +74,7 @@ try {
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
     plugins: [{ name: 'isolated-repository-tests', configureServer(vite) {
       vite.middlewares.use((req, res, next) => {
-        if (!['/__project_repository_test__', '/__workspace_ui_test__'].includes(req.url?.split('?')[0])) return next();
+        if (!['/__project_repository_test__', '/__workspace_ui_test__', '/__application_boot_test__'].includes(req.url?.split('?')[0])) return next();
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         // Include Vite/React's normal development preamble for existing form
         // components, with no app entry, boot or persistence listeners.
@@ -213,6 +213,17 @@ try {
     }
   }
 
+  if (process.env.NETLAB_APPLICATION_BOOT_REVIEW === '1') {
+    const { runApplicationBootReview } = await import('./application-boot-review.mjs');
+    await runApplicationBootReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report,
+      restart: async () => {
+        const stopped = new Promise(resolve => browser.once('exit', resolve));
+        await pageOne.send('Browser.close'); pageOne.close(); await stopped;
+        const restarted = await launchBrowser(); pageOne = restarted.page; return pageOne;
+      },
+    });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_WORKSPACE_UI_REVIEW === '1') {
     const { runWorkspaceUIReview } = await import('./workspace-ui-review.mjs');
     const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];

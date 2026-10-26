@@ -1,8 +1,8 @@
-# Interface de planos e sessões — Fase 5B2-A
+# Interface de planos e sessões — Fases 5B2-A / 5B2-B
 
-Interface experimental sobre o controller/repositório existentes. **O boot normal
-continua usando o fluxo legado.** Não há novo HTML público, opção de URL no app,
-migração automática em dados reais ou abertura implícita do banco padrão.
+Interface construída na Fase 5B2-A e integrada ao boot normal na Fase 5B2-B.
+`WorkspaceApplication.tsx` abre o controller antes de montar App; o fluxo normal
+usa a mesma interface testada. Ver [boot e recuperação](application-boot.md).
 
 ## Componentes e comportamento
 
@@ -29,6 +29,10 @@ JSON importieren…, Export e Share link.
   ordem. Ordem/foco são gravados pelo controller e retomados por F5.
 - A última aba pode ser fechada. A sessão vazia é preservada, com ações para
   criar/abrir plano; a área de edição fica inativa até existir outro documento.
+- Um rascunho sem plano salvo e idêntico ao documento vazio canônico fecha sem
+  diálogo, desde que não haja formulário pendente, gravação pendente ou erro.
+  A decisão compara o documento completo, não apenas a quantidade de equipamentos;
+  os contratos de autosave, dirty/Save As e persistência permanecem iguais.
 
 A indicação de topo distingue `Wird gesichert…`, alterações ainda em gravação,
 `Entwurf gesichert · nicht gespeichert`, `Gespeichert` e `Speicherfehler`.
@@ -84,9 +88,9 @@ JSON, Demo, Labs e exemplos entram por `openDocument`, em outro rascunho.
 `loadDemo` legado continua aplicando esse mesmo documento. Protocolos não mudam.
 
 Exportação JSON/configurações/diagramas e geração do Share Link mantêm o contrato
-atual. O listener experimental recebe o link como oferta separada; aceitar cria
+atual. O listener do boot recebe o link como oferta separada; aceitar cria
 outro rascunho e cancelar só remove a oferta. A sessão restaurada não é substituída.
-Os listeners normais e o autosave legado não recebem essa integração nesta fase.
+O boot normal instala esse listener uma única vez; o autosave legado fica cercado.
 
 ## Entrada e testes isolados
 
@@ -109,8 +113,9 @@ O runner reutiliza IndexedDB nativo, Chromium com perfil temporário e portas
 descartáveis. A suíte UI cobre 1/2/3 planos, Save/Save As/Load, confirmações,
 ordem/foco/F5, sessão vazia, formulários, Delete, erros, duas abas concorrentes,
 backup da cópia correta, JSON/Share Links e falhas no primeiro start. Também
-confirma que `/app.html` continua sem a barra experimental e não abre o banco
-padrão. `workspaceUI.test.ts` verifica a suíte Chromium e as mensagens/estados.
+confirma que `/app.html` oferece recuperação quando IndexedDB está indisponível.
+`workspaceUI.test.ts` verifica a suíte Chromium e as mensagens/estados. A suíte
+adicional `applicationBoot.test.ts` testa o boot normal, migração e F5.
 
 O runner usa `scripts/visual-review.mjs`, seguindo [visual-review.md](visual-review.md):
 seis PNGs selecionados ficam diretamente em `.playwright-mcp/reviews/` e a galeria
@@ -121,19 +126,20 @@ Todo o diretório é ignorado pelo Git, conforme a organização existente.
 O script não instala navegador/dependências e falha explicitamente se não houver
 Chromium; Vitest marca esses casos como skipped se o executável não existir.
 
-## Antes da ativação definitiva — Fase 5B2-B
+## Ativação — Fase 5B2-B
 
-Ainda é necessário revisar e autorizar a entrada assíncrona no boot normal,
-decidir o fluxo visual de primeira migração e o fallback legado em produção,
-e conectar essa entrada aos HTMLs/build. Não basta acrescentar o provider sem
-inicializar o controller. O legado não deve ser apagado ao confirmar a migração.
+A entrada assíncrona está conectada ao boot normal e ao build, reutilizando o
+provider. O legado não é apagado ao confirmar migração. Falhas não autorizam
+fallback gravável no legado; mostram recuperação/exportação e retry explícito.
+Os detalhes e o roteiro do primeiro teste real estão em [application-boot.md](application-boot.md).
 
-O listener experimental de pagehide apenas tenta flush; não garante commit ao
+O listener de pagehide apenas tenta flush; não garante commit ao
 encerrar o navegador. Beforeunload avisa sobre edições ainda não persistidas e
 formulários, sem exigir Save de um rascunho já confirmado. O rollout normal
-precisa decidir essa UX e testar bloqueio de storage/eviction e demais browsers.
+antecipa flush também em blur e documento oculto. Eviction e demais browsers
+continuam exigindo validação específica.
 Nem queda de energia nem dados nunca confirmados têm recuperação garantida.
 
 Conflitos continuam conservadores: há exportação da cópia local e cancelamento,
 sem merge automático ou substituição forçada. Não há lixeira visual, histórico
-extenso ou checkpoints pedagógicos novos. Nenhum dado real é migrado nesta fase.
+extenso ou checkpoints pedagógicos novos. Os testes não usaram dados reais.

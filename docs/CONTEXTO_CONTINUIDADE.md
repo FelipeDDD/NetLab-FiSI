@@ -7,11 +7,14 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
 
 ## Estado atual para retomar no desktop
 
-- **Fases 1–5B2-A concluídas e validadas. Próxima etapa: 5B2-B**, revisão e
-  ativação controlada do novo boot, migração/fallback e ciclo de página.
-  A interface de planos ainda funciona somente na entrada de teste isolada;
-  o boot normal e `netsim:autosave:v1` continuam preservados. Não ativar migração
-  em dados reais sem revisar esse fluxo.
+- **Fase 5B2-B concluída no desktop**, sobre `433f264` (5B2-A).
+  Boot normal assíncrono, planos/rascunhos, restauração pausada, migração legada
+  somente leitura e recuperação estão integrados. Ver [application-boot.md](application-boot.md).
+  Nenhum dado real foi usado nos testes automatizados. A etapa inclui fechamento
+  imediato de rascunhos vazios sem alterações e origem fixa `localhost:5173`.
+  Antes de continuar em outro PC, sincronizar `main` e conferir `git status`/`git log`.
+  Git não transfere os dados do navegador. Ver também o diagnóstico de WinNAT em
+  [application-boot.md](application-boot.md).
 - Contratos atuais: [segurança](persistence-safety.md), [repositório](project-repository.md),
   [migração](legacy-migration.md), [rascunhos](workspace-drafts.md),
   [controller](session-controller.md) e [interface 5B2-A](workspace-ui.md).
@@ -19,9 +22,13 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
   comando**; implementar limpeza ARP nos comandos Windows/Linux.
 - Pendências de ping: revisar velocidade **1×–4×** e sincronizar visualmente a
   chegada dos pacotes e suas respostas.
-- Última validação: **Node 24, 1.135 testes em 82 arquivos, TypeScript, build e
-  `git diff --check` aprovados**; Chromium validou 18 cenários da interface,
-  Graphite Dark/Classic Light e 700/1440 px com bancos/perfil descartáveis.
+- Validação no desktop: **Node 24, 1.143 testes em 85 arquivos, TypeScript, build e
+  `git diff --check` aprovados**; Chromium cobre a interface anterior e o novo
+  boot, Graphite Dark/Classic Light e 700/1440 px com bancos/perfil descartáveis.
+  O build mantém aviso de chunk acima de 500 kB; não é falha da compilação.
+- Após o polimento de fechamento, 11 testes direcionados (incluindo a interface
+  em Chromium), TypeScript e diff-check passaram; autosave e persistência não
+  foram modificados nesse ajuste de UX.
 - No desktop, conferir branch/status, atualizar sem sobrescrever trabalho local
   e executar `npm ci`. O lockfile mantém somente patches transitivos compatíveis
   de `nanoid` e `source-map-js`; os seis alertas de auditoria restantes exigem
