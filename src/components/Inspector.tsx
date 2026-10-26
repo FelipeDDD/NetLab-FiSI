@@ -24,26 +24,31 @@ import { FirewallInfo } from './FirewallInfo';
 import type { NetInterface } from '../engine/device';
 import { InterfaceSummary, interfaceConnection } from './InterfaceConnection';
 import { InfoTooltip } from './InfoTooltip';
+import { usePendingForm } from '../persistence/usePendingForm';
 
 function useInspectorDraft(identity: string, value: string, readCurrent: () => string | undefined,
   onCommit: (text: string) => string | null | void) {
   const setNotice = useStore((s) => s.setNotice);
   const [draft, setDraft] = useState(() => newInspectorDraft(identity, value));
   const current = syncInspectorDraft(draft, identity, value);
+  const pending = useRef(current); pending.current = current;
+  usePendingForm(() => pending.current.text !== pending.current.source);
   if (current !== draft) setDraft(current);
   return {
     value: current.text,
-    onChange: (text: string) => setDraft({ ...newInspectorDraft(identity, readCurrent() ?? value), text }),
+    onChange: (text: string) => { pending.current = { ...newInspectorDraft(identity, readCurrent() ?? value), text }; setDraft(pending.current); },
     commit: () => {
       // Read the engine too: a store edit can precede React's next render.
       const latest = readCurrent(), checked = syncInspectorDraft(current, identity, latest ?? value);
       if (latest === undefined || checked.stale) {
         setDraft(newInspectorDraft(identity, latest ?? value));
+        pending.current = newInspectorDraft(identity, latest ?? value);
         if (checked.stale) setNotice('Value changed elsewhere; the outdated draft was not applied.');
         return;
       }
       const err = checked.text === checked.source ? null : onCommit(checked.text);
       setDraft(newInspectorDraft(identity, readCurrent() ?? value));
+      pending.current = newInspectorDraft(identity, readCurrent() ?? value);
       if (err) setNotice(err);
     },
   };

@@ -1,6 +1,6 @@
 import { hasTerminalKind } from '../engine/device';
 import { WifiCoverage } from './WifiCoverage';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   ConnectionMode,
@@ -41,6 +41,7 @@ export function Flow() {
   const experimentalBackground = backgroundImage ? `${import.meta.env.BASE_URL}assets/backgrounds/${backgroundImage}` : null;
   const shade = `rgba(10, 15, 28, ${1 - background.intensity / 100})`;
   const nodes = useStore((s) => s.nodes);
+  const generation = useStore(s => s.topologyGeneration);
   const edges = useStore((s) => s.edges);
   const reconnecting = useStore(s => s.reconnectingCable);
   const alignment = useSmartAlignment(!!reconnecting);
@@ -79,6 +80,16 @@ export function Flow() {
     keyboardTimer.current = null;
     if (keyboardMoving.current) { keyboardMoving.current = false; useStore.getState().finishNodeMovement(); }
   };
+  useLayoutEffect(() => {
+    // Discard the old interaction; never finish its drag against a new network
+    // that happens to contain the same device IDs. Keep React Flow mounted.
+    if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
+    keyboardTimer.current = null;
+    keyboardMoving.current = false;
+    cableBeforeDrag.current = null;
+    alignment.reset();
+    setCableMenu(null); setCableMessage(null); setPointer(null);
+  }, [generation]);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;

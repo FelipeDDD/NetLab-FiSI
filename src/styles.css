@@ -23,13 +23,16 @@ body,
 .app {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 52px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
 }
 
 .app.with-dock {
-  grid-template-rows: 52px minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
+
+.app-header { min-width: 0; }
+.app-header > .toolbar { min-height: 52px; }
 
 /* ---------- toolbar ---------- */
 
@@ -2021,3 +2024,9 @@ input:not(.xterm-helper-textarea)::placeholder, textarea:not(.xterm-helper-texta
 .dhcp-pool-editor label { display: grid; gap: 3px; font-size: 12px; }
 .dhcp-pool-editor input { max-width: 100%; min-width: 0; width: 100%; }
 .dhcp-lease-scroll { overflow-x: auto; max-width: 100%; }
+.persistence-status { flex: none; max-height: 32vh; overflow: auto; padding: 8px 12px; background: var(--ui-surface-panel); color: var(--ui-text); border-bottom: 1px solid var(--ui-warning); font-size: 12px; }
+.persistence-status-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0; }
+.persistence-status-row > span { flex: 1 1 320px; overflow-wrap: anywhere; }
+.persistence-status-row label { display: flex; flex: 1 1 320px; align-items: center; gap: 8px; }
+.persistence-status-row input { flex: 1; min-width: 0; color: var(--ui-form-text); background: var(--ui-form-surface); border: 1px solid var(--ui-form-border); padding: 5px; }
+.autosave-state { display: block; color: var(--text-dim); font-size: 11px; line-height: 14px; }

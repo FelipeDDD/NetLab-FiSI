@@ -16,5 +16,8 @@ document.documentElement.dataset.interfaceCards = new URLSearchParams(window.loc
 useStore.getState().boot();
 // Preserve pending debounced edits even if the page is reloaded immediately.
 window.addEventListener('pagehide', useStore.getState().flushAutosave);
+// Pasting another Share Link into an already open tab is a same-document
+// navigation. Offer it explicitly without rebooting or replacing local work.
+window.addEventListener('hashchange', useStore.getState().receiveShareLink);
 
 createRoot(document.getElementById('root')!).render(<App />);

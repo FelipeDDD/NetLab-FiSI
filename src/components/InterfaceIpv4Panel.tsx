@@ -5,6 +5,7 @@ import { ipToString } from '../engine/ip';
 import { emptyIpv4, sameIpv4 } from '../engine/ipv4Config';
 import { editIpv4Draft, newIpv4Draft, normalizeIpv4Shortcut, parseIpv4Draft, syncIpv4Draft, type Ipv4Fields } from '../ipv4Draft';
 import { CopyIpButton } from './CopyIpButton';
+import { usePendingForm } from '../persistence/usePendingForm';
 
 const labels = { ip: 'IP-Adresse', mask: 'Subnetzmaske', gateway: 'Standardgateway', dns: 'DNS-Server' };
 type Field = keyof Ipv4Fields;
@@ -18,6 +19,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
     : newIpv4Draft(iface?.ipv4 ?? emptyIpv4('unconfigured'));
   if (draft !== editor.draft || iface !== editor.iface) setEditor({ iface, draft });
   const current = useRef(draft); current.current = draft;
+  usePendingForm(() => current.current.dirty);
   const group = useRef<object>();
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const composing = useRef(false);

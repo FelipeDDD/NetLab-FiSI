@@ -82,6 +82,24 @@ function open(device: IpDevice): Session {
   return getSession(device);
 }
 
+it('prepares a replacement without touching running sessions, then releases old commands and events on activation', () => {
+  const { a, b, net } = pair(), session = open(a);
+  const saved = JSON.stringify(serializeNetwork(net, { [a.id]: { x: 20, y: 30 }, [b.id]: { x: 200, y: 30 } }));
+  input(session, 'ping 10.0.0.2\r'); net.scheduler.advanceTo(1500);
+  const oldEvent = vi.fn(); net.scheduler.schedule(2000, oldEvent);
+  const pending = net.scheduler.pending;
+  expect(useStore.getState().importJson('{broken')).not.toBeNull();
+  expect(sim.net).toBe(net); expect(net.scheduler.pending).toBe(pending);
+  expect(session.term.dispose).not.toHaveBeenCalled(); expect(getSession(a)).toBe(session);
+  expect(useStore.getState().importJson(saved)).toBeNull();
+  expect(session.term.dispose).toHaveBeenCalledOnce(); expect(a.disposed).toBe(true); expect(net.scheduler.pending).toBe(0);
+  const previousOutput = output(session); net.scheduler.advanceTo(20_000);
+  expect(oldEvent).not.toHaveBeenCalled(); expect(output(session)).toBe(previousOutput);
+  expect(useStore.getState().terminals).toEqual([]); expect(useStore.getState().clock).toBe(0);
+  const restored = sim.net.devices.get(a.id) as IpDevice;
+  expect(open(restored)).not.toBe(session); expect(restored.interfaces[0].ip).toEqual(parseCidr('10.0.0.1/24'));
+});
+
 beforeEach(() => {
   vi.useFakeTimers();
   storage.clear();

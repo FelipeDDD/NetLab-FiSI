@@ -6,6 +6,8 @@ import { FloatingPopover } from './FloatingPopover';
 import { PacketAnimationControl } from './PacketAnimationControl';
 import { InspectorSettingsContent } from './InspectorLayoutSettings';
 import type { InspectorLayoutPreference } from '../inspectorLayout';
+import { confirmReplacement, REPLACEMENT_WARNING } from '../persistence/replacement';
+import { useWorkspaceUI } from '../workspace/WorkspaceUI';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 const MENUS = [
@@ -28,6 +30,7 @@ const EXPORTS = [
 export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   inspectorLayout: InspectorLayoutPreference; onInspectorLayoutChange: (value: InspectorLayoutPreference) => void;
 }) {
+  const workspace = useWorkspaceUI();
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1100px)').matches);
   const [menu, setMenu] = useState<MenuPage | null>(null);
   const [dialog, setDialog] = useState<'settings' | 'animation' | null>(null);
@@ -50,6 +53,9 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const speed = useStore(s => s.speed);
   const clock = useStore(s => s.clock);
   const notice = useStore(s => s.notice);
+  const autosavePending = useStore(s => s.autosavePending);
+  const autosaveBlocked = useStore(s => s.autosaveBlocked);
+  const autosaveError = useStore(s => s.autosaveError);
   const packetInspectorOpen = useStore(s => s.packetInspectorOpen);
 
   const cancelHoverClose = () => { if (hoverTimer.current !== null) clearTimeout(hoverTimer.current); hoverTimer.current = null; };
@@ -90,6 +96,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
     catch (error) { useStore.getState().setNotice('Aktion fehlgeschlagen: ' + (error instanceof Error ? error.message : String(error))); }
     finally { closeMenu(true); }
   };
+  const replace = (action: () => void) => confirmReplacement(action, message => window.confirm(message));
   const nextMenu = (direction: -1 | 1) => {
     const index = MENUS.findIndex(item => item.id === rootMenu.current);
     const next = MENUS[(index + direction + MENUS.length) % MENUS.length].id;
@@ -124,12 +131,17 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   };
   const onFile = async (file: File | undefined) => {
     if (!file) return;
-    const error = useStore.getState().importJson(await file.text());
-    if (error) useStore.getState().setNotice('Import failed: ' + error);
-    if (fileRef.current) fileRef.current.value = '';
+    try {
+      if (workspace) { workspace.importJson(await file.text()); return; }
+      const error = useStore.getState().importJson(await file.text(), () => window.confirm(REPLACEMENT_WARNING));
+      if (error) useStore.getState().setNotice('Import failed: ' + error);
+    } catch (error) {
+      useStore.getState().setNotice('Datei konnte nicht gelesen werden: ' + String(error));
+    } finally { if (fileRef.current) fileRef.current.value = ''; }
   };
-  const action = (label: string, handler: () => void) =>
+  const action = (label: string, handler: () => void, disabled = false) =>
     <button type="button" className="labs-menu-item toolbar-menu-action" role="menuitem"
+      disabled={disabled}
       onPointerEnter={closeExport} onClick={() => perform(handler)}>{label}</button>;
   const togglePackets = () => useStore.getState().setPacketInspectorOpen(!packetInspectorOpen);
   const openPacketSettings = () => { closeMenu(); setDialog(current => current === 'animation' ? null : 'animation'); };
@@ -137,7 +149,9 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const popupLabel = menu === 'compact' ? 'Menü' : MENUS.find(item => item.id === menu)?.label;
 
   return <header className="toolbar">
-    <div className="brand"><span className="brand-name">NetLab - FiSi</span></div>
+    <div className="brand"><span className="brand-name">NetLab - FiSi</span>
+      <span className="autosave-state" role="status">{workspace ? workspace.status : autosaveBlocked ? 'Temporär · Autosave geschützt' : autosaveError ? 'Speicherfehler' : autosavePending ? 'Nicht gespeichert' : 'Gespeichert'}</span>
+    </div>
     <nav className="toolbar-navigation" aria-label="Hauptmenü">
       {compact ? <button type="button" className="toolbar-menu-trigger" ref={el => { triggers.current.compact = el; }}
         aria-haspopup="menu" aria-expanded={menu !== null} aria-controls={menu ? 'toolbar-' + menu + '-menu' : undefined}
@@ -226,8 +240,19 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         <span>{item.label}</span><span aria-hidden="true">{item.id === 'settings' ? '' : '›'}</span>
       </button>)}
       {menu === 'file' && <>
-        {action('New', () => useStore.getState().newTopology())}
-        {action('Import', () => fileRef.current?.click())}
+        {workspace ? <>
+          {action('Neu', workspace.newPlan)}
+          {action('Öffnen…', workspace.loadPlans)}
+          {action('Speichern', () => workspace.save(), !workspace.state.activeDraftId)}
+          {action('Speichern unter…', () => workspace.save(true), !workspace.state.activeDraftId)}
+          {action('Plan schließen', () => workspace.close(), !workspace.state.activeDraftId)}
+          {action('Gespeicherte Pläne…', workspace.loadPlans)}
+          <div className="labs-menu-section">Austausch</div>
+          {action('JSON importieren…', () => fileRef.current?.click())}
+        </> : <>
+          {action('New', () => replace(() => useStore.getState().newTopology()))}
+          {action('Import', () => fileRef.current?.click())}
+        </>}
         <button type="button" role="menuitem" ref={exportAnchor} className="labs-menu-item toolbar-menu-action" aria-haspopup="menu"
           aria-expanded={exportOpen} aria-controls={exportOpen ? 'toolbar-export-menu' : undefined}
           onPointerEnter={event => { if (event.pointerType === 'mouse') openExport('none'); }}
@@ -236,18 +261,18 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         {action('Share link', () => useStore.getState().shareUrl())}
       </>}
       {menu === 'labs' && <>
-        {action('Demo', () => useStore.getState().loadDemo())}
+        {action('Demo', () => workspace ? workspace.openDocument(useStore.getState().createDemoDocument()) : replace(() => useStore.getState().loadDemo()))}
         <div className="labs-menu-section">Übungen</div>
         {LABS.map((lab, index) => <button type="button" key={lab.lab!.id} role="menuitem" className="labs-menu-item"
-          onClick={() => perform(() => useStore.getState().loadBundledLab(index))}>
+          onClick={() => perform(() => workspace ? workspace.openDocument({ schemaVersion: 1, topology: lab }) : replace(() => useStore.getState().loadBundledLab(index)))}>
           <span className="labs-menu-title">{lab.lab!.title}</span><span className="labs-menu-blurb">{lab.lab!.blurb}</span>
         </button>)}
         <div className="labs-menu-section">Example networks</div>
         {EXAMPLES.map((example, index) => <button type="button" key={example.title} role="menuitem" className="labs-menu-item"
-          onClick={() => perform(() => useStore.getState().loadExample(index))}>
+          onClick={() => perform(() => workspace ? workspace.openDocument({ schemaVersion: 1, topology: example.file }) : replace(() => useStore.getState().loadExample(index)))}>
           <span className="labs-menu-title">{example.title}</span><span className="labs-menu-blurb">{example.blurb}</span>
         </button>)}
-        <div className="labs-menu-note">Loading a lab or example replaces the current canvas.</div>
+        <div className="labs-menu-note">{workspace ? 'Übungen und Beispiele öffnen in einem neuen Plan.' : 'Loading a lab or example replaces the current canvas.'}</div>
       </>}
       {menu === 'help' && <a className="labs-menu-item toolbar-help-link" role="menuitem" href={USER_GUIDE_URL}
         target="_blank" rel="noopener noreferrer" onClick={() => closeMenu(true)}>Help / Dokumentation ↗</a>}

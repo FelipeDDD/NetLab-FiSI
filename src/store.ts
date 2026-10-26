@@ -15,11 +15,16 @@ import { createDevice } from './engine/factory';
 import { Host, IpDevice } from './engine/ipdevice';
 import { chooseHostOs, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
 import type { DeviceKind } from './engine/device';
-import { restoreNetwork, serializeNetwork, type SaveFile } from './engine/serialize';
+import { serializeNetwork, type SaveFile } from './engine/serialize';
+import { disposeNetwork } from './engine/networkLifecycle';
+import { captureTopologyDocument, prepareTopologyDocument, type PreparedTopology } from './persistence/topologyDocument';
+import { activateTopologyNetwork } from './persistence/topologyActivation';
+import type { WorkspaceIdentity, WorkspacePersistenceSink } from './persistence/sessionTypes';
+import type { ProjectDocument } from './projects/types';
 import { listRuleset } from './engine/firewall-fmt';
 import { cidrToString, parseCidr, parseIp } from './engine/ip';
 import { ApDevice, SwitchDevice } from './engine/switch';
-import { disposeAllSessions, disposeSession, getSession, refreshSessionProfile } from './terminals';
+import { disposeSession, getSession, refreshSessionProfile } from './terminals';
 import { sim } from './sim';
 import type { LabDef } from './labs/types';
 import { runChecks } from './labs/checker';
@@ -33,7 +38,7 @@ import { svgToPngBlob, topologySvg } from './export/diagram';
 import { networkReport } from './export/report';
 import { adjacentTerminal, type TerminalDirection } from './terminalShortcuts';
 import { activatePanelSession, equalizeTerminalPanels, prunePanelSessions, normalizeTerminalLayoutMode, MIN_TERMINAL_PANEL_WIDTH, movePanelSession, type TerminalTabDestination, type TerminalPanel, type TerminalLayoutMode } from './terminalPanels';
-import { DEFAULT_TERMINAL_COLORS, DEFAULT_TERMINAL_APPEARANCE, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, readTerminalAppearance, readTerminalColors, type AppearanceSaveFile, type TerminalAppearance } from './terminalAppearance';
+import { DEFAULT_TERMINAL_COLORS, DEFAULT_TERMINAL_APPEARANCE, hasTerminalColor, normalizeTerminalAppearance, normalizeTerminalColor, type AppearanceSaveFile, type TerminalAppearance } from './terminalAppearance';
 import { applyPanelPreferences, readPanelPreferences, rememberPanelPreferences, writePanelPreferences } from './terminalPanelPreferences';
 import { forgetSavedTabs, insertSavedTab, mergeTabLayouts, readTabLayouts, TAB_LAYOUT_KEY, writeTabLayouts, type TerminalTabLayouts } from './terminalTabPreferences';
 import { capturePresentationSelection } from './terminalPresentationSelection';
@@ -92,6 +97,26 @@ function deviceIps(id: string): string[] {
 }
 
 interface NetsimState {
+  workspaceIdentity: WorkspaceIdentity | null;
+  captureWorkspaceDocument(): ProjectDocument;
+  activateWorkspaceDocument(prepared: PreparedTopology, identity: WorkspaceIdentity): void;
+  attachWorkspacePersistence(sink: WorkspacePersistenceSink): () => void;
+  topologyGeneration: number;
+  autosavePending: boolean;
+  autosaveBlocked: boolean;
+  autosaveError: string | null;
+  protectedAutosave: string | null;
+  rejectedDocument: { text: string; error: string } | null;
+  pendingShare: string | null;
+  shareLink: string | null;
+  retryAutosave(): void;
+  saveTemporaryTopology(): void;
+  exportProtectedAutosave(): void;
+  exportRejectedDocument(): void;
+  dismissRejectedDocument(): void;
+  openPendingShare(): void;
+  dismissPendingShare(): void;
+  receiveShareLink(): void;
   hostCreationMode: HostCreationMode;
   setHostCreationMode(mode: HostCreationMode): void;
   setHostOs(id: string, os: HostOs): void;
@@ -214,6 +239,7 @@ interface NetsimState {
   setNotice(msg: string | null): void;
   newTopology(): void;
   loadDemo(): void;
+  createDemoDocument(): ProjectDocument;
   exportJson(): void;
   exportConfigs(): void;
   exportContainerlab(): void;
@@ -221,7 +247,7 @@ interface NetsimState {
   exportSvg(): void;
   exportPng(): void;
   exportReport(): void;
-  importJson(text: string): string | null;
+  importJson(text: string, approveReplacement?: () => boolean): string | null;
   shareUrl(): void;
   boot(): void;
 
@@ -239,6 +265,7 @@ let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 let lastPulse = 0;
 
 export const useStore = create<NetsimState>()((set, get) => {
+  let workspacePersistence: WorkspacePersistenceSink | null = null;
   const capture = new PacketCapture((packetCapture) => set({ packetCapture }));
   // Set before advancing the scheduler so new emissions use this frame's
   // presentation time, including after a long gap in browser callbacks.
@@ -459,30 +486,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
   wireNet(sim.net);
 
-  const currentSave = (): AppearanceSaveFile => {
-    const positions: Record<string, { x: number; y: number }> = {};
-    for (const n of get().nodes) positions[n.id] = { x: n.position.x, y: n.position.y };
-    const save: AppearanceSaveFile = serializeNetwork(sim.net, positions);
-    if (Object.keys(get().terminalColors).length) {
-      save.ui = { terminalColors: { ...get().terminalColors } };
-    }
-    const appearance = get().terminalAppearance;
-    // An explicit size distinguishes new defaults from the legacy 13px files.
-    save.ui = { ...save.ui, terminalAppearance: { ...appearance } };
-    const cableColors = readCableColors(get().cableColors, sim.net.links.keys());
-    if (Object.keys(cableColors).length) save.ui.cableColors = cableColors;
-    if (get().terminalLayoutMode !== 'free') save.ui.terminalLayoutMode = get().terminalLayoutMode;
-    const lab = get().lab;
-    if (lab) {
-      save.lab = lab;
-      save.labProgress = {
-        step: get().labStep,
-        results: get().labResults,
-        quiz: get().quizAnswers,
-      };
-    }
-    return save;
-  };
+  const currentSave = () => captureTopologyDocument(sim.net, get());
 
   const download = (filename: string, blob: Blob) => {
     const url = URL.createObjectURL(blob);
@@ -500,17 +504,23 @@ export const useStore = create<NetsimState>()((set, get) => {
     );
 
   const saveNow = () => {
+    if (workspacePersistence) { workspacePersistence.flush(); return; }
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = null;
+    if (get().autosaveBlocked) return;
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(currentSave()));
-    } catch {
-      // Storage full or unavailable; autosave is best-effort.
+      set({ autosavePending: false, autosaveError: null });
+    } catch (error) {
+      set({ autosavePending: true, autosaveError: 'Autosave fehlgeschlagen. Änderungen sind nur im Arbeitsspeicher. Bitte erneut versuchen oder JSON exportieren. ' + String(error) });
     }
   };
 
   const saveSoon = () => {
+    if (workspacePersistence) { workspacePersistence.changed(); return; }
     if (saveTimer) clearTimeout(saveTimer);
+    set({ autosavePending: true });
+    if (get().autosaveBlocked) { saveTimer = null; return; }
     saveTimer = setTimeout(saveNow, 500);
   };
 
@@ -538,18 +548,29 @@ export const useStore = create<NetsimState>()((set, get) => {
     saveSoon();
   };
 
-  const adoptSave = (data: AppearanceSaveFile) => {
-    const restored = restoreNetwork(data);
-    disposeAllSessions();
-    sim.net = restored;
+  const activatePrepared = ({ document: data, network, presentation }: PreparedTopology, workspaceIdentity: WorkspaceIdentity | null = null) => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = null;
     labCheckGeneration++;
+    activateTopologyNetwork(network);
     tabLayouts = readTabLayouts(tabDevices());
     wireNet(sim.net);
+    animationNow = 0;
+    lastPulse = 0;
+    flashSeq = 0;
+    rangeEditGroup = null;
+    ipv4EditGroup = null;
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = null;
     const nodes = data.devices.map((d) => deviceNode(d.id, d.kind, d.name, d.x, d.y));
     set({
+      workspaceIdentity,
+      topologyGeneration: get().topologyGeneration + 1,
+      clock: network.now, packetAnimationClock: 0, uiPulse: 0,
+      notice: null, autosavePending: false, shareLink: null,
       nodes,
       edges: edgesFromEngine(),
-      cableColors: readCableColors(data.ui?.cableColors, sim.net.links.keys()), reconnectingCable: null,
+      ...presentation, reconnectingCable: null,
       hoveredLinkId: null,
       packets: [],
       guidedPacket: emptyGuidedPacket(),
@@ -559,10 +580,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       activeTerminal: null,
       terminalPanels: [],
       terminalHasFocus: false,
+      terminalFocusRequest: 0,
       terminalDockCollapsed: false,
-      terminalColors: readTerminalColors(data),
-      terminalAppearance: readTerminalAppearance(data),
-      terminalLayoutMode: normalizeTerminalLayoutMode(data.ui?.terminalLayoutMode),
       lab: data.lab ?? null,
       labStep: data.labProgress?.step ?? 0,
       labResults: data.labProgress?.results ?? {},
@@ -573,8 +592,95 @@ export const useStore = create<NetsimState>()((set, get) => {
     get().invalidateTopologyHistory();
     ignoreDrag = false;
   };
+  const adoptSave = (data: AppearanceSaveFile, approveReplacement?: () => boolean) => {
+    const prepared = prepareTopologyDocument(data);
+    if (approveReplacement && !approveReplacement()) {
+      disposeNetwork(prepared.network);
+      return false;
+    }
+    activatePrepared(prepared);
+    return true;
+  };
 
   return {
+    workspaceIdentity: null,
+    captureWorkspaceDocument: () => ({ schemaVersion: 1, topology: currentSave() }),
+    activateWorkspaceDocument: (prepared, identity) => activatePrepared(prepared, identity),
+    attachWorkspacePersistence(sink) {
+      if (workspacePersistence) throw new Error('A workspace controller already owns this store.');
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = null;
+      workspacePersistence = sink;
+      // Explicit experimental ownership protects the legacy key, including
+      // after disposal. Only the existing explicit boot resets this protection.
+      set({ autosaveBlocked: true, autosavePending: false });
+      return () => { if (workspacePersistence === sink) workspacePersistence = null; };
+    },
+    topologyGeneration: 0,
+    autosavePending: false,
+    autosaveBlocked: false,
+    autosaveError: null,
+    protectedAutosave: null,
+    rejectedDocument: null,
+    pendingShare: null,
+    shareLink: null,
+    retryAutosave() {
+      if (get().autosaveBlocked) {
+        try {
+          const original = localStorage.getItem(AUTOSAVE_KEY);
+          if (original !== null) {
+            set({ protectedAutosave: original, autosaveError: 'Der vorhandene Autosave bleibt geschützt. Original exportieren, bevor die temporäre Topologie ausdrücklich gespeichert wird.' });
+            return;
+          }
+          set({ autosaveBlocked: false });
+        } catch (error) {
+          set({ autosaveError: 'Autosave kann weiterhin nicht gelesen werden. JSON exportieren. ' + String(error) });
+          return;
+        }
+      }
+      saveNow();
+    },
+    // Explicit recovery action; the UI confirms replacement after offering the original.
+    saveTemporaryTopology() {
+      try {
+        const original = localStorage.getItem(AUTOSAVE_KEY);
+        if (original !== get().protectedAutosave) {
+          set({ autosaveError: 'Der gespeicherte Inhalt hat sich geändert. Bitte erneut lesen und das Original exportieren.' });
+          return;
+        }
+        set({ autosaveBlocked: false });
+        saveNow();
+        if (!get().autosavePending) set({ protectedAutosave: null });
+      } catch (error) {
+        set({ autosaveError: 'Der vorhandene Autosave konnte nicht geprüft werden. ' + String(error) });
+      }
+    },
+    exportProtectedAutosave() {
+      const original = get().protectedAutosave;
+      if (original !== null) download('netsim-autosave-original.json', new Blob([original], { type: 'application/json' }));
+    },
+    exportRejectedDocument() {
+      const original = get().rejectedDocument;
+      if (original) download('netsim-import-original.json', new Blob([original.text], { type: 'application/json' }));
+    },
+    dismissRejectedDocument() { set({ rejectedDocument: null }); },
+    openPendingShare() {
+      const text = get().pendingShare;
+      if (text !== null && get().importJson(text) === null) set({ pendingShare: null });
+    },
+    dismissPendingShare() { set({ pendingShare: null }); },
+    receiveShareLink() {
+      if (!location.hash.startsWith('#t=')) return;
+      const original = location.hash;
+      try {
+        const json = LZString.decompressFromEncodedURIComponent(original.slice(3));
+        if (!json) throw new Error('Share Link konnte nicht gelesen werden.');
+        set({ pendingShare: json });
+      } catch (error) {
+        set({ rejectedDocument: { text: original, error: String(error) } });
+      }
+      history.replaceState(null, '', location.pathname + (location.search ?? ''));
+    },
     cableColors: {},
     reconnectingCable: null,
     setCableColor(id, color) {
@@ -1347,7 +1453,8 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     flushAutosave() {
-      if (saveTimer !== null) saveNow();
+      if (workspacePersistence) { workspacePersistence.flush(); return; }
+      if (get().autosavePending) saveNow();
     },
 
     refresh() {
@@ -1407,44 +1514,16 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     newTopology() {
-      labCheckGeneration++;
-      get().invalidateTopologyHistory();
-      ignoreDrag = false;
+      adoptSave({ app: 'netsim', version: 1, devices: [], links: [], ui: { terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE } } });
       tabLayouts = {};
       try { if (localStorage.getItem(TAB_LAYOUT_KEY)) writeTabLayouts([], {}); } catch { /* Optional persistence. */ }
       panelPreferences = readPanelPreferences();
-      disposeAllSessions();
-      sim.net = new Network();
-      wireNet(sim.net);
-      set({
-        nodes: [],
-        edges: [],
-        cableColors: {}, reconnectingCable: null,
-        hoveredLinkId: null,
-        packets: [],
-        guidedPacket: emptyGuidedPacket(),
-        dropFlashes: [],
-        selected: null,
-        terminals: [],
-        activeTerminal: null,
-        terminalPanels: [],
-        terminalHasFocus: false,
-        terminalDockCollapsed: false,
-        terminalColors: {},
-        terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE },
-        terminalLayoutMode: 'free',
-        lab: null,
-        labStep: 0,
-        labResults: {},
-        labChecking: false,
-        quizAnswers: {},
-      });
       saveSoon();
     },
 
-    loadDemo() {
-      get().newTopology();
-      const net = sim.net;
+    createDemoDocument() {
+      // Construct the built-in document off to the side, just like an import.
+      const net = new Network();
       const pc1 = createDevice(net, 'host') as IpDevice;
       const pc2 = createDevice(net, 'host') as IpDevice;
       const sw1 = createDevice(net, 'switch');
@@ -1482,18 +1561,26 @@ export const useStore = create<NetsimState>()((set, get) => {
         port: 80,
         body: '<html><body><h1>It works!</h1><p>Served by srv1 over simulated TCP.</p></body></html>',
       };
-      set({
+      const data = captureTopologyDocument(net, {
         nodes: [
-          deviceNode(pc1.id, 'host', pc1.name, 60, 120),
-          deviceNode(pc2.id, 'host', pc2.name, 60, 320),
-          deviceNode(sw1.id, 'switch', sw1.name, 290, 220),
-          deviceNode(r1.id, 'router', r1.name, 510, 220),
-          deviceNode(srv1.id, 'server', srv1.name, 730, 220),
+          { id: pc1.id, position: { x: 60, y: 120 } },
+          { id: pc2.id, position: { x: 60, y: 320 } },
+          { id: sw1.id, position: { x: 290, y: 220 } },
+          { id: r1.id, position: { x: 510, y: 220 } },
+          { id: srv1.id, position: { x: 730, y: 220 } },
         ],
-        edges: edgesFromEngine(),
-        cableColors: initialCableColors(net),
+        cableColors: initialCableColors(net), terminalColors: {},
+        terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE }, terminalLayoutMode: 'free',
+        lab: null, labStep: 0, labResults: {}, quizAnswers: {},
       });
-      get().refresh();
+      disposeNetwork(net);
+      return { schemaVersion: 1, topology: data };
+    },
+
+    loadDemo() {
+      adoptSave(get().createDemoDocument().topology);
+      tabLayouts = {};
+      try { if (localStorage.getItem(TAB_LAYOUT_KEY)) writeTabLayouts([], {}); } catch { /* Optional persistence. */ }
       saveSoon();
     },
 
@@ -1536,50 +1623,48 @@ export const useStore = create<NetsimState>()((set, get) => {
       download('netsim-report.html', new Blob([html], { type: 'text/html' }));
     },
 
-    importJson(text) {
+    importJson(text, approveReplacement) {
       try {
         const data = JSON.parse(text) as SaveFile;
-        adoptSave(data);
+        if (!adoptSave(data, approveReplacement)) return null;
+        set({ rejectedDocument: null });
         saveSoon();
         return null;
       } catch (e) {
-        return e instanceof Error ? e.message : 'invalid file';
+        const error = e instanceof Error ? e.message : 'invalid file';
+        set({ rejectedDocument: { text, error } });
+        return error;
       }
     },
 
     shareUrl() {
       const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(currentSave()));
       const url = `${location.origin}${location.pathname}#t=${compressed}`;
-      navigator.clipboard
-        .writeText(url)
+      set({ shareLink: url });
+      Promise.resolve().then(() => navigator.clipboard.writeText(url))
         .then(() => get().setNotice('Share link copied to clipboard'))
-        .catch(() => get().setNotice('Could not access clipboard — check the address bar instead'));
-      history.replaceState(null, '', `#t=${compressed}`);
+        .catch(() => get().setNotice('Could not access clipboard — copy the link shown in the recovery bar'));
     },
 
     boot() {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = null;
+      set({ autosavePending: false, autosaveBlocked: false, autosaveError: null, protectedAutosave: null, pendingShare: null, rejectedDocument: null, shareLink: null });
       set({ packetAnimationSpeed: readPacketAnimationSpeed() });
       panelPreferences = readPanelPreferences();
-      if (location.hash.startsWith('#t=')) {
-        const json = LZString.decompressFromEncodedURIComponent(location.hash.slice(3));
-        if (json) {
+      get().receiveShareLink();
+      try {
+        const saved = localStorage.getItem(AUTOSAVE_KEY);
+        if (saved !== null) {
           try {
-            adoptSave(JSON.parse(json) as SaveFile);
-            history.replaceState(null, '', location.pathname);
+            adoptSave(JSON.parse(saved) as SaveFile);
             return;
-          } catch {
-            get().setNotice('Could not load the shared topology from the URL');
+          } catch (error) {
+            set({ autosaveBlocked: true, protectedAutosave: saved, autosaveError: 'Autosave konnte nicht geladen werden. Das Original bleibt unverändert; die Demo ist temporär. Original zur Wiederherstellung exportieren. ' + String(error) });
           }
         }
-      }
-      const saved = localStorage.getItem(AUTOSAVE_KEY);
-      if (saved) {
-        try {
-          adoptSave(JSON.parse(saved) as SaveFile);
-          return;
-        } catch {
-          // Corrupt autosave: fall through to the demo.
-        }
+      } catch (error) {
+        set({ autosaveBlocked: true, autosaveError: 'Autosave konnte nicht gelesen werden. Die Demo ist temporär; Änderungen werden nicht gespeichert. ' + String(error) });
       }
       get().loadDemo();
     },

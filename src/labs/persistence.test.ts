@@ -74,11 +74,12 @@ it.each(['import', 'autosave', 'share'] as const)('migrates a legacy empty inter
   const json = JSON.stringify(file);
   if (channel === 'import') expect(useStore.getState().importJson(json)).toBeNull();
   else if (channel === 'autosave') { storage.set(autosaveKey, json); useStore.getState().boot(); }
-  else { page.hash = '#t=' + LZString.compressToEncodedURIComponent(json); useStore.getState().boot(); }
+  else { page.hash = '#t=' + LZString.compressToEncodedURIComponent(json); useStore.getState().boot(); useStore.getState().openPendingShare(); }
   assertLoaded(file);
   useStore.getState().flushAutosave();
   useStore.getState().shareUrl();
-  const saved = JSON.parse(LZString.decompressFromEncodedURIComponent(page.hash.slice(3))!) as SaveFile;
+  const sharedHash = new URL(useStore.getState().shareLink!).hash;
+  const saved = JSON.parse(LZString.decompressFromEncodedURIComponent(sharedHash.slice(3))!) as SaveFile;
   expect(saved.devices.find(device => device.kind === 'switch')!.ifaces).toHaveLength(8);
 });
 

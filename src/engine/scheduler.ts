@@ -48,4 +48,8 @@ export class Scheduler {
   get pending(): number {
     return this.queue.length;
   }
+
+  clear(): void {
+    this.queue = [];
+  }
 }

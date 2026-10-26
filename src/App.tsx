@@ -13,8 +13,12 @@ import { useStore } from './store';
 import { loadPacketInspector, savePacketInspector, packetPanelGeometry, type PacketInspectorPreference } from './packetInspectorLayout';
 import { ResizablePacketPanel } from './components/ResizablePacketPanel';
 import { protectsTopologyKeys } from './topologyShortcuts';
+import { PersistenceStatus } from './components/PersistenceStatus';
+import { WorkspaceTabs, useWorkspaceUI } from './workspace/WorkspaceUI';
+import { WorkspaceViewport } from './workspace/WorkspaceViewport';
 
 export default function App() {
+  const workspace = useWorkspaceUI();
   const [packetLayout, setPacketLayout] = useState(loadPacketInspector);
   const changePacketLayout = (value: PacketInspectorPreference, persist = true) => { setPacketLayout(value); if (persist) savePacketInspector(value); };
   const [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 1280 : window.innerWidth);
@@ -27,13 +31,16 @@ export default function App() {
   };
   const editor = useRef<HTMLDivElement>(null);
   const selected = useStore((s) => s.selected);
+  const generation = useStore(s => s.topologyGeneration);
   const packetInspectorOpen = useStore((s) => s.packetInspectorOpen);
   const hasTerminals = useStore((s) => s.terminals.length > 0);
+  const workspaceCompact = !!workspace && viewport <= 900;
   const geometry = packetPanelGeometry(viewport, selected ? inspectorPreferredWidth(inspectorLayout) : 0, packetLayout);
 
   return (
     <ReactFlowProvider>
-      <div className={`app${hasTerminals ? ' with-dock' : ''}`} data-inspector-layout={inspectorLayout.layout}
+      {workspace && <WorkspaceViewport />}
+      <div className={`app${hasTerminals ? ' with-dock' : ''}${workspace ? ' workspace-enabled' : ''}`} data-inspector-layout={inspectorLayout.layout}
         onKeyDown={event => {
           if (event.key !== "'" || event.repeat || event.defaultPrevented || event.nativeEvent.isComposing ||
               event.ctrlKey || event.altKey || event.metaKey || event.shiftKey ||
@@ -43,12 +50,15 @@ export default function App() {
           event.preventDefault();
           state.setTerminalDockCollapsed(!state.terminalDockCollapsed);
         }}
-        style={{ '--inspector-width': `${inspectorPreferredWidth(inspectorLayout)}px` } as React.CSSProperties}>
-        <Toolbar inspectorLayout={inspectorLayout} onInspectorLayoutChange={changeInspectorLayout} />
+        style={{ '--inspector-width': `${workspaceCompact ? Math.min(290, inspectorPreferredWidth(inspectorLayout)) : inspectorPreferredWidth(inspectorLayout)}px` } as React.CSSProperties}>
+        <div className="app-header">
+          <Toolbar inspectorLayout={inspectorLayout} onInspectorLayoutChange={changeInspectorLayout} />
+          {workspace ? <WorkspaceTabs /> : <PersistenceStatus />}
+        </div>
         <div className={`main${packetInspectorOpen ? ' is-analyzing-packets' : ''}${selected ? ' has-device-inspector' : ''}`}
           data-packet-side={packetLayout.side} data-analysis-layout={geometry.placement}
           style={{ '--packet-panel-width': `${geometry.width}px`, '--analysis-device-width': `${geometry.deviceWidth}px` } as React.CSSProperties}>
-          <Palette />
+          <Palette compact={workspaceCompact} />
           <div className="canvas" ref={editor} tabIndex={-1} role="region" aria-label="Topology editor">
             <Flow />
             <LabPanel />
@@ -56,14 +66,14 @@ export default function App() {
           {selected && <ResizableInspector hidden={false} side={packetInspectorOpen && packetLayout.side === 'right' ? 'left' : 'right'}
             onResize={(width, persist) => changeInspectorLayout({ layout: 'custom', customWidth: width }, persist)}
             onReset={() => changeInspectorLayout({ ...inspectorLayout, layout: 'balanced' })}>
-            <Inspector />
+            <Inspector key={generation} />
           </ResizableInspector>}
           <ResizablePacketPanel open={packetInspectorOpen} layout={packetLayout} min={geometry.min} max={geometry.max} width={geometry.width}
             onResize={(width, persist) => changePacketLayout({ ...packetLayout, widths: { ...packetLayout.widths, [packetLayout.mode]: width } }, persist)}>
             <PacketInspector layout={packetLayout} onLayoutChange={changePacketLayout} />
           </ResizablePacketPanel>
         </div>
-        <TerminalDock onFocusEditor={() => editor.current?.focus({ preventScroll: true })} />
+        <TerminalDock key={generation} onFocusEditor={() => editor.current?.focus({ preventScroll: true })} />
       </div>
     </ReactFlowProvider>
   );

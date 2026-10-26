@@ -14,6 +14,11 @@ Live app: <https://netsim.borck.education/>
 
 ## The interface
 
+The manual Save/Load and plan-tab interface is currently available only in an
+isolated test environment. The normal app still follows the existing workflow
+described here; it does not automatically migrate browser data. Developer review
+instructions and screenshots are described in [workspace-ui.md](workspace-ui.md).
+
 - **Toolbar** (top): Undo, Redo, New, Demo, Labs ▾ (labs + example networks), Import,
   Export ▾, Share link, Help; on the right, the simulation clock with
   Pause and a speed selector.

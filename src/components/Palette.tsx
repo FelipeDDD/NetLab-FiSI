@@ -25,11 +25,13 @@ const CATEGORIES: { id: PaletteCategory; label: string; items: { kind: DeviceKin
   ] },
 ];
 
-export function Palette() {
+export function Palette({ compact = false }: { compact?: boolean } = {}) {
   const addDeviceAt = useStore((s) => s.addDeviceAt);
   const nodeCount = useStore((s) => s.nodes.length);
   const hostMode = useStore((s) => s.hostCreationMode);
   const [preference, setPreference] = useState(loadPalettePreference);
+  const [compactExpanded, setCompactExpanded] = useState(false);
+  const collapsed = compact ? !compactExpanded : preference.collapsed;
   const prefix = useId();
   const update = (next: PalettePreference) => { setPreference(next); savePalettePreference(next); };
   const toggleCategory = (id: PaletteCategory) => update({ ...preference,
@@ -42,24 +44,25 @@ export function Palette() {
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const toggleLabel = preference.collapsed ? 'Seitenleiste erweitern' : 'Seitenleiste einklappen';
-  return <aside className={`palette${preference.collapsed ? ' is-collapsed' : ''}`} aria-label="Geräte und Werkzeuge">
+  const toggleCollapsed = () => compact ? setCompactExpanded(!compactExpanded) : update({ ...preference, collapsed: !preference.collapsed });
+  const toggleLabel = collapsed ? 'Seitenleiste erweitern' : 'Seitenleiste einklappen';
+  return <aside className={`palette${collapsed ? ' is-collapsed' : ''}`} aria-label="Geräte und Werkzeuge">
     <div className="palette-header">
-      <span className="palette-title" hidden={preference.collapsed}>Katalog</span>
+      <span className="palette-title" hidden={collapsed}>Katalog</span>
       <button type="button" className="palette-toggle" aria-label={toggleLabel} title={toggleLabel}
-        aria-expanded={!preference.collapsed} aria-controls={`${prefix}-content`}
-        onClick={() => update({ ...preference, collapsed: !preference.collapsed })}>
+        aria-expanded={!collapsed} aria-controls={`${prefix}-content`}
+        onClick={toggleCollapsed}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-          <path d="M5 4v16" /><path d={preference.collapsed ? 'm11 7 5 5-5 5' : 'm16 7-5 5 5 5'} />
+          <path d="M5 4v16" /><path d={collapsed ? 'm11 7 5 5-5 5' : 'm16 7-5 5 5 5'} />
         </svg>
       </button>
     </div>
-    {preference.collapsed && <button type="button" className="palette-expand-area" aria-label="Seitenleiste erweitern — gesamte Leiste"
+    {collapsed && <button type="button" className="palette-expand-area" aria-label="Seitenleiste erweitern — gesamte Leiste"
       title="Seitenleiste erweitern" aria-expanded="false" aria-controls={`${prefix}-content`}
-      onClick={() => update({ ...preference, collapsed: false })}>
+      onClick={toggleCollapsed}>
       <span aria-hidden="true" />
     </button>}
-    <div id={`${prefix}-content`} className="palette-content" hidden={preference.collapsed}>
+    <div id={`${prefix}-content`} className="palette-content" hidden={collapsed}>
       <InspectorTabs active={preference.tab} label="Geräte und Werkzeuge"
         onChange={tab => update({ ...preference, tab: tab as PalettePreference['tab'] })}
         tabs={[

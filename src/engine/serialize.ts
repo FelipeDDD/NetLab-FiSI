@@ -11,6 +11,8 @@ import { validIpv4, type Ipv4Mode } from './ipv4Config';
 import { cidrToString, ipToString, networkOf, parseCidr, parseIp } from './ip';
 import { firewallFromJSON, firewallToJSON, type FirewallJSON } from './firewall';
 import type { LabDef, LabProgress } from '../labs/types';
+import { validateSave } from './validateSave';
+import { disposeNetwork } from './networkLifecycle';
 
 export interface SavedIface {
   medium?: 'wireless';
@@ -190,7 +192,7 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
       if (d instanceof Host && si.name === 'wlan0') iface = net.enableWireless(d.id, si.mac);
       else if (d instanceof ApDevice && si.name.startsWith('wifi-')) { iface = new NetInterface(d, si.name, si.mac ?? net.nextMac()); iface.medium = 'wireless'; d.interfaces.push(iface); }
     }
-    if (!iface) continue;
+    if (!iface) throw new Error('Unknown interface: ' + sd.id + ':' + si.name);
     if (typeof si.mac === 'string' && /^([\da-f]{2}:){5}[\da-f]{2}$/i.test(si.mac)) iface.mac = si.mac;
     iface.up = si.up;
     if (si.ip) {
@@ -199,7 +201,8 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
     }
     if (d instanceof IpDevice && si.ipv4Mode) {
       const config = { mode: si.ipv4Mode, ip: iface.ip, gateway: si.gateway ? parseIp(si.gateway) : null, dns: si.dns ? parseIp(si.dns) : null };
-      if (validIpv4(config)) iface.configureIpv4(config);
+      if (!validIpv4(config)) throw new Error('Invalid IPv4 configuration: ' + sd.id + ':' + si.name);
+      iface.configureIpv4(config);
     }
   }
   if (d instanceof IpDevice) {
@@ -244,7 +247,7 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
     for (const sr of sd.routes) {
       const dest = parseCidr(sr.dest);
       const via = sr.via !== null ? parseIp(sr.via) : null;
-      if (!dest || !d.getInterface(sr.dev)) continue;
+      if (!dest || !d.getInterface(sr.dev)) throw new Error('Invalid route interface: ' + sd.id + ':' + sr.dev);
       d.staticRoutes.push({
         dest: networkOf(dest.addr, dest.prefix),
         prefix: dest.prefix,
@@ -262,36 +265,44 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
 }
 
 export function restoreNetwork(data: SaveFile): Network {
-  if (data.app !== 'netsim' || data.version !== 1) throw new Error('not a NetSim v1 topology file');
+  validateSave(data);
   const net = new Network();
-  for (const sd of data.devices) restoreDevice(net, sd);
-  const switches = new Set(data.devices.filter(sd => sd.kind === 'switch').map(sd => sd.id));
-  for (const sl of data.links) {
-    // A nonexistent physical switch port is a layout error, not a cable to
-    // silently skip or a reason to guess a larger switch capacity.
-    if (switches.size) {
-      for (const endpoint of [sl?.a, sl?.b]) {
-        if (!Array.isArray(endpoint)) continue;
-        const [id, port] = endpoint;
-        if (switches.has(id) && !net.devices.get(id)!.getInterface(port)) {
-          throw new Error('Invalid switch port layout: ' + id + ' references nonexistent port ' + port);
+  try {
+    for (const sd of data.devices) restoreDevice(net, sd);
+    const switches = new Set(data.devices.filter(sd => sd.kind === 'switch').map(sd => sd.id));
+    for (const sl of data.links) {
+      // A nonexistent physical switch port is a layout error, not a cable to
+      // silently skip or a reason to guess a larger switch capacity.
+      if (switches.size) {
+        for (const endpoint of [sl?.a, sl?.b]) {
+          if (!Array.isArray(endpoint)) continue;
+          const [id, port] = endpoint;
+          if (switches.has(id) && !net.devices.get(id)!.getInterface(port)) {
+            throw new Error('Invalid switch port layout: ' + id + ' references nonexistent port ' + port);
+          }
         }
       }
+      try {
+        if (sl.medium === 'wireless' && !net.devices.get(sl.b[0])!.getInterface(sl.b[1]) && !sl.b[1].startsWith('wifi-')) {
+          throw new Error('Unknown wireless AP interface: ' + sl.b[0] + ':' + sl.b[1]);
+        }
+        const link = sl.medium === 'wireless'
+          ? net.associate(sl.a[0], sl.b[0], { id: sl.id, ssid: sl.ssid, apPort: sl.b[1], apMac: sl.apMac, apUp: sl.apUp, apVlan: sl.apVlan, restore: true })
+          : net.connect(sl.a[0], sl.b[0], { id: sl.id, aIface: sl.a[1], bIface: sl.b[1] });
+        if (typeof sl.latency === 'number' && Number.isFinite(sl.latency) && sl.latency >= 0) link.latency = sl.latency;
+      } catch (error) {
+        throw new Error('Invalid link ' + sl.id + ': ' + (error instanceof Error ? error.message : String(error)));
+      }
     }
-    try {
-      const link = sl.medium === 'wireless'
-        ? net.associate(sl.a[0], sl.b[0], { id: sl.id, ssid: sl.ssid, apPort: sl.b[1], apMac: sl.apMac, apUp: sl.apUp, apVlan: sl.apVlan, restore: true })
-        : net.connect(sl.a[0], sl.b[0], { id: sl.id, aIface: sl.a[1], bIface: sl.b[1] });
-      if (typeof sl.latency === 'number' && Number.isFinite(sl.latency) && sl.latency >= 0) link.latency = sl.latency;
-    } catch {
-      // Skip malformed links rather than failing the whole import.
+    // RIP starts after cabling so the first advertisement actually goes somewhere.
+    for (const sd of data.devices) {
+      if (!sd.ripEnabled) continue;
+      const d = net.devices.get(sd.id);
+      if (d instanceof IpDevice) d.enableRip(true);
     }
+    return net;
+  } catch (error) {
+    disposeNetwork(net);
+    throw error;
   }
-  // RIP starts after cabling so the first advertisement actually goes somewhere.
-  for (const sd of data.devices) {
-    if (!sd.ripEnabled) continue;
-    const d = net.devices.get(sd.id);
-    if (d instanceof IpDevice) d.enableRip(true);
-  }
-  return net;
 }

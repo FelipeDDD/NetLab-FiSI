@@ -4,12 +4,14 @@ import type { NetInterface } from '../engine/device';
 import { defaultDhcpPool, legacyPoolInterface, poolSettings, validateDhcpPool } from '../engine/dhcpPools';
 import { ipToString, parseIp } from '../engine/ip';
 import { useStore } from '../store';
+import { usePendingForm } from '../persistence/usePendingForm';
 
 function DhcpPoolCard({device,iface}:{device:IpDevice;iface:NetInterface}) {
   const cfg=device.dhcpPool(iface.name), defaults=cfg??defaultDhcpPool(iface);
   const values=()=>({rangeStart:ipToString(defaults.rangeStart),rangeEnd:ipToString(defaults.rangeEnd),router:defaults.router===null?'':ipToString(defaults.router),dns:defaults.dns===null?'':ipToString(defaults.dns)});
   const [draft,setDraft]=useState(values),[error,setError]=useState<string|null>(null);
   const details=useRef<HTMLDetailsElement>(null),dirty=useRef(false);
+  usePendingForm(()=>dirty.current);
   const [expanded,setExpanded]=useState(false);
   const signature=JSON.stringify(values());
   useEffect(()=>{if(!dirty.current)setDraft(JSON.parse(signature));},[signature]);
