@@ -25,6 +25,23 @@ it('round-trips reordered panels with overflow tabs and reserves pending slots f
   expect(groups.map(({ id, tabs }) => ({ id, tabs }))).toEqual(saved['by-type']);
 });
 const devices = [{ id: 'a', kind: 'host' }, { id: 'b', kind: 'host' }, { id: 's', kind: 'server' }];
+it('does not move a fresh router behind restored host slots when opened pc1, r1, pc2', () => {
+  const devices = [{id:'pc1',kind:'host'},{id:'r1',kind:'router'},{id:'pc2',kind:'host'}];
+  const saved=[{id:'terminal-pane-1',tabs:['pc1']},{id:'terminal-pane-2',tabs:['pc2']}];
+  let panels:TerminalPanel[]=[];
+  for(const id of ['pc1','r1','pc2'])panels=insertSavedTab(panels,id,null,'free',devices,saved);
+  expect(panels.map(p=>p.active)).toEqual(['pc1','r1','pc2']);
+  const before=panels.map(p=>p.id);
+  panels=insertSavedTab(panels,'pc1','pc2','free',devices,saved);
+  expect(panels.map(p=>p.id)).toEqual(before);
+});
+it('retains the relative order of explicitly saved slots without sorting live unsaved slots', () => {
+  const devices=[{id:'pc1',kind:'host'},{id:'r1',kind:'router'},{id:'pc2',kind:'host'}];
+  const saved=[{id:'terminal-pane-2',tabs:['pc2']},{id:'terminal-pane-1',tabs:['pc1']}];
+  let panels:TerminalPanel[]=[];
+  for(const id of ['pc1','r1','pc2'])panels=insertSavedTab(panels,id,null,'free',devices,saved);
+  expect(panels.map(p=>p.active)).toEqual(['pc2','pc1','r1']);
+});
 function storage() {
   let saved = '';
   vi.stubGlobal('localStorage', { getItem: () => saved || null, setItem: (key: string, data: string) => { expect(key).toBe(TAB_LAYOUT_KEY); saved = data; } });

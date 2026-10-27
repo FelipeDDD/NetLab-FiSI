@@ -217,6 +217,7 @@ interface NetsimState {
   setHttpPort(deviceId: string, text: string): string | null;
   setHttpBody(deviceId: string, text: string): void;
   toggleRip(deviceId: string): void;
+  setForwarding(deviceId: string, enabled: boolean): void;
   setPortVlan(deviceId: string, port: string, text: string): string | null;
   resizeSwitch(deviceId: string, delta: 1 | -1): string | null;
   setWifiRange(deviceId: string, meters: number, editGroup?: object): void;
@@ -742,7 +743,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     cancelQuickPing() { set({ quickPing: null }); },
     chooseQuickPingTarget(targetId, address) {
       const selection = get().quickPing;
-      if (!selection) return;
+      if (!selection || selection.pending) return;
       const source = sim.net.devices.get(selection.sourceId), target = sim.net.devices.get(targetId);
       if (!canQuickPing(source)) { get().cancelQuickPing(); return; }
       const addresses = pingAddresses(target);
@@ -754,11 +755,13 @@ export const useStore = create<NetsimState>()((set, get) => {
         set({ quickPing: { sourceId: source.id, targetId, addresses, message: 'IPv4-Adresse auswählen' } }); return;
       }
       get().openTerminal(source.id);
-      const result = getSession(source).executeCommand(quickPingCommand(source, chosen));
-      if (result === 'accepted') { set({ quickPing: null }); return; }
-      set({ quickPing: { sourceId: source.id, message: result === 'unapplied-input'
-        ? 'Im Quellterminal steht eine Eingabe. Bitte zuerst übernehmen oder löschen.'
-        : 'Das Quellterminal ist beschäftigt. Befehl beenden und Ziel erneut auswählen.' } });
+      const pending: QuickPingSelection = { sourceId: source.id, pending: true, message: 'Ping wird vorbereitet…' };
+      set({ quickPing: pending });
+      getSession(source).executeQuickPing(quickPingCommand(source, chosen), result => {
+        if (get().quickPing !== pending) return;
+        if (result === 'accepted' || result === 'cancelled' || result === 'disposed') { set({ quickPing: null }); return; }
+        set({ quickPing: { sourceId: source.id, message: 'Das Quellterminal ist beschäftigt. Aktuellen Befehl mit Ctrl+C beenden und Ziel erneut auswählen.' } });
+      }, () => get().quickPing === pending && sim.net.devices.get(source.id) === source && !source.disposed);
     },
     cancelCableReconnect() { set({ reconnectingCable: null }); },
     reconnectCable(deviceId, ifaceName) {
@@ -1246,6 +1249,14 @@ export const useStore = create<NetsimState>()((set, get) => {
       saveSoon();
     },
 
+    setForwarding(deviceId, enabled) {
+      const d = sim.net.devices.get(deviceId);
+      if (!(d instanceof IpDevice) || d.disposed || d.forwarding === enabled) return;
+      prepareEdit(); const before = d.forwarding; d.forwarding = enabled;
+      get().refresh();
+      commitEdit({ type: 'set-forwarding', label: enabled ? 'Enable IP forwarding' : 'Disable IP forwarding', deviceId, before, after: enabled });
+      saveSoon();
+    },
     toggleRip(deviceId) {
       const d = sim.net.devices.get(deviceId);
       if (!(d instanceof IpDevice) || d.disposed) return;

@@ -19,6 +19,7 @@ export interface Session {
   opened: boolean;
   configure(opts: SessionOpts): void;
   executeCommand(command: string): 'accepted' | 'busy' | 'unapplied-input' | 'disposed';
+  executeQuickPing(command: string, onResult: (result: 'accepted' | 'busy' | 'cancelled' | 'disposed') => void, isActive?: () => boolean): void;
   refreshProfile(): void;
   dispose(): void;
 }
@@ -90,7 +91,8 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   let inputBusy = false;
   let draining = false;
   // null requests a redraw after xterm column reflow, serialized with input.
-  const inputQueue: { data: string | null; replace: boolean; refreshProfile?: boolean }[] = [];
+  type QuickCommand = { command: string; onResult: (result: 'accepted' | 'busy' | 'cancelled' | 'disposed') => void; isActive: () => boolean };
+  const inputQueue: { data: string | null; replace: boolean; refreshProfile?: boolean; quickCommand?: QuickCommand }[] = [];
   const history: string[] = [];
   let hIdx = 0;
   let historyDraft = { text: '', cursor: 0 };
@@ -180,10 +182,12 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     while (!inputBusy && inputQueue.length && !disposed) {
       inputBusy = true;
       const action = inputQueue.shift()!;
-      processInput(action.data, action.replace, () => {
+      const done = () => {
         inputBusy = false;
         if (!draining) drainInput();
-      }, action.refreshProfile);
+      };
+      if (action.quickCommand) processQuickCommand(action.quickCommand, done);
+      else processInput(action.data, action.replace, done, action.refreshProfile);
     }
     draining = false;
   };
@@ -298,6 +302,26 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     done();
   };
 
+  const processQuickCommand = ({ command, onResult, isActive }: QuickCommand, done: () => void) => {
+    const finish = (result: 'accepted' | 'busy' | 'cancelled' | 'disposed') => { onResult(result); done(); };
+    if (disposed) return finish('disposed');
+    if (!isActive()) return finish('cancelled');
+    if (running) return finish('busy');
+    selectedCommand = false; term.clearSelection(); buf = ''; cursor = 0;
+    hIdx = history.length; historyDraft = { text: '', cursor: 0 }; promptOs = shell.os;
+    // Clear the visible viewport only (not scrollback or command history).
+    // Prior Ctrl+C/redraw writes finish first through this same input queue.
+    term.write('\x1b[2J\x1b[H' + promptStr(), () => {
+      if (disposed) return finish('disposed');
+      if (!isActive()) return finish('cancelled');
+      redrawLine(command, () => {
+        if (disposed) return finish('disposed');
+        if (!isActive()) return redrawLine('', () => finish('cancelled'));
+        submit(); finish('accepted');
+      });
+    });
+  };
+
   const input = term.onData(enqueueInput);
   let editColumns = term.cols;
   const resize = term.onResize(({ cols }) => {
@@ -344,6 +368,13 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       });
       return 'accepted';
     },
+    executeQuickPing(command, onResult, isActive = () => true) {
+      if (disposed) { onResult('disposed'); return; }
+      if (running) { onResult('busy'); return; }
+      if (!command.trim() || /[\r\n\x00-\x1f]/.test(command)) { onResult('cancelled'); return; }
+      inputQueue.push({ data: null, replace: false, quickCommand: { command, onResult, isActive } });
+      drainInput();
+    },
     refreshProfile() {
       // Never disturb a running command, typed draft or selection. Their next
       // prompt adopts the profile; the existing buffer and renderer stay intact.
@@ -361,7 +392,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       input.dispose();
       resize.dispose();
       selection.dispose();
-      inputQueue.length = 0;
+      inputQueue.splice(0).forEach(action => action.quickCommand?.onResult('disposed'));
       const command = running;
       running = null;
       try {

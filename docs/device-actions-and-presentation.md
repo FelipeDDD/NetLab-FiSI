@@ -17,6 +17,10 @@ da origem cancelam. A ativação de outra topologia e a remoção dos dispositiv
 referenciados eliminam o estado temporário. Durante a escolha, drag, conexão de
 cabos e atalhos de movimento dos nodes ficam suspensos; cancelar os libera.
 A reconexão de cabos cancela a escolha de ping e vice-versa.
+Durante a seleção, o canvas usa um cursor de alvo de 28 px, com o ponto de clique
+no centro. Ele fica verde sobre dispositivos que oferecem um IPv4 elegível;
+isso indica seleção disponível, sem prometer alcance ou resposta ao ping.
+Concluir/cancelar restaura o cursor normal. Os SVGs ficam em `public/assets/cursors/`.
 
 Somente dispositivos com terminal iniciam Quick Ping. Qualquer dispositivo IP
 com endereço unicast configurado elegível pode ser destino, inclusive smartphone.
@@ -26,8 +30,8 @@ o painel oferece a lista simples de endereços. Isso não testa nem promete
 conectividade: endereço configurado em interface desligada ainda pode falhar.
 IPs/gateways nunca são atribuídos ou corrigidos pela ferramenta.
 
-`openTerminal` e `getSession` reutilizam a sessão existente. A nova API
-`Session.executeCommand()` compartilha fila de entrada, prompt, histórico,
+`openTerminal` e `getSession` reutilizam a sessão existente. A API
+`Session.executeQuickPing()` compartilha fila de entrada, prompt, histórico,
 `submit()` e `Shell.exec` com o Enter do terminal:
 
 - Linux: `ping -c 4 ENDEREÇO`.
@@ -35,12 +39,21 @@ IPs/gateways nunca são atribuídos ou corrigidos pela ferramenta.
 
 Não há segundo motor, sucesso sintético ou lógica paralela de ARP/VLAN/rotas/
 firewall. A política existente `needsScheduler` libera somente uma pausa de
-ativação/restauração; nunca libera Pause manual. Um comando já em execução ou
-texto ainda digitado impede o envio e produz aviso, sem apagar a entrada.
-A chamada pode retornar `accepted`, `busy`, `unapplied-input` ou `disposed`.
-`accepted` confirma a submissão à fila do terminal, não a resposta do destino.
+ativação/restauração; nunca libera Pause manual. Um comando em execução impede
+o envio e produz orientação para interrompê-lo com Ctrl+C; nunca é cancelado
+automaticamente. Se estiver livre, o Quick Ping descarta apenas a entrada parcial
+e limpa a tela visível (CSI 2J/H), mantendo histórico de comandos e scrollback.
+Escritas pendentes de Ctrl+C/edição são processadas antes da preparação na mesma
+fila; um `^C` antigo no output não representa um comando ativo. A resposta por
+callback é `accepted`, `busy`, `cancelled` ou `disposed`.
+`accepted` confirma a submissão pelo shell, não a resposta do destino.
 A fila bloqueia entradas concorrentes até concluir a pintura/submissão; dispose
 invalida callbacks pendentes. O botão e o clique de destino não duplicam sessões.
+Cancelar durante a preparação impede o envio e remove a linha preparada. A API
+geral `executeCommand()` conserva seu comportamento de proteger entradas parciais.
+Os ícones têm uma pequena pressão por CSS, mais sutil no Terminal; Ping mantém
+destaque enquanto escolhe o destino. Não mudam de tamanho/posição e respeitam
+`prefers-reduced-motion`.
 
 ## Velocidade e abas
 

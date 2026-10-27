@@ -18,6 +18,7 @@ it('renders manual fields for unconfigured/static interfaces and a DHCP checkbox
   expect(render()).not.toContain('Übernehmen');
   iface.configureIpv4(parseStaticIpv4('10.0.0.5', '24', '10.0.0.1', '10.0.0.2')!);
   expect(render()).toContain('value="255.255.255.0"'); expect(render()).toContain('aria-label="DNS-Server eth0"');
+  expect(render()).toContain('value="10.0.0.5/24"');
   expect(render()).not.toContain('Übernehmen');
   iface.configureIpv4({ ...iface.ipv4, mode: 'dhcp' });
   expect(render()).toContain('Kein aktives Lease'); expect(render()).toContain('gespeicherte Werte');

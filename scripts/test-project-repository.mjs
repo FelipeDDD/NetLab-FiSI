@@ -76,7 +76,7 @@ try {
   await new Promise(resolve => probe.close(resolve));
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
     cacheDir: path.join(scratch, 'vite-cache'),
-    plugins: [...(process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' ? [{
+    plugins: [...(process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' ? [{
       name: 'isolated-viewport-probe', enforce: 'pre',
       transform(code, id) {
         if (!id.replaceAll('\\', '/').endsWith('/src/App.tsx')) return;
@@ -269,6 +269,11 @@ try {
     await runViewportReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report,
       openPage: async () => { const target = await (await fetch(currentDebug + '/json/new?about:blank', { method: 'PUT' })).json(); return connect(target.webSocketDebuggerUrl); },
     });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_USABILITY_REVIEW === '1') {
+    const { runUsabilityReview } = await import('./usability-refinements-review.mjs');
+    await runUsabilityReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
   if (process.env.NETLAB_EXERCISE_REVIEW === '1') {

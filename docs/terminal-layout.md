@@ -8,6 +8,13 @@ existing terminal registry. The existing tabs, navigation shortcuts and move
 menus provide access to additional sessions. A tab can be split again once a
 column is available; no path creates a sixth column.
 
+Fresh Free panels follow opening order across device types (`pc1 | r1 | pc2`).
+Reusing/focusing a session never moves it. When restoring a saved manual layout,
+only the newly opened slot is inserted relative to later saved slots; unrelated
+fresh panels keep their positions. Sorting the whole list previously pushed a
+new router behind host slots reopened afterwards. Manual panel/tab order, locks
+and grouped-mode ordering remain independently preserved.
+
 Changing the number of columns (open, close, split, merge or device deletion)
 equalizes only unlocked weights. Adding/closing/switching a tab within an
 existing column does not redistribute it. Normal manual resizing remains in

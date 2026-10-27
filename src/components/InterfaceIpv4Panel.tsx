@@ -60,8 +60,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
     }
     const failure = useStore.getState().setInterfaceIpv4(deviceId, ifaceName, value, group.current);
     if (failure) { setError(failure); return; }
-    // Preserve other raw fields/cursor positions; the consumed IP shortcut
-    // already transferred its prefix into the separate subnet-mask field.
+    // Preserve raw fields/cursor positions; IP/prefix and mask stay synchronized.
     update({ ...newIpv4Draft(latest.ipv4), fields: pending.fields });
     setError('');
   };

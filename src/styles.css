@@ -405,6 +405,12 @@ body,
 .device-action:hover, .device-action[aria-pressed="true"] { background: #dcefff; box-shadow: 0 0 0 1px #38bdf880, 0 0 8px #38bdf850; }
 .device-terminal { background: #090b0e; color: #fff; }
 .device-terminal:hover { background: #171b21; color: #fff; }
+.device-action > svg { transition: transform 100ms ease-out, opacity 100ms ease-out; }
+.device-ping:active > svg { transform: scale(.86); }
+.device-ping:active { background: #c8e8ff; box-shadow: inset 0 1px 3px #164b7238, 0 0 8px #38bdf860; }
+.device-ping[aria-pressed="true"] { border-color: var(--ui-accent); box-shadow: 0 0 0 1px var(--ui-accent), 0 0 7px color-mix(in srgb, var(--ui-accent) 35%, transparent); }
+.device-terminal:active > svg { transform: scale(.93); opacity: .85; }
+.device-terminal:active { background: #1b2430; box-shadow: inset 0 1px 3px #0008; }
 .dhcp-global-control { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .dhcp-global-control .svc-toggle { margin-block: 4px; }
 .dhcp-global-status { font-size: 12px; color: var(--ui-warning); }
@@ -426,13 +432,19 @@ body,
 
 .device-node.quick-ping-source { border-color: var(--device-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--device-color) 60%, transparent); }
 .device-node.quick-ping-source .device-action { opacity: 1; pointer-events: auto; }
-.device-node.quick-ping-target { cursor: crosshair; }
+.react-flow.is-quick-ping { --quick-ping-cursor: url('/assets/cursors/quick-ping.svg') 14 14, crosshair; }
+.react-flow.is-quick-ping .quick-ping-target { --quick-ping-cursor: url('/assets/cursors/quick-ping-ready.svg') 14 14, crosshair; }
+.react-flow.is-quick-ping :is(.react-flow__pane, .react-flow__node, .react-flow__edge, .device-node, .react-flow__handle) { cursor: var(--quick-ping-cursor); }
+.react-flow.is-quick-ping .device-ping[aria-pressed="true"] { cursor: var(--quick-ping-cursor); }
 .device-node.quick-ping-target:hover { border-color: var(--device-color); }
 .quick-ping-panel { padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); color: var(--text); box-shadow: var(--ui-shadow-popover); font-size: 12px; max-width: calc(100% - 32px); }
 .quick-ping-panel small { color: var(--text-dim); display: block; margin-top: 4px; }
 .quick-ping-panel p { margin: 8px 0; }
 .quick-ping-panel button { margin: 6px 4px 0 0; }
-@media (prefers-reduced-motion: reduce) { .device-node, .device-action { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .device-node, .device-action, .device-action > svg { transition: none; }
+  .device-action:active > svg { transform: none; }
+}
 
 .device-node.kind-host {
   color: var(--host);

@@ -17,7 +17,7 @@ function cidrInAddress(text: string): { address: string; prefix: number } | null
 
 export function newIpv4Draft(config: InterfaceIpv4): Ipv4Draft {
   return { source: structuredClone(config), dirty: false, stale: false, fields: {
-    ip: config.ip ? ipToString(config.ip.addr) : '',
+    ip: config.ip ? `${ipToString(config.ip.addr)}/${config.ip.prefix}` : '',
     mask: config.ip ? ipToString(maskOf(config.ip.prefix)) : '',
     gateway: config.gateway === null ? '' : ipToString(config.gateway),
     dns: config.dns === null ? '' : ipToString(config.dns),
@@ -38,20 +38,27 @@ export function editIpv4Draft(draft: Ipv4Draft, field: keyof Ipv4Fields, text: s
     const cidr = cidrInAddress(text);
     if (cidr) fields.mask = ipToString(maskOf(cidr.prefix));
   } else if (field === 'mask') {
-    // The user is editing the mask now; an earlier CIDR suffix must not keep
-    // overriding that field. The IP input isn't focused during this change.
     const cidr = cidrInAddress(fields.ip);
-    if (cidr) fields.ip = cidr.address;
+    const address = cidr?.address ?? fields.ip;
+    const parsed = parseStaticIpv4(address, text, '', '');
+    // Invalid/incomplete masks must not be hidden by an old valid CIDR suffix.
+    fields.ip = parsed?.ip ? `${address}/${parsed.ip.prefix}` : address;
   }
   return { ...draft, fields, dirty: true };
 }
 
-// Consume the IP/prefix shortcut after typing settles, or on blur/Enter.
+// Keep a canonical IP/prefix representation after typing settles or on blur.
 // Keep /0–/3 while focused: a slow typist may still be entering /24 or /32.
 export function normalizeIpv4Shortcut(fields: Ipv4Fields, editingFinished = true): Ipv4Fields {
   const cidr = cidrInAddress(fields.ip);
-  if (!cidr || (!editingFinished && /\/\d$/.test(fields.ip.trim()))) return fields;
-  return { ...fields, ip: cidr.address, mask: ipToString(maskOf(cidr.prefix)) };
+  if (fields.ip.includes('/') && !cidr || (!editingFinished && /\/\d$/.test(fields.ip.trim()))) return fields;
+  const parsed = cidr ?? (() => {
+    const config = parseStaticIpv4(fields.ip, fields.mask, '', '');
+    return config?.ip ? { address: ipToString(config.ip.addr), prefix: config.ip.prefix } : null;
+  })();
+  if (!parsed) return fields;
+  const ip = `${parsed.address}/${parsed.prefix}`, mask = ipToString(maskOf(parsed.prefix));
+  return fields.ip === ip && fields.mask === mask ? fields : { ...fields, ip, mask };
 }
 
 export function parseIpv4Draft(fields: Ipv4Fields): InterfaceIpv4 | null {

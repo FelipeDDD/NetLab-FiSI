@@ -238,8 +238,8 @@ Os tipos reais estão em `DeviceKind` e são criados por `createDevice`.
 - Inspector: abas por tipo, formulários IPv4 compartilhados, expansão de interfaces,
   tabelas e configurações existentes. Rascunhos não devem desaparecer ao trocar abas.
   Largura ajustável entre 290 e 470 px, com preferência persistente.
-- `/24` no input IPv4 é um atalho para preencher a máscara e retirar o sufixo
-  do campo; dados do motor continuam com prefixo. Labels do canvas mostram IPv4
+- O input IPv4 do Inspector mantém `endereço/prefixo` visível; CIDR e máscara
+  sincronizam nos dois sentidos. Dados do motor continuam com prefixo. Labels do canvas mostram IPv4
   sem sufixo, podem empilhar interfaces e distinguem configuração armazenada de link ativo.
 
 ### Cabos, âncoras e apresentação

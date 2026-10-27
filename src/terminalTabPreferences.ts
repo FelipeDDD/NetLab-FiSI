@@ -64,13 +64,14 @@ export function insertSavedTab(panels: TerminalPanel[], id: string, focused: str
     const ai = slot.tabs.indexOf(a), bi = slot.tabs.indexOf(b);
     return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
   });
-  const next = existing ? panels.map((p) => p.id === slot.id ? { ...p, tabs, active: id } : p)
-    : [...panels, { ...target, tabs, active: id }];
-  const ordered = next.sort((a, b) => {
-    const ai = saved!.findIndex((p) => p.id === a.id), bi = saved!.findIndex((p) => p.id === b.id);
-    return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
-  });
-  return existing ? ordered : equalizeTerminalPanels(ordered);
+  if (existing) return panels.map((p) => p.id === slot.id ? { ...p, tabs, active: id } : p);
+  // Restore only this slot relative to later saved slots. Sorting the whole
+  // list moved fresh, unsaved panels behind every old slot as sessions opened.
+  const rank = saved!.indexOf(slot);
+  const anchor = panels.findIndex(p => saved!.findIndex(s => s.id === p.id) > rank);
+  const next = [...panels];
+  next.splice(anchor < 0 ? next.length : anchor, 0, { ...target, tabs, active: id });
+  return equalizeTerminalPanels(next);
 }
 
 function mergePending<T>(current: T[], previous: readonly T[], key: (value: T) => string, pending: (value: T) => boolean): T[] {

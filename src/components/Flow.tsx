@@ -174,7 +174,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
 
   return (
     <ReactFlow
-      className={experimentalBackground ? 'experimental-canvas-background' : undefined}
+      className={[experimentalBackground && 'experimental-canvas-background', quickPing && 'is-quick-ping'].filter(Boolean).join(' ') || undefined}
       style={experimentalBackground ? { backgroundImage: `linear-gradient(${shade}, ${shade}), url("${experimentalBackground}")` } : undefined}
       nodes={nodes}
       edges={labeledEdges}

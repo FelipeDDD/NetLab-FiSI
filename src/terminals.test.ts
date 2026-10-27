@@ -3189,17 +3189,70 @@ describe('Quick Ping uses the existing terminal and engine', () => {
     expect(JSON.stringify(serializeNetwork(net,{}))).toBe(before);
     expect(output(session)).toContain(os==='windows'?'Received = 4':'4 received');
   });
-  it('preserves manual Pause and refuses to overwrite typed input or a running command', () => {
+  it('preserves manual Pause, discards only partial input and never cancels a running command', () => {
     const {a,b,net}=pair(), session=open(a); store().setPaused(true);
     input(session,'hostname'); store().beginQuickPing(a.id); store().chooseQuickPingTarget(b.id);
-    expect(store().quickPing?.message).toContain('Eingabe'); expect(output(session)).not.toContain('ping -c');
-    input(session,'\x03'); store().chooseQuickPingTarget(b.id);
+    expect(store().quickPing).toBeNull(); expect(output(session)).toContain('ping -c');
     expect(store().paused).toBe(true); const now=net.now; store().tick(1000); expect(net.now).toBe(now);
     store().beginQuickPing(a.id); store().chooseQuickPingTarget(b.id);
     expect(store().quickPing?.message).toContain('beschäftigt');
     store().setPaused(false); for(let i=0;i<55;i++)store().tick(100);
     expect(output(session)).toContain('4 received');
     expect(output(session).match(/ping -c 4/g)).toHaveLength(1);
+  });
+  it.each(['linux', 'windows'] as const)('accepts Quick Ping after one or two Ctrl+C on %s without losing history', os => {
+    for (const interrupts of [1, 2]) {
+      const {a,b,net}=pair(); store().setHostOs(a.id,os); store().setPaused(false); const session=open(a);
+      input(session,'hostname\r'); input(session,'ping 10.0.0.2\r');
+      for(let i=0;i<interrupts;i++)input(session,'\x03');
+      input(session,'discard this partial input');
+      const exec=vi.spyOn(Shell.prototype,'exec');
+      store().beginQuickPing(a.id);store().chooseQuickPingTarget(b.id);
+      expect(store().quickPing).toBeNull();expect(exec.mock.calls.map(c=>c[0])).toEqual([`ping ${os==='windows'?'-n':'-c'} 4 10.0.0.2`]);
+      expect(output(session)).toContain('\x1b[2J\x1b[H');
+      net.scheduler.advanceTo(5000);
+      input(session,'\x1b[A');input(session,'\x1b[A');input(session,'\x1b[A');input(session,'\r');
+      expect(exec.mock.calls.at(-1)?.[0]).toBe('hostname');
+      exec.mockRestore();store().newTopology();
+    }
+  });
+  it('waits for pending Ctrl+C/input rendering without interpreting old output as running state', () => {
+    const {a,b}=pair(),session=open(a),callbacks:(()=>void)[]=[];
+    vi.mocked(session.term.write).mockImplementation((_text,cb)=>{if(cb)callbacks.push(cb);});
+    const exec=vi.spyOn(Shell.prototype,'exec');
+    input(session,'partial');input(session,'\x03');input(session,'\x03');
+    store().beginQuickPing(a.id);store().chooseQuickPingTarget(b.id);store().chooseQuickPingTarget(b.id);
+    expect(store().quickPing?.pending).toBe(true);expect(exec).not.toHaveBeenCalled();
+    for(let i=0;callbacks.length&&i<100;i++)callbacks.shift()!();
+    expect(store().quickPing).toBeNull();expect(exec.mock.calls.map(c=>c[0])).toEqual(['ping -c 4 10.0.0.2']);
+  });
+  it('preserves a command queued by Enter before Quick Ping and reports busy without cancelling it', () => {
+    const {a,b}=pair(),session=open(a),callbacks:(()=>void)[]=[];
+    vi.mocked(session.term.write).mockImplementation((_text,cb)=>{if(cb)callbacks.push(cb);});
+    const exec=vi.spyOn(Shell.prototype,'exec');
+    input(session,'ping 10.0.0.2');input(session,'\r');
+    store().beginQuickPing(a.id);store().chooseQuickPingTarget(b.id);
+    for(let i=0;callbacks.length&&i<100;i++)callbacks.shift()!();
+    expect(store().quickPing?.message).toContain('Ctrl+C');expect(exec.mock.calls.map(c=>c[0])).toEqual(['ping 10.0.0.2']);
+    expect(output(session)).not.toContain('\x1b[2J\x1b[H');
+  });
+  it('cancels queued Quick Ping preparation with Escape/cancel without submitting a command', () => {
+    const {a,b}=pair(),session=open(a),callbacks:(()=>void)[]=[];
+    vi.mocked(session.term.write).mockImplementation((_text,cb)=>{if(cb)callbacks.push(cb);});
+    const exec=vi.spyOn(Shell.prototype,'exec');input(session,'partial');
+    store().beginQuickPing(a.id);store().chooseQuickPingTarget(b.id);store().cancelQuickPing();
+    for(let i=0;callbacks.length&&i<100;i++)callbacks.shift()!();
+    expect(exec).not.toHaveBeenCalled();expect(store().quickPing).toBeNull();
+  });
+  it('removes a cancelled prepared command so a later Enter cannot accidentally execute it', () => {
+    const {a,b}=pair(),session=open(a),callbacks:(()=>void)[]=[];
+    vi.mocked(session.term.write).mockImplementation((_text,cb)=>{if(cb)callbacks.push(cb);});
+    const exec=vi.spyOn(Shell.prototype,'exec');store().beginQuickPing(a.id);store().chooseQuickPingTarget(b.id);
+    callbacks.shift()!(); // Screen cleared; the new line is now queued for rendering.
+    store().cancelQuickPing();
+    for(let i=0;callbacks.length&&i<100;i++)callbacks.shift()!();
+    input(session,'\r');for(let i=0;callbacks.length&&i<100;i++)callbacks.shift()!();
+    expect(exec).not.toHaveBeenCalled();
   });
   it('handles missing IPv4, ambiguous choices, cancellation, deletion and replacement', () => {
     const {a,b}=pair(); b.interfaces[0].ip=null;
@@ -3224,6 +3277,58 @@ describe('Quick Ping uses the existing terminal and engine', () => {
     disposeSession(a.id); callbacks.splice(0).forEach(cb=>cb()); expect(exec).not.toHaveBeenCalled();
     expect(session.executeCommand('hostname')).toBe('disposed');
   });
+});
+
+describe('Inspector IP forwarding uses the shared persistent engine state', () => {
+  it('synchronizes CLI, Undo/Redo and persistence without changing RIP or routes', () => {
+    const store=useStore.getState();store.addDeviceAt('router',{x:30,y:20});
+    const router=sim.net.devices.get(useStore.getState().nodes[0].id) as RouterDevice;
+    const routes=router.routes(), rip=router.ripEnabled, session=open(router);
+    store.setForwarding(router.id,false);expect(router.forwarding).toBe(false);
+    input(session,'sysctl net.ipv4.ip_forward\r');expect(output(session)).toContain('net.ipv4.ip_forward = 0');
+    store.undoTopology();expect(router.forwarding).toBe(true);store.redoTopology();expect(router.forwarding).toBe(false);
+    input(session,'sysctl -w net.ipv4.ip_forward=1\r');expect(router.forwarding).toBe(true);
+    store.setForwarding(router.id,false);store.flushAutosave();
+    const saved=JSON.parse(storage.get('netsim:autosave:v1')!);expect(saved.devices[0].forwarding).toBe(false);
+    expect(router.ripEnabled).toBe(rip);expect(router.routes()).toEqual(routes);
+    expect(store.importJson(JSON.stringify(saved))).toBeNull();
+    expect((sim.net.devices.get(router.id) as RouterDevice).forwarding).toBe(false);
+  });
+  it('allows routed ICMP only when forwarding is enabled', () => {
+    const store=useStore.getState();
+    for(const kind of ['host','router','host'] as const)store.addDeviceAt(kind,{x:20,y:20});
+    const [a,r,b]=useStore.getState().nodes.map(n=>sim.net.devices.get(n.id) as IpDevice);
+    store.onConnect({source:a.id,target:r.id,sourceHandle:null,targetHandle:null});
+    store.onConnect({source:r.id,target:b.id,sourceHandle:null,targetHandle:null});
+    a.addIp('eth0',parseIp('10.44.0.10')!,26);r.addIp('eth0',parseIp('10.44.0.1')!,26);
+    r.addIp('eth1',parseIp('10.44.0.65')!,27);b.addIp('eth0',parseIp('10.44.0.70')!,27);
+    a.addRoute(0,0,parseIp('10.44.0.1')!);b.addRoute(0,0,parseIp('10.44.0.65')!);
+    const ping=()=>{let reply=false;const id=a.allocIcmpId();a.onIcmp(id,e=>{if(e.type==='reply')reply=true;});a.sendEcho(parseIp('10.44.0.70')!,id,1);sim.net.scheduler.advanceTo(sim.net.now+5000);a.offIcmp(id);return reply;};
+    store.setForwarding(r.id,false);expect(ping()).toBe(false);
+    store.setForwarding(r.id,true);expect(ping()).toBe(true);
+    store.setForwarding(r.id,false);expect(ping()).toBe(false);
+  });
+});
+
+it('keeps Free Panels in exact opening order across device types, focus and manual rearrangement',()=>{
+  const store=useStore.getState();for(const kind of ['host','router','host'] as const)store.addDeviceAt(kind,{x:20,y:20});
+  const ids=useStore.getState().nodes.map(n=>n.id);store.setTerminalLayoutMode('free');ids.forEach(store.openTerminal);
+  expect(useStore.getState().terminalPanels.map(p=>p.active)).toEqual(ids);
+  store.openTerminal(ids[0]);store.setActiveTerminal(ids[1]);expect(useStore.getState().terminalPanels.map(p=>p.active)).toEqual(ids);
+  const panels=useStore.getState().terminalPanels;store.reorderTerminalPanel(panels[2].id,panels[0].id);
+  const manual=useStore.getState().terminalPanels.map(p=>p.id);store.openTerminal(ids[1]);store.setActiveTerminal(ids[0]);
+  expect(useStore.getState().terminalPanels.map(p=>p.id)).toEqual(manual);
+});
+
+it('inserts a new router between reopened saved host panels without moving it on the next host opening',()=>{
+  const store=useStore.getState();for(const kind of ['host','router','host'] as const)store.addDeviceAt(kind,{x:20,y:20});
+  const [pc1,r1,pc2]=useStore.getState().nodes.map(n=>n.id);store.setTerminalLayoutMode('free');
+  store.openTerminal(pc1);store.openTerminal(pc2);
+  const [first,last]=useStore.getState().terminalPanels.map(p=>p.id);
+  store.reorderTerminalPanel(last,first);store.reorderTerminalPanel(first,last);
+  store.flushAutosave();store.boot();
+  for(const id of [pc1,r1,pc2])store.openTerminal(id);
+  expect(useStore.getState().terminalPanels.map(p=>p.active)).toEqual([pc1,r1,pc2]);
 });
 
 describe('Router global DHCP service shared by Inspector and terminal',()=>{

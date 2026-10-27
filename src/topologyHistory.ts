@@ -37,6 +37,7 @@ export type InspectorOperation =
   | { type: 'set-http-port'; label: string; deviceId: string; before: number; after: number }
   | { type: 'set-http-body'; label: string; deviceId: string; before: string; after: string }
   | { type: 'set-rip-enabled'; label: string; deviceId: string; before: boolean; after: boolean }
+  | { type: 'set-forwarding'; label: string; deviceId: string; before: boolean; after: boolean }
   | { type: 'set-iface-state'; label: string; deviceId: string; ifaceName: string; before: boolean; after: boolean };
 export const sameInterfaceIp = (a: InterfaceIp, b: InterfaceIp) => a === b || (!!a && !!b && a.addr === b.addr && a.prefix === b.prefix);
 export const sortedServicePorts = (ports: Iterable<number>): number[] => [...new Set(ports)].sort((a, b) => a - b);

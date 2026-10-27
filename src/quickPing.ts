@@ -9,6 +9,7 @@ export interface QuickPingSelection {
   targetId?: string;
   addresses?: PingAddress[];
   message?: string;
+  pending?: boolean;
 }
 
 /** Configured addresses only: eligibility never promises reachability. */

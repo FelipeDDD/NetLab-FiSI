@@ -353,7 +353,8 @@ function RouterInspector({ device, hidden }: { device: RouterDevice | FirewallDe
       </section> },
       { id: 'routing', label: 'Routing', content: <section>
         <p className="hint">IP-Forwarding: <strong>{device.forwarding ? 'Aktiv' : 'Inaktiv'}</strong> · {device.routes().length} Routen</p>
-        {dedicatedFirewall && <p className="hint">Im Terminal des Geräts: <code>sysctl -w net.ipv4.ip_forward=1</code> aktiviert Forwarding; <code>sysctl -w net.ipv4.ip_forward=0</code> deaktiviert es.</p>}
+        <label className="svc-toggle"><input type="checkbox" checked={device.forwarding}
+          onChange={event => useStore.getState().setForwarding(device.id, event.target.checked)} />IP-Forwarding aktivieren</label>
         <label className="svc-toggle"><input type="checkbox" checked={device.ripEnabled}
           onChange={() => useStore.getState().toggleRip(device.id)} />RIP aktivieren</label>
         <h3>Routing-Tabelle</h3><RoutingTable device={device} />

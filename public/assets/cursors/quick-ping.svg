@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24">
+  <defs><g id="target" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v5m0 12v5M1 12h5m12 0h5"/></g></defs>
+  <use href="#target" stroke="#f8fafc" stroke-width="3.6"/>
+  <use href="#target" stroke="#1686b0" stroke-width="1.8"/>
+</svg>

@@ -63,6 +63,9 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   } else if (operation.type === 'set-rip-enabled') {
     if (!(device instanceof IpDevice) || device.ripEnabled !== operation[from]) return false;
     device.enableRip(operation[to]);
+  } else if (operation.type === 'set-forwarding') {
+    if (!(device instanceof IpDevice) || device.forwarding !== operation[from]) return false;
+    device.forwarding = operation[to];
   } else if (operation.type === 'set-nameserver') {
     if (!(device instanceof IpDevice) || device.manualNameserver !== operation[from]) return false;
     device.nameserver = operation[to];
