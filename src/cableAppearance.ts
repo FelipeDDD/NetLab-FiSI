@@ -97,3 +97,12 @@ export function initialCableColors(net: Network): CableAppearances {
   for (const id of net.links.keys()) colors[id] = automaticCableAppearance(net, id, colors);
   return colors;
 }
+
+/** Read-only rendering projection for legacy links without appearance metadata.
+ * Existing auto/manual assignments remain exact; no topology/save is rewritten. */
+export function resolvedCableAppearances(net: Network, saved: CableAppearances): CableAppearances {
+  if ([...net.links.keys()].every(id => saved[id])) return saved;
+  const colors = { ...saved };
+  for (const id of net.links.keys()) if (!colors[id]) colors[id] = automaticCableAppearance(net, id, colors);
+  return colors;
+}

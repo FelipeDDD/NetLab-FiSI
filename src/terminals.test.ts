@@ -20,6 +20,8 @@ import { PacketCapture } from './packetCapture';
 import { PACKET_ANIMATION_SPEED_KEY, packetAnimationDuration, packetAnimationProgress } from './packetAnimation';
 import { HOST_CREATION_KEY } from './hostOs';
 import { emptyIpv4, parseStaticIpv4 } from './engine/ipv4Config';
+import { createZustandSessionRuntime } from './persistence/zustandSessionRuntime';
+import { prepareTopologyDocument } from './persistence/topologyDocument';
 
 // Only the browser renderer is replaced. Commands, engine, store and persistence
 // run together so these tests cover the actual terminal-to-autosave path.
@@ -120,6 +122,76 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe('network commands after automatic activation pause', () => {
+  beforeEach(() => { useStore.getState().setPaused(false); useStore.getState().setPacketVisualizationMode('live'); });
+  afterEach(() => { useStore.getState().setPaused(false); useStore.getState().setPacketVisualizationMode('live'); });
+  function restored(os: 'linux' | 'windows' = 'linux', dhcp = false) {
+    const { a, b } = pair(); (a as Host).os = os;
+    if (dhcp) {
+      a.interfaces[0].configureIpv4(emptyIpv4('dhcp'));
+      b.dhcpPools.set('eth0', { enabled: true, rangeStart: parseIp('10.0.0.100')!, rangeEnd: parseIp('10.0.0.110')!,
+        router: parseIp('10.0.0.2'), dns: null, leases: new Map() });
+    }
+    a.nameserver = parseIp('10.0.0.2');
+    const runtime = createZustandSessionRuntime({ pauseOnActivation: true }), document = runtime.capture();
+    runtime.activate(prepareTopologyDocument(document.topology), { sessionId: 'test-session', draftId: 'test-draft' });
+    expect(useStore.getState().paused).toBe(true); expect(useStore.getState().pauseReason).toBe('activation');
+    expect(sim.net.now).toBe(0); expect(useStore.getState().terminals).toEqual([]);
+    const client = sim.net.devices.get(a.id) as IpDevice, server = sim.net.devices.get(b.id) as IpDevice;
+    return { client, server, document, runtime, session: open(client) };
+  }
+  const tick = (ms = 4000) => { for (let t=0;t<ms;t+=100)useStore.getState().tick(100); };
+
+  it.each(['linux', 'windows'] as const)('%s ping resumes only the automatic pause and keeps normal packet/terminal timing', os => {
+    const { session } = restored(os);
+    input(session, os === 'linux' ? 'ping -c 1 10.0.0.2\r' : 'ping -n 1 10.0.0.2\r');
+    expect(useStore.getState().paused).toBe(false);expect(useStore.getState().pauseReason).toBeNull();
+    expect(sim.net.now).toBe(0); expect(useStore.getState().packets.length).toBeGreaterThan(0);
+    tick(1000);expect(output(session)).toContain(os === 'linux' ? 'time=320.0 ms' : 'time=320.0ms');
+  });
+  it.each(['linux', 'windows'] as const)('%s DHCP resumes the restored simulation and completes real DORA', os => {
+    const { client, session } = restored(os, true);
+    input(session, os === 'linux' ? 'dhclient eth0\r' : 'ipconfig /renew eth0\r');
+    expect(useStore.getState().paused).toBe(false);tick();
+    expect(client.interfaces[0].ip!.addr).toBe(parseIp('10.0.0.100'));expect(client.interfaces[0].dhcpLease).not.toBeNull();
+    expect(output(session)).toContain(os === 'linux' ? 'DHCPACK' : 'IPv4 Address: 10.0.0.100');
+  });
+  it.each(['ping -c 1 10.0.0.2', 'dhclient eth0'])('preserves explicit Pause while %s waits, then continues with Run', command => {
+    const { session } = restored('linux', command.startsWith('dhclient'));
+    useStore.getState().setPaused(true);input(session, command+'\r');tick();
+    expect(useStore.getState().pauseReason).toBe('manual');expect(sim.net.now).toBe(0);
+    useStore.getState().setPaused(false);tick();expect(sim.net.now).toBe(4000);
+    expect(output(session)).toContain(command.startsWith('dhclient') ? 'DHCPACK' : '0% packet loss');
+  });
+  it('does not erase a manual Pause on later plan activation', () => {
+    const { runtime, document, client } = restored();useStore.getState().setPaused(true);
+    runtime.activate(prepareTopologyDocument(document.topology), {sessionId:'test-session',draftId:'another-plan'});
+    expect(useStore.getState().pauseReason).toBe('manual');
+    const session=open(sim.net.devices.get(client.id) as IpDevice);input(session,'ping -c 1 10.0.0.2\r');
+    expect(useStore.getState().paused).toBe(true);tick();expect(sim.net.now).toBe(0);
+  });
+  it('keeps reads, invalid commands and passive listeners from starting Run', () => {
+    const { session } = restored();
+    for (const command of ['ip addr','help','ping -c nope 10.0.0.2','dhclient missing','nc -l 12345']) {
+      input(session,command+'\r');expect(useStore.getState().paused).toBe(true);expect(useStore.getState().pauseReason).toBe('activation');
+    }
+    input(session,'\x03');input(session,'ping -c 1 10.0.0.2\r');expect(useStore.getState().paused).toBe(false);
+  });
+  it.each(['traceroute -m 1 10.0.0.2','dig @10.0.0.2 example.test','curl http://10.0.0.2/','nc -z 10.0.0.2 80'])('uses the same automatic Run gate for active %s', command => {
+    const { session }=restored();input(session,command+'\r');expect(useStore.getState().paused).toBe(false);input(session,'\x03');
+  });
+  it('preserves Guided, manual playback Pause, Step and Replay independently of the network clock', () => {
+    const { session }=restored();useStore.getState().setPacketVisualizationMode('guided');
+    input(session,'ping -c 1 10.0.0.2\r');expect(useStore.getState().paused).toBe(false);tick(1000);
+    expect(useStore.getState().packetVisualizationMode).toBe('guided');expect(useStore.getState().guidedPacket.observation.observed.length).toBeGreaterThan(0);
+    useStore.getState().toggleGuidedPlayback();expect(useStore.getState().guidedPacket.playback.status).toBe('paused');
+    useStore.getState().setPaused(true);const now=sim.net.now;
+    useStore.getState().nextGuidedHop();useStore.getState().replayGuidedPacket();
+    expect(useStore.getState().guidedPacket.playback.kind).toBe('replay');expect(useStore.getState().paused).toBe(true);
+    input(session,'ping -c 1 10.0.0.2\r');tick(500);expect(sim.net.now).toBe(now);expect(useStore.getState().pauseReason).toBe('manual');
+  });
 });
 
 describe('host OS profiles', () => {
@@ -2589,20 +2661,24 @@ describe('independent packet animation', () => {
     const { a, net } = pair(), session = open(a);
     store().setPaused(false); store().setSpeed(1); store().setPacketAnimationSpeed(speed);
     const history = store().topologyHistory; store().startPacketCapture();
+    const animations = new Map<number, number>();
+    const unsubscribe = useStore.subscribe(state => { for (const p of state.packets) animations.set(p.id, p.visualDuration); });
     input(session, 'ping -c 1 10.0.0.2\r');
     for (let i = 0; i < 16; i++) store().tick(20);
+    unsubscribe();
     expect(net.now).toBe(320); expect([...net.links.values()][0].latency).toBe(80);
     expect(output(session)).toContain('time=320.0 ms'); expect(getSession(a)).toBe(session);
     vi.advanceTimersByTime(100);
     expect(store().packetCapture.records.map((r) => [r.start, r.end])).toEqual([[0, 80], [80, 160], [160, 240], [240, 320]]);
     for (const captured of store().packetCapture.records) expect(captured).not.toHaveProperty('visualDuration');
-    expect(store().packets.length).toBeGreaterThan(0);
-    expect(store().packets.every((p) => p.visualDuration === packetAnimationDuration(speed))).toBe(true);
+    expect(animations.size).toBe(4);
+    expect([...animations.values()].every(duration => duration === packetAnimationDuration(speed))).toBe(true);
+    if (speed === 4) expect(store().packets).toEqual([]); // 50 ms hops can finish before the 320 ms network round trip.
     expect(store().topologyHistory).toBe(history);
     expect(setItem.mock.calls.filter(([key]) => key === 'netsim:autosave:v1')).toHaveLength(0);
   });
 
-  it('freezes on pause, keeps position during changes, ignores simulation speed and expires a bounded queue after background gaps', () => {
+  it('freezes on pause, keeps position during changes, ignores simulation speed and expires all queued animations after background gaps', () => {
     const { a, b, net } = pair(); store().setPaused(false); store().setSpeed(1); store().setPacketAnimationSpeed(1);
     a.sendEcho(parseIp('10.0.0.2')!, 1, 1); net.onFwDrop!(a.id); store().tick(100);
     const packet = store().packets[0], visualClock = store().packetAnimationClock, clock = net.now;
@@ -2617,8 +2693,9 @@ describe('independent packet animation', () => {
     const timers = vi.getTimerCount(), link = [...net.links.values()][0];
     const frame = { srcMac: a.interfaces[0].mac, dstMac: b.interfaces[0].mac,
       payload: { kind: 'arp' as const, op: 'request' as const, senderIp: 1, targetIp: 2, senderMac: a.interfaces[0].mac, targetMac: null } };
+    const queuedBefore = store().packets.length;
     for (let i = 0; i < 200; i++) net.emitWire(link, a, b, frame);
-    expect(store().packets).toHaveLength(150); expect(vi.getTimerCount()).toBe(timers);
+    expect(store().packets).toHaveLength(queuedBefore + 200); expect(vi.getTimerCount()).toBe(timers);
     store().tick(60000); expect(store().packets).toEqual([]);
     net.scheduler.schedule(50, () => net.emitWire(link, a, b, frame));
     store().tick(60000);
@@ -2630,7 +2707,8 @@ describe('independent packet animation', () => {
     expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('4');
     store().flushAutosave();
     expect(JSON.parse(storage.get('netsim:autosave:v1')!)).not.toHaveProperty('packetAnimationSpeed');
-    store().boot(); expect(store().packetAnimationSpeed).toBe(4);
+    store().boot(); expect(store().packetAnimationSpeed).toBe(1);
+    expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('4'); // Retain the old preference without applying a hidden speed.
   });
 });
 
@@ -2661,7 +2739,8 @@ describe('guided packet visualization', () => {
       net.scheduler.advanceTo(start + 3320);
       expect(guided().observation.status).toBe('complete');
       expect(guided().observation.attempts.map(a => a.replied)).toEqual([true, true, true, true]);
-      expect(guided().observation.observed).toHaveLength(16);
+      expect(guided().observation.observed.filter(h => h.kind === 'icmp')).toHaveLength(16);
+      expect(guided().observation.observed.filter(h => h.kind === 'arp')).toHaveLength(round === 0 ? 4 : 0);
       expect(getSession(a)).toBe(session);
       store().replayGuidedPacket(); // The next command must also preempt Replay.
     }
@@ -2679,10 +2758,10 @@ describe('guided packet visualization', () => {
     input(first, 'ping 10.0.0.2\r'); net.scheduler.advanceTo(400); // First reply is still on its way.
     const second = open(secondHost); input(second, 'ping -c 4 10.0.0.2\r');
     expect(guided().observation.session).toEqual({ deviceId: secondHost.id, icmpId: 1 });
-    expect(guided().playback.hops).toEqual([]);
+    expect(guided().playback.hops).toMatchObject([{ kind: 'arp', arp: 'request', fromDeviceId: secondHost.id }]);
     net.scheduler.advanceTo(1000);
     expect(guided().observation.session?.deviceId).toBe(secondHost.id);
-    expect(guided().observation.observed.every(h => h.fromDeviceId !== a.id && h.toDeviceId !== a.id)).toBe(true);
+    expect(guided().observation.observed.filter(h => h.kind === 'icmp').every(h => h.fromDeviceId !== a.id && h.toDeviceId !== a.id)).toBe(true);
     net.scheduler.advanceTo(5000); vi.advanceTimersByTime(100);
     expect(output(first)).toContain('icmp_seq=5'); expect(output(second)).toContain('4 packets transmitted, 4 received');
     expect(getSession(a)).toBe(first); expect(getSession(secondHost)).toBe(second);
@@ -2747,7 +2826,8 @@ describe('guided packet visualization', () => {
     input(session, `ping ${option} 4 10.0.0.99\r`); net.scheduler.advanceTo(8002);
     expect(guided().observation.message).toContain('No ICMP link transmission');
     input(session, `ping ${option} 1 10.0.0.2\r`); net.scheduler.advanceTo(8642);
-    expect(guided().playback.hops).toHaveLength(4);
+    expect(guided().playback.hops.filter(h => h.kind === 'icmp')).toHaveLength(4);
+    expect(guided().playback.hops.filter(h => h.kind === 'arp')).toHaveLength(4);
   });
   it('keeps actual missing replies/timeouts and late in-flight frames without stopping observation', () => {
     const { a, b, net } = topology(); a.sendEcho(parseIp('10.0.0.2')!, 99, 1); net.scheduler.advanceTo(800);
@@ -2771,7 +2851,7 @@ describe('guided packet visualization', () => {
     store().setPacketAnimationSpeed(2); store().tick(250); expect(guided().playback.index).toBe(1);
     store().nextGuidedHop(); expect(guided().playback.status).toBe('paused');
     store().tick(2000); expect(guided().playback.index).toBe(2); expect(net.now).toBe(now);
-    store().toggleGuidedPlayback(); store().tick(2000); expect(guided().playback.status).toBe('finished');
+    store().toggleGuidedPlayback(); store().tick(guided().playback.hops.length * packetAnimationDuration(2, 'guided')); expect(guided().playback.status).toBe('finished');
   });
   it('reenters Guided during a command, preserves network/capture/history, and clears invalid paths/topologies', () => {
     const { a, net } = topology(), session = open(a), history = store().topologyHistory;

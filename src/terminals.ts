@@ -10,6 +10,7 @@ import { LEGACY_TERMINAL_FONT_SIZE, TERMINAL_THEME, terminalFontFamily } from '.
 
 export interface SessionOpts {
   onAfterCommand?: (configurationChanged: boolean) => void;
+  onSchedulerRequired?: () => void;
 }
 
 export interface Session {
@@ -134,6 +135,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     }, promptOs);
     // Some commands call done synchronously and still return a cancel handle.
     running = completed ? null : command;
+    if (running?.needsScheduler) opts.onSchedulerRequired?.();
   };
 
   // An edit that needs rendered coordinates holds the queue until xterm has

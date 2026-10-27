@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { PointerEvent, RefObject } from 'react';
-import { PACKET_ANIMATION_SPEEDS } from '../packetAnimation';
+import { PACKET_ANIMATION_BASE_MS } from '../packetAnimation';
 import { clampPacketWidget, readPacketAnimationPlacement, savePacketAnimationPlacement, type PacketAnimationPlacement } from '../packetAnimationWidget';
 import { useStore } from '../store';
 import { FloatingPopover } from './FloatingPopover';
@@ -12,8 +12,8 @@ export function PacketAnimationControl({ initialPlacement, menuAnchor, settingsO
   settingsOpen?: boolean;
   onSettingsClose?: () => void;
 }) {
-  const speed = useStore((s) => s.packetAnimationSpeed);
   const mode = useStore((s) => s.packetVisualizationMode);
+  const modeLabel = mode === 'live' ? 'Live' : 'Schrittmodus';
   const [controlsOpen, setControlsOpen] = useState(false);
   const modeButton = useRef<HTMLButtonElement>(null);
   const [placement, setPlacement] = useState(() => readPacketAnimationPlacement(initialPlacement));
@@ -70,40 +70,31 @@ export function PacketAnimationControl({ initialPlacement, menuAnchor, settingsO
         current.moved = true; current.last = clamp(current.left + dx, current.top + dy); setPlacement(current.last);
       }} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>⠿</button>
     <div className="packet-animation-control">
-      <label htmlFor="packet-animation-speed" title="Visual speed only. Identified forwarding hops animate in sequence; replies are independent.">Packet animation</label>
-      <button ref={modeButton} type="button" className="packet-animation-mode" aria-label={`Packet visualization: ${mode === 'live' ? 'Live' : 'Guided'}`}
+      <span className="packet-animation-label">Paketdarstellung</span>
+      <button ref={modeButton} type="button" className="packet-animation-mode" aria-label={`Paketdarstellung: ${modeLabel}`}
         aria-haspopup="dialog" aria-expanded={controlsOpen} aria-controls={controlsOpen ? 'packet-visualization-settings' : undefined}
-        onClick={() => setControlsOpen(!controlsOpen)}>{mode === 'live' ? 'Live' : 'Guided'} ▾</button>
-      <input id="packet-animation-speed" type="range" min={0} max={PACKET_ANIMATION_SPEEDS.length - 1} step={1}
-        value={PACKET_ANIMATION_SPEEDS.indexOf(speed as typeof PACKET_ANIMATION_SPEEDS[number])}
-        aria-describedby="packet-animation-help" aria-valuetext={`${speed}× visual speed`}
-        onChange={(event) => useStore.getState().setPacketAnimationSpeed(PACKET_ANIMATION_SPEEDS[Number(event.target.value)])} />
-      <output htmlFor="packet-animation-speed">{speed}×</output>
-      <span id="packet-animation-help" className="sr-only">Packet animation speed; 1× is one second per link. Network timing is unchanged. {mode === 'guided'
-        ? 'Guided follows the newest ping command progressively. Replay retains its latest four attempts.' : 'Untracked packets and replies animate independently.'}</span>
+        aria-describedby="packet-animation-help" onClick={() => setControlsOpen(!controlsOpen)}>{modeLabel} ▾</button>
+      <span className="packet-animation-timing">{PACKET_ANIMATION_BASE_MS[mode]} ms/Link</span>
+      <span id="packet-animation-help" className="sr-only">Nur Darstellung. Simulationsuhr, Ping-Intervalle und Protokolle laufen im normalen Tempo. {mode === 'guided'
+        ? 'Schrittmodus zeigt ARP und ICMP mit Step und Replay.' : 'Live zeigt unabhängige Übertragungen parallel und erkannte Antworten nach ihrer Anfrage.'}</span>
     </div>
     <button type="button" className="packet-animation-restore" style={{ visibility: placement.mode === 'floating' ? 'visible' : 'hidden' }}
       disabled={placement.mode !== 'floating'} title={menuAnchor ? 'Restore to Packets' : 'Restore to toolbar'}
       aria-label={menuAnchor ? 'Restore packet animation to Packets' : 'Restore packet animation to toolbar'} onClick={dock}>↶</button>
     {(settingsOpen || controlsOpen) && <FloatingPopover anchor={settingsOpen && menuAnchor ? menuAnchor : modeButton}
       onClose={() => { setControlsOpen(false); onSettingsClose?.(); }}
-      id="packet-visualization-settings" label="Packet visualization" width={310} className="packet-visualization-settings">
+      id="packet-visualization-settings" label="Paketdarstellung" width={310} className="packet-visualization-settings">
       <h2 className="toolbar-dialog-title">Paketdarstellung</h2>
-      <label className="packet-settings-speed" htmlFor="packet-settings-speed">Animationsgeschwindigkeit <output>{speed}×</output></label>
-      <input id="packet-settings-speed" className="packet-settings-range" type="range" min={0} max={PACKET_ANIMATION_SPEEDS.length - 1} step={1}
-        value={PACKET_ANIMATION_SPEEDS.indexOf(speed as typeof PACKET_ANIMATION_SPEEDS[number])}
-        aria-valuetext={`${speed}× visual speed`}
-        onChange={event => useStore.getState().setPacketAnimationSpeed(PACKET_ANIMATION_SPEEDS[Number(event.target.value)])} />
-      <p>Diese Geschwindigkeit und Guided steuern nur die Darstellung. Die Simulationsuhr hat eigene Run/Pause-Regler.</p>
-      <div role="group" aria-label="Visualization mode" className="guided-playback-actions">
+      <p>Live: {PACKET_ANIMATION_BASE_MS.live} ms/Link. Schrittmodus: {PACKET_ANIMATION_BASE_MS.guided} ms/Link mit Step und Replay. Die Simulation läuft im normalen Tempo; Paketintervalle bleiben unverändert.</p>
+      <div role="group" aria-label="Paketdarstellung" className="guided-playback-actions">
         <button type="button" className="btn" aria-pressed={mode === 'live'} onClick={() => useStore.getState().setPacketVisualizationMode('live')}>Live</button>
         <button type="button" className="btn" aria-pressed={mode === 'guided'} onClick={() => {
           const state = useStore.getState();
           if (state.packetVisualizationMode === 'guided') return;
           state.setPacketVisualizationMode('guided');
-        }}>Guided</button>
+        }}>Schrittmodus</button>
       </div>
-      {mode === 'guided' ? <GuidedPacketControls /> : <p>Live: simultaneous packet animations. Network timing is unchanged.</p>}
+      {mode === 'guided' ? <GuidedPacketControls /> : <p>Live: flüssiger Netzwerkverkehr. Erkannte Antworten folgen ihrer Anfrage; unabhängige Übertragungen bleiben parallel.</p>}
       {menuAnchor && <button type="button" className="btn" onClick={() => {
         if (placement.mode === 'floating') { dock(); return; }
         const next = clamp(window.innerWidth - 260, 70);

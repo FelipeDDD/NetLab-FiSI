@@ -6,12 +6,12 @@ export function GuidedPacketControls() {
   const { status, hops, index, kind } = playback;
   const hop = hops[index];
   const canToggle = Boolean(hop) && (status === 'playing' || status === 'paused');
-  return <section aria-label="Guided playback" className="guided-packet-controls">
-    <p>Latest ping wins. New commands take focus immediately; all network traffic continues.</p>
+  return <section aria-label="Schrittmodus Wiedergabe" className="guided-packet-controls">
+    <p>ARP und ICMP des neuesten Ping-Befehls schrittweise verfolgen. Der Netzwerkverkehr läuft unabhängig weiter.</p>
     <p id="guided-playback-status" role="status">{kind === 'replay' ? 'Replay of observed hops. ' : 'Following the newest ping. '}
       {observation.message}
       {status === 'finished' && ' Playback finished; ready for a new ping.'}</p>
-    {hop && <p className="guided-hop-label">Ping {hop.ping} · {hop.direction === 'request' ? 'Echo Request' : 'Echo Reply'}<br />
+    {hop && <p className="guided-hop-label">Ping {hop.ping} · {hop.arp ? `ARP ${hop.arp === 'request' ? 'Request' : 'Reply'}` : hop.direction === 'request' ? 'Echo Request' : 'Echo Reply'}<br />
       Hop {index + 1} / {hops.length}<br />
       {hop.fromDeviceName} / {hop.fromInterface} → {hop.toDeviceName} / {hop.toInterface}</p>}
     <div className="guided-playback-actions">

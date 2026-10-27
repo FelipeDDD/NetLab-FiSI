@@ -5,7 +5,9 @@ import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
 import { useStore, type DevNode } from '../store';
 import type { DeviceKind } from '../engine/device';
-import { NodeNetworkLabel } from './NodeNetworkLabel';
+import { DeviceLabels } from './DeviceLabels';
+import { DeviceActions } from './DeviceActions';
+import { deviceActionLayout } from '../deviceActions';
 import { DeviceArtwork, hasDeviceArtwork } from './DeviceArtwork';
 import { sim } from '../sim';
 import { firstReconnectInterface } from '../cableInteraction';
@@ -78,38 +80,20 @@ export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: numbe
 }
 
 function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
-  const openTerminal = useStore((s) => s.openTerminal);
   const cableHighlighted = useStore(s => s.edges.some(e => (e.selected || e.id === s.hoveredLinkId) && (e.source === id || e.target === id)));
   const reconnecting = useStore(s => s.reconnectingCable);
   const compatible = !!reconnecting && !!firstReconnectInterface(sim.net, reconnecting, id);
   const hasShell = hasTerminalKind(data.kind);
   const artwork = hasDeviceArtwork(data.kind);
+  const layout = deviceActionLayout();
+  const actions = hasShell ? <DeviceActions id={id} name={data.label} kind={data.kind} layout={layout} /> : undefined;
   return (
-    <div onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}${compatible ? ' cable-compatible' : ''}`}>
+    <div data-device-actions={layout} onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}${compatible ? ' cable-compatible' : ''}`}>
       <Handle type="source" position={Position.Top} id="t" />
       <Handle type="source" position={Position.Right} id="r" />
       <Handle type="source" position={Position.Bottom} id="b" />
       <Handle type="source" position={Position.Left} id="l" />
-      {hasShell && (
-        <button
-          type="button"
-          className="device-terminal nodrag nopan nowheel"
-          aria-label={`Open terminal for ${data.label}`}
-          title={`Open terminal for ${data.label}`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          onKeyUp={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            openTerminal(id);
-          }}
-        >
-          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
-            <path d="m4 5 4 4-4 4m7 0h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
+      {layout !== 'a' && actions}
       <div className="dev-icon">
         {hasDeviceArtwork(data.kind) ? <DeviceArtwork id={id} kind={data.kind} fallback={<DeviceIcon kind={data.kind} />} /> : <DeviceIcon kind={data.kind} />}
       </div>
@@ -118,9 +102,8 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
           ⛨
         </span>
       )}
-      <div className="dev-label">{data.label}</div>
+      <DeviceLabels id={id} name={data.label} actions={layout === 'a' ? actions : undefined} />
       {(data.kind === 'host' || data.kind === 'notebook') && <span className="dev-os-badge" title={data.os === 'windows' ? 'Windows' : 'Linux'}>{data.os === 'windows' ? 'Windows' : 'Linux'}</span>}
-      <NodeNetworkLabel id={id} name={data.label} />
     </div>
   );
 }

@@ -13,6 +13,7 @@ export interface GuidedHop extends WireTransfer {
   toInterface: string;
   ping: number; // Actual ICMP sequence number, including continuous pings.
   direction: 'request' | 'reply';
+  arp?: 'request' | 'reply';
 }
 export interface GuidedAttempt {
   seq: number;
@@ -97,7 +98,19 @@ function enqueueHop(playback: GuidedPlayback, hop: GuidedHop): GuidedPlayback {
 export function observeGuidedPacket(state: GuidedPacketState, transfer: WireTransfer, context: WireFrameContext,
   trace: WireVisualTrace | undefined, destination: boolean): GuidedPacketState {
   const o = state.observation, p = context.frame.payload;
-  if (!o.session || o.status === 'incomplete' || p.kind !== 'ipv4' || p.l4.kind !== 'icmp') return state;
+  if (!o.session || o.status === 'incomplete') return state;
+  if (p.kind === 'arp') {
+    const origin = trace?.arpPing;
+    if (!origin || origin.deviceId !== o.session.deviceId || origin.icmpId !== o.session.icmpId || !o.attempts.some(a => a.seq === origin.seq)) return state;
+    const parent = o.observed.find(h => h.id === trace?.parentTransferId && h.arp === p.op && h.ping === origin.seq);
+    const request = o.observed.find(h => h.id === trace?.arpRequestTransferId && h.arp === 'request' && h.ping === origin.seq);
+    if (trace?.parentTransferId !== undefined ? !parent : p.op === 'reply' && !request) return state;
+    return recordHop(state, { ...transfer, ...(parent ? { parentTransferId: parent.id } : {}),
+      fromDeviceName: context.fromDeviceName, toDeviceName: context.toDeviceName,
+      fromInterface: context.fromInterface, toInterface: context.toInterface,
+      ping: origin.seq, direction: origin.direction, arp: p.op });
+  }
+  if (p.l4.kind !== 'icmp') return state;
   const msg = p.l4.msg;
   if ((msg.type !== 'echo-request' && msg.type !== 'echo-reply') || msg.id !== o.session.icmpId) return state;
   const attempts = o.attempts.map((a) => ({ ...a }));
@@ -122,7 +135,14 @@ export function observeGuidedPacket(state: GuidedPacketState, transfer: WireTran
   const hop: GuidedHop = { ...transfer, ...(trace?.parentTransferId === undefined ? {} : { parentTransferId: trace.parentTransferId }),
     fromDeviceName: context.fromDeviceName, toDeviceName: context.toDeviceName,
     fromInterface: context.fromInterface, toInterface: context.toInterface, ping: msg.seq, direction };
-  return { observation: { ...o, attempts, observed: [...o.observed, hop], message: `Following ping ${msg.seq}.` },
+  return recordHop({ ...state, observation: { ...o, attempts } }, hop);
+}
+
+function recordHop(state: GuidedPacketState, hop: GuidedHop): GuidedPacketState {
+  const o = state.observation;
+  if (o.observed.some(h => h.id === hop.id)) return state;
+  if (o.observed.length >= MAX_GUIDED_HOPS) return { ...state, observation: { ...o, truncated: true } };
+  return { observation: { ...o, observed: [...o.observed, hop], message: `Following ${hop.arp ? 'ARP for ' : ''}ping ${hop.ping}.` },
     playback: enqueueHop(state.playback, hop) };
 }
 
@@ -145,8 +165,11 @@ function observedPath(observed: readonly GuidedHop[], root: number | null, desti
   return path;
 }
 export function guidedReplayHops(o: GuidedObservation): GuidedHop[] {
-  return o.attempts.flatMap((a) => [...observedPath(o.observed, a.requestRoot, a.requestDestination),
-    ...observedPath(o.observed, a.replyRoot, a.replyDestination)]);
+  return o.attempts.flatMap(a => {
+    const path = new Set([...observedPath(o.observed, a.requestRoot, a.requestDestination),
+      ...observedPath(o.observed, a.replyRoot, a.replyDestination)].map(h => h.id));
+    return o.observed.filter(h => h.ping === a.seq && (h.arp !== undefined || path.has(h.id)));
+  });
 }
 
 // Updates observation outcomes only. It never starts or gates animation/replay.
@@ -160,10 +183,10 @@ export function updateGuidedObservation(state: GuidedPacketState, now: number): 
   const inFlight = o.observed.some((hop) => hop.end > now);
   const complete = o.sourceFinished && !inFlight;
   const status = complete ? 'complete' : 'observing';
-  const message = complete ? !o.observed.length
+  const message = complete ? !o.observed.some(h => h.kind === 'icmp')
     ? attempts.length && attempts.every((a) => a.local)
       ? 'Local ping: no packets crossed a link; there is no path to replay. Ready for the next command.'
-      : 'No ICMP link transmission was observed for this selection. Check the terminal, ARP and routes. Ready for the next command.'
+      : `No ICMP link transmission was observed for this selection.${o.observed.length ? ' Observed ARP resolution can be replayed.' : ''} Check the terminal, ARP and routes. Ready for the next command.`
     : `Command ended. ${attempts.filter(a => a.replied).length}/${attempts.length} complete reply paths in the replay window. A new ping takes focus automatically.` : o.message;
   if (status === o.status && message === o.message && attempts.every((a, i) => a === o.attempts[i])) return state;
   return { ...state, observation: { ...o, status, message, attempts },

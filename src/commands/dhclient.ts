@@ -120,5 +120,5 @@ export function runDhclient(
   device.dhcpListeners.add(onDhcp);
   iface.cancelDhcp = cancel;
   sendDiscover();
-  return { cancel };
+  return { needsScheduler: true, cancel };
 }

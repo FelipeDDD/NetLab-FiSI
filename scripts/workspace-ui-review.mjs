@@ -45,6 +45,9 @@ export async function runWorkspaceUIReview({ page, url, root, report, openPage }
     await target.send('Page.bringToFront');
     await target.send('Emulation.setDeviceMetricsOverride', { width, height: 960, deviceScaleFactor: 1, mobile: false });
     await target.evaluate(`window.theme.getState().setTheme(${JSON.stringify(theme)});`); await delay(350);
+    // Review framing is an explicit user action. Panel/window resizes no longer
+    // auto-fit; the dedicated viewport suite checks that those keep x/y/zoom.
+    await target.evaluate(`document.querySelector('.react-flow__controls-fitview')?.click();`); await delay(100);
     await wait(`(()=>{const canvas=document.querySelector('.canvas')?.getBoundingClientRect();return [...document.querySelectorAll('.react-flow__node')].every(e=>{const r=e.getBoundingClientRect();return canvas&&r.left>=canvas.left-2&&r.right<=canvas.right+2&&r.top>=canvas.top-2&&r.bottom<=canvas.bottom+2;});})()`, target);
     const layout = await target.evaluate(`const canvas=document.querySelector('.canvas')?.getBoundingClientRect();return {width:innerWidth,scroll:document.documentElement.scrollWidth,canvas:canvas?.toJSON(),nodes:[...document.querySelectorAll('.react-flow__node')].map(e=>({id:e.getAttribute('data-id'),...e.getBoundingClientRect().toJSON()})),tabs:[...document.querySelectorAll('.workspace-tab-wrap')].map(e=>{const r=e.getBoundingClientRect();return {width:r.width,height:r.height};})};`);
     const image = await target.send('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false });

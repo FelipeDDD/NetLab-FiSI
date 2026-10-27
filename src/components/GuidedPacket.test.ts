@@ -24,7 +24,7 @@ it('renders focused progressive playback only, preserving simultaneous Live anim
   let layer = renderToStaticMarkup(createElement(PacketLayer));
   expect(layer.match(/class="packet-dot"/g)).toHaveLength(1); expect(layer).toContain('cx="55"');
   const controls = renderToStaticMarkup(createElement(GuidedPacketControls));
-  expect(controls).toContain('Latest ping wins'); expect(controls).not.toContain('Observe next ping');
+  expect(controls).toContain('Schrittmodus Wiedergabe'); expect(controls).toContain('neuesten Ping-Befehls'); expect(controls).not.toContain('Observe next ping');
   expect(controls).toContain('PC1 / eth0 → SW1 / eth1'); expect(controls).toContain('Step');
   expect(controls.match(/<button\b[^>]*>Play<\/button>/)?.[0]).not.toContain('disabled');
   view.guidedPacket.playback = { ...view.guidedPacket.playback, status: 'finished', index: 1, progress: 1 };

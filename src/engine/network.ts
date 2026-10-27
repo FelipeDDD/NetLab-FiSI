@@ -3,7 +3,7 @@ import { wirelessError } from './wirelessRange';
 import { Scheduler } from './scheduler';
 import { Link, NetInterface as Interface } from './device';
 import type { Device, DeviceKind, NetInterface } from './device';
-import type { EthernetFrame, FramePayload, IcmpMessage, Ipv4Packet } from './types';
+import type { ArpPayload, EthernetFrame, FramePayload, IcmpMessage, Ipv4Packet } from './types';
 
 // Emitted for every frame that crosses a link; the UI turns these into
 // animated packets travelling along the corresponding edge.
@@ -28,7 +28,8 @@ export interface WireFrameContext {
 }
 
 // Presentation side channel only: never part of protocol data or capture context.
-export interface WireVisualTrace { parentTransferId?: number; echoRequestTransferId?: number }
+export interface VisualPingOrigin { deviceId: string; icmpId: number; seq: number; direction: 'request' | 'reply' }
+export interface WireVisualTrace { parentTransferId?: number; echoRequestTransferId?: number; arpRequestTransferId?: number; arpPing?: VisualPingOrigin }
 
 // Read-only command lifecycle observation; not protocol/capture data.
 export type PingProgress = { deviceId: string; icmpId: number } &
@@ -81,6 +82,9 @@ export class Network {
   onClientConfiguration: (() => void) | null = null;
   private visualArrivals = new WeakMap<FramePayload, Map<string, number>>();
   private visualEchoRequests = new WeakMap<IcmpMessage, number>();
+  private visualArpRequests = new WeakMap<ArpPayload, number>();
+  private visualPingOrigins = new WeakMap<IcmpMessage, VisualPingOrigin>();
+  private visualArpOrigins = new WeakMap<ArpPayload, VisualPingOrigin>();
   // Fired when a declared firewall chain drops or rejects a packet — the UI
   // flashes the device so students see *where* traffic died.
   onFwDrop: ((deviceId: string) => void) | null = null;
@@ -226,6 +230,27 @@ export class Network {
   associateVisualEchoReply(request: Ipv4Packet, reply: IcmpMessage, deviceId: string): void {
     const arrival = this.visualArrivals.get(request)?.get(deviceId);
     if (arrival !== undefined) this.visualEchoRequests.set(reply, arrival);
+    if (request.l4.kind === 'icmp') {
+      const origin = this.visualPingOrigins.get(request.l4.msg);
+      if (origin) this.visualPingOrigins.set(reply, { ...origin, direction: 'reply' });
+    }
+  }
+
+  observeVisualPingOrigin(request: IcmpMessage, deviceId: string): void {
+    if (request.type === 'echo-request') this.visualPingOrigins.set(request, { deviceId, icmpId: request.id, seq: request.seq, direction: 'request' });
+  }
+
+  associateVisualArpRequest(request: ArpPayload, pendingPacket: Ipv4Packet | undefined): void {
+    if (pendingPacket?.l4.kind !== 'icmp') return;
+    const origin = this.visualPingOrigins.get(pendingPacket.l4.msg);
+    if (origin) this.visualArpOrigins.set(request, origin);
+  }
+
+  associateVisualArpReply(request: ArpPayload, reply: ArpPayload, deviceId: string): void {
+    const arrival = this.visualArrivals.get(request)?.get(deviceId);
+    if (arrival !== undefined) this.visualArpRequests.set(reply, arrival);
+    const origin = this.visualArpOrigins.get(request);
+    if (origin) this.visualArpOrigins.set(reply, origin);
   }
 
   emitPingProgress(event: PingProgress): void {
@@ -253,10 +278,14 @@ export class Network {
       const parentTransferId = this.visualArrivals.get(frame.payload)?.get(from.id);
       const echoRequestTransferId = frame.payload.kind === 'ipv4' && frame.payload.l4.kind === 'icmp'
         ? this.visualEchoRequests.get(frame.payload.l4.msg) : undefined;
-      if (parentTransferId === undefined && echoRequestTransferId === undefined) this.onWireTransfer(transfer, context);
+      const arpRequestTransferId = frame.payload.kind === 'arp' ? this.visualArpRequests.get(frame.payload) : undefined;
+      const arpPing = frame.payload.kind === 'arp' ? this.visualArpOrigins.get(frame.payload) : undefined;
+      if (parentTransferId === undefined && echoRequestTransferId === undefined && arpRequestTransferId === undefined && arpPing === undefined) this.onWireTransfer(transfer, context);
       else this.onWireTransfer(transfer, context, {
         ...(parentTransferId === undefined ? {} : { parentTransferId }),
         ...(echoRequestTransferId === undefined ? {} : { echoRequestTransferId }),
+        ...(arpRequestTransferId === undefined ? {} : { arpRequestTransferId }),
+        ...(arpPing === undefined ? {} : { arpPing: { ...arpPing } }),
       });
     } catch {
       // Observation must never prevent Link.transmit from scheduling delivery.

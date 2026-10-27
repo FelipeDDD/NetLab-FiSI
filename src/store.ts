@@ -9,7 +9,7 @@ import { sameIpv4, validIpv4, type InterfaceIpv4 } from './engine/ipv4Config';
 import { runDhclient } from './commands/dhclient';
 import { Network, type PingProgress } from './engine/network';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
-import { normalizePacketAnimationSpeed, readPacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
+import { DEFAULT_PACKET_ANIMATION_SPEED, normalizePacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
 import { Host, IpDevice } from './engine/ipdevice';
@@ -68,7 +68,6 @@ export type DevNode = Node<DevNodeData>;
 
 const AUTOSAVE_KEY = 'netsim:autosave:v1';
 import { loadCableStyle, type CableStyle } from './cableGeometry';
-const MAX_PACKETS = 150;
 
 function deviceNode(id: string, kind: DeviceKind, label: string, x: number, y: number): DevNode {
   const d = sim.net.devices.get(id);
@@ -175,6 +174,8 @@ interface NetsimState {
   terminalColors: Record<string, string>;
   terminalAppearance: TerminalAppearance;
   paused: boolean;
+  // Runtime UI intent only; not part of topology/session serialization.
+  pauseReason: 'activation' | 'manual' | null;
   speed: number;
   notice: string | null;
 
@@ -235,7 +236,7 @@ interface NetsimState {
   refresh(): void;
   flushAutosave(): void;
   tick(dtMs: number): void;
-  setPaused(p: boolean): void;
+  setPaused(p: boolean, reason?: 'activation' | 'manual'): void;
   setSpeed(s: number): void;
   setNotice(msg: string | null): void;
   newTopology(): void;
@@ -453,7 +454,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (get().packetVisualizationMode === 'live') {
         const packets = get().packets;
         const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(get().packetAnimationSpeed));
-        if (visual) set({ packets: [...packets.slice(-(MAX_PACKETS - 1)), visual] });
+        set({ packets: [...packets, visual] });
       } else {
         const before = get().guidedPacket, payload = context.frame.payload;
         const to = net.devices.get(t.toDeviceId);
@@ -763,7 +764,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     replayGuidedPacket() { set({ guidedPacket: replayGuidedPacket(currentGuided()) }); },
     followGuidedPacket() { set({ guidedPacket: followGuidedPacket(currentGuided()) }); },
     packetAnimationClock: animationNow,
-    packetAnimationSpeed: readPacketAnimationSpeed(),
+    // Public UI exposes fixed Live/Schrittmodus rhythms. Preserve technical
+    // multiplier APIs and old keys, but never apply an invisible saved speed.
+    packetAnimationSpeed: DEFAULT_PACKET_ANIMATION_SPEED,
     setPacketAnimationSpeed(value) {
       const speed = normalizePacketAnimationSpeed(value);
       if (speed === get().packetAnimationSpeed) return;
@@ -838,6 +841,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     terminalColors: {},
     terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE },
     paused: false,
+    pauseReason: null,
     speed: 1,
     notice: null,
 
@@ -1285,6 +1289,9 @@ export const useStore = create<NetsimState>()((set, get) => {
       const d = sim.net.devices.get(id);
       if (!d || !(d instanceof IpDevice)) return;
       getSession(d, {
+        onSchedulerRequired: () => {
+          if (d.network === sim.net && !d.disposed && get().paused && get().pauseReason === 'activation') get().setPaused(false);
+        },
         onAfterCommand: (configurationChanged) => {
           // A completed ping must not invalidate newer movement history just
           // because another editor action changed configuration while it ran.
@@ -1485,7 +1492,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (get().paused) {
         // Guided playback is independent of network pause; collecting still waits for simulated delivery.
         if (get().packetVisualizationMode === 'guided') {
-          const guidedPacket = advanceGuidedPacket(currentGuided(), elapsed, packetAnimationDuration(get().packetAnimationSpeed));
+          const guidedPacket = advanceGuidedPacket(currentGuided(), elapsed, packetAnimationDuration(get().packetAnimationSpeed, 'guided'));
           if (guidedPacket !== get().guidedPacket) set({ guidedPacket });
         }
         return;
@@ -1502,7 +1509,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({
         clock: now,
         ...(get().packetVisualizationMode === 'guided' ? { guidedPacket: advanceGuidedPacket(
-          updateGuidedObservation(currentGuided(), now), elapsed, packetAnimationDuration(get().packetAnimationSpeed)) } : {}),
+          updateGuidedObservation(currentGuided(), now), elapsed, packetAnimationDuration(get().packetAnimationSpeed, 'guided')) } : {}),
         packetAnimationClock: animationNow,
         ...(alive.length !== packets.length ? { packets: alive } : {}),
         ...(aliveFlashes.length !== flashes.length ? { dropFlashes: aliveFlashes } : {}),
@@ -1511,8 +1518,10 @@ export const useStore = create<NetsimState>()((set, get) => {
       lastPulse = pulse;
     },
 
-    setPaused(p) {
-      set({ paused: p });
+    setPaused(p, reason = 'manual') {
+      // Activation must not erase an explicit Pause, including across plan tabs.
+      const pauseReason = !p ? null : reason === 'activation' && get().paused && get().pauseReason === 'manual' ? 'manual' : reason;
+      set({ paused: p, pauseReason });
     },
 
     setSpeed(s) {
@@ -1663,7 +1672,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = null;
       set({ autosavePending: false, autosaveBlocked: false, autosaveError: null, protectedAutosave: null, pendingShare: null, rejectedDocument: null, shareLink: null });
-      set({ packetAnimationSpeed: readPacketAnimationSpeed() });
+      set({ packetAnimationSpeed: DEFAULT_PACKET_ANIMATION_SPEED });
       panelPreferences = readPanelPreferences();
       get().receiveShareLink();
       try {
@@ -1713,7 +1722,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!lab || get().labChecking) return;
       const step = lab.steps[get().labStep];
       if (!step || step.objectives.length === 0) return;
-      set({ labChecking: true, paused: false });
+      set({ labChecking: true, paused: false, pauseReason: null });
       const generation = ++labCheckGeneration;
       runChecks(
         sim.net,

@@ -16,7 +16,6 @@ const MENUS = [
 ] as const;
 type MenuId = typeof MENUS[number]['id'];
 type MenuPage = Exclude<MenuId, 'settings'> | 'compact';
-const SIM_SPEEDS = [0.25, 0.5, 1, 2, 4];
 const EXPORTS = [
   { action: 'exportJson', label: 'Topology (.json)', hint: 'Speichern und Importieren in NetLab' },
   { action: 'exportConfigs', label: 'Device configs (.zip)', hint: 'setup.sh, nftables.conf, dnsmasq.conf' },
@@ -50,7 +49,6 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const previousCompact = useRef(compact);
   const history = useStore(s => s.topologyHistory);
   const paused = useStore(s => s.paused);
-  const speed = useStore(s => s.speed);
   const clock = useStore(s => s.clock);
   const notice = useStore(s => s.notice);
   const autosavePending = useStore(s => s.autosavePending);
@@ -211,15 +209,11 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
           {paused ? <path d="m3 1 8 5-8 5Z" /> : <path d="M2 1h3v10H2zm5 0h3v10H7z" />}
         </svg><span className="toolbar-run-label">{paused ? 'Run' : 'Pause'}</span>
       </button>
-      <select className="speed toolbar-quick-speed" aria-label="Simulation speed" title="Geschwindigkeit der Simulationsuhr"
-        value={speed} onChange={event => useStore.getState().setSpeed(Number(event.target.value))}>
-        {SIM_SPEEDS.map(value => <option key={value} value={value}>{value}×</option>)}
-      </select>
       <div className="toolbar-packets">
         <button type="button" id="packets-toggle" className="btn packets-toggle" aria-expanded={packetInspectorOpen}
           aria-controls={packetInspectorOpen ? 'packet-inspector' : undefined} onClick={togglePackets}>Packets</button>
         <button type="button" className="btn packet-settings-toggle" ref={el => { packetAnchor.current = el; }}
-          aria-label="Paketanimation einstellen" title="Animationsgeschwindigkeit, Live / Guided und Wiedergabe"
+          aria-label="Paketanimation einstellen" title="Live / Schrittmodus, Step und Replay — Simulation im normalen Tempo"
           aria-haspopup="dialog" aria-expanded={dialog === 'animation'}
           aria-controls={dialog === 'animation' ? 'packet-visualization-settings' : undefined} onClick={openPacketSettings}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m3 4 3 3 3-3" /></svg>

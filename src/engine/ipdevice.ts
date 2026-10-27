@@ -415,7 +415,9 @@ export abstract class IpDevice extends Device {
   // ---------- sending (local origin) ----------
 
   sendEcho(dst: U32, id: number, seq: number, ttl = DEFAULT_TTL): string | null {
-    return this.sendL4(dst, { kind: 'icmp', msg: { type: 'echo-request', id, seq } }, { ttl });
+    const msg: IcmpMessage = { type: 'echo-request', id, seq };
+    this.network.observeVisualPingOrigin(msg, this.id);
+    return this.sendL4(dst, { kind: 'icmp', msg }, { ttl });
   }
 
   sendIcmp(dst: U32, msg: IcmpMessage, opts: { ttl?: number; srcOverride?: U32 } = {}): string | null {
@@ -929,7 +931,7 @@ export abstract class IpDevice extends Device {
     }
     const entry: PendingArp = { iface, queue: [pkt], tries: 1, timer: null };
     this.pendingArp.set(nextHop, entry);
-    this.sendArpRequest(iface, nextHop);
+    this.sendArpRequest(iface, nextHop, pkt);
     entry.timer = this.schedule(ARP_RETRY_MS, () => this.arpRetry(nextHop, entry));
   }
 
@@ -940,7 +942,7 @@ export abstract class IpDevice extends Device {
       return;
     }
     entry.tries++;
-    this.sendArpRequest(entry.iface, nextHop);
+    this.sendArpRequest(entry.iface, nextHop, entry.queue[0]);
     entry.timer = this.schedule(ARP_RETRY_MS, () => this.arpRetry(nextHop, entry));
   }
 
@@ -961,19 +963,17 @@ export abstract class IpDevice extends Device {
     }
   }
 
-  private sendArpRequest(iface: NetInterface, targetIp: U32): void {
+  private sendArpRequest(iface: NetInterface, targetIp: U32, pendingPacket?: Ipv4Packet): void {
     if (!iface.ip) return;
+    const request: ArpPayload = {
+      kind: 'arp', op: 'request', senderIp: iface.ip.addr, senderMac: iface.mac,
+      targetIp, targetMac: null,
+    };
+    this.network.associateVisualArpRequest(request, pendingPacket);
     iface.send({
       srcMac: iface.mac,
       dstMac: BROADCAST_MAC,
-      payload: {
-        kind: 'arp',
-        op: 'request',
-        senderIp: iface.ip.addr,
-        senderMac: iface.mac,
-        targetIp,
-        targetMac: null,
-      },
+      payload: request,
     });
   }
 
@@ -988,17 +988,15 @@ export abstract class IpDevice extends Device {
       }
       if (iface.ip && arp.targetIp === iface.ip.addr) {
         this.arpTable.set(arp.senderIp, { mac: arp.senderMac, ifaceName: iface.name, at: this.network.now });
+        const reply: ArpPayload = {
+          kind: 'arp', op: 'reply', senderIp: iface.ip.addr, senderMac: iface.mac,
+          targetIp: arp.senderIp, targetMac: arp.senderMac,
+        };
+        this.network.associateVisualArpReply(arp, reply, this.id);
         iface.send({
           srcMac: iface.mac,
           dstMac: arp.senderMac,
-          payload: {
-            kind: 'arp',
-            op: 'reply',
-            senderIp: iface.ip.addr,
-            senderMac: iface.mac,
-            targetIp: arp.senderIp,
-            targetMac: arp.senderMac,
-          },
+          payload: reply,
         });
       }
       return;

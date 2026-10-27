@@ -4,6 +4,7 @@ import { linkAttachment } from '../deviceArtwork';
 import { cableGeometry } from '../cableGeometry';
 import { useStore } from '../store';
 import { SwitchPortLeds } from './SwitchPortLeds';
+import { useCableAppearances } from './useCableAppearances';
 export { hasDeviceArtwork } from '../deviceArtwork';
 
 // Reversible, decorative finishing only; the actual cable remains in its underlay.
@@ -14,7 +15,7 @@ function SwitchCableTips({ id }: { id: string }) {
   const edges = useStore(s => s.edges);
   const style = useStore(s => s.cableStyle);
   const hovered = useStore(s => s.hoveredLinkId);
-  const colors = useStore(s => s.cableColors);
+  const colors = useCableAppearances();
   const reconnecting = useStore(s => s.reconnectingCable?.id);
   const node = nodes.find(n => n.id === id);
   if (!node) return null;

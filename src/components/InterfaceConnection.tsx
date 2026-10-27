@@ -3,6 +3,7 @@ import { ipToString } from '../engine/ip';
 import type { NetInterface } from '../engine/device';
 import { useStore } from '../store';
 import { interfaceCableColor } from '../cableAppearance';
+import { useCableAppearances } from './useCableAppearances';
 
 export function interfaceConnection(iface: NetInterface) {
   const link = iface.link;
@@ -35,7 +36,7 @@ export function InterfaceSummary({ iface, vlan, showMode = false, action, medium
   const peer = connection.link?.other(iface).device;
   const linkId = connection.link?.id;
   const selected = useStore(s => !!linkId && !!s.edges?.some(e => e.id === linkId && e.selected));
-  const colors = useStore(s => s.cableColors);
+  const colors = useCableAppearances(iface.device.network);
   const cableColor = interfaceCableColor(iface, colors);
   const hovered = useStore(s => !!linkId && s.hoveredLinkId === linkId);
   const highlighted = hovered || selected;

@@ -60,7 +60,7 @@ export default function App() {
           style={{ '--packet-panel-width': `${geometry.width}px`, '--analysis-device-width': `${geometry.deviceWidth}px` } as React.CSSProperties}>
           <Palette compact={workspaceCompact} />
           <div className="canvas" ref={editor} tabIndex={-1} role="region" aria-label="Topology editor">
-            <Flow />
+            <Flow fitOnInit={!workspace} />
             <LabPanel />
           </div>
           {selected && <ResizableInspector hidden={false} side={packetInspectorOpen && packetLayout.side === 'right' ? 'left' : 'right'}

@@ -34,7 +34,7 @@ const edgeTypes = { floating: FloatingEdge };
 
 const DROPPABLE_KINDS = new Set(['host', 'notebook', 'smartphone', 'switch', 'router', 'firewall', 'server', 'ap']);
 
-export function Flow() {
+export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const [minimapOpen, setMinimapOpen] = useState(false);
   const background = useCanvasBackground(s => s.preference);
   const backgroundImage = CANVAS_BACKGROUNDS[background.choice].image;
@@ -264,7 +264,7 @@ export function Flow() {
       proOptions={{ hideAttribution: true }}
       minZoom={0.25}
       maxZoom={2.5}
-      fitView
+      fitView={fitOnInit}
       fitViewOptions={{ padding: 0.25, maxZoom: 1.25 }}
     >
       {background.dots && <Background gap={26} size={1.6} bgColor={experimentalBackground ? 'transparent' : undefined}

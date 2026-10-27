@@ -1,8 +1,32 @@
 import type { Device } from './engine/device';
 import { IpDevice } from './engine/ipdevice';
 import { cidrToString, ipToString } from './engine/ip';
+import { DEVICE_ARTWORK, hasDeviceArtwork, type VisualNode } from './deviceArtwork';
 
-export const networkLabelScale = (zoom: number) => Math.max(1, Math.min(1.5, 1 / Math.sqrt(Math.max(.01, zoom))));
+// Partial compensation for the complete caption, never an unlimited inverse
+// scale. At 0.5x, 14px names/13px IPs remain about 13px/12px on screen.
+export const DEVICE_LABEL_MAX_SCALE = 1.85;
+export const networkLabelScale = (zoom: number) => Math.max(1, Math.min(DEVICE_LABEL_MAX_SCALE, 1 / Math.max(.01, zoom) ** .9));
+
+/** Caption bounds only: does not modify node dimensions or cable anchors. */
+export function deviceLabelLayout(node: VisualNode, nodes: readonly VisualNode[], zoom: number) {
+  const scale = networkLabelScale(zoom);
+  const center = (n: VisualNode) => n.position.x + (n.measured?.width ?? 96) / 2;
+  const top = (n: VisualNode) => n.position.y + (n.measured?.height ?? (hasDeviceArtwork(n.data.kind) ? DEVICE_ARTWORK[n.data.kind].height + 45 : 78)) - 37;
+  const available = nodes.filter(n => n.id !== node.id && Math.abs(top(n) - top(node)) < 40 * scale).map(n => {
+    const distance = Math.abs(center(n) - center(node));
+    const shared = (distance - 12) / scale;
+    // Bridges only display a name. Do not truncate a router's IPv4 merely to
+    // reserve an equally wide, mostly empty caption for a neighboring AP.
+    if (n.data.kind === 'ap' || n.data.kind === 'switch') {
+      const name = 'label' in n.data && typeof n.data.label === 'string' ? n.data.label : n.id;
+      const nameWidth = Math.min(180, Math.max(32, name.length * 14 + 8));
+      return Math.max(shared, 2 * shared - nameWidth);
+    }
+    return shared;
+  });
+  return { scale, maxWidth: Math.max(24, Math.min(180, ...available)) };
+}
 export function canvasNetwork(device: Device | undefined, previousInterface?: string) {
   if (!(device instanceof IpDevice)) return null;
   const live = device.interfaces.filter(i => i.up && i.link?.operational);

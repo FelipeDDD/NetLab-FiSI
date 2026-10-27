@@ -108,6 +108,7 @@ export function runNc(
     }
   });
   return {
+    needsScheduler: true,
     cancel: () => {
       cancelled = true;
       resolver.cancel();

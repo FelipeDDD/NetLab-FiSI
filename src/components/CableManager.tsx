@@ -9,6 +9,7 @@ import { linkAttachment } from '../deviceArtwork';
 import { sim } from '../sim';
 import { useStore } from '../store';
 import { FloatingPopover } from './FloatingPopover';
+import { useCableAppearances } from './useCableAppearances';
 
 export type CableMenuPoint = { id: string; x: number; y: number; end: 'a' | 'b' };
 
@@ -19,7 +20,7 @@ export function CableManager({ menu, onMenuChange, message, onMessageChange }: {
   message: string | null; onMessageChange: (value: string | null) => void;
 }) {
   const draft = useStore(s => s.reconnectingCable);
-  const colors = useStore(s => s.cableColors);
+  const colors = useCableAppearances();
   const nodes = useStore(s => s.nodes);
   const edges = useStore(s => s.edges);
   const style = useStore(s => s.cableStyle);

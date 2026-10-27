@@ -22,6 +22,37 @@ function path() {
   state = observeGuidedPacket(state, transfer(3, 'b', 'sw'), context(1, true), { echoRequestTransferId: 2 }, false);
   return observeGuidedPacket(state, transfer(4, 'sw', 'a'), context(1, true), { parentTransferId: 3 }, true);
 }
+
+const arpContext = (reply = false): WireFrameContext => ({ ...context(), frame: { srcMac: 'aa', dstMac: 'bb',
+  payload: { kind: 'arp', op: reply ? 'reply' : 'request', senderIp: 1, senderMac: 'aa', targetIp: 2, targetMac: reply ? 'bb' : null } } });
+const arpOrigin = { deviceId: 'a', icmpId: 7, seq: 1, direction: 'request' as const };
+
+it('includes exactly related ARP request/reply hops before ICMP, with individual Step and immutable Replay', () => {
+  let state = attempt(start());
+  state = observeGuidedPacket(state, { ...transfer(1), kind: 'arp' }, arpContext(), { arpPing: arpOrigin }, false);
+  state = observeGuidedPacket(state, { ...transfer(2, 'sw', 'b'), kind: 'arp' }, arpContext(), { parentTransferId: 1, arpPing: arpOrigin }, false);
+  state = observeGuidedPacket(state, { ...transfer(3, 'b', 'sw'), kind: 'arp' }, arpContext(true), { arpRequestTransferId: 2, arpPing: arpOrigin }, false);
+  state = observeGuidedPacket(state, { ...transfer(4, 'sw', 'a'), kind: 'arp' }, arpContext(true), { parentTransferId: 3, arpPing: arpOrigin }, false);
+  state = observeGuidedPacket(state, transfer(5), context(), undefined, false);
+  state = observeGuidedPacket(state, transfer(6, 'sw', 'b'), context(), { parentTransferId: 5 }, true);
+  state = observeGuidedPacket(state, transfer(7, 'b', 'sw'), context(1, true), { echoRequestTransferId: 6 }, false);
+  state = observeGuidedPacket(state, transfer(8, 'sw', 'a'), context(1, true), { parentTransferId: 7 }, true);
+  expect(guidedReplayHops(state.observation).map(h => h.arp ?? h.direction)).toEqual(['request', 'request', 'reply', 'reply', 'request', 'request', 'reply', 'reply']);
+  const replay = replayGuidedPacket(state);
+  expect(replay.playback.hops.map(h => h.kind)).toEqual(['arp', 'arp', 'arp', 'arp', 'icmp', 'icmp', 'icmp', 'icmp']);
+  const step = stepGuidedPacket(replay); expect(step.playback).toMatchObject({ index: 1, progress: 0, status: 'paused' });
+  expect(step.observation).toBe(state.observation);
+});
+
+it('never infers ARP ownership from matching IPs, ICMP IDs or arrival times', () => {
+  const state = attempt(start()), arp = { ...transfer(1), kind: 'arp' as const };
+  expect(observeGuidedPacket(state, arp, arpContext(), undefined, false)).toBe(state);
+  expect(observeGuidedPacket(state, arp, arpContext(), { arpPing: { ...arpOrigin, deviceId: 'other-host' } }, false)).toBe(state);
+  expect(observeGuidedPacket(state, arp, arpContext(), { arpPing: { ...arpOrigin, icmpId: 8 } }, false)).toBe(state);
+  expect(observeGuidedPacket(state, arp, arpContext(true), { arpPing: arpOrigin, arpRequestTransferId: 999 }, false)).toBe(state);
+  const focused = start(state, 'new-host', 7);
+  expect(observeGuidedPacket(focused, arp, arpContext(), { arpPing: arpOrigin }, false)).toBe(focused);
+});
 it('starts on the first actual transmission and keeps observation independent of playback', () => {
   let state = attempt(start());
   expect(state.playback.hops).toEqual([]);

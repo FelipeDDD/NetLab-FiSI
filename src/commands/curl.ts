@@ -102,6 +102,7 @@ export function runCurl(
   });
 
   return {
+    needsScheduler: true,
     cancel: () => {
       resolver.cancel();
       finish();

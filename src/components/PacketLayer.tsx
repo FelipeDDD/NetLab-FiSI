@@ -15,8 +15,8 @@ const COLORS: Record<string, string> = {
   udp: '#c084fc',
 };
 
-// Identified forwarding hops wait for their own visual predecessor only.
-// Responses and unrelated packets remain independent of this presentation.
+// The presentation timeline orders identified forwarding and request/reply
+// dependencies. Unrelated transfers remain concurrent; the engine never waits.
 export function PacketLayer() {
   const { x, y, zoom } = useViewport();
   const packets = useStore((s) => s.packets);

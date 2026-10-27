@@ -74,6 +74,7 @@ export function runDig(
     done();
   });
   return {
+    needsScheduler: true,
     cancel: () => {
       cancelled = true;
       done();

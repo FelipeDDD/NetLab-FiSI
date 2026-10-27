@@ -8,13 +8,14 @@ import type { DevNode } from '../store';
 import { sim } from '../sim';
 import { inactiveWireless } from '../wirelessPresentation';
 import type { CSSProperties } from 'react';
+import { useCableAppearances } from './useCableAppearances';
 
 export function FloatingEdge({ id, source, target, style, selected }: EdgeProps) {
   const nodes = useStore(s => s.nodes);
   const edges = useStore(s => s.edges);
   const cableStyle = useStore(s => s.cableStyle);
   const hovered = useStore(s => s.hoveredLinkId === id);
-  const color = useStore(s => s.cableColors[id]);
+  const color = useCableAppearances()[id];
   const reconnecting = useStore(s => s.reconnectingCable?.id === id);
   const sourceNode = useInternalNode<DevNode>(source);
   const targetNode = useInternalNode<DevNode>(target);

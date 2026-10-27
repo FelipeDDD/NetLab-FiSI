@@ -74,7 +74,7 @@ export function runPing(
       complete();
     };
   }
-  return { cancel: () => cancelFn!() };
+  return { needsScheduler: true, cancel: () => cancelFn!() };
 
   function start(ip: U32): () => void {
   const sched = device.network.scheduler;

@@ -11,7 +11,7 @@ import { sim } from '../sim';
 import { parseStaticIpv4, emptyIpv4 } from '../engine/ipv4Config';
 import { parseCidr, parseIp } from '../engine/ip';
 
-const view = vi.hoisted(() => ({ selected: null as string | null, nodes: [], uiPulse: 0,
+const view = vi.hoisted(() => ({ selected: null as string | null, nodes: [], edges: [], cableColors: {}, uiPulse: 0,
   toggleDhcpServer: vi.fn(), toggleDnsServer: vi.fn(), toggleHttpServer: vi.fn() }));
 vi.mock('../store', () => ({ useStore: Object.assign((select: (s: typeof view) => unknown) => select(view), { getState: () => view }) }));
 beforeEach(() => { sim.net = new Network(); view.selected = null; vi.clearAllMocks(); });

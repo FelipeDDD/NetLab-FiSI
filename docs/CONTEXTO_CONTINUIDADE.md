@@ -1,13 +1,13 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **26/10/2026**, para continuar o desenvolvimento no desktop de casa.
-Base histórica do código: **`main` · `13460d118bda2159fb1c97e29935c349a97fc4c6`**;
-as Fases 1–5B2-A descritas a seguir foram desenvolvidas sobre essa base.
+Atualizado em **27/10/2026**, para continuar no notebook usando VS Code/Codex.
+Branch: **`main`**, remoto `origin` (`FelipeDDD/NetLab-FiSI`). Base anterior a esta
+entrega: **`c7ffdd3`**, Save/Load e recuperação segura já integrados.
 Este documento descreve o estado encontrado; o código e os testes continuam sendo a fonte de verdade.
 
-## Estado atual para retomar no desktop
+## Leia primeiro — estado atual e decisões pendentes
 
-- **Fase 5B2-B concluída no desktop**, sobre `433f264` (5B2-A).
+- **Fase 5B2-B concluída**, commit `c7ffdd3`, sobre `433f264` (5B2-A).
   Boot normal assíncrono, planos/rascunhos, restauração pausada, migração legada
   somente leitura e recuperação estão integrados. Ver [application-boot.md](application-boot.md).
   Nenhum dado real foi usado nos testes automatizados. A etapa inclui fechamento
@@ -18,26 +18,52 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
 - Contratos atuais: [segurança](persistence-safety.md), [repositório](project-repository.md),
   [migração](legacy-migration.md), [rascunhos](workspace-drafts.md),
   [controller](session-controller.md) e [interface 5B2-A](workspace-ui.md).
-- Pendências de terminal: comandos desconhecidos **não devem executar outro
-  comando**; implementar limpeza ARP nos comandos Windows/Linux.
-- Pendências de ping: revisar velocidade **1×–4×** e sincronizar visualmente a
-  chegada dos pacotes e suas respostas.
-- Validação no desktop: **Node 24, 1.143 testes em 85 arquivos, TypeScript, build e
-  `git diff --check` aprovados**; Chromium cobre a interface anterior e o novo
-  boot, Graphite Dark/Classic Light e 700/1440 px com bancos/perfil descartáveis.
-  O build mantém aviso de chunk acima de 500 kB; não é falha da compilação.
-- Após o polimento de fechamento, 11 testes direcionados (incluindo a interface
-  em Chromium), TypeScript e diff-check passaram; autosave e persistência não
-  foram modificados nesse ajuste de UX.
-- No desktop, conferir branch/status, atualizar sem sobrescrever trabalho local
-  e executar `npm ci`. O lockfile mantém somente patches transitivos compatíveis
-  de `nanoid` e `source-map-js`; os seis alertas de auditoria restantes exigem
-  majors de ferramentas e continuam pendentes de discussão, sem `--force`.
+- **Viewport corrigido:** `WorkspaceViewport` só enquadra uma vez por ativação
+  de documento. Inspector, Palette, terminal, browser zoom e resize não alteram
+  `getViewport()`. Fit View manual continua funcionando. Não reintroduzir fit
+  em efeitos de largura/altura nem um segundo controlador de zoom.
+- **Pacotes corrigidos:** Live respeita `parentTransferId`,
+  `echoRequestTransferId` e `arpRequestTransferId`; Guided inclui ARP e ICMP.
+  Os metadados de causalidade são observação separada, não payload de protocolo.
+- **UI de velocidade simplificada:** Run/Pause, Live **200 ms/link** e
+  **Schrittmodus 1.000 ms/link** com Step/Replay. ID interno continua `guided`.
+  Não há seletores públicos de multiplicador. Clock e apresentação iniciam em
+  1×; APIs técnicas permanecem. A preferência antiga fica armazenada, mas não
+  aplica velocidade oculta no boot. Não duplicar pings ou alterar protocolos.
+- **Comandos após restauração:** `pauseReason` diferencia pausa de ativação e
+  pausa manual. Comandos ativos marcados `needsScheduler` (ping, DHCP etc.)
+  liberam somente a primeira, por uma política central em store/terminals.
+  Pause manual é respeitado, inclusive entre planos; Step/Replay não ligam Run.
+  Abrir plano/terminal não inicia tráfego. O marcador não é persistido.
+- **Legibilidade concluída:** nomes 14 px; IPv4/estados 13 px; interfaces 11 px;
+  compensação compartilhada `clamp(1, zoom ** -0.9, 1.85)` em `DeviceLabels`.
+  Formulários importantes usam 13/14 px. Sprites, hitboxes, Handles e anchors
+  mantidos; xterm mantém a preferência própria de 14 px. Não escalar o sprite
+  para resolver texto nem remover o espaçador que preserva métricas de layout.
+- **Ações dos dispositivos A/B ainda aguardam escolha:**
+  `?deviceActions=a` põe Terminal/Ping antes do nome; `?deviceActions=b` põe o
+  par na parte inferior esquerda. Sem parâmetro continua a posição atual.
+  **Não consolidar A/B sem escolha do usuário. Quick Ping NÃO está implementado**;
+  o botão é prévia `aria-disabled`, sem handler de rede. Recomendação provisória: A.
+- **Auditoria eth2/eth3:** reproduzido cabo AP em eth2 sem IP e eth3 desconectada
+  com IP; documento/motor/Inspector concordaram. Canvas lista IPv4 configurados;
+  cor depende do link da interface. Não houve reindexação em migração/Save/Load/F5.
+  Não reparar automaticamente a topologia real nem atribuir causa sem snapshot.
+- **Leases:** último IPv4 DHCP/gateway/DNS pode continuar salvo; leases, caches,
+  negociações e eventos antigos não são restaurados. Não há expiração/renovação
+  automática real de leases, apesar do texto Linux `renewal in 43200 seconds`.
+- Testes direcionados, TypeScript, build e revisões Chromium passaram. Os
+  resultados da suíte pré-commit estão na seção 6. Nenhum perfil/dado real foi
+  usado. O build mantém aviso de chunk acima de 500 kB, sem falha.
+- No notebook, atualizar `main` sem sobrescrever trabalho local e executar
+  `npm ci`. Não executar `npm audit fix --force` ou upgrades majors automaticamente.
 - Git transfere código/documentação, **não** IndexedDB/localStorage ou screenshots
   locais. Exportar/copiar separadamente qualquer topologia real necessária.
 
-O mapa geral abaixo conserva referências históricas da base `13460d1`; para o
-estado atual da persistência e a próxima etapa, prevalecem os contratos acima.
+Referências recentes: [pacotes](packet-animation.md),
+[viewport](workspace-ui.md), [legibilidade](device-legibility.md),
+[auditoria DHCP e Run](interface-dhcp-audit.md),
+[ações A/B e modos](device-actions-and-presentation.md).
 
 ## 1. Visão geral e mapa do projeto
 
@@ -153,8 +179,9 @@ Os tipos reais estão em `DeviceKind` e são criados por `createDevice`.
 - Scheduler usa tempo virtual. O store avança o motor conforme Pause/Run e
   velocidade; timers do navegador coordenam a UI, não devem substituir relógios
   virtuais em aging ou protocolos.
-- **Velocidade da simulação e velocidade visual dos pacotes são independentes**.
-  Live/Guided e seus controles de reprodução não equivalem ao Pause do motor.
+- Relógio e apresentação dos pacotes são tecnicamente independentes, mas a UI
+  agora expõe apenas Live/Schrittmodus e Run/Pause, com os ritmos fixos acima.
+  Pausa de reprodução, Step e Replay não equivalem ao Pause do motor.
 - Packet Inspector apresenta observações do tráfego; a animação deve seguir os
   links e a geometria compartilhada, nunca escolher destinos por proximidade visual.
 - Terminais pertencem a Host, Notebook, Server, Router e Firewall; Switch, AP e
@@ -188,7 +215,8 @@ Os tipos reais estão em `DeviceKind` e são criados por `createDevice`.
 
 - React Flow trabalha com posições em coordenadas do canvas e zoom entre 25%
   e 250%; o fit inicial limita-se a 125%. Não remonte o canvas ao mudar painéis
-  nem converta coordenadas persistidas em pixels da viewport.
+  nem converta coordenadas persistidas em pixels da viewport. Mudanças nos
+  painéis não reenquadram; adicionar o primeiro node num plano vazio também não.
 - Straight e Hybrid usam `cableGeometry.ts` tanto nos edges quanto no PacketLayer.
   Preservar oclusão atrás dos PNGs, segmentos frontais RJ45 e pontos de pacote.
 - Os quatro Handles são pontos visuais de arraste, **não quatro portas físicas**.
@@ -203,6 +231,10 @@ Os tipos reais estão em `DeviceKind` e são criados por `createDevice`.
 - Cor automática usa identidade do vizinho e evita colisões em links incidentes
   a Router/Firewall. Não recolore toda a topologia continuamente. Cores manuais
   são preservadas; Auto recalcula explicitamente. JSON/Share Link preservam os metadados.
+- Links antigos sem metadados usam a projeção somente leitura
+  `resolvedCableAppearances` / `useCableAppearances`, compartilhada entre cabos,
+  pontas RJ45, labels e Inspector. Não reescrever documentos/baselines para
+  corrigir cor ausente. Switch→Router prioriza a cor do Switch quando disponível.
 - Reencaixe escolhe a extremidade pela posição clicada no trajeto e usa a primeira
   interface Ethernet compatível disponível no destino. Voltar à interface original
   é permitido como restauração sem alteração. Preview/Esc não desligam o link real.
@@ -238,7 +270,7 @@ Os tipos reais estão em `DeviceKind` e são criados por `createDevice`.
 - Animações opcionais: Off (padrão), Emerald Dust, Fireflies, Teal Drift e
   Shooting Star; respeitam movimento reduzido/visibilidade. tsParticles limitado
   a 30 FPS; o cometa tem camada própria. São efeitos de fundo, não pacotes de rede.
-- Toolbar: Datei, Labs, Einstellungen e Hilfe; Undo/Redo, Run/Pause, velocidade
+- Toolbar: Datei, Labs, Einstellungen e Hilfe; Undo/Redo, Run/Pause
   e Packets à direita; Menü compacto abaixo de 1100 px. Export possui submenu.
 - Palette: Geräte/Werkzeuge, duas colunas e categorias recolhíveis; Werkzeuge
   ainda é um espaço reservado. A faixa inteira recolhida pode reabrir o catálogo.
@@ -246,8 +278,14 @@ Os tipos reais estão em `DeviceKind` e são criados por `createDevice`.
 
 ### Persistência e exportações
 
-- `netsim:autosave:v1`: uma topologia ativa, autosave com debounce de 500 ms;
-  `pagehide` solicita flush. Boot tenta Share Link, autosave e depois demo.
+- Boot normal: `WorkspaceApplication` abre IndexedDB/Session Controller e
+  recupera planos, ordem/foco e rascunhos, com uma única simulação ativa pausada.
+  Draft autosave tem debounce de 500 ms; Save manual e Save As são operações
+  separadas. JSON, Labs, exemplos e Share Links abrem rascunhos independentes.
+- `netsim:autosave:v1` é a fonte legada protegida, migrada idempotentemente.
+  Não apagar/sobrescrever essa chave. Falhas/incompatibilidades oferecem
+  recuperação/exportação, não substituição silenciosa por demo. `boot()` legado
+  ainda existe para compatibilidade/testes; não religar seus listeners junto ao controller.
 - Formato base continua `app: 'netsim', version: 1`; identificadores antigos
   são compatibilidade, não motivo para renomear tudo ao atualizar a marca.
 - JSON salva dispositivos, interfaces/MACs, IPv4, links, posições, regras,
@@ -292,24 +330,26 @@ conferir sempre o código atual antes de tratá-los como inventário definitivo.
 ## 4. Histórico do Git e transferência entre computadores
 
 - Branch inspecionado: **`main`**. Remoto: `origin`, repositório `FelipeDDD/NetLab-FiSI`.
-- Commit da base histórica **`13460d1`** — `feat: refine themes, cable management and terminal layouts`.
-  Commit e push concluídos; após o push, `HEAD` e `origin/main` estavam iguais.
-  Inclui temas/botões, backgrounds, cabos/cores/reencaixe, labels IPv4,
-  alinhamento óptico, distribuição de terminais, testes e documentação técnica.
+- Base anterior desta entrega: **`c7ffdd3`** — `feat: activate safe workspace save/load and session recovery`.
+- Esta rodada acompanha o commit **`feat: refine packet presentation, viewport and device actions`**:
+  causalidade ARP/ICMP, Live/Schrittmodus, viewport, legibilidade, Run por comandos,
+  auditoria DHCP, variantes A/B e regressões. Localizar seu hash com `git log -5`;
+  o documento não tenta registrar o próprio hash do commit que o contém.
+- `433f264` integra as Fases 1–5B2-A; `13460d1` contém temas, cabos e terminais.
 - Anteriores relevantes: `9c7e315` (toolbar/Palette e restauração do Switch),
   `047a315` (assets, clientes Wi-Fi e DHCP por interface), `e42cd95` (MAC aging),
   `99eba26` (Hybrid/interatividade de links).
-- O contexto original ficou apenas local após `13460d1`. Agora a versão canônica
-  em `docs/CONTEXTO_CONTINUIDADE.md` acompanha as Fases 1–5B2-A no Git;
+- A versão canônica em `docs/CONTEXTO_CONTINUIDADE.md` acompanha o código no Git;
   o arquivo da raiz aponta para esta versão.
-- Auditoria de assets: os 17 PNGs em `public/assets` têm referência no código;
-  os sete backgrounds novos ativos foram incluídos no commit. Nenhum print de
-  teste, asset experimental bruto ou arquivo de autenticação foi incluído.
+- Auditoria desta entrega: **nenhuma alteração em `public/assets` ou `docs/img`**,
+  nem em dependências/lockfile. Os novos arquivos candidatos são fontes, testes,
+  fixtures sintéticas, runners reutilizáveis e documentação; não PNGs, dumps de
+  topologia real, bancos, prints ou arquivos de autenticação.
   `docs/img/screenshot.jpg` já era documentação rastreada e referenciada, não um descarte.
 - `.gitignore` exclui `.playwright-mcp/`, `assets-tests/`, `node_modules/`, `dist/`,
   `samples/`, coverage/resultados de testes, logs/scratch e `.env` locais.
   Não remover originais de capturas sem autorização nem adicionar pastas inteiras indiscriminadamente.
-- O Git **não transfere localStorage**. Antes de sair deste computador, exportar
+- O Git **não transfere IndexedDB nem localStorage**. Antes de sair deste computador, exportar
   a topologia de trabalho pelo aplicativo como JSON e copiá-la separadamente.
   No notebook, importar esse JSON e escolher novamente tema/background/layout se necessário.
   Porta/origem do servidor também define qual localStorage o navegador utiliza.
@@ -317,12 +357,24 @@ conferir sempre o código atual antes de tratá-los como inventário definitivo.
   commitado, mas o exemplo depende de capturas locais; não é um pacote de imagens.
   Instalações, processos de servidor e sessões de terminal não viajam pelo Git.
 
-## 5. Planejamento histórico da base — consultar o estado atual acima
+## 5. Próximas tarefas — não reimplementar o que já existe
 
-### Prioridade de continuidade — distribuição automática dos terminais
+### Próxima decisão: ações dos dispositivos, antes de Quick Ping
 
-**Já implementada e incluída em `13460d1`; não começar uma segunda implementação.**
-Primeiro revisar/consolidar no notebook:
+- Pedir/consultar a escolha do usuário entre A e B. Só depois consolidar a posição
+  de Terminal/Ping; até lá manter as duas variantes por URL e o layout atual como padrão.
+- **Quick Ping ainda é apenas intenção futura.** O botão de prévia não executa
+  comandos ou pacotes. Antes de implementar, definir escolha de destino, uso das
+  interfaces/rotas reais e integração com o mesmo motor/cadência/Run gate.
+- Não criar uma segunda implementação de ping nos componentes ou iniciar Run
+  ao simplesmente abrir um plano/menu. Preservar Pause manual e o Schrittmodus.
+- Limpeza ARP por comandos Windows/Linux permanece uma ideia pendente: conferir
+  parsers/escopo antes de implementar. Comandos desconhecidos nunca podem virar outro comando.
+
+### Terminais: já implementados, somente verificar regressões quando pertinente
+
+**Distribuição automática e até cinco painéis existem desde `13460d1`.**
+Não iniciar uma segunda implementação. Para mudanças na área, conferir:
 
 - Abrir 1, 2, 3, 4 e 5 colunas; fechar colunas e conferir divisão igualitária.
 - Redimensionar manualmente; abrir novas colunas com um, vários ou todos os
@@ -336,22 +388,22 @@ Primeiro revisar/consolidar no notebook:
 
 ### Planejamento futuro — ainda não implementado
 
-- Gerenciamento de múltiplos projetos/topologias, seleção e organização de arquivos.
-- IndexedDB, autosave por projeto e backups JSON/versionamento de recuperação.
-  O código atual usa uma única `sim.net`, um store e uma chave principal de autosave;
-  não há suporte pronto de múltiplos projetos só porque existem modos/abas de terminal.
+- Gerenciamento avançado de planos, pastas, lixeira, histórico ampliado e outras
+  melhorias de organização. **Abas de planos, IndexedDB, drafts, Save/Save As/Load,
+  migração e recuperação já estão implementados.** Não confundir isso com abas xterm.
 - Exercícios/desafios adicionais sobre a infraestrutura de Labs existente.
 - Possível integração com DAAproject: planejamento, sem integração encontrada no código atual.
 
-Antes de múltiplos projetos, projetar migração do autosave atual, identidade dos
-dispositivos por projeto, descarte de timers/listeners, histórico, captura e sessões
-xterm. Não acrescentar apenas abas visuais sobre o mesmo motor global.
+O controller mantém somente uma `sim.net` ativa, usando documentos preparados,
+fronteiras de ativação e proteção de formulários/escritas pendentes. Não abrir
+simulações paralelas nem contornar o controller para trocar planos.
 
-## 6. Testes e cuidados da base histórica
+## 6. Testes e limitações atuais
 
-Última validação local deste estado: **75 arquivos de teste e 964 testes passando**,
-TypeScript sem erros e `git diff --check` limpo. Não foi executado build local
-nesta preparação; status da execução remota da CI não foi consultado.
+Validação pré-commit em **27/10/2026**: **1.185 testes passando em 88 arquivos**
+(`vitest run --maxWorkers=2 --minWorkers=1`). TypeScript, build Vite e
+`git diff --check` também passaram. O build avisa sobre chunk grande; não falha.
+Isso não é uma execução da CI remota nem validação das ferramentas reais abaixo.
 `.github/workflows/ci.yml` define testes, build e validação de configs exportadas
 com ferramentas reais; uma execução Vitest local não equivale a essa validação externa.
 
@@ -370,6 +422,24 @@ Outros testes relevantes: `cableGeometry`, `deviceArtwork`, `guidedPacket`,
 `packetAnimation`, `packetCapture`, `engine/macAging`, `Inspector`, `uiTheme`,
 `topologyEdits` e `terminalShortcuts`. Usar `npm test` para validação ampla quando
 necessário; não executar build/suíte inteira automaticamente em toda pequena alteração.
+
+Runners Chromium adicionais, com perfil/IndexedDB descartáveis e sem novas dependências:
+
+```powershell
+node scripts/test-viewport.mjs
+node scripts/test-interface-audit.mjs
+node scripts/test-device-actions.mjs
+# Nova comparação de legibilidade: capturar baseline ANTES de editar:
+node scripts/test-legibility.mjs before
+# Depois da alteração visual da próxima rodada:
+node scripts/test-legibility.mjs after
+```
+
+O último exige baseline local em `.playwright-mcp/reviews/raw/legibility-before/`;
+o Git não fornece essas imagens/medições. Não executar `before` depois da mudança
+e chamá-lo de registro histórico. Os outros runners geram os próprios fixtures.
+`viewportProbe.browser.tsx` é sonda apenas de testes, injetada pelo Vite do harness;
+não importar no boot normal. Ver também os documentos específicos citados no início.
 
 Cuidados/limitações confirmados:
 
@@ -400,19 +470,22 @@ a localização correta. Não gerar/apagar capturas antigas indiscriminadamente.
 
 ## 7. Como retomar o desenvolvimento
 
-1. No desktop, abrir o repositório atualizado no VS Code e pedir ao Codex para
+1. No notebook, abrir o repositório atualizado no VS Code e pedir ao Codex para
    ler `docs/CONTEXTO_CONTINUIDADE.md` e os módulos
    relacionados à tarefa escolhida; não depender do histórico do chat.
 2. Conferir `git status --short`, `git branch --show-current`, `git remote -v`
    e `git log -5 --oneline`. Em uma árvore apropriada para atualização, usar
-   `git fetch origin` e `git pull --ff-only`. Confirmar presença de `13460d1`
-   ou de um descendente; não sobrescrever alterações locais/divergências.
+   `git fetch origin` e `git pull --ff-only`. Confirmar que o commit de refinamentos
+   descrito na seção 4 chegou; não sobrescrever alterações locais/divergências.
 3. Usar o Node da referência de CI, instalar com `npm ci` e iniciar `npm run dev`.
-   Abrir `/app.html`; não presumir a mesma porta usada neste computador.
+   Abrir **`http://localhost:5173/app.html`**. Vite usa `localhost`, 5173 e strictPort.
+   Se houver EACCES/reserva WinNAT, diagnosticar sem trocar origem, limpar dados,
+   mexer em reservas ou parar serviços sem autorização. `127.0.0.1` é outra origem.
 4. Importar o JSON da topologia de trabalho exportado separadamente. Selecionar
    Graphite Dark e as preferências desejadas, pois o navegador pode começar com Original.
-5. Retomar pela Fase 5B2-B e pelas pendências listadas no início deste documento.
-   A distribuição dos terminais já existe em `terminalPanels.ts`/store.
+5. Retomar pela escolha A/B e pelo planejamento de Quick Ping da seção 5.
+   Save/Load, distribuição dos terminais e correções de viewport já existem.
+   Não transformar propostas em tarefas autorizadas sem instrução do usuário.
 6. Fazer mudanças pequenas e reversíveis, preservar sessões/IDs e executar os
    testes direcionados e TypeScript. Usar Chromium para mudanças visuais; manter
    topologia, zoom e enquadramento iguais nas comparações.

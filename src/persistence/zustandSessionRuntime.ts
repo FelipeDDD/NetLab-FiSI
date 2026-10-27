@@ -10,7 +10,7 @@ export function createZustandSessionRuntime(options: { pauseOnActivation?: boole
     connect: sink => useStore.getState().attachWorkspacePersistence(sink),
     activate: (prepared, identity) => {
       useStore.getState().activateWorkspaceDocument(prepared, identity);
-      if (options.pauseOnActivation) useStore.getState().setPaused(true);
+      if (options.pauseOnActivation) useStore.getState().setPaused(true, 'activation');
     },
     hasPendingForms,
   };

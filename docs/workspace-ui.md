@@ -9,8 +9,27 @@ usa a mesma interface testada. Ver [boot e recuperação](application-boot.md).
 `src/workspace/WorkspaceUI.tsx` contém o provider da interface, a barra de abas,
 diálogos e ações de recuperação. O provider recebe controller/conexão já abertos;
 não cria outro mecanismo de armazenamento. `WorkspaceViewport` enquadra documentos
-ativados/redimensionados usando as dimensões medidas pelo React Flow, sem remontar
+ativados uma única vez usando as dimensões medidas pelo React Flow, sem remontar
 motor, editor ou terminais. `workspace.css` usa os tokens dos temas existentes.
+Resize, zoom do navegador, seleção e alterações nos painéis preservam x/y/zoom.
+Depois desse enquadramento inicial, somente navegação ou Fit View explícitos
+devem alterar o viewport; adicionar um node também não reenquadra a topologia,
+inclusive o primeiro equipamento de um plano vazio. O botão Fit View continua
+disponível para reenquadramento explícito. O React Flow não executa um segundo
+fit inicial enquanto o workspace controla a ativação.
+
+Regressões de viewport: `node scripts/test-viewport.mjs` (ou
+`node node_modules/vitest/vitest.mjs run src/workspace/viewport.test.ts`). O runner
+reutiliza o perfil descartável/IndexedDB isolado da suíte existente, mede
+`getViewport()` em 700/1440 px, testa painéis, resize, planos/F5 e zoom real do
+navegador em 100/125/150%. A sonda de leitura é injetada somente pelo servidor
+de testes. Não há acesso ao perfil nem aos dados reais do usuário.
+
+Cabos antigos sem metadados de aparência recebem uma projeção visual da regra
+automática existente (`resolvedCableAppearances`). Cores automáticas explícitas
+e escolhas manuais salvas são preservadas; renderizar não reescreve documentos,
+baselines ou preferências. A projeção é compartilhada entre cabos, pontas RJ45,
+marcadores de IP e cards de interfaces.
 
 `App` e `Toolbar` detectam a presença do provider. Sem ele, mantêm a barra e o
 fluxo legado. Com ele, a barra de planos aparece abaixo do menu e Datei oferece:

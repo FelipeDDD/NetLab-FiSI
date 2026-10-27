@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { automaticCableAppearance, CABLE_COLORS, readCableColors, interfaceCableColor, type CableAppearances } from './cableAppearance';
+import { automaticCableAppearance, CABLE_COLORS, readCableColors, resolvedCableAppearances, interfaceCableColor, type CableAppearances } from './cableAppearance';
 import { DEVICE_COLORS } from './deviceColors';
 import { Network } from './engine/network';
 import { createDevice } from './engine/factory';
@@ -61,6 +61,25 @@ it('migrates earlier user choices as manual and keeps default legacy links uncol
   expect(readCableColors({ a: 'purple', b: { mode: 'auto', color: '#F472B6' }, c: 'invalid', orphan: 'red' }, ['a', 'b', 'c', 'd']))
     .toEqual({ a: { mode: 'manual', color: CABLE_COLORS.purple.value }, b: { mode: 'auto', color: '#f472b6' } });
   expect(readCableColors(undefined, ['a'])).toEqual({});
+});
+
+it('renders missing legacy colors using the existing rule without changing the saved document', () => {
+  const net = new Network(), router = createDevice(net, 'router'), sw = createDevice(net, 'switch');
+  const link = net.connect(router.id, sw.id), saved = Object.freeze({});
+  const projected = resolvedCableAppearances(net, saved);
+  expect(projected[link.id]).toEqual({ mode: 'auto', color: DEVICE_COLORS.switch });
+  expect(saved).toEqual({}); expect(interfaceCableColor(link.a, projected)).toBe(DEVICE_COLORS.switch);
+});
+
+it('preserves saved manual gray and explicit automatic colors while filling only absent appearances', () => {
+  const net = new Network(), router = createDevice(net, 'router');
+  const links = Array.from({ length: 3 }, () => net.connect(router.id, createDevice(net, 'switch').id));
+  const saved: CableAppearances = { [links[0].id]: { mode: 'manual', color: CABLE_COLORS.gray.value },
+    [links[1].id]: { mode: 'auto', color: DEVICE_COLORS.switch } };
+  const copy = structuredClone(saved), projected = resolvedCableAppearances(net, saved);
+  expect(projected[links[0].id]).toEqual(saved[links[0].id]); expect(projected[links[1].id]).toEqual(saved[links[1].id]);
+  expect(projected[links[2].id].color).not.toBe(DEVICE_COLORS.switch); expect(projected[links[2].id].color).not.toBe(CABLE_COLORS.gray.value);
+  expect(saved).toEqual(copy); expect(resolvedCableAppearances(net, projected)).toBe(projected);
 });
 
 it('identifies a linked interface independently of UP/DOWN and returns neutral for disconnected or stale links', () => {

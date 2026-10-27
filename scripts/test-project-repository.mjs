@@ -72,7 +72,14 @@ try {
   const testPort = probe.address().port;
   await new Promise(resolve => probe.close(resolve));
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
-    plugins: [{ name: 'isolated-repository-tests', configureServer(vite) {
+    plugins: [...(process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' ? [{
+      name: 'isolated-viewport-probe', enforce: 'pre',
+      transform(code, id) {
+        if (!id.replaceAll('\\', '/').endsWith('/src/App.tsx')) return;
+        return "import {WorkspaceViewportProbe} from '/src/workspace/viewportProbe.browser.tsx';\n"
+          + code.replace('<ReactFlowProvider>', '<ReactFlowProvider><WorkspaceViewportProbe />');
+      },
+    }] : []), { name: 'isolated-repository-tests', configureServer(vite) {
       vite.middlewares.use((req, res, next) => {
         if (!['/__project_repository_test__', '/__workspace_ui_test__', '/__application_boot_test__'].includes(req.url?.split('?')[0])) return next();
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -213,6 +220,33 @@ try {
     }
   }
 
+  if (process.env.NETLAB_DEVICE_ACTION_REVIEW === '1') {
+    const { runDeviceActionReview } = await import('./device-action-review.mjs');
+    await runDeviceActionReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_INTERFACE_AUDIT === '1') {
+    const { runInterfaceAudit } = await import('./interface-audit.mjs');
+    await runInterfaceAudit({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_LEGIBILITY_REVIEW) {
+    const { runLegibilityReview } = await import('./legibility-review.mjs');
+    const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+    await runLegibilityReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report,
+      phase: process.env.NETLAB_LEGIBILITY_REVIEW,
+      openPage: async () => { const target = await (await fetch(currentDebug + '/json/new?about:blank', { method: 'PUT' })).json(); return connect(target.webSocketDebuggerUrl); },
+    });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_VIEWPORT_REVIEW === '1') {
+    const { runViewportReview } = await import('./viewport-review.mjs');
+    const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+    await runViewportReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report,
+      openPage: async () => { const target = await (await fetch(currentDebug + '/json/new?about:blank', { method: 'PUT' })).json(); return connect(target.webSocketDebuggerUrl); },
+    });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_APPLICATION_BOOT_REVIEW === '1') {
     const { runApplicationBootReview } = await import('./application-boot-review.mjs');
     await runApplicationBootReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report,

@@ -18,6 +18,8 @@ export interface TermIO {
 
 export interface Running {
   cancel(): void;
+  /** Active network operation waiting for simulated delivery/timeouts. */
+  needsScheduler?: boolean;
 }
 
 const HELP = `NetSim commands (real Linux syntax, curated subset):

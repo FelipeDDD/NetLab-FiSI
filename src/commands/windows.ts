@@ -82,7 +82,7 @@ export function runWindows(device: IpDevice, argv: string[], io: TermIO, done: (
         }
         let remaining = adapters.length;
         const running = adapters.map((i) => runDhclient(device, [i.name], write, () => { if (--remaining === 0) done(); }, true));
-        return { cancel: () => running.forEach((r) => r?.cancel()) };
+        return { needsScheduler: running.some(r => r?.needsScheduler), cancel: () => running.forEach((r) => r?.cancel()) };
       } else write('Usage: ipconfig [/all | /renew | /release] [adapter]\n');
       break;
     case 'arp':
@@ -109,7 +109,7 @@ export function runWindows(device: IpDevice, argv: string[], io: TermIO, done: (
         else write(`DNS request timed out.\n*** Request to ${address} timed-out\n`);
         done();
       });
-      return { cancel() { if (!finished) { finished = true; done(); } } };
+      return { needsScheduler: true, cancel() { if (!finished) { finished = true; done(); } } };
     }
     default: write(`'${command}' is not recognized as an internal or external command,\noperable program or batch file.\n`);
   }
