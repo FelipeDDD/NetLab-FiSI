@@ -7,10 +7,12 @@ import { InspectorSettingsContent } from './InspectorLayoutSettings';
 import type { InspectorLayoutPreference } from '../inspectorLayout';
 import { confirmReplacement, REPLACEMENT_WARNING } from '../persistence/replacement';
 import { useWorkspaceUI } from '../workspace/WorkspaceUI';
+import { ExerciseMenu } from '../exercises/ExerciseUI';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 const MENUS = [
   { id: 'file', label: 'Datei' }, { id: 'labs', label: 'Labs' },
+  { id: 'exercises', label: 'Übungen (Beta)' },
   { id: 'settings', label: 'Einstellungen' }, { id: 'help', label: 'Hilfe' },
 ] as const;
 type MenuId = typeof MENUS[number]['id'];
@@ -223,7 +225,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
     </div>
 
     {menu && <FloatingPopover key={menu} anchor={anchor} id={'toolbar-' + menu + '-menu'} label={popupLabel ?? 'Menü'}
-      role="menu" width={menu === 'labs' ? 360 : menu === 'help' ? 200 : 210} initialFocus={menuFocus}
+      role="menu" width={menu === 'labs' || menu === 'exercises' ? 360 : menu === 'help' ? 200 : 210} initialFocus={menuFocus}
       popupRef={parentPopup} relatedRefs={[exportPopup]} className="labs-menu toolbar-command-menu"
       onClose={() => closeMenu()} onKeyDown={menuKeys}
       onPointerLeave={event => { if (event.pointerType === 'mouse' && exportOpen) scheduleExportClose(); }}>
@@ -233,6 +235,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         aria-haspopup={item.id === 'settings' ? 'dialog' : 'menu'} key={item.id} onClick={() => openMenu(item.id)}>
         <span>{item.label}</span><span aria-hidden="true">{item.id === 'settings' ? '' : '›'}</span>
       </button>)}
+      {menu === 'exercises' && <ExerciseMenu close={() => closeMenu(true)} />}
       {menu === 'file' && <>
         {workspace ? <>
           {action('Neu', workspace.newPlan)}

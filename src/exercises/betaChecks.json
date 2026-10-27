@@ -1,0 +1,151 @@
+{
+  "fisi-office-warehouse-routing": [
+    {
+      "id": "buero-eth0",
+      "requirementId": "addresses",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "buero",
+        "iface": "eth0",
+        "cidr": "10.44.0.10/26",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "r1-eth0",
+      "requirementId": "addresses",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "r1",
+        "iface": "eth0",
+        "cidr": "10.44.0.1/26",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "r1-eth1",
+      "requirementId": "addresses",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "r1",
+        "iface": "eth1",
+        "cidr": "10.44.0.65/27",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "lager-eth0",
+      "requirementId": "addresses",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "lager",
+        "iface": "eth0",
+        "cidr": "10.44.0.70/27",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "forwarding",
+      "requirementId": "forward",
+      "kind": "engine",
+      "check": {
+        "type": "forwarding",
+        "device": "r1",
+        "expect": true,
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "outbound",
+      "requirementId": "reachable",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "buero",
+        "toDevice": "lager",
+        "expect": "success",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "return",
+      "requirementId": "reachable",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "lager",
+        "toDevice": "buero",
+        "expect": "success",
+        "resolveBy": "id"
+      }
+    }
+  ],
+  "fisi-service-portal": [
+    {
+      "id": "ip-servicepc",
+      "requirementId": "addresses",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "servicepc",
+        "iface": "eth0",
+        "cidr": "10.63.5.10/24",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "ip-dns1",
+      "requirementId": "addresses",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "dns1",
+        "iface": "eth0",
+        "cidr": "10.63.5.53/24",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "ip-portal",
+      "requirementId": "addresses",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "portal",
+        "iface": "eth0",
+        "cidr": "10.63.5.80/24",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "lookup",
+      "requirementId": "dns",
+      "kind": "engine",
+      "check": {
+        "type": "dns",
+        "from": "servicepc",
+        "name": "portal.intern",
+        "addr": "10.63.5.80",
+        "expect": "resolves",
+        "resolveBy": "id"
+      }
+    },
+    {
+      "id": "page",
+      "requirementId": "http",
+      "kind": "engine",
+      "check": {
+        "type": "http",
+        "from": "servicepc",
+        "url": "http://portal.intern:8080/",
+        "contains": "Serviceportal bereit",
+        "expect": "ok",
+        "resolveBy": "id"
+      }
+    }
+  ]
+}

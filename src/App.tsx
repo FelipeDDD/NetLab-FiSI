@@ -9,6 +9,7 @@ import { PacketInspector } from './components/PacketInspector';
 import { TerminalDock } from './components/TerminalDock';
 import { Toolbar } from './components/Toolbar';
 import { LabPanel } from './components/LabPanel';
+import { ExercisePanel } from './exercises/ExerciseUI';
 import { useStore } from './store';
 import { loadPacketInspector, savePacketInspector, packetPanelGeometry, type PacketInspectorPreference } from './packetInspectorLayout';
 import { ResizablePacketPanel } from './components/ResizablePacketPanel';
@@ -74,6 +75,7 @@ export default function App() {
           <div className="canvas" ref={editor} tabIndex={-1} role="region" aria-label="Topology editor">
             <Flow fitOnInit={!workspace} />
             <LabPanel />
+            <ExercisePanel />
             <PacketAnimationControl />
           </div>
           {selected && <ResizableInspector hidden={false} side={packetInspectorOpen && packetLayout.side === 'right' ? 'left' : 'right'}

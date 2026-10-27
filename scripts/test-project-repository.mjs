@@ -271,6 +271,17 @@ try {
     });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_EXERCISE_REVIEW === '1') {
+    const { runExerciseReview } = await import('./exercise-beta-review.mjs');
+    await runExerciseReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report,
+      restart: async () => {
+        const stopped = new Promise(resolve => browser.once('exit', resolve));
+        await pageOne.send('Browser.close'); pageOne.close(); await stopped;
+        const restarted = await launchBrowser(); pageOne = restarted.page; return pageOne;
+      },
+    });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_APPLICATION_BOOT_REVIEW === '1') {
     const { runApplicationBootReview } = await import('./application-boot-review.mjs');
     await runApplicationBootReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report,

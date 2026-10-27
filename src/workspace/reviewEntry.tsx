@@ -8,6 +8,7 @@ import '../buttons.css';
 import './workspace.css';
 import LZString from 'lz-string';
 import App from '../App';
+import { ExerciseProvider } from '../exercises/ExerciseUI';
 import { WorkspaceProvider, sessionErrorMessage } from './WorkspaceUI';
 import { createZustandSessionRuntime } from '../persistence/zustandSessionRuntime';
 import { openSessionController } from '../persistence/openSessionController';
@@ -51,7 +52,7 @@ export async function mountWorkspaceReview(element: HTMLElement, options: {
     if (disposed) { if (opened.ok) { opened.controller.dispose(); opened.repository.close(); } return; }
     if (opened.ok) {
       controller = opened.controller; repository = opened.repository;
-      root.render(<WorkspaceProvider controller={controller} repository={repository}><App /></WorkspaceProvider>);
+      root.render(<WorkspaceProvider controller={controller} repository={repository}><ExerciseProvider sessions={controller} repository={repository}><App /></ExerciseProvider></WorkspaceProvider>);
       receiveShare();
     } else root.render(<main className="workspace-start"><section role="alert" data-error-code={opened.error.code}>
       <h1>Sitzung konnte nicht geöffnet werden</h1><p>{sessionErrorMessage(opened.error)}</p><p>Es wurden keine vorhandenen Pläne ersetzt.</p>

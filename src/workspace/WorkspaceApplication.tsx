@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import LZString from 'lz-string';
 import App from '../App';
+import { ExerciseProvider } from '../exercises/ExerciseUI';
 import { useStore } from '../store';
 import { applyUiTheme, useUiTheme } from '../uiTheme';
 import { applyDeviceColors } from '../deviceColors';
@@ -102,7 +103,7 @@ export function mountWorkspaceApplication(element: HTMLElement, options: {
       if (disposed || currentAttempt !== attempt || currentAttempt.signal.aborted) { if (opened.ok) { opened.controller.dispose(); opened.repository.close(); } return; }
       if (opened.ok) {
         controller = opened.controller; repository = opened.repository;
-        root.render(<WorkspaceProvider controller={controller} repository={repository}><App /></WorkspaceProvider>);
+        root.render(<WorkspaceProvider controller={controller} repository={repository}><ExerciseProvider sessions={controller} repository={repository}><App /></ExerciseProvider></WorkspaceProvider>);
         receiveShare();
       } else error = opened.error;
     } catch { if (currentAttempt === attempt && !currentAttempt.signal.aborted) error = { code: 'storage-error', message: 'Startup failed; original storage and local work were preserved.' }; }

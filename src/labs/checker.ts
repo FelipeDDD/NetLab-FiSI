@@ -16,17 +16,21 @@ const PING_TIMEOUT_MS = 3500;
 const TCP_TIMEOUT_MS = 3000;
 const HTTP_TIMEOUT_MS = 4000;
 
-function findDevice(net: Network, name: string): IpDevice | null {
+function findDevice(net: Network, reference: string, resolveBy: Check['resolveBy']): IpDevice | null {
+  if (resolveBy === 'id') {
+    const d = net.devices.get(reference);
+    return d instanceof IpDevice ? d : null;
+  }
   for (const d of net.devices.values()) {
-    if (d.name === name && d instanceof IpDevice) return d;
+    if (d.name === reference && d instanceof IpDevice) return d;
   }
   return null;
 }
 
-function targetAddr(net: Network, toDevice?: string, toAddr?: string): U32 | null {
+function targetAddr(net: Network, toDevice: string | undefined, toAddr: string | undefined, resolveBy: Check['resolveBy']): U32 | null {
   if (toAddr) return parseIp(toAddr);
   if (toDevice) {
-    const d = findDevice(net, toDevice);
+    const d = findDevice(net, toDevice, resolveBy);
     const iface = d?.interfaces.find((i) => i.ip);
     return iface?.ip?.addr ?? null;
   }
@@ -35,9 +39,10 @@ function targetAddr(net: Network, toDevice?: string, toAddr?: string): U32 | nul
 
 function runOne(net: Network, check: Check, onDone: (pass: boolean, detail: string) => void, isActive: () => boolean): void {
   const done = (pass: boolean, detail: string) => { if (isActive()) onDone(pass, detail); };
+  const find = (reference: string) => findDevice(net, reference, check.resolveBy);
   switch (check.type) {
     case 'iface-ip': {
-      const d = findDevice(net, check.device);
+      const d = find(check.device);
       const iface = d?.getInterface(check.iface);
       if (!d || !iface) return done(false, `no device/interface ${check.device}/${check.iface}`);
       if (!iface.ip) return done(false, `${check.iface} has no address yet`);
@@ -54,7 +59,7 @@ function runOne(net: Network, check: Check, onDone: (pass: boolean, detail: stri
       return done(true, `${check.iface} is ${got}`);
     }
     case 'default-route': {
-      const d = findDevice(net, check.device);
+      const d = find(check.device);
       if (!d) return done(false, `no device ${check.device}`);
       const def = d.routes().find((r) => r.prefix === 0);
       if (!def) return done(false, 'no default route');
@@ -68,21 +73,21 @@ function runOne(net: Network, check: Check, onDone: (pass: boolean, detail: stri
       return done(true, 'default route present');
     }
     case 'forwarding': {
-      const d = findDevice(net, check.device);
+      const d = find(check.device);
       if (!d) return done(false, `no device ${check.device}`);
       return done(d.forwarding === check.expect, `ip_forward = ${d.forwarding ? 1 : 0}`);
     }
     case 'fw-policy': {
-      const d = findDevice(net, check.device);
+      const d = find(check.device);
       if (!d) return done(false, `no device ${check.device}`);
       const chain = d.fw.filter[check.hook];
       if (!chain.declared) return done(false, `${check.hook} chain not declared`);
       return done(chain.policy === check.policy, `${check.hook} policy is ${chain.policy}`);
     }
     case 'ping': {
-      const from = findDevice(net, check.from);
+      const from = find(check.from);
       if (!from) return done(false, `no device ${check.from}`);
-      const target = targetAddr(net, check.toDevice, check.toAddr);
+      const target = targetAddr(net, check.toDevice, check.toAddr, check.resolveBy);
       if (target === null) return done(false, 'target has no address');
       const wantSuccess = check.expect === 'success';
       const id = from.allocIcmpId();
@@ -104,9 +109,9 @@ function runOne(net: Network, check: Check, onDone: (pass: boolean, detail: stri
       return;
     }
     case 'tcp': {
-      const from = findDevice(net, check.from);
+      const from = find(check.from);
       if (!from) return done(false, `no device ${check.from}`);
-      const target = targetAddr(net, check.toDevice, check.toAddr);
+      const target = targetAddr(net, check.toDevice, check.toAddr, check.resolveBy);
       if (target === null) return done(false, 'target has no address');
       const err = from.connectTcp(target, check.port, TCP_TIMEOUT_MS, (r) => {
         const observed = r === 'open' ? 'open' : r === 'refused' ? 'refused' : 'filtered';
@@ -116,7 +121,7 @@ function runOne(net: Network, check: Check, onDone: (pass: boolean, detail: stri
       return;
     }
     case 'dns': {
-      const from = findDevice(net, check.from);
+      const from = find(check.from);
       if (!from) return done(false, `no device ${check.from}`);
       if (from.nameserver === null) return done(false, 'no nameserver configured');
       from.resolveDns(check.name, from.nameserver, (r) => {
@@ -131,7 +136,7 @@ function runOne(net: Network, check: Check, onDone: (pass: boolean, detail: stri
       return;
     }
     case 'http': {
-      const from = findDevice(net, check.from);
+      const from = find(check.from);
       if (!from) return done(false, `no device ${check.from}`);
       let rest = check.url.startsWith('http://') ? check.url.slice(7) : check.url;
       const slash = rest.indexOf('/');

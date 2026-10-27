@@ -3,7 +3,7 @@
 // expressed as observable network facts — the checker probes the live
 // simulation with real packets, so "grading" is visible on the canvas.
 
-export type Check =
+export type Check = (
   | { type: 'iface-ip'; device: string; iface: string; cidr?: string; inSubnet?: string }
   | { type: 'default-route'; device: string; via?: string }
   | { type: 'forwarding'; device: string; expect: boolean }
@@ -18,7 +18,12 @@ export type Check =
       expect: 'open' | 'refused' | 'filtered';
     }
   | { type: 'dns'; from: string; name: string; expect: 'resolves' | 'nxdomain'; addr?: string }
-  | { type: 'http'; from: string; url: string; expect: 'ok' | 'fail'; contains?: string };
+  | { type: 'http'; from: string; url: string; expect: 'ok' | 'fail'; contains?: string }
+) & {
+  /** Legacy Labs default to visible names. Exercises explicitly use stable IDs
+   * for device/from/toDevice; DNS names, URLs and literal addresses are unchanged. */
+  resolveBy?: 'name' | 'id';
+};
 
 export interface Objective {
   id: string;

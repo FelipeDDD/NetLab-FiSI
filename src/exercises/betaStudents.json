@@ -1,0 +1,384 @@
+[
+  {
+    "id": "fisi-office-warehouse-routing",
+    "contentVersion": 1,
+    "student": {
+      "title": "Büro und Lager: Hin- und Rückweg reparieren",
+      "description": "Die Adressen stimmen bereits. Client-Routen fehlen und das Routing auf r1 ist ausgeschaltet.",
+      "learningObjectives": [
+        {
+          "id": "configure",
+          "text": "Connected-Routen, Client-Routen und IPv4-Forwarding unterscheiden."
+        }
+      ],
+      "initialTopology": {
+        "app": "netsim",
+        "version": 1,
+        "devices": [
+          {
+            "id": "buero",
+            "kind": "host",
+            "name": "buero",
+            "x": 100,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:01",
+                "ip": "10.44.0.10/26",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [],
+            "os": "linux"
+          },
+          {
+            "id": "r1",
+            "kind": "router",
+            "name": "r1",
+            "x": 340,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:02",
+                "ip": "10.44.0.1/26",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth1",
+                "mac": "02:00:00:00:00:03",
+                "ip": "10.44.0.65/27",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth2",
+                "mac": "02:00:00:00:00:04",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth3",
+                "mac": "02:00:00:00:00:05",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": []
+          },
+          {
+            "id": "lager",
+            "kind": "host",
+            "name": "lager",
+            "x": 580,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:06",
+                "ip": "10.44.0.70/27",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [],
+            "os": "linux"
+          }
+        ],
+        "links": [
+          {
+            "id": "cable-1",
+            "latency": 80,
+            "a": [
+              "buero",
+              "eth0"
+            ],
+            "b": [
+              "r1",
+              "eth0"
+            ]
+          },
+          {
+            "id": "cable-2",
+            "latency": 80,
+            "a": [
+              "lager",
+              "eth0"
+            ],
+            "b": [
+              "r1",
+              "eth1"
+            ]
+          }
+        ]
+      },
+      "task": "Verbinden Sie Büro (10.44.0.0/26) und Lager (10.44.0.64/27) über r1. Behalten Sie alle vier vorgegebenen IP-Adressen und Präfixe bei. Spezifische Routen oder Default-Routen sind zulässig; NAT ist nicht erforderlich.",
+      "requirements": [
+        {
+          "id": "addresses",
+          "text": "Die vier vorgegebenen IPv4-Konfigurationen bleiben erhalten.",
+          "objectiveIds": [
+            "configure"
+          ],
+          "evidence": "final"
+        },
+        {
+          "id": "forward",
+          "text": "r1 leitet IPv4 weiter.",
+          "objectiveIds": [
+            "configure"
+          ],
+          "evidence": "final"
+        },
+        {
+          "id": "reachable",
+          "text": "Büro und Lager erreichen sich in beide Richtungen.",
+          "objectiveIds": [
+            "configure"
+          ],
+          "evidence": "final"
+        }
+      ]
+    }
+  },
+  {
+    "id": "fisi-service-portal",
+    "contentVersion": 1,
+    "student": {
+      "title": "Serviceportal: DNS-Ziel und Webdienst entstören",
+      "description": "DNS verweist auf .81 statt .80 und der HTTP-Dienst auf Port 8080 ist ausgeschaltet.",
+      "learningObjectives": [
+        {
+          "id": "configure",
+          "text": "Namensauflösung und Anwendungsdienst getrennt diagnostizieren."
+        }
+      ],
+      "initialTopology": {
+        "app": "netsim",
+        "version": 1,
+        "devices": [
+          {
+            "id": "servicepc",
+            "kind": "host",
+            "name": "servicepc",
+            "x": 100,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:01",
+                "ip": "10.63.5.10/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [],
+            "os": "linux",
+            "nameserver": "10.63.5.53"
+          },
+          {
+            "id": "dns1",
+            "kind": "server",
+            "name": "dns1",
+            "x": 340,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:02",
+                "ip": "10.63.5.53/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [],
+            "dnsServer": {
+              "enabled": true,
+              "records": [
+                [
+                  "portal.intern",
+                  "10.63.5.81"
+                ]
+              ]
+            }
+          },
+          {
+            "id": "portal",
+            "kind": "server",
+            "name": "portal",
+            "x": 580,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:03",
+                "ip": "10.63.5.80/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [],
+            "httpServer": {
+              "enabled": false,
+              "port": 8080,
+              "body": "Serviceportal bereit"
+            }
+          },
+          {
+            "id": "sw1",
+            "kind": "switch",
+            "name": "sw1",
+            "x": 100,
+            "y": 330,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:04",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth1",
+                "mac": "02:00:00:00:00:05",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth2",
+                "mac": "02:00:00:00:00:06",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth3",
+                "mac": "02:00:00:00:00:07",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth4",
+                "mac": "02:00:00:00:00:08",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth5",
+                "mac": "02:00:00:00:00:09",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth6",
+                "mac": "02:00:00:00:00:0a",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth7",
+                "mac": "02:00:00:00:00:0b",
+                "ip": null,
+                "up": true
+              }
+            ],
+            "routes": []
+          }
+        ],
+        "links": [
+          {
+            "id": "cable-1",
+            "latency": 80,
+            "a": [
+              "servicepc",
+              "eth0"
+            ],
+            "b": [
+              "sw1",
+              "eth0"
+            ]
+          },
+          {
+            "id": "cable-2",
+            "latency": 80,
+            "a": [
+              "dns1",
+              "eth0"
+            ],
+            "b": [
+              "sw1",
+              "eth1"
+            ]
+          },
+          {
+            "id": "cable-3",
+            "latency": 80,
+            "a": [
+              "portal",
+              "eth0"
+            ],
+            "b": [
+              "sw1",
+              "eth2"
+            ]
+          }
+        ]
+      },
+      "task": "Reparieren Sie das Portal. servicepc soll portal.intern zu 10.63.5.80 auflösen und http://portal.intern:8080/ mit dem Text „Serviceportal bereit“ abrufen können. Behalten Sie die angegebenen IPv4-Adressen bei. Ein Zugriff nur über eine numerische IP reicht nicht.",
+      "requirements": [
+        {
+          "id": "addresses",
+          "text": "Vorgegebene IPv4-Adressen bleiben erhalten.",
+          "objectiveIds": [
+            "configure"
+          ],
+          "evidence": "final"
+        },
+        {
+          "id": "dns",
+          "text": "portal.intern löst vom Client zu 10.63.5.80 auf.",
+          "objectiveIds": [
+            "configure"
+          ],
+          "evidence": "final"
+        },
+        {
+          "id": "http",
+          "text": "HTTP über den Namen auf Port 8080 liefert den geforderten Inhalt.",
+          "objectiveIds": [
+            "configure"
+          ],
+          "evidence": "final"
+        }
+      ]
+    }
+  }
+]

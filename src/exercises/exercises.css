@@ -1,0 +1,23 @@
+.exercise-panel {
+  position: absolute; top: 12px; left: 12px; z-index: 8;
+  width: min(380px, calc(100% - 24px)); max-height: calc(100% - 76px);
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--ui-surface-panel); color: var(--ui-text); border: 1px solid var(--ui-border);
+  border-radius: 8px; box-shadow: 0 4px 16px #0003; font-size: 13px;
+}
+.exercise-panel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; }
+.exercise-body { overflow: auto; min-height: 0; padding: 0 12px; }
+.exercise-body p { line-height: 1.45; }
+.exercise-body ul { padding: 0; list-style: none; }
+.exercise-body li { margin: 10px 0; }
+.exercise-body li small { display: block; }
+.exercise-body [data-result="pass"] > span, .exercise-completed { color: var(--ui-success); }
+.exercise-body [data-result="fail"] > span { color: var(--ui-danger); }
+.exercise-panel footer { padding: 10px; border-top: 1px solid var(--ui-border); overflow: auto; }
+.exercise-panel footer > small { display: block; margin-top: 6px; }
+.exercise-panel footer p:empty { display: none; }
+.exercise-note, .exercise-panel small { color: var(--ui-text-muted); }
+.exercise-menu-entry { display: flex; flex-direction: column; gap: 6px; padding: 10px 4px; border-top: 1px solid var(--ui-border); }
+.exercise-menu-actions { display: flex; gap: 8px; }
+.exercise-error { position: absolute; bottom: 12px; left: 12px; max-width: calc(100% - 24px); z-index: 9; background: var(--ui-surface-panel); color: var(--ui-text); padding: 12px; border: 1px solid var(--ui-border); }
+@media (max-width: 900px) { .exercise-panel { max-height: min(52%, 460px); } }
