@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentCommandRange, inputStartRow, type LineBuffer } from './terminalLine';
+import { commandCursorPosition, currentCommandRange, inputStartRow, type LineBuffer } from './terminalLine';
 
 type Cell = string | { chars: string; width: number };
 function buffer(rows: { cells: Cell[]; wrapped?: boolean }[], cursorX: number, cursorY: number, baseY = 0): LineBuffer {
@@ -20,6 +20,12 @@ function buffer(rows: { cells: Cell[]; wrapped?: boolean }[], cursorX: number, c
 }
 
 describe('current command selection coordinates', () => {
+  it('locates an editing cursor across wraps from the rendered suffix, leaving right-margin wrap alone', () => {
+    const b = buffer([{ cells: ['$',' ','a','b'] }, { cells: ['c','d'], wrapped: true }], 2, 1);
+    expect(commandCursorPosition(b, 4, 'abcd', 0)).toEqual({ column: 2, row: 0 });
+    expect(commandCursorPosition(b, 4, 'abcd', 2)).toEqual({ column: 0, row: 1 });
+    expect(commandCursorPosition(b, 4, 'abcd', 4)).toBeNull();
+  });
   it('excludes the prompt and previous output, including at the right margin', () => {
     const b = buffer([{ cells: Array.from('old output') }, { cells: Array.from('pc:~$ ping') }], 10, 1);
     expect(currentCommandRange(b, 10, 'ping')).toEqual({ column: 6, row: 1, length: 4 });

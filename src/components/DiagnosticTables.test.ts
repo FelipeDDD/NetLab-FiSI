@@ -31,7 +31,16 @@ it('renders native tables, German column headers, empty states and keyboard scro
     expect(html).toContain('scope="col"'); expect(html).toContain(empty); expect(html).not.toContain('<pre');
   }
   expect(arp(a)).toContain('IP-Adresse'); expect(arp(a)).toContain('MAC-Adresse');
+  expect(mac(sw)).not.toContain('ARP-Cache leeren');
   expect(mac(sw)).toContain('VLAN'); expect(mac(sw)).toContain('Port');
+});
+
+it('offers a small ARP clear action when provided by the Inspector, including on an empty cache', () => {
+  const { a } = pair();
+  const html = renderToStaticMarkup(createElement(ArpTable, { device: a, onClear: () => {} }));
+  expect(html).toContain('class="mini-btn"');expect(html).toContain('ARP-Cache leeren');
+  expect(html).toContain('Löscht die dynamisch gelernten ARP-Einträge dieses Geräts.');
+  expect(html).toContain('Keine ARP-Einträge');expect(a.arpTable.size).toBe(0);
 });
 
 it('shows real ARP learning and update age without changing caches or terminal formatting', () => {

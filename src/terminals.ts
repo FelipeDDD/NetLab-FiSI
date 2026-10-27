@@ -4,19 +4,21 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Shell, type Running } from './commands/shell';
 import type { IpDevice } from './engine/ipdevice';
 import { serializeNetwork } from './engine/serialize';
-import { normalizeTerminalPaste, PASTE_END, PASTE_START, removeLastCodePoint } from './terminalInput';
-import { currentCommandRange, inputStartRow } from './terminalLine';
+import { inputBoundary, normalizeTerminalPaste, PASTE_END, PASTE_START, terminalInputDecoder } from './terminalInput';
+import { commandCursorPosition, currentCommandRange, inputStartRow } from './terminalLine';
 import { LEGACY_TERMINAL_FONT_SIZE, TERMINAL_THEME, terminalFontFamily } from './terminalAppearance';
 
 export interface SessionOpts {
   onAfterCommand?: (configurationChanged: boolean) => void;
-  onSchedulerRequired?: () => void;
+  onSchedulerRequired?: () => 'manual-pause' | void;
 }
 
 export interface Session {
   term: Terminal;
   fit: FitAddon;
   opened: boolean;
+  configure(opts: SessionOpts): void;
+  executeCommand(command: string): 'accepted' | 'busy' | 'unapplied-input' | 'disposed';
   refreshProfile(): void;
   dispose(): void;
 }
@@ -26,7 +28,8 @@ const sessions = new Map<string, Session>();
 export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   if (!hasTerminalKind(device.kind)) throw new Error('No terminal for this device');
   const existing = sessions.get(device.id);
-  if (existing) return existing;
+  if (existing) { existing.configure(opts); return existing; }
+  opts = { ...opts };
 
   const term = new Terminal({
     cursorBlink: true,
@@ -78,6 +81,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     return promptOs === 'windows' ? 'C:\\>' : `\x1b[1;32m${device.name}\x1b[0m:\x1b[1;34m~\x1b[0m$ `;
   };
   let buf = '';
+  let cursor = 0;
   let running: Running | null = null;
   let disposed = false;
   let selectedCommand = false;
@@ -89,9 +93,12 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   const inputQueue: { data: string | null; replace: boolean; refreshProfile?: boolean }[] = [];
   const history: string[] = [];
   let hIdx = 0;
+  let historyDraft = { text: '', cursor: 0 };
+  const decodeInput = terminalInputDecoder();
 
-  const redrawLine = (next: string, done: () => void) => {
+  const redrawLine = (next: string, done: () => void, nextCursor = next.length) => {
     buf = next;
+    cursor = nextCursor;
     term.clearSelection();
     // Wait for pending writes/reflow before measuring wrapped input. Only
     // editable viewport rows are erased; earlier output/scrollback is retained.
@@ -99,13 +106,38 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       if (disposed) return done();
       const buffer = term.buffer.active;
       const up = buffer.cursorY - Math.max(0, inputStartRow(buffer) - buffer.baseY);
-      term.write(`\r${up ? `\x1b[${up}A` : ''}\x1b[J${promptStr(false)}${next}`, done);
+      term.write(`\r${up ? `\x1b[${up}A` : ''}\x1b[J${promptStr(false)}${next}`, () => {
+        if (disposed) return done();
+        const buffer = term.buffer.active;
+        const position = commandCursorPosition(buffer, term.cols, next, nextCursor);
+        if (!position) return done();
+        const up = buffer.baseY + buffer.cursorY - position.row;
+        term.write(`\r${up > 0 ? `\x1b[${up}A` : ''}${position.column ? `\x1b[${position.column}C` : ''}`, done);
+      });
     });
+  };
+
+  const insertText = (text: string, replace: boolean, done: () => void) => {
+    if (replace) return redrawLine(text, done);
+    if (cursor === buf.length) {
+      buf += text;
+      cursor = buf.length;
+      term.write(text, done);
+      return;
+    }
+    const next = buf.slice(0, cursor) + text + buf.slice(cursor);
+    // Joining a combining mark/emoji can absorb the old boundary.
+    const end = cursor + text.length;
+    const nextCursor = inputBoundary(next, inputBoundary(next, end, -1), 1);
+    return redrawLine(next, done, text ? nextCursor : cursor);
   };
 
   const submit = () => {
     const line = buf;
     buf = '';
+    cursor = 0;
+    hIdx = history.length;
+    historyDraft = { text: '', cursor: 0 };
     term.write('\r\n');
     const trimmed = line.trim();
     if (!trimmed) {
@@ -135,7 +167,9 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     }, promptOs);
     // Some commands call done synchronously and still return a cancel handle.
     running = completed ? null : command;
-    if (running?.needsScheduler) opts.onSchedulerRequired?.();
+    if (running?.needsScheduler && opts.onSchedulerRequired?.() === 'manual-pause') {
+      term.write('\r\n\x1b[90mSimulation pausiert · Zum Fortsetzen Run klicken.\x1b[0m\r\n');
+    }
   };
 
   // An edit that needs rendered coordinates holds the queue until xterm has
@@ -156,8 +190,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
 
   const enqueueInput = (data: string) => {
     if (disposed) return;
-    const atomic = data.startsWith(PASTE_START) || data.startsWith('\x1b[');
-    for (const part of atomic ? [data] : Array.from(data)) {
+    for (const part of decodeInput(data)) {
       const replace = selectedCommand;
       if (part !== '\x01') selectedCommand = false;
       inputQueue.push({ data: part, replace });
@@ -175,7 +208,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       // Reflow can leave wide Unicode cells inconsistent with the line buffer.
       // Repaint editable input from the authoritative text, never command output.
       selectedCommand = false;
-      if (!running && buf) return redrawLine(buf, done);
+      if (!running && buf) return redrawLine(buf, done, cursor);
       return done();
     }
     // A selection may defer a profile refresh, but must not bind a NEW command
@@ -191,10 +224,10 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
         term.clearSelection();
         return done();
       }
-      term.write('', () => {
+      paintingSelection = true;
+      redrawLine(buf, () => {
         if (disposed) return done();
         const range = currentCommandRange(term.buffer.active, term.cols, buf);
-        paintingSelection = true;
         term.clearSelection();
         if (range) term.select(range.column, range.row, range.length);
         else selectedCommand = false;
@@ -209,10 +242,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
         return done();
       }
       const text = normalizeTerminalPaste(data.slice(PASTE_START.length, -PASTE_END.length));
-      if (replace) return redrawLine(text, done);
-      buf += text;
-      term.write(text);
-      return done();
+      return insertText(text, replace, done);
     }
     if (running) {
       if (data === '\x03') {
@@ -221,32 +251,49 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       }
       return done();
     }
-    if (data === '\x1b[A') {
-      if (history.length && hIdx > 0) return redrawLine(history[--hIdx], done);
+    if (data === '\x1b[A' || data === '\x1bOA') {
+      if (history.length && hIdx > 0) {
+        if (hIdx === history.length) historyDraft = { text: buf, cursor };
+        return redrawLine(history[--hIdx], done);
+      }
       return done();
     }
-    if (data === '\x1b[B') {
+    if (data === '\x1b[B' || data === '\x1bOB') {
       if (hIdx < history.length - 1) return redrawLine(history[++hIdx], done);
-      else {
+      if (hIdx < history.length) {
         hIdx = history.length;
-        return redrawLine('', done);
+        return redrawLine(historyDraft.text, done, historyDraft.cursor);
       }
+      return done();
+    }
+    if (['\x1b[D', '\x1bOD', '\x1b[C', '\x1bOC', '\x1b[H', '\x1bOH', '\x1b[1~', '\x1b[7~', '\x1b[F', '\x1bOF', '\x1b[4~', '\x1b[8~', '\x05'].includes(data)) {
+      const next = ['\x1b[D', '\x1bOD'].includes(data) ? inputBoundary(buf, cursor, -1)
+        : ['\x1b[C', '\x1bOC'].includes(data) ? inputBoundary(buf, cursor, 1)
+        : ['\x1b[H', '\x1bOH', '\x1b[1~', '\x1b[7~'].includes(data) ? 0 : buf.length;
+      if (next !== cursor) return redrawLine(buf, done, next);
+      term.clearSelection();
+      return done();
     }
     if (data === '\r') {
       term.clearSelection();
+      if (cursor !== buf.length) return redrawLine(buf, () => { if (!disposed) submit(); done(); });
       submit();
-    } else if (data === '\x7f' || data === '\x1b[3~') {
+    } else if (data === '\x7f' || data === '\x08' || data === '\x1b[3~') {
       if (replace) return redrawLine('', done);
-      if (data === '\x7f' && buf.length) return redrawLine(removeLastCodePoint(buf), done);
+      const start = data === '\x1b[3~' ? cursor : inputBoundary(buf, cursor, -1);
+      const end = data === '\x1b[3~' ? inputBoundary(buf, cursor, 1) : cursor;
+      if (start !== end) return redrawLine(buf.slice(0, start) + buf.slice(end), done, start);
     } else if (data === '\x03') {
       term.clearSelection();
+      if (cursor !== buf.length) return redrawLine(buf, () => processInput(data, false, done));
       term.write('^C\r\n');
       buf = '';
+      cursor = 0;
+      hIdx = history.length;
+      historyDraft = { text: '', cursor: 0 };
       term.write(promptStr());
     } else if (data >= ' ' && (data < '\x7f' || data >= '\xa0')) {
-      if (replace) return redrawLine(data, done);
-      buf += data;
-      term.write(data);
+      return insertText(data, replace, done);
     }
     done();
   };
@@ -279,6 +326,24 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
 
   const session: Session = {
     term, fit, opened: false,
+    configure(next) { Object.assign(opts, next); },
+    executeCommand(command) {
+      if (disposed) return 'disposed';
+      if (running || inputBusy || inputQueue.length) return 'busy';
+      if (buf || term.hasSelection()) return 'unapplied-input';
+      // Share the input queue, prompt/history and Shell.exec path with Enter.
+      // Block concurrent typing until the rendered command has been submitted.
+      if (!command.trim() || /[\r\n\x00-\x1f]/.test(command)) return 'unapplied-input';
+      inputBusy = true;
+      selectedCommand = false;
+      promptOs = shell.os;
+      redrawLine(command, () => {
+        if (!disposed) submit();
+        inputBusy = false;
+        drainInput();
+      });
+      return 'accepted';
+    },
     refreshProfile() {
       // Never disturb a running command, typed draft or selection. Their next
       // prompt adopts the profile; the existing buffer and renderer stay intact.

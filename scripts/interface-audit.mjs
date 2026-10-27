@@ -8,13 +8,13 @@ export async function runInterfaceAudit({page,url,root,report}) {
   const evidence={},results={};const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const wait=async expression=>{for(let i=0;i<200;i++){try{if(await page.evaluate(`return !!(${expression});`))return;}catch{}await delay(50);}throw Error('Audit condition: '+expression);};
   const test=async(name,work)=>{try{await work();results[name]={passed:true};}catch(error){results[name]={passed:false,error:error.stack};throw error;}};
-  const mount=async()=>{
+  const mount=async(expectedNodes=6)=>{
     await page.send('Page.navigate',{url});await wait("location.pathname==='/__application_boot_test__'&&document.readyState==='complete'");
     await page.evaluate(`await import('/node_modules/@xyflow/react/dist/style.css');await import('/node_modules/@xterm/xterm/css/xterm.css');await import('/src/themes.css');await import('/src/styles.css');await import('/src/buttons.css');
       window.entry=await import('/src/workspace/WorkspaceApplication.tsx');window.store=(await import('/src/store.ts')).useStore;window.sim=(await import('/src/sim.ts')).sim;
       window.fixtures=await import('/src/testing/interfaceAuditFixture.ts');window.terminals=await import('/src/terminals.ts');
       window.source=JSON.stringify(fixtures.interfaceAuditDocument());window.application=entry.mountWorkspaceApplication(document.getElementById('root'),{repositoryOptions:{databaseName:${JSON.stringify(database)}},legacy:{storage:{getItem:key=>key==='netsim:autosave:v1'?source:null},origin:'https://disposable-audit.invalid'}});await application.ready;`);
-    await wait("application.controller?.getState().phase==='ready'&&document.querySelectorAll('.react-flow__node').length===6");
+    await wait("application.controller?.getState().phase==='ready'&&document.querySelectorAll('.react-flow__node').length==="+expectedNodes);
     await page.send('Page.bringToFront');
   };
   const identity=()=>page.evaluate(`const d=store.getState().captureWorkspaceDocument().topology;return {devices:d.devices.map(n=>({id:n.id,ifaces:n.ifaces,vlans:n.vlans??{},dhcpPools:n.dhcpPools??{}})),links:d.links,cableColors:d.ui.cableColors};`);
@@ -84,6 +84,61 @@ export async function runInterfaceAudit({page,url,root,report}) {
       evidence.delayedDora=await page.evaluate(`const {net,wireless}=fixtures.interfaceAuditFixture(true);for(const link of net.links.values())link.latency=250;const {runDhclient}=await import('/src/commands/dhclient.ts');let output='',doneAt=null;runDhclient(wireless,['wlan0'],s=>output+=s,()=>{doneAt=net.now;});net.scheduler.advanceTo(8000);return {doneAt,output};`);
       assert.equal(evidence.delayedDora.doneAt,3500);assert.equal((evidence.delayedDora.output.match(/DHCPDISCOVER/g)??[]).length,2);
       assert(evidence.delayedDora.output.includes('DHCPACK'));
+    });
+    await test('DHCP global: Inspector stop and terminal start share state across three interfaces without losing leases or Link UP',async()=>{
+      await page.evaluate("window.globalFixture=await import('/src/testing/dhcpGlobalFixture.ts');const result=await application.controller.openDocument({schemaVersion:1,topology:globalFixture.dhcpGlobalDocument()});if(!result.ok)throw Error(JSON.stringify(result));store.getState().setPaused(true);store.getState().select('r-dhcp');");
+      await wait("[...document.querySelectorAll('.inspector [role=tab]')].some(b=>b.textContent==='Dienste')");
+      await page.evaluate("[...document.querySelectorAll('.inspector [role=tab]')].find(b=>b.textContent==='Dienste').click();window.router=sim.net.devices.get('r-dhcp');window.dhcpClient=await import('/src/commands/dhclient.ts');window.poolConfig=await import('/src/engine/dhcpPools.ts');dhcpClient.runDhclient(sim.net.devices.get('client-0'),['eth0'],()=>{},()=>{});sim.net.scheduler.advanceTo(sim.net.now+6000);window.configBefore=poolConfig.dhcpConfiguration(router);window.leasesBefore=JSON.stringify([...router.dhcpPools].map(([n,p])=>[n,[...p.leases]]));");
+      await wait("document.querySelector('.dhcp-global-control input')?.checked");
+      await page.evaluate("document.querySelector('.dhcp-global-control input').click();");
+      assert.equal(await page.evaluate('return router.dhcpServerEnabled;'),false);
+      await wait("document.querySelector('.dhcp-global-status')");
+      assert(await page.evaluate("return document.querySelector('.dhcp-global-control').textContent.includes('Die Einstellungen der einzelnen Schnittstellen bleiben erhalten.');"));
+      await page.evaluate("dhcpClient.runDhclient(sim.net.devices.get('client-1'),['eth0'],()=>{},()=>{});sim.net.scheduler.advanceTo(sim.net.now+6000);");
+      assert.equal(await page.evaluate("return sim.net.devices.get('client-1').interfaces[0].dhcpLease;"),null);
+      assert(await page.evaluate('return JSON.stringify([...router.dhcpPools].map(([n,p])=>[n,[...p.leases]]))===leasesBefore;'));
+      assert(await page.evaluate('return router.interfaces.every(i=>i.up)&&[...sim.net.links.values()].every(l=>l.operational);'));
+      await command('r-dhcp','systemctl start kea-dhcp4-server');
+      await wait("document.querySelector('.dhcp-global-control input')?.checked");
+      assert.deepEqual(await page.evaluate('return poolConfig.dhcpConfiguration(router);'),await page.evaluate('return configBefore;'));
+      await page.evaluate("dhcpClient.runDhclient(sim.net.devices.get('client-1'),['eth0'],()=>{},()=>{});sim.net.scheduler.advanceTo(sim.net.now+6000);");
+      assert(await page.evaluate("return !!sim.net.devices.get('client-1').interfaces[0].dhcpLease;"));
+    });
+    await test('DHCP global: terminal stop and Inspector start retain the individually disabled pool and black round Terminal control',async()=>{
+      await command('r-dhcp','systemctl stop kea-dhcp4-server.service');
+      await wait("document.querySelector('.dhcp-global-control input')?.checked===false");
+      assert.equal(await page.evaluate('return router.dhcpServiceEnabled;'),false);
+      await page.evaluate("dhcpClient.runDhclient(sim.net.devices.get('client-2'),['eth0'],()=>{},()=>{});sim.net.scheduler.advanceTo(sim.net.now+6000);(await import('/src/uiTheme.ts')).useUiTheme.getState().setTheme('graphite-dark');");
+      const button=await page.evaluate("const e=document.querySelector('.react-flow__node[data-id=r-dhcp] .device-terminal'),s=getComputedStyle(e);return {background:s.backgroundColor,color:s.color,borderRadius:s.borderRadius,width:s.width,height:s.height};");
+      assert.equal(button.background,'rgb(9, 11, 14)');assert.equal(button.color,'rgb(255, 255, 255)');assert.equal(button.borderRadius,'50%');assert.equal(button.width,button.height);
+      await screenshot('03-global-dhcp-off-terminal-dark-1440.png');
+      await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:960,deviceScaleFactor:1,mobile:false});
+      await page.evaluate("(await import('/src/uiTheme.ts')).useUiTheme.getState().setTheme('classic-light');");
+      await screenshot('04-global-dhcp-off-terminal-light-700.png');
+      await page.evaluate("document.querySelector('.dhcp-global-control input').click();dhcpClient.runDhclient(sim.net.devices.get('client-2'),['eth0'],()=>{},()=>{});sim.net.scheduler.advanceTo(sim.net.now+6000);");
+      assert.equal(await page.evaluate("return router.dhcpPools.get('eth2').enabled;"),false);
+      assert.equal(await page.evaluate("return sim.net.devices.get('client-2').interfaces[0].dhcpLease;"),null);
+      assert.deepEqual(await page.evaluate('return poolConfig.dhcpConfiguration(router);'),await page.evaluate('return configBefore;'));
+      assert(await page.evaluate('return router.interfaces.every(i=>i.up)&&[...sim.net.links.values()].every(l=>l.operational);'));
+    });
+    await test('DHCP global: manual Save, Load and F5 retain global stop and per-interface configuration',async()=>{
+      await command('r-dhcp','systemctl stop kea-dhcp4-server');
+      const saved=await page.evaluate("const r=await application.controller.save('Global DHCP');if(!r.ok)throw Error(JSON.stringify(r));const state=application.controller.getState();const draft=state.drafts.find(d=>d.id===state.activeDraftId);return {id:draft.id,planId:draft.base.planId,config:poolConfig.dhcpConfiguration(router)};");
+      assert.equal(await page.evaluate(`const r=await application.repository.loadProject(${JSON.stringify(saved.planId)});if(!r.ok)throw Error(JSON.stringify(r));return r.value.document.topology.devices.find(d=>d.id==='r-dhcp').dhcpServerEnabled;`),false);
+      await page.evaluate("const r=await application.controller.openDocument({schemaVersion:1,topology:fixtures.interfaceAuditDocument()});if(!r.ok)throw Error(JSON.stringify(r));");
+      await page.evaluate(`const r=await application.controller.switchDraft(${JSON.stringify(saved.id)});if(!r.ok)throw Error(JSON.stringify(r));await application.controller.flush();`);
+      assert.equal(await page.evaluate("return sim.net.devices.get('r-dhcp').dhcpServerEnabled;"),false);
+      await page.send('Page.reload');await mount(7);
+      const restored=await page.evaluate("const r=sim.net.devices.get('r-dhcp'),m=await import('/src/engine/dhcpPools.ts');return {enabled:r.dhcpServerEnabled,config:m.dhcpConfiguration(r),up:r.interfaces.every(i=>i.up),leases:[...r.dhcpPools.values()].map(p=>p.leases.size)};");
+      assert.equal(restored.enabled,false);assert.deepEqual(restored.config,saved.config);assert.equal(restored.up,true);assert.deepEqual(restored.leases,[0,0,0]);
+      await command('r-dhcp','systemctl status kea-dhcp4-server');assert((await text()).includes('inactive (dead)'));
+      await page.evaluate("store.getState().select('r-dhcp');");
+      await wait("[...document.querySelectorAll('.inspector [role=tab]')].some(b=>b.textContent==='Dienste')");
+      await page.evaluate("[...document.querySelectorAll('.inspector [role=tab]')].find(b=>b.textContent==='Dienste').click();");
+      await wait("document.querySelector('.dhcp-global-control input')?.checked===false");
+      await page.evaluate("document.querySelector('.dhcp-global-control input').click();const m=await import('/src/commands/dhclient.ts');m.runDhclient(sim.net.devices.get('client-0'),['eth0'],()=>{},()=>{});sim.net.scheduler.advanceTo(sim.net.now+6000);");
+      assert(await page.evaluate("return !!sim.net.devices.get('client-0').interfaces[0].dhcpLease;"));
+      evidence.globalDhcp=restored;
     });
     report.interfaceAudit={directory,evidence};
   }finally{

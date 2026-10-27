@@ -1,20 +1,29 @@
 import type { WireTransfer, WireVisualTrace } from './engine/network';
-import type { PacketVisualizationMode } from './guidedPacket';
+import type { GuidedPacketState, PacketVisualizationMode } from './guidedPacket';
 
 export const PACKET_ANIMATION_KEY = 'netlab:packet-animation-duration:v1';
 export const PACKET_ANIMATION_SPEED_KEY = 'netlab:packet-animation-speed:v1';
-export const PACKET_ANIMATION_SPEEDS = [0.25, 0.5, 1, 1.5, 2, 3, 4] as const;
+export const PACKET_ANIMATION_SPEEDS = [0.5, 1, 2, 4] as const;
 export const DEFAULT_PACKET_ANIMATION_SPEED = 1;
+export const PING_ANIMATION_SPEEDS = [0.5, 1, 2] as const;
+export const PING_ANIMATION_HIDE_DELAY_MS = 3_000;
 // Experimental presentation timings, independent of Link.latency/Scheduler.
 export const PACKET_ANIMATION_BASE_MS = { live: 200, guided: 1_000 } as const;
 const LEGACY_PACKET_ANIMATION_BASE_MS = 1_000;
 export const packetAnimationDuration = (speed: number, mode: PacketVisualizationMode = 'live') => PACKET_ANIMATION_BASE_MS[mode] / speed;
+
+export function isPingAnimationActive(state: GuidedPacketState): boolean {
+  const p = state.playback;
+  return (state.observation.status === 'observing' && !state.observation.sourceFinished) ||
+    (p.hops.length > 0 && (p.index < p.hops.length - 1 || p.progress < 1));
+}
 
 // Presentation-only metadata: engine timestamps remain unchanged.
 export interface AnimatedTransfer extends WireTransfer {
   visualStart: number;
   visualDuration: number;
   parentTransferId?: number;
+  pingTraffic?: boolean;
 }
 
 export function normalizePacketAnimationSpeed(value: unknown): number {

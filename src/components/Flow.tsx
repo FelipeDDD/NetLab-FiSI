@@ -44,7 +44,8 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const generation = useStore(s => s.topologyGeneration);
   const edges = useStore((s) => s.edges);
   const reconnecting = useStore(s => s.reconnectingCable);
-  const alignment = useSmartAlignment(!!reconnecting);
+  const quickPing = useStore(s => s.quickPing);
+  const alignment = useSmartAlignment(!!reconnecting || !!quickPing);
   const [cableMenu, setCableMenu] = useState<CableMenuPoint | null>(null);
   const [cableMessage, setCableMessage] = useState<string | null>(null);
   const openCableMenu = (id: string, element: Element, click?: { x: number; y: number }) => {
@@ -65,6 +66,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   useEffect(() => {
     if (hovered && !edges.some(e => e.id === hovered)) useStore.getState().hoverLink(null);
   }, [edges, hovered]);
+  useEffect(() => { if (quickPing) { setCableMenu(null); alignment.reset(); } }, [quickPing?.sourceId]);
   const onEdgesChange = useStore((s) => s.onEdgesChange);
   const onConnect = useStore((s) => s.onConnect);
   const select = useStore((s) => s.select);
@@ -74,6 +76,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const { screenToFlowPosition } = useReactFlow();
   const keyboardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyboardMoving = useRef(false);
+  const pingClick = useRef<{ id: string; time: number } | null>(null);
   const cableBeforeDrag = useRef<string | null>(null);
   const finishKeyboard = () => {
     if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
@@ -87,10 +90,18 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
     keyboardTimer.current = null;
     keyboardMoving.current = false;
     cableBeforeDrag.current = null;
+    pingClick.current = null;
     alignment.reset();
     setCableMenu(null); setCableMessage(null); setPointer(null);
   }, [generation]);
   useEffect(() => {
+    // Node action buttons stop bubbling keyboard events to protect dragging.
+    // Escape must still cancel target selection when one of them has focus.
+    const cancelPing = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.isComposing && useStore.getState().quickPing) {
+        event.preventDefault(); useStore.getState().cancelQuickPing();
+      }
+    };
     const shortcut = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       const direction = topologyHistoryDirection(event, target, document.activeElement);
@@ -118,8 +129,9 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
     };
     // Bubble phase respects controls which already handled the event.
     window.addEventListener('keydown', shortcut);
+    window.addEventListener('keydown', cancelPing, true);
     window.addEventListener('blur', blur);
-    return () => { window.removeEventListener('keydown', shortcut); window.removeEventListener('blur', blur); finishKeyboard(); };
+    return () => { window.removeEventListener('keydown', shortcut); window.removeEventListener('keydown', cancelPing, true); window.removeEventListener('blur', blur); finishKeyboard(); };
   }, []);
 
   // Advance the virtual clock in real time; the engine itself is
@@ -172,10 +184,11 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       edgesReconnectable={false}
-      nodesDraggable={!reconnecting}
-      nodesConnectable={!reconnecting}
-      elementsSelectable={!reconnecting}
+      nodesDraggable={!reconnecting && !quickPing}
+      nodesConnectable={!reconnecting && !quickPing}
+      elementsSelectable={!reconnecting && !quickPing}
       onBeforeDelete={async ({ nodes, edges }) => {
+        if (useStore.getState().quickPing) return false;
         alignment.reset();
         // Own the entire transaction before React Flow emits edge removals
         // followed by node removals. Returning false prevents duplicate edits.
@@ -207,6 +220,11 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       onKeyDownCapture={(event) => {
         const target = event.target as Element;
         const reconnectNode = target.closest<HTMLElement>('.react-flow__node');
+        if (quickPing && reconnectNode && /^Arrow/.test(event.key)) { event.preventDefault(); return; }
+        if (quickPing && reconnectNode && !target.closest('button, input, select, textarea') && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault(); event.stopPropagation();
+          useStore.getState().chooseQuickPingTarget(reconnectNode.dataset.id!); return;
+        }
         if (reconnecting && reconnectNode && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault(); event.stopPropagation();
           setCableMessage(useStore.getState().reconnectCable(reconnectNode.dataset.id!));
@@ -233,23 +251,25 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         keyboardTimer.current = setTimeout(finishKeyboard, 350);
       }}
       onNodeClick={(_, n) => {
+        if (quickPing) { pingClick.current = { id: n.id, time: performance.now() }; useStore.getState().chooseQuickPingTarget(n.id); return; }
         if (reconnecting) { setCableMessage(useStore.getState().reconnectCable(n.id)); return; }
         select(n.id);
       }}
       onEdgeMouseEnter={(event, edge) => { setPointer({ x: event.clientX, y: event.clientY }); useStore.getState().hoverLink(edge.id); }}
       onEdgeMouseMove={(event) => setPointer({ x: event.clientX, y: event.clientY })}
       onEdgeMouseLeave={() => { setPointer(null); useStore.getState().hoverLink(null); }}
-      onEdgeClick={(_, edge) => { if (!reconnecting) useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id }))); }}
+      onEdgeClick={(_, edge) => { if (!reconnecting && !quickPing) useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id }))); }}
       onEdgeContextMenu={(event, edge) => {
         event.preventDefault();
-        if (reconnecting) return;
+        if (reconnecting || quickPing) return;
         setPointer(null); useStore.getState().hoverLink(null);
         useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id })));
         openCableMenu(edge.id, event.target as Element, { x: event.clientX, y: event.clientY });
       }}
-      onPaneClick={() => { setCableMenu(null); if (!reconnecting) { select(null); useStore.getState().clearLinkSelection(); } }}
+      onPaneClick={() => { setCableMenu(null); if (!reconnecting && !quickPing) { select(null); useStore.getState().clearLinkSelection(); } }}
       onNodeDoubleClick={(_, n: DevNode) => {
-        if (!reconnecting && hasTerminalKind(n.data.kind)) openTerminal(n.id);
+        if (pingClick.current?.id === n.id && performance.now() - pingClick.current.time < 500) return;
+        if (!reconnecting && !quickPing && hasTerminalKind(n.data.kind)) openTerminal(n.id);
       }}
       onDrop={onDrop}
       onDragOver={(e) => {
@@ -293,6 +313,14 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       <WifiCoverage />
       <AlignmentGuides guides={alignment.guides} />
       <PacketLayer />
+      {quickPing && <Panel position="top-center" className="quick-ping-panel nodrag nopan nowheel">
+        <div role="status">Ping-Ziel auswählen · Esc zum Abbrechen</div>
+        <small>Quelle: {nodes.find(n => n.id === quickPing.sourceId)?.data.label}</small>
+        {quickPing.message && <p role="status">{quickPing.message}</p>}
+        {quickPing.targetId && quickPing.addresses?.map(a => <button type="button" className="btn" key={a.address}
+          onClick={() => useStore.getState().chooseQuickPingTarget(quickPing.targetId!, a.address)}>{a.address} · {a.interfaces.join(', ')}</button>)}
+        <button type="button" className="btn" onClick={() => useStore.getState().cancelQuickPing()}>Abbrechen</button>
+      </Panel>}
       {!reconnecting && <LinkDetails pointer={pointer} />}
       <CableManager menu={cableMenu} onMenuChange={setCableMenu} message={cableMessage} onMessageChange={setCableMessage} />
     </ReactFlow>

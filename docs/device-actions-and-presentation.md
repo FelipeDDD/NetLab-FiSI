@@ -1,87 +1,81 @@
-# Packet presentation and experimental device actions
+﻿# Ações definitivas e Quick Ping
 
-## Simplified public controls
+Terminal e Ping usam o mesmo componente `DeviceActions`: círculos de 28 px,
+respectivamente nos cantos superior esquerdo e direito, a 3 px das margens.
+Aparecem no hover, seleção ou foco; a origem do Quick Ping continua destacada.
+O badge do sistema foi deslocado apenas na horizontal para liberar o Terminal.
+Sprites, dimensões dos nodes, quatro Handles, cabos e captions não mudaram.
+Os parâmetros `deviceActions=a/b` e o código de comparação foram removidos.
+Hover e seleção usam a identidade existente do equipamento, com tintas leves,
+borda e brilho moderado. `prefers-reduced-motion` desativa as transições.
 
-The toolbar keeps Run/Pause and Packets. It no longer exposes the simulation
-clock multiplier. Packet settings and the movable packet widget expose only:
+## Quick Ping
 
-- **Live:** 200 ms/link, parallel independent transmissions with causal ordering.
-- **Schrittmodus:** 1000 ms/link, existing ARP/ICMP observation, playback Pause,
-  Step and Replay. The internal mode ID remains `guided`.
+`store.beginQuickPing(id)` inicia a escolha; clicar no destino chama
+`chooseQuickPingTarget(id, address?)`. Esc, Abbrechen ou clicar novamente na ação
+da origem cancelam. A ativação de outra topologia e a remoção dos dispositivos
+referenciados eliminam o estado temporário. Durante a escolha, drag, conexão de
+cabos e atalhos de movimento dos nodes ficam suspensos; cancelar os libera.
+A reconexão de cabos cancela a escolha de ping e vice-versa.
 
-The shared duration constants remain `PACKET_ANIMATION_BASE_MS` in
-`src/packetAnimation.ts`. Both clocks initialize at 1x. Packet speed previously
-read a global localStorage preference; hiding its slider alone would have left
-an invisible multiplier. Store initialization and legacy boot now use the
-existing default of 1 instead. Old preference keys/values are not deleted or
-rewritten. No topology document, session schema or Save/Load behavior changed.
+Somente dispositivos com terminal iniciam Quick Ping. Qualquer dispositivo IP
+com endereço unicast configurado elegível pode ser destino, inclusive smartphone.
+Endereços iguais são agrupados por interface. Um único endereço é automático;
+com vários, uma única opção na sub-rede da origem é preferida. Caso contrário,
+o painel oferece a lista simples de endereços. Isso não testa nem promete
+conectividade: endereço configurado em interface desligada ainda pode falhar.
+IPs/gateways nunca são atribuídos ou corrigidos pela ferramenta.
 
-Technical `setSpeed`, `setPacketAnimationSpeed`, normalization, legacy preference
-helpers and retiming remain available internally. No Scheduler, ping interval,
-packet capture, protocol or command Run policy was changed. Public controls do
-not invoke those multiplier setters. Guided playback Pause is still separate
-from Run/Pause of the network clock; Step/Replay never synthesize network packets.
+`openTerminal` e `getSession` reutilizam a sessão existente. A nova API
+`Session.executeCommand()` compartilha fila de entrada, prompt, histórico,
+`submit()` e `Shell.exec` com o Enter do terminal:
 
-Main files: `Toolbar.tsx`, `PacketAnimationControl.tsx`, `GuidedPacketControls.tsx`,
-`store.ts` and the corresponding compact widget rules in `styles.css`.
+- Linux: `ping -c 4 ENDEREÇO`.
+- Windows: `ping -n 4 ENDEREÇO`.
 
-## Action-placement comparison, awaiting user choice
+Não há segundo motor, sucesso sintético ou lógica paralela de ARP/VLAN/rotas/
+firewall. A política existente `needsScheduler` libera somente uma pausa de
+ativação/restauração; nunca libera Pause manual. Um comando já em execução ou
+texto ainda digitado impede o envio e produz aviso, sem apagar a entrada.
+A chamada pode retornar `accepted`, `busy`, `unapplied-input` ou `disposed`.
+`accepted` confirma a submissão à fila do terminal, não a resposta do destino.
+A fila bloqueia entradas concorrentes até concluir a pintura/submissão; dispose
+invalida callbacks pendentes. O botão e o clique de destino não duplicam sessões.
 
-No definitive placement is selected. Without a parameter, the current button
-position remains the reference. Append one of these to the normal app URL:
+## Velocidade e abas
 
-```text
-app.html?deviceActions=current
-app.html?deviceActions=a
-app.html?deviceActions=b
-```
+O Quick Ping abre automaticamente a barra inferior **Ping-Animation**, com um
+slider Langsam/Normal/Schnell (0,5×/1×/2×). O padrão é 1×; a escolha controla
+somente o cursor visual do ping, com uma bolinha por vez. A barra fecha 3 segundos
+após a última animação e o fim do comando, ou manualmente. Packets mantém botão,
+seta, aparência e captura/inspeção, sem controles de animação. O Scheduler fica
+em 1×. As APIs técnicas anteriores continuam disponíveis internamente. Ver
+[packet-animation.md](packet-animation.md) para os contratos e limites.
 
-Other URL parameters can coexist. Nothing is persisted in Settings or topology
-documents. `src/deviceActions.ts` validates the experimental parameter.
+A barra de planos ficou 6 px mais baixa (2 px no padding superior e 4 px na
+aba). Os alvos das abas mantêm pelo menos 32 px; fechar, indicador, ordem,
+atalhos e drag continuam usando a infraestrutura existente.
 
-**A:** Terminal and Ping preview inline before the device name, immediately
-below the sprite and above IPv4. The caption's bounded zoom compensation applies
-to the actions as well. Buttons are 17px so at low zoom compensation they do not
-reach the existing bottom Handle. This stays inside the caption area, but
-shifts the text of the name right within the centered name/action row and leaves
-less width for unusually long names.
-
-**B:** a small vertical pair outside the lower-left side of the asset, aligned
-to its bottom. Bounded scaling grows upward/leftward; the right edge stays clear
-of the left Handle and the bottom stays above the name/IP caption. It preserves
-the centered name but needs extra left-side clearance in dense topologies.
-
-Provisional recommendation: **A** for compact networks with many devices; B is
-a reasonable alternative if keeping names centered matters more. Both remain
-available for user comparison, with the existing placement active by default.
-
-`DeviceActions.tsx` reuses the existing Terminal handler and a shared icon.
-The Ping button is focusable, marked `aria-disabled`, and explicitly described
-as unavailable preview. It has no network handler. Click/keyboard events cannot
-start a ping or drag/select another device. Devices without terminals do not
-gain fictional Terminal controls.
-
-Only UI markup/CSS changes: real sprites, four Handles, node dimensions,
-cable attachment geometry, interfaces, sessions and saved positions are kept.
-
-## Validation and screenshots
+## Validação
 
 ```powershell
 node scripts/test-device-actions.mjs
-node node_modules/vitest/vitest.mjs run src/terminals.test.ts src/components/GuidedPacket.test.ts src/packetAnimation.test.ts src/guidedPacket.test.ts src/deviceActions.test.ts src/App.test.ts src/canvasNetwork.test.ts src/deviceArtwork.test.ts
+node node_modules/vitest/vitest.mjs run src/quickPing.test.ts src/terminals.test.ts src/packetAnimation.test.ts src/guidedPacket.test.ts src/engine/visualTrace.test.ts src/workspace/viewport.test.ts
+node node_modules/typescript/bin/tsc --noEmit
 npm run build
 git diff --check
 ```
 
-The native Chromium runner reuses the disposable profile/IndexedDB harness. It
-captures current/A/B at 0.75/1x, Graphite Dark/Classic Light, normal/hover/selected,
-with actual Linux and Windows sprites plus Notebook, Switch, Router and Server.
-It verifies identical sprite/node/Handle rectangles and viewport, Ping preview
-without traffic, Terminal by real pointer and Enter, focus, 700px/0.5x clearance,
-and the floating widget. A real two-request ping in Schrittmodus retains its
-1000ms simulated interval, with Step/Replay and no extra attempts.
+O harness existente usa Chromium com perfil e bancos descartáveis. A revisão
+mede Linux/Windows em Host/Notebook, 700/1440 px, ambos os temas, zooms
+0,5/0,75/1 e estados normal/hover/selecionado/foco. Valida ausência de sobreposição,
+geometria estável, ping real Linux/Windows, terminal reutilizado, seleção de IP,
+Esc, mudança de plano, falhas de VLAN/rota, barra inferior e velocidade. As capturas
+reais e a galeria ficam em `.playwright-mcp/reviews/`, pela organização existente.
+Dados reais do navegador, Save/Load, schema IndexedDB e protocolos não mudaram.
 
-All 39 captures and measurements are ignored under
-`.playwright-mcp/reviews/raw/device-actions-staging/`. The existing Visual Review
-generator publishes a curated set and archives the previous review, preserving
-sources and offering the complete offline gallery for every state.
+A revisão Chromium também cobre ping por terminal Linux/Windows, captura pelo
+dropdown superior, uma bolinha por frame, mudança de velocidade sem saltos,
+fechamento manual e automático e ausência de controles didáticos em Packets.
+Os resultados e capturas ficam na galeria local; o build mantém apenas o aviso
+conhecido de tamanho de chunk acima de 500 kB.

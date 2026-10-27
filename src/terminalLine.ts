@@ -27,3 +27,11 @@ export function currentCommandRange(buffer: LineBuffer, cols: number, command: s
   if (remaining !== 0) return null;
   return { column: start % cols, row: Math.floor(start / cols), length: end - start };
 }
+
+// Called after painting the complete input, with the xterm cursor at its end.
+// Walk the rendered suffix rather than estimating wcwidth or prompt length.
+export function commandCursorPosition(buffer: LineBuffer, cols: number, command: string, cursor: number) {
+  if (cursor === command.length) return null; // Keep xterm's pending right-margin wrap.
+  const suffix = currentCommandRange(buffer, cols, command.slice(cursor));
+  return suffix && { column: suffix.column, row: suffix.row };
+}

@@ -94,6 +94,7 @@ export interface DhcpServerConfig {
 interface DhcpOffer {
   ip: U32; xid: number; ifaceName: string; until: number;
   checking: boolean; checkedAt: number; timer: ScheduledEvent | null; rejected: Set<U32>;
+  suspended?: boolean;
 }
 
 export interface DnsServerConfig {
@@ -181,6 +182,8 @@ export abstract class IpDevice extends Device {
   set nameserver(value: U32 | null) { this.manualNameserver = value; }
   dhcpServer: DhcpServerConfig | null = null;
   dhcpPools = new Map<string, DhcpServerConfig>();
+  // Independent of each pool's configuration and of physical interface state.
+  dhcpServerEnabled = true;
   configuredDhcpPools(): [string,DhcpServerConfig][] {
     const entries=[...this.dhcpPools.entries()];
     const legacy=legacyPoolInterface(this);
@@ -190,10 +193,10 @@ export abstract class IpDevice extends Device {
   dhcpPool(name:string):DhcpServerConfig|null {
     return this.dhcpPools.get(name) ?? (legacyPoolInterface(this)===name ? this.dhcpServer : null);
   }
-  // Derived availability, not a master switch. Unbound/shadowed legacy pools
+  // Effective availability. Unbound/shadowed legacy pools
   // and invalid configurations cannot serve requests and must not advertise UDP 67.
   get dhcpServiceEnabled():boolean {
-    return this.configuredDhcpPools().some(([name, cfg]) => cfg.enabled && !validateDhcpPool(this, name, cfg));
+    return this.dhcpServerEnabled && this.configuredDhcpPools().some(([name, cfg]) => cfg.enabled && !validateDhcpPool(this, name, cfg));
   }
   dnsServer: DnsServerConfig | null = null;
   httpServer: HttpServerConfig | null = null;
@@ -374,7 +377,7 @@ export abstract class IpDevice extends Device {
     if (iface.ip && iface.ip.addr === addr && iface.ip.prefix === prefix)
       return 'RTNETLINK answers: File exists';
     if (iface.ip)
-      return `netsim: one address per interface in phase 1 — "ip address del ${ifaceName}'s current address" first`;
+      return `NetLab: one address per interface in phase 1 — "ip address del ${ifaceName}'s current address" first`;
     iface.configureIpv4({ mode: 'static', ip: { addr, prefix }, gateway: null, dns: null });
     return null;
   }
@@ -740,6 +743,7 @@ export abstract class IpDevice extends Device {
   }
 
   private handleDhcpServer(app: DhcpApp, iif: string): void {
+    if (!this.dhcpServerEnabled) return;
     const cfg = this.dhcpPool(iif);
     if (!cfg?.enabled || validateDhcpPool(this,iif,cfg)) return;
     const iface = this.getInterface(iif);
@@ -761,7 +765,7 @@ export abstract class IpDevice extends Device {
       }
     }
     const sendOffer = (offer: DhcpOffer) => {
-      if (!iface.ip) return;
+      if (!this.dhcpServerEnabled || !iface.ip) return;
       this.sendBroadcastUdp(iface, iface.ip.addr, 67, 68, {
         kind: 'dhcp', op: 'offer', xid: offer.xid, clientMac: app.clientMac,
         yourIp: offer.ip, prefix: iface.ip.prefix, router: cfg.router,
@@ -770,7 +774,7 @@ export abstract class IpDevice extends Device {
     };
     if (app.op === 'discover') {
       const previous = offers.get(app.clientMac);
-      if (previous && previous.ifaceName === iif && this.dhcpAddressAvailable(cfg, app.clientMac, previous.ip, offers)) {
+      if (previous && !previous.suspended && previous.ifaceName === iif && this.dhcpAddressAvailable(cfg, app.clientMac, previous.ip, offers)) {
         // Retries/new client transactions reuse the in-flight check instead of
         // repeatedly resetting it before an answer can arrive.
         previous.xid = app.xid;
@@ -793,6 +797,9 @@ export abstract class IpDevice extends Device {
           offer.timer = this.schedule(DHCP_PROBE_MS, () => {
             offer.timer = null;
             if (offers.get(app.clientMac) !== offer) return;
+            // Keep the reservation while stopped, but probe again on the next
+            // DISCOVER before trusting an interrupted conflict check.
+            if (!this.dhcpServerEnabled) { offer.suspended = true; return; }
             if (this.dhcpPool(iif) !== cfg || !cfg.enabled || validateDhcpPool(this,iif,cfg) || !iface.up || !iface.ip || iface.link !== link || offer.until <= this.network.now) {
               offers.delete(app.clientMac); return;
             }
@@ -818,7 +825,7 @@ export abstract class IpDevice extends Device {
     } else if (app.op === 'request' && app.yourIp !== undefined) {
       const offer = offers.get(app.clientMac);
       const ownsLease = cfg.leases.get(app.clientMac) === app.yourIp;
-      if ((offer?.checking || (!ownsLease && (!offer || offer.ip !== app.yourIp || offer.xid !== app.xid || offer.ifaceName !== iif))) ||
+      if ((offer?.checking || offer?.suspended || (!ownsLease && (!offer || offer.ip !== app.yourIp || offer.xid !== app.xid || offer.ifaceName !== iif))) ||
           !this.dhcpAddressAvailable(cfg, app.clientMac, app.yourIp, offers)) return;
       cfg.leases.set(app.clientMac, app.yourIp);
       offers.delete(app.clientMac);
@@ -893,6 +900,19 @@ export abstract class IpDevice extends Device {
   }
 
   // ---------- ARP ----------
+
+  /** Remove learned mappings only. Pending resolutions and other runtime state
+   * keep running normally; no packets, timers or configuration are changed. */
+  clearArpCache(filter: { address?: U32; ifaceName?: string } = {}): number {
+    let removed = 0;
+    for (const [address, entry] of this.arpTable) {
+      if (filter.address !== undefined && address !== filter.address) continue;
+      if (filter.ifaceName !== undefined && entry.ifaceName !== filter.ifaceName) continue;
+      this.arpTable.delete(address);
+      removed++;
+    }
+    return removed;
+  }
 
   announceIpv4(iface: NetInterface): void {
     if (iface.device === this && iface.ip) this.sendArpRequest(iface, iface.ip.addr);

@@ -1,13 +1,15 @@
 import { hasTerminalKind } from '../engine/device';
 import { useWifiCoverage } from '../wifiCoverage';
 import { memo } from 'react';
+import type { CSSProperties } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
 import { useStore, type DevNode } from '../store';
 import type { DeviceKind } from '../engine/device';
 import { DeviceLabels } from './DeviceLabels';
 import { DeviceActions } from './DeviceActions';
-import { deviceActionLayout } from '../deviceActions';
+import { DEVICE_COLORS } from '../deviceColors';
+import { pingAddresses } from '../quickPing';
 import { DeviceArtwork, hasDeviceArtwork } from './DeviceArtwork';
 import { sim } from '../sim';
 import { firstReconnectInterface } from '../cableInteraction';
@@ -80,20 +82,23 @@ export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: numbe
 }
 
 function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
+  const inspected = useStore(s => s.selected === id);
   const cableHighlighted = useStore(s => s.edges.some(e => (e.selected || e.id === s.hoveredLinkId) && (e.source === id || e.target === id)));
   const reconnecting = useStore(s => s.reconnectingCable);
+  const quickPing = useStore(s => s.quickPing);
+  const pingSource = quickPing?.sourceId === id;
+  const pingTarget = !!quickPing && !pingSource && pingAddresses(sim.net.devices.get(id)).length > 0;
   const compatible = !!reconnecting && !!firstReconnectInterface(sim.net, reconnecting, id);
   const hasShell = hasTerminalKind(data.kind);
   const artwork = hasDeviceArtwork(data.kind);
-  const layout = deviceActionLayout();
-  const actions = hasShell ? <DeviceActions id={id} name={data.label} kind={data.kind} layout={layout} /> : undefined;
   return (
-    <div data-device-actions={layout} onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}${compatible ? ' cable-compatible' : ''}`}>
+    <div style={{ '--device-color': DEVICE_COLORS[data.kind] } as CSSProperties}
+      onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected || inspected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}${compatible ? ' cable-compatible' : ''}${pingSource ? ' quick-ping-source' : ''}${pingTarget ? ' quick-ping-target' : ''}`}>
       <Handle type="source" position={Position.Top} id="t" />
       <Handle type="source" position={Position.Right} id="r" />
       <Handle type="source" position={Position.Bottom} id="b" />
       <Handle type="source" position={Position.Left} id="l" />
-      {layout !== 'a' && actions}
+      {hasShell && <DeviceActions id={id} name={data.label} />}
       <div className="dev-icon">
         {hasDeviceArtwork(data.kind) ? <DeviceArtwork id={id} kind={data.kind} fallback={<DeviceIcon kind={data.kind} />} /> : <DeviceIcon kind={data.kind} />}
       </div>
@@ -102,7 +107,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
           ⛨
         </span>
       )}
-      <DeviceLabels id={id} name={data.label} actions={layout === 'a' ? actions : undefined} />
+      <DeviceLabels id={id} name={data.label} />
       {(data.kind === 'host' || data.kind === 'notebook') && <span className="dev-os-badge" title={data.os === 'windows' ? 'Windows' : 'Linux'}>{data.os === 'windows' ? 'Windows' : 'Linux'}</span>}
     </div>
   );

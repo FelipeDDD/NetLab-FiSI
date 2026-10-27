@@ -16,6 +16,7 @@ import { protectsTopologyKeys } from './topologyShortcuts';
 import { PersistenceStatus } from './components/PersistenceStatus';
 import { WorkspaceTabs, useWorkspaceUI } from './workspace/WorkspaceUI';
 import { WorkspaceViewport } from './workspace/WorkspaceViewport';
+import { PacketAnimationControl } from './components/PacketAnimationControl';
 
 export default function App() {
   const workspace = useWorkspaceUI();
@@ -30,6 +31,13 @@ export default function App() {
     if (persist) saveInspectorLayout(next);
   };
   const editor = useRef<HTMLDivElement>(null);
+  const [panelPriority, setPanelPriority] = useState<'inspector' | 'terminal'>('terminal');
+  const [terminalOverlapHeight, setTerminalOverlapHeight] = useState(0);
+  const prioritizePanel = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return;
+    if (target.closest('.inspector-shell')) setPanelPriority('inspector');
+    else if (target.closest('.terminal-dock')) setPanelPriority('terminal');
+  };
   const selected = useStore((s) => s.selected);
   const generation = useStore(s => s.topologyGeneration);
   const packetInspectorOpen = useStore((s) => s.packetInspectorOpen);
@@ -41,6 +49,9 @@ export default function App() {
     <ReactFlowProvider>
       {workspace && <WorkspaceViewport />}
       <div className={`app${hasTerminals ? ' with-dock' : ''}${workspace ? ' workspace-enabled' : ''}`} data-inspector-layout={inspectorLayout.layout}
+        data-panel-priority={panelPriority}
+        onPointerDownCapture={event => prioritizePanel(event.target)}
+        onFocusCapture={event => prioritizePanel(event.target)}
         onKeyDown={event => {
           if (event.key !== "'" || event.repeat || event.defaultPrevented || event.nativeEvent.isComposing ||
               event.ctrlKey || event.altKey || event.metaKey || event.shiftKey ||
@@ -50,7 +61,8 @@ export default function App() {
           event.preventDefault();
           state.setTerminalDockCollapsed(!state.terminalDockCollapsed);
         }}
-        style={{ '--inspector-width': `${workspaceCompact ? Math.min(290, inspectorPreferredWidth(inspectorLayout)) : inspectorPreferredWidth(inspectorLayout)}px` } as React.CSSProperties}>
+        style={{ '--inspector-width': `${workspaceCompact ? Math.min(290, inspectorPreferredWidth(inspectorLayout)) : inspectorPreferredWidth(inspectorLayout)}px`,
+          '--terminal-overlap-height': `${terminalOverlapHeight}px` } as React.CSSProperties}>
         <div className="app-header">
           <Toolbar inspectorLayout={inspectorLayout} onInspectorLayoutChange={changeInspectorLayout} />
           {workspace ? <WorkspaceTabs /> : <PersistenceStatus />}
@@ -62,6 +74,7 @@ export default function App() {
           <div className="canvas" ref={editor} tabIndex={-1} role="region" aria-label="Topology editor">
             <Flow fitOnInit={!workspace} />
             <LabPanel />
+            <PacketAnimationControl />
           </div>
           {selected && <ResizableInspector hidden={false} side={packetInspectorOpen && packetLayout.side === 'right' ? 'left' : 'right'}
             onResize={(width, persist) => changeInspectorLayout({ layout: 'custom', customWidth: width }, persist)}
@@ -73,7 +86,8 @@ export default function App() {
             <PacketInspector layout={packetLayout} onLayoutChange={changePacketLayout} />
           </ResizablePacketPanel>
         </div>
-        <TerminalDock key={generation} onFocusEditor={() => editor.current?.focus({ preventScroll: true })} />
+        <TerminalDock key={generation} onFocusEditor={() => editor.current?.focus({ preventScroll: true })}
+          onOverlapHeightChange={setTerminalOverlapHeight} />
       </div>
     </ReactFlowProvider>
   );

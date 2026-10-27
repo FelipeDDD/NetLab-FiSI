@@ -34,7 +34,7 @@ export interface WireVisualTrace { parentTransferId?: number; echoRequestTransfe
 // Read-only command lifecycle observation; not protocol/capture data.
 export type PingProgress = { deviceId: string; icmpId: number } &
   ({ type: 'started' } | { type: 'attempt'; seq: number; local: boolean; deadline: number } |
-   { type: 'settled'; seq: number } | { type: 'finished' });
+   { type: 'settled'; seq: number } | { type: 'finished'; cancelled?: boolean });
 
 const NAME_PREFIX: Record<DeviceKind, string> = {
   host: 'pc', notebook: 'nb', smartphone: 'phone',

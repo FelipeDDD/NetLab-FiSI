@@ -9,7 +9,9 @@ import { TerminalSettingsButton } from './TerminalAppearanceControls';
 import { terminalPanelWidths, TERMINAL_PANEL_SEPARATOR_WIDTH } from '../terminalPanels';
 import { TerminalNewPanelDrop, TerminalTabMovementProvider } from './TerminalTabMovement';
 
-export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
+export function TerminalDock({ onFocusEditor, onOverlapHeightChange }: {
+  onFocusEditor: () => void; onOverlapHeightChange?: (height: number) => void;
+}) {
   const panels = useStore((s) => s.terminalPanels);
   const activeTerminal = useStore((s) => s.activeTerminal);
   const hasFocus = useStore((s) => s.terminalHasFocus);
@@ -39,6 +41,10 @@ export function TerminalDock({ onFocusEditor }: { onFocusEditor: () => void }) {
   }, []);
 
   const height = clampDockHeight(preferredHeight, viewportHeight);
+  // Only report existing geometry. Focus/stacking never changes dock height or
+  // causes a fit, and collapsed/closed docks leave the normal Inspector bounds.
+  const overlapHeight = panels.length && !collapsed ? height : 0;
+  useLayoutEffect(() => { onOverlapHeightChange?.(overlapHeight); }, [overlapHeight, onOverlapHeightChange]);
   const bounds = dockHeightBounds(viewportHeight);
   const changeHeight = (next: number) => {
     const clamped = clampDockHeight(next, window.innerHeight);

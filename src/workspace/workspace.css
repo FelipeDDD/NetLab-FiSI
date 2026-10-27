@@ -1,10 +1,10 @@
-.workspace-tabs-bar { display: flex; align-items: stretch; gap: 8px; min-width: 0; padding: 7px 12px 0; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+.workspace-tabs-bar { display: flex; align-items: stretch; gap: 8px; min-width: 0; padding: 5px 12px 0; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
 .workspace-tabs { display: flex; align-items: stretch; gap: 4px; overflow-x: auto; scrollbar-width: thin; min-width: 0; flex: 1; }
 .workspace-tab-wrap { display: flex; align-items: center; flex: 0 1 216px; min-width: 126px; max-width: 236px; border: 1px solid transparent; border-bottom: 0; border-radius: 7px 7px 0 0; background: transparent; color: var(--text-dim); position: relative; }
 .workspace-tab-wrap:hover { background: var(--bg-raised); }
 .workspace-tab-wrap[data-active="true"] { background: var(--bg); border-color: var(--border); color: var(--text); }
 .workspace-tab-wrap[data-active="true"]::after { content: ''; position: absolute; height: 2px; background: var(--accent); top: 0; left: 12px; right: 12px; border-radius: 2px; }
-.workspace-tab-wrap [role="tab"] { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 0; border: 0; background: none; color: inherit; padding: 11px 4px 11px 12px; font-size: 12px; cursor: pointer; text-align: left; }
+.workspace-tab-wrap [role="tab"] { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 0; min-height: 32px; border: 0; background: none; color: inherit; padding: 9px 4px 9px 12px; font-size: 12px; cursor: pointer; text-align: left; }
 .workspace-tab-wrap [role="tab"] > svg { flex: 0 0 auto; opacity: .65; }
 .workspace-tab-name { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 .workspace-dirty { font-size: 7px; color: var(--accent); flex-shrink: 0; }

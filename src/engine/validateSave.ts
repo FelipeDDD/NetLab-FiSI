@@ -14,6 +14,7 @@ function validateDeviceOptions(d: Record<string, unknown>): void {
   if (d.nameserver !== undefined && d.nameserver !== null && !address(d.nameserver)) fail('nameserver');
   if (d.os !== undefined && d.os !== 'linux' && d.os !== 'windows') fail('OS profile');
   if (d.ripEnabled !== undefined && typeof d.ripEnabled !== 'boolean') fail('RIP configuration');
+  if (d.dhcpServerEnabled !== undefined && typeof d.dhcpServerEnabled !== 'boolean') fail('global DHCP server state');
   if (d.ssid !== undefined && typeof d.ssid !== 'string') fail('SSID');
   if (d.rangeMeters !== undefined && !finite(d.rangeMeters)) fail('Wi-Fi range');
   if (d.vlans !== undefined && (!object(d.vlans) || !Object.values(d.vlans).every(vlan))) fail('VLAN configuration');

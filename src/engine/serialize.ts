@@ -44,6 +44,7 @@ export interface SavedDevice {
   services?: { tcp: number[]; udp: number[] };
   firewall?: FirewallJSON;
   nameserver?: string | null;
+  dhcpServerEnabled?: boolean;
   dhcpPools?: Record<string, NonNullable<SavedDevice['dhcpServer']>>;
   dhcpServer?: {
     interfaceName?: string;
@@ -119,6 +120,7 @@ export function serializeNetwork(
       const fwj = firewallToJSON(ipd.fw);
       if (fwj) saved.firewall = fwj;
       if (ipd.manualNameserver !== null) saved.nameserver = ipToString(ipd.manualNameserver);
+      if (!ipd.dhcpServerEnabled) saved.dhcpServerEnabled = false;
       if (ipd.dhcpServer) {
         saved.dhcpServer = {
           ...(legacyPoolInterface(ipd) ? {interfaceName:legacyPoolInterface(ipd)!} : {}),
@@ -207,6 +209,7 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
   }
   if (d instanceof IpDevice) {
     d.forwarding = sd.forwarding;
+    d.dhcpServerEnabled = sd.dhcpServerEnabled ?? true;
     if (sd.services) {
       d.services.tcp = new Set(sd.services.tcp);
       d.services.udp = new Set(sd.services.udp);

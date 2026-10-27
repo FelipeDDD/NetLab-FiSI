@@ -51,10 +51,11 @@ export function runPing(
   // newest command immediately, even while DNS or ARP is pending.
   const id = device.allocIcmpId();
   let completed = false;
+  let cancelled = false;
   const complete = () => {
     if (completed) return;
     completed = true;
-    device.network.emitPingProgress({ type: 'finished', deviceId: device.id, icmpId: id });
+    device.network.emitPingProgress({ type: 'finished', deviceId: device.id, icmpId: id, ...(cancelled ? { cancelled: true } : {}) });
     done();
   };
   device.network.emitPingProgress({ type: 'started', deviceId: device.id, icmpId: id });
@@ -74,7 +75,7 @@ export function runPing(
       complete();
     };
   }
-  return { needsScheduler: true, cancel: () => cancelFn!() };
+  return { needsScheduler: true, cancel: () => { cancelled = true; cancelFn!(); } };
 
   function start(ip: U32): () => void {
   const sched = device.network.scheduler;

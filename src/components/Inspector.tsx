@@ -196,7 +196,7 @@ export function HostOverview({ device, editing = null, onEdit, editorSlot }: {
       </div>;
     })}
     <div className="host-quick-actions">
-      <details className="host-quick-arp"><summary>ARP-Tabelle</summary><ArpTable device={device} /></details>
+      <details className="host-quick-arp"><summary>ARP-Tabelle</summary><ArpTable device={device} onClear={() => useStore.getState().clearArpCache(device.id)} /></details>
 
     </div>
   </section>;
@@ -223,7 +223,7 @@ function HostInspector({ device, hidden }: { device: Host; hidden: boolean }) {
           <RoutingTable device={device} />
         </details>
         <details className="host-inspector-details"><summary>ARP-Tabelle</summary>
-          <ArpTable device={device} />
+          <ArpTable device={device} onClear={() => useStore.getState().clearArpCache(device.id)} />
         </details>
         <details className="host-inspector-details"><summary>DNS global override</summary>
           <div className="svc-grid"><span>nameserver</span>
@@ -358,7 +358,7 @@ function RouterInspector({ device, hidden }: { device: RouterDevice | FirewallDe
           onChange={() => useStore.getState().toggleRip(device.id)} />RIP aktivieren</label>
         <h3>Routing-Tabelle</h3><RoutingTable device={device} />
         <span className="hint">Statische Routen über das Terminal: <code>ip route</code>.</span>
-        <h3>ARP-Tabelle</h3><ArpTable device={device} />
+        <h3>ARP-Tabelle</h3><ArpTable device={device} onClear={() => useStore.getState().clearArpCache(device.id)} />
       </section> },
       { id: 'services', label: 'Dienste', content: <>
         {dedicatedFirewall && <OverviewServices device={device} />}
@@ -442,7 +442,7 @@ function ServerInspector({ device, hidden }: { device: ServerDevice; hidden: boo
           </div>)}
         </section>
         <details className="host-inspector-details"><summary>Routing-Tabelle</summary><RoutingTable device={device} /></details>
-        <details className="host-inspector-details"><summary>ARP-Tabelle</summary><ArpTable device={device} /></details>
+        <details className="host-inspector-details"><summary>ARP-Tabelle</summary><ArpTable device={device} onClear={() => useStore.getState().clearArpCache(device.id)} /></details>
         <details className="host-inspector-details"><summary>DNS global override</summary>
           <div className="svc-grid"><span>nameserver</span>
             <InspectorSettingInput identity={`${device.id}:nameserver`} label="DNS client nameserver"
@@ -731,7 +731,7 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
     <InterfaceSummary iface={device.interfaces[0]} showMode />
     <InterfaceIpv4Panel deviceId={device.id} ifaceName="wlan0" />
     <ClientDiagnostics device={device} />
-    <details><summary>ARP-Tabelle</summary><ArpTable device={device} /></details>
+    <details><summary>ARP-Tabelle</summary><ArpTable device={device} onClear={() => useStore.getState().clearArpCache(device.id)} /></details>
     <details><summary>Routing-Tabelle</summary><RoutingTable device={device} /></details>
     <div className="inspector-actions"><button type="button" className="btn danger" onClick={() => deleteDevice(device.id)}>Delete device</button></div>
   </aside>;
@@ -785,7 +785,7 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
           <h3>Routing-Tabelle</h3>
           <RoutingTable device={ipd} />
           <h3>ARP-Tabelle</h3>
-          <ArpTable device={ipd} />
+          <ArpTable device={ipd} onClear={() => useStore.getState().clearArpCache(ipd.id)} />
         </section>
       )}
 

@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({ selected: 'host-1' as string | null, packetIns
 vi.mock('./store', () => ({ useStore: (select: (s: typeof state) => unknown) => select(state) }));
 vi.mock('@xyflow/react', () => ({ ReactFlowProvider: ({ children }: { children: ReactNode }) => children }));
 vi.mock('./components/Toolbar', () => ({ Toolbar: () => null }));
+vi.mock('./components/PacketAnimationControl', () => ({ PacketAnimationControl: () => null }));
 vi.mock('./components/Flow', () => ({ Flow: () => createElement('span', null, 'Canvas mounted') }));
 vi.mock('./components/Palette', () => ({ Palette: () => createElement('aside', { className: 'palette' }) }));
 vi.mock('./components/LabPanel', () => ({ LabPanel: () => null }));

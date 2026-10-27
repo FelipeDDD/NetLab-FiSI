@@ -29,7 +29,10 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   const device = net.devices.get(operation.deviceId);
   if (!device || device.disposed) return false;
   const from = direction === 'undo' ? 'after' : 'before', to = direction === 'undo' ? 'before' : 'after';
-  if (operation.type === 'set-dhcp-configuration') {
+  if (operation.type === 'set-dhcp-server-enabled') {
+    if (!(device instanceof IpDevice) || device.dhcpServerEnabled !== operation[from]) return false;
+    device.dhcpServerEnabled = operation[to];
+  } else if (operation.type === 'set-dhcp-configuration') {
     if (!(device instanceof IpDevice) || !sameValue(dhcpConfiguration(device),operation[from])) return false;
     applyDhcpConfiguration(device,operation[to]);
   } else if (operation.type === 'enable-wireless') {

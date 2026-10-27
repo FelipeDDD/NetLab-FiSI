@@ -132,12 +132,24 @@ instructions and screenshots are described in [workspace-ui.md](workspace-ui.md)
   open its terminal, or use the small terminal button revealed when hovering
   or keyboard-focusing the device. In **Free panels**, each new session creates
   an independent side-by-side panel, unless a saved manual arrangement specifies
-  its destination. There is no fixed panel limit: columns stay at least 280 px
-  wide and the dock scrolls horizontally. Each panel has its own selected tab,
+  its destination. At most five columns are shown, each at least 220 px wide;
+  additional sessions become tabs in the last column. The dock scrolls
+  horizontally when needed. Each panel has its own selected tab,
   device label and close buttons. Combine tabs manually when useful.
   Opening an existing session activates its tab and focuses its input.
   Switching tabs keeps history and running commands. Closing a tab ends only
   that session; an empty panel disappears and the other panels expand.
+
+When terminals are expanded, the right Inspector keeps the full height below
+the header and can overlap the dock. Click or focus a control in either
+panel to bring that panel to the front; scrolling and hovering do not change
+priority. Scroll still works over the visible portion of a covered panel. To recover the
+Inspector, use its visible upper area. To recover the dock, use its visible
+top strip to the left of the Inspector, then click the desired terminal.
+The existing height, column widths, sessions and Inspector scroll stay intact;
+changing priority never pans, zooms or fits the topology. Priority is temporary
+and is not restored after F5. Packets analysis retains its current scrolling
+layout as a fallback. See [terminal layout](terminal-layout.md).
 
 **Undo / Redo covers device movement, creation/deletion, cables and supported Inspector settings.** Use the toolbar buttons
 or Ctrl+Z / Ctrl+Shift+Z (Cmd on macOS). Each drag, including a multi-device
@@ -225,55 +237,41 @@ again. Other routers and running terminals keep working. Packets already in
 flight, caches and simulation time are not rewound. External incompatible
 configuration changes still clear history.
 
-**Packet animation** controls visual speed: 0.25×, 0.5×, 1× (default), 1.5×,
-2×, 3× or 4×. At 1× a dot takes one second per link; 0.5× takes two seconds,
-and 4× takes 0.25 seconds. The browser remembers your choice and migrates the
-previous duration preference to the closest speed. This is independent of
-**Simulation speed**, link latency, ping times and capture timestamps. Changing
-speed preserves current dot positions. Pause also freezes the dots.
+**Ping-Animation** appears automatically near the bottom of the canvas when a
+terminal ping or Quick Ping creates its first ARP/ICMP animation. A single slider
+selects **Langsam (0.5×)**, **Normal (1×)** or **Schnell (2×)**. At Normal, the dot
+takes 200 ms per link. Changing speed keeps its position and affects only ping
+presentation, with no change to protocol timing, RTTs or captured timestamps.
 
-Drag the dotted handle to place this widget over the topology; its restore
-button returns it to the toolbar. With the handle focused, arrow keys move it
-and Home restores it. Position is remembered and kept inside the window.
+The newest ping command is followed automatically, showing one ICMP attempt at
+a time: its request path, its reply path, then the next attempt. ARP broadcast
+branches leave the switch in parallel on their actual eligible links, within
+the VLAN. A missing reply
+is never invented; the player can proceed after the real attempt ends or times
+out. Other commands keep running and Packet Inspector captures independently.
+The existing ARP/ICMP observer and cable geometry are reused.
 
-Identified forwarding hops animate in sequence, including switches and routers.
-Separate packets and replies remain independent; replies can begin before a
-request's visual path finishes. The display retains at most 150 events and
-omits waits beyond 12 seconds. Missing predecessors animate independently, so
-this is a bounded teaching visualization rather than a complete traffic replay.
+The bar stays between requests of a continuous ping and disappears three seconds
+after the command and its queued animation finish. Its close button hides only
+the controls; the animation and command continue. The next ping can show the bar
+again. Local ping or a command with no link transmission opens no empty controls.
+There is no public Live/Guided/Schrittmodus selector, Replay menu or draggable
+animation widget. Normal animation of other traffic remains available outside
+the focused ping. Run/Pause still controls the network clock separately.
 
-Open the **Live ?** menu beside Packet animation to switch to **Guided**.
-Guided follows the **newest ping command**, on any host. A new command immediately
-replaces the previous visualization, even before DNS or ARP completes. Older
-commands keep running and Packet Inspector still captures all traffic; their
-late packets cannot reclaim Guided focus. Each Echo Request belongs to its
-command, so it does not restart the view independently.
+Only the current attempt and one pending attempt are kept for presentation;
+continuous slow playback replaces an unstarted attempt with a newer one.
+Ctrl+C discards unstarted attempts and lets the current attempt finish,
+including its reply if one was really observed. Network packets and terminal
+results remain unchanged. An active command started after automatic session
+restoration starts Run; an explicit manual Pause stays in effect and the
+terminal briefly reminds you to click Run.
 
-Animation starts with the first observed ICMP link transmission, without waiting
-for four requests or replies. Continuous Linux ping and Windows `ping -t` keep
-being followed beyond the fourth request. Three successive commands work without
-switching modes or rearming observation. Entering Guided during an existing
-command observes its future attempts; traffic from before activation is not
-reconstructed. The newest command started in Live retains priority.
-
-**Play/Pause** and **Step** affect visual playback only. **Replay** freezes a view
-of the focused command's latest four observed attempts, using only actual paths.
-Observation continues independently during Replay and Pause. **Follow** returns
-to subsequent live observations. Starting another ping always interrupts either
-view and takes focus automatically. Missing replies are never invented. Local
-ping or a command ending without an observed ICMP link transmission shows an
-explanation instead of an empty replay.
-
-Observation stores at most 256 hops within a rolling four-attempt window; the
-progressive display queues at most 32 hops. At overload or a long visual pause,
-additional visual hops can be omitted with an explicit indicator. Packet Inspector
-capture is unaffected. Follow displays correlated transmissions in emission order,
-including real flooded branches; Replay uses the identified destination path or
-only an unambiguous prefix. Link animation is illustrative, not proof of IP
-acceptance. The visual speed setting still applies; network timing is unchanged.
-Playback can continue with the simulation paused, but no new network events occur
-until it resumes. Changing topology clears observation, Replay and session focus.
-After F5 the mode returns to Live and terminal commands are not reopened.
+The bounded visual queue can omit hops during overload; the bar then shows
+**Animation gekürzt · Details in Packets**. Packet Capture is unaffected.
+Changing plans clears temporary playback; F5 does not reopen terminal commands.
+Speed is a runtime preference and is not stored in a saved plan or restored from
+old hidden preferences.
 
 Use **Packets** in the main toolbar to open or close the Packet Inspector.
 While open, the device palette temporarily gives its space to the selected
@@ -520,12 +518,29 @@ running, paste is ignored with a reminder to stop it using Ctrl+C first. The
 app does not read the clipboard in the background or request extra clipboard
 permissions; browser restrictions and shortcuts still apply.
 
+Left/Right move within the command; Home/End jump to its start/end. Typing or
+pasting inserts at the cursor. Backspace removes the previous character and
+Delete removes the next, without touching the prompt. Up/Down browse command
+history and restore your partially typed command and cursor when you return
+to the newest entry. This works in both Linux and Windows terminals, including
+visually wrapped input and after resizing or moving terminal columns.
+
 Ctrl+A (Cmd+A on Mac) selects only the command currently being edited, with
 xterm's visible selection highlight. The prompt and previous output are excluded,
 including for Unicode and visually wrapped commands. Backspace/Delete clears the
 selected command; typing or pasting replaces it. Enter executes it unchanged.
 An empty line or a running command has no editable command to select. Ctrl+C
 continues to copy a selection, or interrupt a command when nothing is selected.
+
+To clear learned ARP mappings, use `ip neigh flush all` or
+`ip neigh flush dev eth0` in Linux; in Windows, use `arp -d *` or
+`arp -d 192.168.1.20`. Display them with `ip neigh show` or `arp -a`,
+respectively. The Inspector's **ARP-Cache leeren** button clears only the
+selected device's cache, including while paused. The next ping resolves the
+neighbor again through real ARP Request/Reply packets. Interface settings,
+DHCP leases and switch MAC tables stay intact. Only dynamic IPv4 mappings are
+modeled; static entries and additional filters are unsupported. See
+[ARP cache contract](arp-cache.md).
 
 With focus in the terminal dock, Alt+Shift+Right moves to the next terminal and
 Alt+Shift+Left to the previous one, wrapping through **all open sessions across
@@ -600,7 +615,7 @@ Linux-specific commands and flags are rejected by the Windows shell; Windows-onl
 commands and flags are rejected by Linux. The xterm renderer, colors, backgrounds,
 selection/copy/paste, history, panels and shortcuts work with both profiles.
 Windows and Linux use the same network stack and can communicate normally.
-Packet Inspector and Guided observe the same real simulated transmissions.
+Packet Inspector and Ping-Animation observe the same real simulated transmissions.
 
 This is a CMD subset, not a Windows VM or a complete command interpreter. There is
 no PowerShell, netsh, file system, piping or scripting. The engine does not model
@@ -687,6 +702,12 @@ on anything outside it — it never silently fakes a command. Highlights:
   and `iptables -S`. Plus `conntrack -L`, `ss`.
 - **Services:** `dhclient` (DHCP), `dig` (DNS), `curl` (HTTP), `nc` (port
   testing and listeners)
+- **Router DHCPv4 service:** `systemctl start|stop|status kea-dhcp4-server`
+  controls the same global switch as **DHCP-Server global aktivieren** in
+  Inspector → Dienste. Pool flags/settings and current leases are retained;
+  links remain UP. A disabled individual pool stays disabled after global Start.
+  This is a Linux service-control subset, not Cisco IOS or DHCP Relay.
+  See [global DHCP](global-dhcp.md) for persistence and command scope.
 
 Run `help` in any terminal for the exact list, and see
 [the design doc](DESIGN.md) for the deliberate scope boundaries (IPv4 filter

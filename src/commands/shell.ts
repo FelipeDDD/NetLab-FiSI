@@ -1,8 +1,8 @@
-import { Host, type IpDevice } from '../engine/ipdevice';
+import { Host, RouterDevice, type IpDevice } from '../engine/ipdevice';
 import type { HostOs } from '../hostOs';
 import { runWindows } from './windows';
 import { ipToString } from '../engine/ip';
-import { formatArpClassic, runIp } from './ip-cmd';
+import { runArpClassic, runIp } from './ip-cmd';
 import { runPing } from './ping';
 import { runTraceroute } from './traceroute';
 import { runNft } from './nft';
@@ -11,6 +11,7 @@ import { runNc } from './nc';
 import { runDig } from './dig';
 import { runCurl } from './curl';
 import { runDhclient } from './dhclient';
+import { runDhcpService } from './dhcp-service';
 
 export interface TermIO {
   write(s: string): void;
@@ -26,10 +27,15 @@ const HELP = `NetSim commands (real Linux syntax, curated subset):
   ip address [show | add <cidr> dev <if> | del <cidr> dev <if>]
   ip link    [show | set <if> up|down]
   ip route   [show | add <cidr>|default via <gw> [dev <if>] | del <cidr>|default]
-  ip neigh / arp           neighbour (ARP) cache
+  ip neigh show / arp [-a|-n]   ARP-Tabelle anzeigen (IPv4)
+  ip neigh flush all      Dynamischen ARP-Cache dieses Geräts leeren
+  ip neigh flush dev eth0 Nur dynamische Einträge von eth0 löschen
+                          Einzel-IP-Filter werden hier nicht unterstützt
   ping [-c N] <host>       ICMP echo (Ctrl-C to stop)
   traceroute [-m max] <host>  trace the route packets take
   dhclient [<if>]          acquire an address over DHCP
+  systemctl start|stop|status kea-dhcp4-server
+                           Router shell: global DHCPv4 server only, no relay; pool settings retained
   dig [@server] <name> [+short]   DNS lookup
   curl [-v] http://<host>[:port][/path]   fetch a web page
   nft <...>                nftables firewall (try: nft list ruleset)
@@ -39,7 +45,7 @@ const HELP = `NetSim commands (real Linux syntax, curated subset):
   ss -tlnu                 listening sockets
   sysctl [-w] net.ipv4.ip_forward[=0|1]
   hostname | help | clear
-Anything else errors loudly — NetSim never fakes syntax it doesn't implement.
+Anything else errors.
 `;
 
 function runSysctl(device: IpDevice, args: string[], write: (s: string) => void): void {
@@ -94,7 +100,7 @@ export function formatSockets(device: IpDevice): string {
   for (const p of device.services.udp) udp.set(p, '');
   for (const p of device.ncUdp.keys()) udp.set(p, 'nc');
   if (device.dnsServer?.enabled) udp.set(53, 'dnsmasq');
-  if (device.dhcpServiceEnabled) udp.set(67, 'dnsmasq');
+  if (device.dhcpServiceEnabled) udp.set(67, device instanceof RouterDevice ? 'kea-dhcp4' : 'dnsmasq');
   const rows: string[] = [];
   for (const [p, proc] of [...tcp.entries()].sort((a, b) => a[0] - b[0])) {
     rows.push(`tcp    LISTEN  0.0.0.0:${String(p).padEnd(14)}${proc}\n`);
@@ -133,7 +139,7 @@ export class Shell {
         runIp(this.device, args, io.write.bind(io));
         break;
       case 'arp':
-        io.write(formatArpClassic(this.device));
+        runArpClassic(this.device, args, io.write.bind(io));
         break;
       case 'sysctl':
         runSysctl(this.device, args, io.write.bind(io));
@@ -163,6 +169,9 @@ export class Shell {
         return runCurl(this.device, args, io.write.bind(io), done);
       case 'dhclient':
         return runDhclient(this.device, args, io.write.bind(io), done);
+      case 'systemctl':
+        runDhcpService(this.device, args, io.write.bind(io));
+        break;
       default:
         io.write(`${cmd}: command not found (try 'help')\n`);
         break;

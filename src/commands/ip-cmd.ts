@@ -4,8 +4,7 @@ import { cidrToString, ipToString, parseCidr, parseIp } from '../engine/ip';
 type Out = (s: string) => void;
 
 const UNSUPPORTED_HINT =
-  'Supported (phase 1): ip address [add|del], ip link [set], ip route [add|del], ip neigh\n' +
-  'NetSim never fakes syntax it does not implement.\n';
+  'Supported (phase 1): ip address [add|del], ip link [set], ip route [add|del], ip neigh\n';
 
 // iproute2 accepts any unique prefix of an object name ("ip a", "ip ro").
 function expandObject(word: string): string | null {
@@ -28,11 +27,41 @@ export function runIp(device: IpDevice, args: string[], out: Out): void {
       ipRoute(device, args.slice(1), out);
       return;
     case 'neighbour':
-      out(formatNeigh(device));
+      ipNeighbour(device, args.slice(1), out);
       return;
     default:
       out(`netsim: "ip ${args.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
   }
+}
+
+function ipNeighbour(device: IpDevice, args: string[], out: Out): void {
+  const usage = 'Supported: ip neigh [show [dev <if>] | flush all | flush dev <if>] (IPv4 only)\n';
+  const [action = 'show', ...filter] = args;
+  const show = action === 'show' || action === 's';
+  const flush = action === 'flush';
+  if ((!show && !flush) ||
+      !(show && !filter.length || flush && filter.length === 1 && filter[0] === 'all' ||
+        filter.length === 2 && filter[0] === 'dev' && !!filter[1])) {
+    out('Error: unsupported or incomplete neighbour command/filter.\n' + usage);
+    return;
+  }
+  const ifaceName = filter[0] === 'dev' ? filter[1] : undefined;
+  if (ifaceName !== undefined && !device.getInterface(ifaceName)) {
+    out(`Cannot find device "${ifaceName}"\n`);
+    return;
+  }
+  if (show) out(formatNeigh(device, ifaceName));
+  else device.clearArpCache({ ifaceName });
+}
+
+export function runArpClassic(device: IpDevice, args: string[], out: Out): void {
+  // Preserve the existing numeric table; never treat mutations/unknown options
+  // as a successful read. Deletion uses ip neigh in this Linux subset.
+  if (!args.length || args.length === 1 && ['-a', '-n', '-an', '-na'].includes(args[0])) {
+    out(formatArpClassic(device));
+    return;
+  }
+  out('Unsupported arp arguments. Supported: arp [-a|-n]; remove dynamic entries with ip neigh flush all or ip neigh flush dev <if>.\n');
 }
 
 function ipAddress(device: IpDevice, a: string[], out: Out): void {
@@ -168,9 +197,10 @@ export function formatRoutes(device: IpDevice): string {
   return s;
 }
 
-export function formatNeigh(device: IpDevice): string {
+export function formatNeigh(device: IpDevice, ifaceName?: string): string {
   let s = '';
   for (const [ip, e] of device.arpTable) {
+    if (ifaceName !== undefined && e.ifaceName !== ifaceName) continue;
     s += `${ipToString(ip)} dev ${e.ifaceName} lladdr ${e.mac} REACHABLE\n`;
   }
   return s;

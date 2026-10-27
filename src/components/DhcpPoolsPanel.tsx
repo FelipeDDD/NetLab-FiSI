@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { IpDevice } from '../engine/ipdevice';
+import { RouterDevice, type IpDevice } from '../engine/ipdevice';
 import type { NetInterface } from '../engine/device';
 import { defaultDhcpPool, legacyPoolInterface, poolSettings, validateDhcpPool } from '../engine/dhcpPools';
 import { ipToString, parseIp } from '../engine/ip';
@@ -33,6 +33,7 @@ function DhcpPoolCard({device,iface}:{device:IpDevice;iface:NetInterface}) {
         }}><span className="service-switch-track" aria-hidden="true"><span /></span></button></label>
     </div>
     {cfg?.enabled&&<p className="dhcp-pool-summary">{ipToString(cfg.rangeStart)} – {ipToString(cfg.rangeEnd)}</p>}
+    {cfg?.enabled&&!device.dhcpServerEnabled&&<p className="hint">Pool aktiviert · DHCP-Server global ausgeschaltet</p>}
     <div className="dhcp-pool-actions">
       <button type="button" className="mini-btn" aria-expanded={expanded} aria-controls={`${device.id}-${iface.name}-dhcp`} onClick={()=>{if(details.current)details.current.open=!details.current.open;}}>DHCP konfigurieren</button></div>
     {device.dhcpServer&&!legacyPoolInterface(device)&&!cfg&&<button type="button" className="mini-btn" onClick={()=>setError(useStore.getState().bindLegacyDhcp(device.id,iface.name))}>Alten Pool zuordnen</button>}
@@ -51,6 +52,12 @@ function DhcpPoolCard({device,iface}:{device:IpDevice;iface:NetInterface}) {
 export function DhcpPoolsPanel({device}:{device:IpDevice}) {
   const legacy=device.dhcpServer;
   return <section className="dhcp-pools"><h3>DHCP · Schnittstellen</h3>
+    {device instanceof RouterDevice&&<div className="dhcp-global-control">
+      <label className="svc-toggle"><input type="checkbox" checked={device.dhcpServerEnabled}
+        onChange={event=>useStore.getState().setDhcpServerEnabled(device.id,event.target.checked)} />DHCP-Server global aktivieren</label>
+      <p className="hint">Schaltet alle DHCP-Server dieses Routers ein oder aus. Die Einstellungen der einzelnen Schnittstellen bleiben erhalten.</p>
+      {!device.dhcpServerEnabled&&<p className="dhcp-global-status" role="status"><strong>DHCP-Server global ausgeschaltet</strong> · Link-Status unverändert</p>}
+    </div>}
     {legacy&&!legacyPoolInterface(device)&&<p className="ap-note" role="status">Alter DHCP-Pool {ipToString(legacy.rangeStart)} – {ipToString(legacy.rangeEnd)} bleibt gespeichert, ist aber keiner Schnittstelle eindeutig zugeordnet. Bitte IPv4/Subnetz prüfen.</p>}
     {device.interfaces.map(iface=><DhcpPoolCard key={iface.name} device={device} iface={iface} />)}
   </section>;

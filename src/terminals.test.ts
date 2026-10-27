@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Host, IpDevice } from './engine/ipdevice';
+import { Host, IpDevice, RouterDevice } from './engine/ipdevice';
+import { NetInterface } from './engine/device';
 import { ApDevice, SwitchDevice } from './engine/switch';
 import { parseCidr, parseIp } from './engine/ip';
 import { Shell, type TermIO } from './commands/shell';
@@ -144,6 +145,33 @@ describe('network commands after automatic activation pause', () => {
   }
   const tick = (ms = 4000) => { for (let t=0;t<ms;t+=100)useStore.getState().tick(100); };
 
+  it.each(['linux', 'windows'] as const)('rebinds the %s automatic Run callback when a view/API created the xterm session first', os => {
+    const { a, b } = pair(); (a as Host).os = os;
+    const runtime = createZustandSessionRuntime({ pauseOnActivation: true }), document = runtime.capture();
+    runtime.activate(prepareTopologyDocument(document.topology), { sessionId: 'late-callback', draftId: 'first' });
+    const host = sim.net.devices.get(a.id) as Host;
+    const earlySession = getSession(host); // Presentation/API before store.openTerminal.
+    useStore.getState().setHostOs(host.id, os === 'linux' ? 'windows' : 'linux');
+    useStore.getState().setHostOs(host.id, os);
+    useStore.getState().openTerminal(host.id);
+    expect(getSession(host)).toBe(earlySession);
+    input(earlySession, os === 'linux' ? 'ping -c 1 10.0.0.2\r' : 'ping -n 1 10.0.0.2\r');
+    expect(useStore.getState().paused).toBe(false);
+    tick(1000);expect(output(earlySession)).toContain(os === 'linux' ? '1 received' : 'Received = 1');
+    expect(sim.net.devices.get(b.id)).toBeDefined();
+  });
+
+  it.each(['linux','windows'] as const)('rebinds recreated %s sessions for DHCP, keeps reads paused and explains manual Pause',os=>{
+    const {client,session}=restored(os,true);session.dispose();
+    const early=getSession(client);useStore.getState().openTerminal(client.id);
+    input(early,os==='linux'?'ip addr\r':'ipconfig\r');expect(useStore.getState().paused).toBe(true);
+    input(early,os==='linux'?'dhclient eth0\r':'ipconfig /renew eth0\r');
+    expect(useStore.getState().paused).toBe(false);tick(5000);expect(client.interfaces[0].dhcpLease).not.toBeNull();
+    useStore.getState().setPaused(true);input(early,os==='linux'?'ping 10.0.0.2\r':'ping -t 10.0.0.2\r');
+    expect(useStore.getState().paused).toBe(true);expect(output(early)).toContain('Zum Fortsetzen Run klicken.');
+    input(early,'\x03');
+  });
+
   it.each(['linux', 'windows'] as const)('%s ping resumes only the automatic pause and keeps normal packet/terminal timing', os => {
     const { session } = restored(os);
     input(session, os === 'linux' ? 'ping -c 1 10.0.0.2\r' : 'ping -n 1 10.0.0.2\r');
@@ -186,7 +214,7 @@ describe('network commands after automatic activation pause', () => {
     const { session }=restored();useStore.getState().setPacketVisualizationMode('guided');
     input(session,'ping -c 1 10.0.0.2\r');expect(useStore.getState().paused).toBe(false);tick(1000);
     expect(useStore.getState().packetVisualizationMode).toBe('guided');expect(useStore.getState().guidedPacket.observation.observed.length).toBeGreaterThan(0);
-    useStore.getState().toggleGuidedPlayback();expect(useStore.getState().guidedPacket.playback.status).toBe('paused');
+    useStore.getState().replayGuidedPacket();useStore.getState().toggleGuidedPlayback();expect(useStore.getState().guidedPacket.playback.status).toBe('paused');
     useStore.getState().setPaused(true);const now=sim.net.now;
     useStore.getState().nextGuidedHop();useStore.getState().replayGuidedPacket();
     expect(useStore.getState().guidedPacket.playback.kind).toBe('replay');expect(useStore.getState().paused).toBe(true);
@@ -752,6 +780,67 @@ describe('terminal paste', () => {
   });
 });
 
+describe('ARP runtime cache actions', () => {
+  it('Inspector and CLI use the same engine operation, refresh while paused and never save or change history', () => {
+    const { a, b, net } = pair(), session = open(a), exec = vi.spyOn(a, 'clearArpCache');
+    a.sendEcho(parseIp('10.0.0.2')!, 1, 1); net.scheduler.advanceTo(1200);
+    const store = useStore.getState(); store.setPaused(true);
+    const history = useStore.getState().topologyHistory, doc = store.captureWorkspaceDocument(), peer = [...b.arpTable];
+    const clock = net.now, pending = net.scheduler.pending;
+    const nodes = useStore.getState().nodes;
+    store.clearArpCache(a.id);
+    expect(exec).toHaveBeenCalledOnce(); expect(a.arpTable.size).toBe(0);
+    expect(useStore.getState().nodes).not.toBe(nodes); expect([...b.arpTable]).toEqual(peer);
+    expect(useStore.getState().paused).toBe(true); expect(net.now).toBe(clock); expect(net.scheduler.pending).toBe(pending);
+    expect(useStore.getState().topologyHistory).toBe(history); expect(store.captureWorkspaceDocument()).toEqual(doc);
+    a.arpTable.set(parseIp('10.0.0.2')!, {mac:b.interfaces[0].mac,ifaceName:'eth0',at:clock});
+    input(session, 'ip neigh flush all\r');
+    expect(exec).toHaveBeenCalledTimes(2); expect(a.arpTable.size).toBe(0);
+    expect(useStore.getState().paused).toBe(true); expect(useStore.getState().topologyHistory).toBe(history);
+    vi.advanceTimersByTime(1000);expect(setItem).not.toHaveBeenCalled();
+    store.clearArpCache('missing');
+  });
+});
+
+describe('shared interactive command line', () => {
+  it.each(['linux', 'windows'] as const)('%s inserts and deletes at the cursor, protects the prompt and submits the full line from its middle', os => {
+    const { a } = pair(); (a as Host).os = os;
+    const session = open(a), exec = vi.spyOn(Shell.prototype, 'exec');
+    input(session, 'hname\x1b[H\x1b[D\x7f\x1b[C');
+    input(session, 'ostX\x7f\x1b[3~N\x1b[F\x1b[C\x1b[3~\x1b[H\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('hostName');
+    input(session, 'abc\x1b[H\x1b[3~\x1b[F\x7f\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('b');
+  });
+
+  it('preserves the partially typed draft and its cursor across history navigation and terminal switches', () => {
+    const { a, b } = pair(), session = open(a), other = open(b), exec = vi.spyOn(Shell.prototype, 'exec');
+    input(session, 'hostname\rhelp\r');
+    input(session, 'hostme\x1b[D\x1b[D\x1b[A\x1b[A\x1b[B\x1b[B\x1b[B');
+    input(other, 'hostname\r');open(a);
+    input(session, 'na\r');
+    expect(exec.mock.calls.map(([line]) => line)).toEqual(['hostname', 'help', 'hostname', 'hostname']);
+  });
+
+  it('edits Unicode graphemes and inserts normalized paste in the middle without executing it', () => {
+    const { a } = pair(), session = open(a), exec = vi.spyOn(Shell.prototype, 'exec');
+    input(session, 'a🌐e\u0301東z\x1b[D\x1b[D\x7f');
+    input(session, PASTE_START + '👩‍💻\n' + PASTE_END);
+    input(session, '\x1b[3~\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('a🌐👩‍💻 z');
+    expect(exec).toHaveBeenCalledOnce();
+  });
+
+  it('keeps fragmented/unsupported ANSI out of command text and ignores editing while a command is running', () => {
+    const { a, net } = pair(), session = open(a), exec = vi.spyOn(Shell.prototype, 'exec');
+    input(session, 'hostme\x1b[');input(session, 'D\x1b[Dna\x1b[1;5D\r');
+    expect(exec.mock.calls.at(-1)?.[0]).toBe('hostname');
+    input(session, 'ping 10.0.0.2\r\x1b[D\x1b[H\x7f\x1b[A');
+    net.scheduler.advanceTo(500);input(session, '\x03hostname\r');
+    expect(exec.mock.calls.map(([line]) => line)).toEqual(['hostname', 'ping 10.0.0.2', 'hostname']);
+  });
+});
+
 describe('select current command', () => {
   function selectCommand(session: Session) {
     // Cell geometry is covered separately with real-width fixtures and Chromium.
@@ -765,6 +854,21 @@ describe('select current command', () => {
     expect(event.preventDefault).toHaveBeenCalledOnce();
     return event;
   }
+
+  it('retains Ctrl+A replacement while xterm reports the selection cleared by an asynchronous repaint', async () => {
+    const { a } = pair(), session = open(a), exec = vi.spyOn(Shell.prototype, 'exec');
+    input(session, 'old');
+    const changed = vi.mocked(session.term.onSelectionChange).mock.calls[0][0];
+    vi.mocked(session.term.clearSelection).mockImplementation(changed);
+    const pending: (() => void)[] = [];
+    vi.mocked(session.term.write).mockImplementation((_data, callback) => { if (callback) pending.push(callback); });
+    selectCommand(session);
+    await Promise.resolve();
+    while (pending.length) pending.shift()!();
+    input(session, 'hostname\r');
+    while (pending.length) pending.shift()!();
+    expect(exec.mock.calls.map(([line]) => line)).toEqual(['hostname']);
+  });
 
   it.each(['\x7f', '\x1b[3~'])('clears only selected input with %j, preserving history', (key) => {
     const { a } = pair();
@@ -2657,7 +2761,7 @@ describe('independent packet animation', () => {
     expect(store().packets).toEqual([]);
   });
 
-  it.each([0.5, 1, 4])('keeps ping and captured 80 ms link timing unchanged at %s× visual speed', (speed) => {
+  it.each([0.5, 1, 2, 4])('keeps ping and captured 80 ms link timing unchanged at %s× visual speed', (speed) => {
     const { a, net } = pair(), session = open(a);
     store().setPaused(false); store().setSpeed(1); store().setPacketAnimationSpeed(speed);
     const history = store().topologyHistory; store().startPacketCapture();
@@ -2672,13 +2776,13 @@ describe('independent packet animation', () => {
     expect(store().packetCapture.records.map((r) => [r.start, r.end])).toEqual([[0, 80], [80, 160], [160, 240], [240, 320]]);
     for (const captured of store().packetCapture.records) expect(captured).not.toHaveProperty('visualDuration');
     expect(animations.size).toBe(4);
-    expect([...animations.values()].every(duration => duration === packetAnimationDuration(speed))).toBe(true);
-    if (speed === 4) expect(store().packets).toEqual([]); // 50 ms hops can finish before the 320 ms network round trip.
+    expect([...animations.values()].every(duration => duration === packetAnimationDuration(1))).toBe(true);
     expect(store().topologyHistory).toBe(history);
     expect(setItem.mock.calls.filter(([key]) => key === 'netsim:autosave:v1')).toHaveLength(0);
   });
 
   it('freezes on pause, keeps position during changes, ignores simulation speed and expires all queued animations after background gaps', () => {
+    storage.set(PACKET_ANIMATION_SPEED_KEY, '0.5');
     const { a, b, net } = pair(); store().setPaused(false); store().setSpeed(1); store().setPacketAnimationSpeed(1);
     a.sendEcho(parseIp('10.0.0.2')!, 1, 1); net.onFwDrop!(a.id); store().tick(100);
     const packet = store().packets[0], visualClock = store().packetAnimationClock, clock = net.now;
@@ -2689,7 +2793,8 @@ describe('independent packet animation', () => {
     expect(packetAnimationProgress(store().packets[0], visualClock)).toBeCloseTo(progress!);
     expect(store().dropFlashes).toBe(flashes); expect(flashes[0].until - flashes[0].start).toBe(700);
     store().setPaused(false); store().setSpeed(4); store().tick(100);
-    expect(net.now - clock).toBe(400); expect(store().packetAnimationClock - visualClock).toBe(100);
+    expect(net.now - clock).toBe(100); expect(store().speed).toBe(1); expect(store().packetAnimationClock - visualClock).toBe(100);
+    net.scheduler.advanceTo(net.now + 1000);
     const timers = vi.getTimerCount(), link = [...net.links.values()][0];
     const frame = { srcMac: a.interfaces[0].mac, dstMac: b.interfaces[0].mac,
       payload: { kind: 'arp' as const, op: 'request' as const, senderIp: 1, targetIp: 2, senderMac: a.interfaces[0].mac, targetMac: null } };
@@ -2704,11 +2809,11 @@ describe('independent packet animation', () => {
     expect(packetAnimationProgress(store().packets[0], store().packetAnimationClock)).toBe(0);
     store().tick(3000); expect(store().packets).toEqual([]);
     store().setPacketAnimationSpeed(4); expect(store().packets).toEqual([]);
-    expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('4');
+    expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('0.5');
     store().flushAutosave();
     expect(JSON.parse(storage.get('netsim:autosave:v1')!)).not.toHaveProperty('packetAnimationSpeed');
     store().boot(); expect(store().packetAnimationSpeed).toBe(1);
-    expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('4'); // Retain the old preference without applying a hidden speed.
+    expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('0.5'); // Retain the old preference without applying a hidden speed.
   });
 });
 
@@ -2847,8 +2952,8 @@ describe('guided packet visualization', () => {
     const { a, net } = topology(), session = open(a);
     store().setPacketVisualizationMode('guided'); input(session, 'ping -c 1 10.0.0.2\r'); net.scheduler.advanceTo(640);
     store().replayGuidedPacket(); store().setPaused(true); const now = net.now;
-    store().tick(500); expect(guided().playback.progress).toBe(.5);
-    store().setPacketAnimationSpeed(2); store().tick(250); expect(guided().playback.index).toBe(1);
+    store().tick(100); expect(guided().playback.progress).toBe(.5);
+    store().setPacketAnimationSpeed(2); store().tick(50); expect(guided().playback.index).toBe(1);
     store().nextGuidedHop(); expect(guided().playback.status).toBe('paused');
     store().tick(2000); expect(guided().playback.index).toBe(2); expect(net.now).toBe(now);
     store().toggleGuidedPlayback(); store().tick(guided().playback.hops.length * packetAnimationDuration(2, 'guided')); expect(guided().playback.status).toBe('finished');
@@ -3028,5 +3133,142 @@ describe('Inspector RIP history', () => {
     input(terminal, 'ip link set eth0 down\r'); expect(store().topologyHistory.past).toEqual([]);
     store().toggleRip(device.id); store().undoTopology(); store().renameDevice(device.id, 'R-New');
     expect(store().topologyHistory.future).toEqual([]);
+  });
+});
+
+describe('Quick Ping uses the existing terminal and engine', () => {
+  const store = () => useStore.getState();
+  afterEach(() => store().setPacketVisualizationMode('live'));
+  it('changes only the ping cursor speed without moving its position or speeding up Live traffic', () => {
+    const {a,b,net}=pair(); store().setPacketVisualizationMode('live');store().setPacketAnimationSpeed(1);store().setPaused(false);
+    store().beginQuickPing(a.id);store().chooseQuickPingTarget(b.id);store().tick(40);
+    expect(store().guidedPacket.playback.progress).toBeCloseTo(.2);
+    store().setPacketAnimationSpeed(.5);expect(store().guidedPacket.playback.progress).toBeCloseTo(.2);
+    store().tick(40);expect(store().guidedPacket.playback.progress).toBeCloseTo(.3);
+    store().setPacketAnimationSpeed(2);store().tick(40);
+    expect(store().guidedPacket.playback.progress).toBeCloseTo(.7);expect(net.now).toBe(120);
+    expect(store().packets.every(p=>p.visualDuration===200)).toBe(true);
+  });
+  it.each((['live', 'guided'] as const).flatMap(mode => [0.5, 1, 2, 4].map(speed => ({mode, speed}))))(
+    'keeps four requests and virtual timestamps at $speed× in $mode', ({mode, speed}) => {
+      const {a,b,net}=pair(); store().setPaused(false); store().setPacketVisualizationMode(mode); store().setPacketAnimationSpeed(speed);
+      const attempts:number[]=[], progress=net.onPingProgress;
+      net.onPingProgress=e=>{ if(e.type==='attempt')attempts.push(net.now); progress?.(e); };
+      store().beginQuickPing(a.id); store().chooseQuickPingTarget(b.id);
+      for(let i=0;i<50;i++)store().tick(100);
+      expect(attempts).toEqual([0,1000,2000,3000]); expect(net.now).toBe(5000);
+      expect(store().speed).toBe(1); expect(output(getSession(a))).toContain('4 received');
+      const other=mode==='live'?'guided':'live'; store().setPacketVisualizationMode(other);
+      expect(store().packetAnimationSpeed).toBe(speed);
+    });
+  it('starts Run only for an activation pause and preserves progress on speed changes', () => {
+    const {a,b,net}=pair(); store().setPaused(false); store().setPaused(true,'activation');
+    store().setPacketAnimationSpeed(1); store().beginQuickPing(a.id); store().chooseQuickPingTarget(b.id);
+    expect(store().paused).toBe(false); store().tick(40); store().setPaused(true);
+    const before=store().packets, clock=store().packetAnimationClock, now=net.now;
+    for(const speed of [0.5,2,4,1]){
+      const previous=store().packets.map(p=>packetAnimationProgress(p,clock));
+      store().setPacketAnimationSpeed(speed);
+      expect(store().packets.map(p=>packetAnimationProgress(p,clock))).toEqual(previous);
+      expect(store().packets.map(p=>[p.start,p.end])).toEqual(before.map(p=>[p.start,p.end]));
+      expect(net.now).toBe(now); expect(store().paused).toBe(true);
+    }
+  });
+  it.each(['linux', 'windows'] as const)('executes exactly four real requests on %s, reuses the terminal and preserves configuration', os => {
+    const {a,b,net}=pair(); store().setHostOs(a.id, os); store().setPaused(false);
+    const session=open(a), before=JSON.stringify(serializeNetwork(net,{}));
+    const starts: unknown[]=[]; const progress=net.onPingProgress;
+    net.onPingProgress=e=>{ if(e.type==='started') starts.push(e); progress?.(e); };
+    store().startPacketCapture(); store().beginQuickPing(a.id); store().chooseQuickPingTarget(b.id);
+    expect(store().quickPing).toBeNull(); expect(store().terminals).toEqual([a.id]);
+    expect(output(session)).toContain(`ping ${os==='windows'?'-n':'-c'} 4 10.0.0.2`);
+    store().chooseQuickPingTarget(b.id); net.scheduler.advanceTo(5000); vi.advanceTimersByTime(100);
+    expect(starts).toHaveLength(1); expect(getSession(a)).toBe(session);
+    const echoes=store().packetCapture.records.filter(r=>r.frame.payload.kind==='ipv4'&&r.frame.payload.l4.kind==='icmp'&&r.frame.payload.l4.msg.type==='echo-request');
+    expect(echoes).toHaveLength(4);
+    expect(JSON.stringify(serializeNetwork(net,{}))).toBe(before);
+    expect(output(session)).toContain(os==='windows'?'Received = 4':'4 received');
+  });
+  it('preserves manual Pause and refuses to overwrite typed input or a running command', () => {
+    const {a,b,net}=pair(), session=open(a); store().setPaused(true);
+    input(session,'hostname'); store().beginQuickPing(a.id); store().chooseQuickPingTarget(b.id);
+    expect(store().quickPing?.message).toContain('Eingabe'); expect(output(session)).not.toContain('ping -c');
+    input(session,'\x03'); store().chooseQuickPingTarget(b.id);
+    expect(store().paused).toBe(true); const now=net.now; store().tick(1000); expect(net.now).toBe(now);
+    store().beginQuickPing(a.id); store().chooseQuickPingTarget(b.id);
+    expect(store().quickPing?.message).toContain('beschäftigt');
+    store().setPaused(false); for(let i=0;i<55;i++)store().tick(100);
+    expect(output(session)).toContain('4 received');
+    expect(output(session).match(/ping -c 4/g)).toHaveLength(1);
+  });
+  it('handles missing IPv4, ambiguous choices, cancellation, deletion and replacement', () => {
+    const {a,b}=pair(); b.interfaces[0].ip=null;
+    store().beginQuickPing(a.id); store().chooseQuickPingTarget(b.id);
+    expect(store().quickPing?.message).toContain('keine nutzbare'); expect(store().terminals).toEqual([]);
+    b.interfaces[0].ip=parseCidr('192.0.2.1/24'); b.interfaces.push(new NetInterface(b, 'extra', '02:00:00:00:00:ff')); b.interfaces[1].ip=parseCidr('198.51.100.1/24');
+    store().chooseQuickPingTarget(b.id); expect(store().quickPing?.addresses).toHaveLength(2);
+    store().chooseQuickPingTarget(b.id,'203.0.113.9'); expect(store().quickPing?.addresses).toHaveLength(2);
+    store().chooseQuickPingTarget(b.id,'192.0.2.1'); expect(store().quickPing).toBeNull();
+    const session=getSession(a); expect(output(session)).toContain('ping -c 4 192.0.2.1');
+    store().beginQuickPing(a.id); store().beginQuickPing(a.id); expect(store().quickPing).toBeNull();
+    store().beginQuickPing(a.id); store().deleteDevice(b.id); store().deleteDevice(a.id); expect(store().quickPing).toBeNull();
+    const next=pair(); store().beginQuickPing(next.a.id); store().newTopology(); expect(store().quickPing).toBeNull();
+  });
+  it('cannot merge programmatic input with fast keyboard input, or execute it after disposal', () => {
+    const {a}=pair(), session=open(a), callbacks:(()=>void)[]=[];
+    vi.mocked(session.term.write).mockImplementation((_text, cb)=>{if(cb)callbacks.push(cb);});
+    const exec=vi.spyOn(Shell.prototype,'exec');
+    expect(session.executeCommand('ping -c 4 10.0.0.2')).toBe('accepted');
+    expect(session.executeCommand('ping -c 4 10.0.0.2')).toBe('busy');
+    input(session,'hostname\r'); expect(exec).not.toHaveBeenCalled();
+    disposeSession(a.id); callbacks.splice(0).forEach(cb=>cb()); expect(exec).not.toHaveBeenCalled();
+    expect(session.executeCommand('hostname')).toBe('disposed');
+  });
+});
+
+describe('Router global DHCP service shared by Inspector and terminal',()=>{
+  function routerWithPools() {
+    const store=useStore.getState();store.addDeviceAt('router',{x:40,y:30});
+    const router=sim.net.devices.get(useStore.getState().nodes[0].id) as RouterDevice;
+    for(let n=0;n<3;n++){
+      router.addIp(`eth${n}`,parseIp(`10.20.${n+1}.1`)!,24);
+      expect(store.setDhcpPool(router.id,`eth${n}`,{enabled:n!==2,rangeStart:parseIp(`10.20.${n+1}.100`)!,rangeEnd:parseIp(`10.20.${n+1}.110`)!,router:parseIp(`10.20.${n+1}.1`)!,dns:null})).toBeNull();
+    }
+    return router;
+  }
+  it('stops via the Inspector action and starts via CLI without mutating pool flags, leases or interface state',()=>{
+    const router=routerWithPools(),session=open(router),store=useStore.getState();
+    const pools=[...router.dhcpPools.values()];pools[0].leases.set('02:00:00:00:00:ab',pools[0].rangeStart);
+    const before=pools.map(p=>({...p,leases:[...p.leases]})),interfaces=router.interfaces.map(i=>({ip:i.ip,up:i.up,link:i.link}));
+    store.setPaused(true);const now=sim.net.now;
+    store.setDhcpServerEnabled(router.id,false);expect(router.dhcpServiceEnabled).toBe(false);
+    const nodes=useStore.getState().nodes;input(session,'systemctl start kea-dhcp4-server\r');
+    expect(router.dhcpServerEnabled).toBe(true);expect(useStore.getState().nodes).not.toBe(nodes);
+    expect([...router.dhcpPools.values()]).toEqual(pools);
+    expect(pools.map(p=>({...p,leases:[...p.leases]}))).toEqual(before);
+    expect(router.interfaces.map(i=>({ip:i.ip,up:i.up,link:i.link}))).toEqual(interfaces);
+    expect(useStore.getState().paused).toBe(true);expect(sim.net.now).toBe(now);
+  });
+  it('stops via CLI and starts via the Inspector, preserving a disabled pool and offering honest status/help',()=>{
+    const router=routerWithPools(),session=open(router),store=useStore.getState();
+    input(session,'systemctl stop kea-dhcp4-server.service\r');expect(router.dhcpServerEnabled).toBe(false);
+    input(session,'systemctl status kea-dhcp4-server\r');expect(output(session)).toContain('inactive (dead)');
+    expect(output(session)).toContain('no DHCP relay');
+    store.setDhcpServerEnabled(router.id,true);expect(router.dhcpServiceEnabled).toBe(true);
+    expect([...router.dhcpPools.values()].map(p=>p.enabled)).toEqual([true,true,false]);
+    input(session,'help\r');expect(output(session)).toContain('Router shell: global DHCPv4 server only');
+    expect(output(session)).toContain('Anything else errors.');
+  });
+  it('undoes the global switch independently, rejects stale history after CLI changes and restores v1 state',()=>{
+    const router=routerWithPools(),session=open(router),store=useStore.getState();
+    store.setDhcpServerEnabled(router.id,false);store.undoTopology();expect(router.dhcpServerEnabled).toBe(true);
+    store.redoTopology();expect(router.dhcpServerEnabled).toBe(false);
+    input(session,'systemctl start kea-dhcp4-server\r');expect(useStore.getState().topologyHistory.past).toEqual([]);
+    store.setDhcpServerEnabled(router.id,false);store.flushAutosave();
+    const saved=JSON.parse(storage.get('netsim:autosave:v1')!);expect(saved.devices[0].dhcpServerEnabled).toBe(false);
+    store.boot();const restored=sim.net.devices.get(router.id) as RouterDevice;
+    expect(restored).not.toBe(router);expect(restored.dhcpServerEnabled).toBe(false);
+    expect([...restored.dhcpPools.values()].map(p=>p.enabled)).toEqual([true,true,false]);
+    expect(restored.interfaces.every(i=>i.up)).toBe(true);
   });
 });

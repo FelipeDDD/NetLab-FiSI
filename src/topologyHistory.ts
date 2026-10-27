@@ -15,6 +15,7 @@ export type DhcpFieldEdit =
   | { field: 'rangeStart' | 'rangeEnd'; before: number; after: number }
   | { field: 'router' | 'dns'; before: number | null; after: number | null };
 export type InspectorOperation =
+  | {type:'set-dhcp-server-enabled';label:string;deviceId:string;before:boolean;after:boolean}
   | {type:'set-dhcp-configuration';label:string;deviceId:string;before:import('./engine/dhcpPools').DhcpConfiguration;after:import('./engine/dhcpPools').DhcpConfiguration}
   | { type: 'set-wifi-range'; label: string; deviceId: string; before: number; after: number }
   | { type: 'enable-wireless'; label: string; deviceId: string; mac: string }

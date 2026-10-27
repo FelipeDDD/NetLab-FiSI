@@ -8,7 +8,7 @@ import { applyDhcpConfiguration, dhcpConfiguration, validateDhcpPool, legacyPool
 import { restoreNetwork, serializeNetwork } from './serialize';
 import { applyInspectorEdit, captureCreation, captureLink, restoreDeletedDevices } from '../topologyEdits';
 const ip=(s:string)=>parseIp(s)!;
-it.each(['router','firewall','server'] as const)('%s derives DHCP availability from valid interface pools without a global master switch',kind=>{
+it.each(['router','firewall','server'] as const)('%s derives DHCP availability from valid interface pools, not from a shadowed legacy pool',kind=>{
   const net=new Network(),d=createDevice(net,kind) as IpDevice,h=createDevice(net,'host') as IpDevice;
   d.addIp('eth0',ip('192.168.1.1'),24);net.connect(d.id,h.id);
   const cfg={enabled:true,rangeStart:ip('192.168.1.100'),rangeEnd:ip('192.168.1.150'),router:ip('192.168.1.1'),dns:null,leases:new Map<string,number>()};

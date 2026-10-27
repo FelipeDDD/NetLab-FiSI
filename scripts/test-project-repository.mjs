@@ -46,6 +46,9 @@ async function connect(endpoint) {
 }
 
 async function launchBrowser() {
+  // A restart must wait for this process's new endpoint, not reconnect to the
+  // previous port if another disposable Chromium has already reused it.
+  await rm(path.join(scratch, 'DevToolsActivePort'), { force: true });
   browser = spawn(binary, ['--headless=new', '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
     '--remote-debugging-port=0', '--user-data-dir=' + scratch, 'about:blank'], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
   let launchError, diagnostics = '';
@@ -72,7 +75,8 @@ try {
   const testPort = probe.address().port;
   await new Promise(resolve => probe.close(resolve));
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
-    plugins: [...(process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' ? [{
+    cacheDir: path.join(scratch, 'vite-cache'),
+    plugins: [...(process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' ? [{
       name: 'isolated-viewport-probe', enforce: 'pre',
       transform(code, id) {
         if (!id.replaceAll('\\', '/').endsWith('/src/App.tsx')) return;
@@ -228,6 +232,26 @@ try {
   if (process.env.NETLAB_INTERFACE_AUDIT === '1') {
     const { runInterfaceAudit } = await import('./interface-audit.mjs');
     await runInterfaceAudit({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_TERMINAL_EDITING === '1') {
+    const { runTerminalEditing } = await import('./terminal-editing.mjs');
+    await runTerminalEditing({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_ARP_CACHE_REVIEW === '1') {
+    const { runArpCacheReview } = await import('./arp-cache-review.mjs');
+    await runArpCacheReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_PING_BACKPRESSURE === '1') {
+    const { runPingBackpressure } = await import('./ping-backpressure-review.mjs');
+    await runPingBackpressure({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_PANEL_STACKING === '1') {
+    const { runPanelStacking } = await import('./panel-stacking-review.mjs');
+    await runPanelStacking({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
     await prepare(pageOne);
   }
   if (process.env.NETLAB_LEGIBILITY_REVIEW) {

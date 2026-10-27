@@ -21,6 +21,7 @@ export function inspectLegacyTopology(rawText: string): LegacyInspection {
     const missingDefault = (value: unknown, path: string[]): boolean => {
       if (path.length === 3 && path[0] === 'devices') {
         const field = path[2];
+        if (field === 'dhcpServerEnabled' && value === true) return true;
         if ((field === 'nameserver' && value === null) || (field === 'ripEnabled' && value === false)) return true;
         if (field === 'dhcpPools' && empty(value)) return true;
         if (field === 'vlans' && isObject(value) && Object.values(value).every(v => v === 1)) return true;

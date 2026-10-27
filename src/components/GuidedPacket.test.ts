@@ -47,3 +47,31 @@ it('keeps replay and observation clearly separate with honest empty/error states
   controls = renderToStaticMarkup(createElement(GuidedPacketControls)); expect(controls).toContain('Local ping');
   expect(controls).not.toContain('Hop 1');
 });
+it('automatically renders one ping dot in Live and removes it at the last visual arrival', () => {
+  view.packetVisualizationMode = 'live';
+  view.guidedPacket = emptyGuidedPacket();
+  view.guidedPacket.observation.session = {deviceId:'a',icmpId:1};
+  view.guidedPacket.observation.status = 'observing';
+  view.guidedPacket.playback = {...view.guidedPacket.playback,hops:[first,second],progress:.5,status:'playing'};
+  view.packets = [first,second].map(p=>({...p,pingTraffic:true,visualStart:0,visualDuration:1000}));
+  expect(renderToStaticMarkup(createElement(PacketLayer)).match(/class="packet-dot"/g)).toHaveLength(1);
+  view.guidedPacket.observation.status = 'complete';
+  view.guidedPacket.playback = {...view.guidedPacket.playback,index:1,progress:1,status:'finished'};
+  expect(renderToStaticMarkup(createElement(PacketLayer))).not.toContain('class="packet-dot"');
+  view.packets.push({...view.packets[0],id:3,kind:'tcp',pingTraffic:false});
+  expect(renderToStaticMarkup(createElement(PacketLayer)).match(/class="packet-dot"/g)).toHaveLength(1);
+});
+
+it('draws parallel ARP sibling links and unrelated Live broadcast while preserving one focused ping attempt', () => {
+  view.packetVisualizationMode='live';view.guidedPacket=emptyGuidedPacket();
+  view.guidedPacket.observation.session={deviceId:'a',icmpId:1};view.guidedPacket.observation.status='observing';
+  const root={...first,kind:'arp' as const,arp:'request' as const,visualStep:0};
+  const branches=[{...second,id:2,kind:'arp' as const,arp:'request' as const,visualStep:1},
+    {...second,id:3,linkId:'3',kind:'arp' as const,arp:'request' as const,visualStep:1}];
+  view.guidedPacket.playback={...view.guidedPacket.playback,hops:[root,...branches],index:1,progress:.5,status:'playing'};
+  view.packets=[{...first,id:4,kind:'udp',visualStart:0,visualDuration:1000}];
+  const layer=renderToStaticMarkup(createElement(PacketLayer));
+  expect(layer.match(/class="packet-dot"/g)).toHaveLength(3);
+  expect(layer).toContain('data-transfer-id="2"');expect(layer).toContain('data-transfer-id="3"');
+  expect(layer).not.toContain('data-transfer-id="1"');
+});

@@ -1,5 +1,5 @@
 import type { IpDevice } from '../engine/ipdevice';
-import { ipToString, maskOf } from '../engine/ip';
+import { ipToString, maskOf, parseIp } from '../engine/ip';
 import type { Running, TermIO } from './shell';
 import { runPing } from './ping';
 import { runTraceroute } from './traceroute';
@@ -7,7 +7,9 @@ import { releaseDhcp, runDhclient } from './dhclient';
 
 const HELP = `NetLab Windows CMD (simulated command subset):
   ipconfig [/all | /renew | /release] [adapter]   display / renew / release IPv4
-  arp -a                    display the ARP cache
+  arp -a                    ARP-Tabelle anzeigen (IPv4)
+  arp -d *                  Dynamischen ARP-Cache dieses Geräts leeren
+  arp -d 192.168.1.20        Dynamischen Eintrag für diese IPv4-Adresse löschen
   route print               display the IPv4 routing table
   ping [-n count | -t] host  four requests by default; -t until Ctrl+C
   tracert host              trace the route using ICMP
@@ -51,6 +53,28 @@ function formatArp(device: IpDevice): string {
   return text;
 }
 
+function runArp(device: IpDevice, args: string[], write: (text: string) => void): void {
+  const option = args[0]?.toLowerCase();
+  if (args.length === 1 && option === '-a') {
+    write(formatArp(device));
+    return;
+  }
+  if (args.length !== 2 || option !== '-d') {
+    write('Usage: arp -a | arp -d <IPv4|*> (IPv4 dynamic entries only; other options are not supported)\n');
+    return;
+  }
+  if (args[1] === '*') {
+    device.clearArpCache();
+    return;
+  }
+  const address = parseIp(args[1]);
+  if (address === null) {
+    write(`Invalid IPv4 address: ${args[1]}\n`);
+    return;
+  }
+  if (!device.clearArpCache({ address })) write(`ARP entry not found: ${args[1]}\n`);
+}
+
 function formatRoutePrint(device: IpDevice): string {
   let text = 'IPv4 Route Table\nActive Routes:\nNetwork Destination    Netmask                Gateway                Interface\n';
   for (const r of device.routes()) {
@@ -86,7 +110,7 @@ export function runWindows(device: IpDevice, argv: string[], io: TermIO, done: (
       } else write('Usage: ipconfig [/all | /renew | /release] [adapter]\n');
       break;
     case 'arp':
-      write(args.length === 1 && options[0] === '-a' ? formatArp(device) : 'Usage: arp -a\n'); break;
+      runArp(device, args, write); break;
     case 'route':
       write(args.length === 1 && options[0] === 'print' ? formatRoutePrint(device) : 'Usage: route print\n'); break;
     case 'hostname': write(!args.length ? device.name + '\n' : 'Usage: hostname\n'); break;

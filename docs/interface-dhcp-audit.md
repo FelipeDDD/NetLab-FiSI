@@ -1,5 +1,10 @@
 # Interface, cable and DHCP audit; network commands after restoration
 
+Update: Router DHCP now has an independent global server switch and a narrow
+Linux CLI equivalent. See [global-dhcp.md](global-dhcp.md). The findings below
+describe the earlier interface audit; per-pool configuration and Link UP remain
+independent of the new global flag.
+
 Audit performed against disposable fixtures, native Chromium with a temporary
 profile and `netlab-idb-test-*` databases. No real topology, browser profile,
 localStorage or IndexedDB was inspected or changed. Earlier legibility work was

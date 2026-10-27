@@ -1,8 +1,23 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { PACKET_ANIMATION_BASE_MS, PACKET_ANIMATION_KEY, PACKET_ANIMATION_SPEED_KEY, PACKET_ANIMATION_SPEEDS, normalizePacketAnimationSpeed, packetAnimationDuration, packetAnimationProgress, readPacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, type AnimatedTransfer } from './packetAnimation';
 import { clampPacketWidget, readPacketAnimationPlacement, savePacketAnimationPlacement } from './packetAnimationWidget';
+import { isPingAnimationActive } from './packetAnimation';
+import { emptyGuidedPacket } from './guidedPacket';
 
 afterEach(() => vi.unstubAllGlobals());
+it('keeps a continuous ping active but finishes cancelled playback even if the paused network has old frames in flight', () => {
+  const state = emptyGuidedPacket();
+  state.observation.status = 'observing';
+  expect(isPingAnimationActive(state)).toBe(true);
+  state.observation.sourceFinished = true;
+  expect(isPingAnimationActive(state)).toBe(false);
+  state.playback.hops = [{id:1,start:0,end:80,linkId:'x',fromDeviceId:'a',toDeviceId:'b',kind:'icmp',
+    fromDeviceName:'A',toDeviceName:'B',fromInterface:'eth0',toInterface:'eth0',ping:1,direction:'request'}];
+  state.playback.progress = .5;
+  expect(isPingAnimationActive(state)).toBe(true);
+  state.playback.progress = 1;
+  expect(isPingAnimationActive(state)).toBe(false);
+});
 const packet: AnimatedTransfer = { id: 1, linkId: 'link', fromDeviceId: 'a', toDeviceId: 'b', kind: 'icmp',
   start: 80, end: 160, visualStart: 500, visualDuration: 1000 };
 
@@ -30,7 +45,8 @@ it('normalizes bounds and persists a local preference without requiring storage'
   expect(readPacketAnimationSpeed()).toBe(1);
   expect(PACKET_ANIMATION_BASE_MS).toEqual({ live: 200, guided: 1000 });
   expect([1, 2, 4].map(speed => packetAnimationDuration(speed))).toEqual([200, 100, 50]);
-  expect(PACKET_ANIMATION_SPEEDS.map(speed => packetAnimationDuration(speed, 'guided'))).toEqual([4000, 2000, 1000, 1000 / 1.5, 500, 1000 / 3, 250]);
+  expect(PACKET_ANIMATION_SPEEDS.map(speed => packetAnimationDuration(speed, 'guided'))).toEqual([2000, 1000, 500, 250]);
+  expect(PACKET_ANIMATION_SPEEDS.map(speed => packetAnimationDuration(speed, 'live'))).toEqual([400, 200, 100, 50]);
   expect(normalizePacketAnimationSpeed(9)).toBe(4); expect(normalizePacketAnimationSpeed(NaN)).toBe(1);
   values.set(PACKET_ANIMATION_KEY, '2000'); expect(readPacketAnimationSpeed()).toBe(0.5);
   expect(values.get(PACKET_ANIMATION_SPEED_KEY)).toBe('0.5');

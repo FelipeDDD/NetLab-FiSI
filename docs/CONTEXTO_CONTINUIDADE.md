@@ -1,11 +1,44 @@
 # NetLab-FiSI — Contexto para continuidade
 
 Atualizado em **27/10/2026**, para continuar no notebook usando VS Code/Codex.
-Branch: **`main`**, remoto `origin` (`FelipeDDD/NetLab-FiSI`). Base anterior a esta
-entrega: **`c7ffdd3`**, Save/Load e recuperação segura já integrados.
+Branch: **`main`**, remoto `origin` (`FelipeDDD/NetLab-FiSI`). Base desta retomada:
+**`46b897f`**, com Save/Load, recuperação segura, viewport e causalidade já integrados.
 Este documento descreve o estado encontrado; o código e os testes continuam sendo a fonte de verdade.
 
 ## Leia primeiro — estado atual e decisões pendentes
+
+- **Inspector/Terminal sobrepostos:** o Inspector normal à direita mantém a
+  altura útil abaixo do header e pode cobrir o dock. Clique ou foco real
+  trazem o painel à frente; scroll e hover não alteram prioridade. Estado só no React,
+  sem persistência. A faixa superior do dock à esquerda e o topo do Inspector
+  permitem recuperar ambos. Layout de Packets mantém fallback existente.
+  Não altera dimensões por foco nem o viewport. Ver [terminal-layout.md](terminal-layout.md).
+
+- **Correções de Ping-Animation e Run:** fila visual com tentativa atual + uma
+  pendente; Ctrl+C descarta ciclos não iniciados. Broadcast ARP mostra filhos
+  simultaneamente nos links reais, preservando VLAN e causalidade. Run falhava
+  quando xterm era criado antes dos callbacks do store; sessões existentes agora
+  incorporam esses callbacks. Pause manual é preservado e mostra dica de Run.
+  Ver [packet-animation.md](packet-animation.md). Sem mudança de intervalos,
+  pacotes, Scheduler ou persistência.
+
+- **Limpeza ARP:** Linux `ip neigh show`, `ip neigh flush all` e `ip neigh flush
+  dev eth0`; Windows `arp -a`, `arp -d *` e `arp -d IP`. Botão **ARP-Cache leeren**
+  nas tabelas ARP do Inspector. Todos usam `IpDevice.clearArpCache`, sem alterar
+  configuração, persistência ou tempo da simulação. Argumentos desconhecidos
+  não viram mais consulta silenciosa. Ver [arp-cache.md](arp-cache.md).
+
+- **Edição interativa do terminal:** editor compartilhado Linux/Windows com
+  Left/Right, Home/End, Backspace/Delete, inserção no cursor e histórico que
+  preserva o rascunho. Reutiliza a fila do xterm; não altera parser, Run/Pause
+  ou persistência. Ver [terminal-line-editing.md](terminal-line-editing.md).
+
+- **DHCP global no Router:** Inspector → Dienste contém o controle global,
+  independente dos flags dos pools. CLI Linux: `systemctl start|stop|status
+  kea-dhcp4-server`, somente DHCPv4 Server, sem Relay/Cisco IOS. O campo opcional
+  `dhcpServerEnabled` mantém compatibilidade v1 e é restaurado com a sessão.
+  Ver [global-dhcp.md](global-dhcp.md). Terminal nos equipamentos usa fundo preto
+  e símbolo branco, mantendo o círculo atual; ping/animações não mudaram nesta etapa.
 
 - **Fase 5B2-B concluída**, commit `c7ffdd3`, sobre `433f264` (5B2-A).
   Boot normal assíncrono, planos/rascunhos, restauração pausada, migração legada
@@ -25,11 +58,14 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
 - **Pacotes corrigidos:** Live respeita `parentTransferId`,
   `echoRequestTransferId` e `arpRequestTransferId`; Guided inclui ARP e ICMP.
   Os metadados de causalidade são observação separada, não payload de protocolo.
-- **UI de velocidade simplificada:** Run/Pause, Live **200 ms/link** e
-  **Schrittmodus 1.000 ms/link** com Step/Replay. ID interno continua `guided`.
-  Não há seletores públicos de multiplicador. Clock e apresentação iniciam em
-  1×; APIs técnicas permanecem. A preferência antiga fica armazenada, mas não
-  aplica velocidade oculta no boot. Não duplicar pings ou alterar protocolos.
+- **Controles definitivos e Quick Ping:** Terminal/Ping nos cantos superiores,
+  botões redondos de 28 px; alternativas A/B removidas. Quick Ping usa o shell
+  existente (Linux `-c 4`, Windows `-n 4`), escolha simples de IPv4 e cancelamento.
+  A barra inferior temporária Ping-Animation contém o único slider 0,5×/1×/2×,
+  mostra uma bolinha por vez e fecha 3 segundos após o fim visual/comando.
+  Packets preserva botão/dropdown e captura/inspeção, sem modos ou replay na UX.
+  APIs didáticas anteriores seguem internas; Scheduler fixo em 1×.
+  Causalidade ARP/ICMP, Run de ativação e Pause manual preservados.
 - **Comandos após restauração:** `pauseReason` diferencia pausa de ativação e
   pausa manual. Comandos ativos marcados `needsScheduler` (ping, DHCP etc.)
   liberam somente a primeira, por uma política central em store/terminals.
@@ -40,11 +76,6 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
   Formulários importantes usam 13/14 px. Sprites, hitboxes, Handles e anchors
   mantidos; xterm mantém a preferência própria de 14 px. Não escalar o sprite
   para resolver texto nem remover o espaçador que preserva métricas de layout.
-- **Ações dos dispositivos A/B ainda aguardam escolha:**
-  `?deviceActions=a` põe Terminal/Ping antes do nome; `?deviceActions=b` põe o
-  par na parte inferior esquerda. Sem parâmetro continua a posição atual.
-  **Não consolidar A/B sem escolha do usuário. Quick Ping NÃO está implementado**;
-  o botão é prévia `aria-disabled`, sem handler de rede. Recomendação provisória: A.
 - **Auditoria eth2/eth3:** reproduzido cabo AP em eth2 sem IP e eth3 desconectada
   com IP; documento/motor/Inspector concordaram. Canvas lista IPv4 configurados;
   cor depende do link da interface. Não houve reindexação em migração/Save/Load/F5.
@@ -63,7 +94,7 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
 Referências recentes: [pacotes](packet-animation.md),
 [viewport](workspace-ui.md), [legibilidade](device-legibility.md),
 [auditoria DHCP e Run](interface-dhcp-audit.md),
-[ações A/B e modos](device-actions-and-presentation.md).
+[ações definitivas, Quick Ping e modos](device-actions-and-presentation.md).
 
 ## 1. Visão geral e mapa do projeto
 

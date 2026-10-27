@@ -52,7 +52,7 @@ function IpAddress({ value }: { value: string }) {
   </Fragment>)}</code>;
 }
 
-export function ArpTable({ device }: { device: IpDevice }) {
+export function ArpTable({ device, onClear }: { device: IpDevice; onClear?: () => void }) {
   const rows: DiagnosticRow[] = [...device.arpTable].sort(([a], [b]) => a - b).map(([ip, entry]) => ({
     key: String(ip),
     cells: [<IpAddress value={ipToString(ip)} />, <MacAddress value={entry.mac} />],
@@ -61,8 +61,12 @@ export function ArpTable({ device }: { device: IpDevice }) {
       { label: 'Aktualisiert vor', value: `${Math.max(0, Math.floor((device.network.now - entry.at) / 1000))} s` },
     ],
   }));
-  return <DiagnosticTable label="ARP-Tabelle" columns={['IP-Adresse', 'MAC-Adresse']}
-    variant="arp" rows={rows} empty="Keine ARP-Einträge. Sie werden beim Austausch von ARP-Nachrichten gelernt." />;
+  return <>
+    {onClear && <button type="button" className="mini-btn" title="Löscht die dynamisch gelernten ARP-Einträge dieses Geräts."
+      onClick={onClear}>ARP-Cache leeren</button>}
+    <DiagnosticTable label="ARP-Tabelle" columns={['IP-Adresse', 'MAC-Adresse']}
+      variant="arp" rows={rows} empty="Keine ARP-Einträge. Sie werden beim Austausch von ARP-Nachrichten gelernt." />
+  </>;
 }
 
 export function RouteTypeInfo() {

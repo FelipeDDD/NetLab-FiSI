@@ -3,7 +3,6 @@ import { useStore } from '../store';
 import { LABS } from '../labs/library';
 import { EXAMPLES } from '../labs/examples';
 import { FloatingPopover } from './FloatingPopover';
-import { PacketAnimationControl } from './PacketAnimationControl';
 import { InspectorSettingsContent } from './InspectorLayoutSettings';
 import type { InspectorLayoutPreference } from '../inspectorLayout';
 import { confirmReplacement, REPLACEMENT_WARNING } from '../persistence/replacement';
@@ -32,7 +31,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const workspace = useWorkspaceUI();
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1100px)').matches);
   const [menu, setMenu] = useState<MenuPage | null>(null);
-  const [dialog, setDialog] = useState<'settings' | 'animation' | null>(null);
+  const [dialog, setDialog] = useState<'settings' | 'packets' | null>(null);
   const [menuFocus, setMenuFocus] = useState<'first' | 'last'>('first');
   const [focusedMenu, setFocusedMenu] = useState<MenuId>('file');
   const [exportOpen, setExportOpen] = useState(false);
@@ -55,6 +54,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const autosaveBlocked = useStore(s => s.autosaveBlocked);
   const autosaveError = useStore(s => s.autosaveError);
   const packetInspectorOpen = useStore(s => s.packetInspectorOpen);
+  const captureStatus = useStore(s => s.packetCapture.status);
 
   const cancelHoverClose = () => { if (hoverTimer.current !== null) clearTimeout(hoverTimer.current); hoverTimer.current = null; };
   const closeExport = () => { cancelHoverClose(); setExportOpen(false); };
@@ -142,7 +142,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
       disabled={disabled}
       onPointerEnter={closeExport} onClick={() => perform(handler)}>{label}</button>;
   const togglePackets = () => useStore.getState().setPacketInspectorOpen(!packetInspectorOpen);
-  const openPacketSettings = () => { closeMenu(); setDialog(current => current === 'animation' ? null : 'animation'); };
+  const openPacketSettings = () => { closeMenu(); setDialog(current => current === 'packets' ? null : 'packets'); };
   const runTitle = paused ? 'Run — Simulationsuhr fortsetzen' : 'Pause — Simulationsuhr anhalten';
   const popupLabel = menu === 'compact' ? 'Menü' : MENUS.find(item => item.id === menu)?.label;
 
@@ -213,9 +213,9 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         <button type="button" id="packets-toggle" className="btn packets-toggle" aria-expanded={packetInspectorOpen}
           aria-controls={packetInspectorOpen ? 'packet-inspector' : undefined} onClick={togglePackets}>Packets</button>
         <button type="button" className="btn packet-settings-toggle" ref={el => { packetAnchor.current = el; }}
-          aria-label="Paketanimation einstellen" title="Live / Schrittmodus, Step und Replay — Simulation im normalen Tempo"
-          aria-haspopup="dialog" aria-expanded={dialog === 'animation'}
-          aria-controls={dialog === 'animation' ? 'packet-visualization-settings' : undefined} onClick={openPacketSettings}>
+          aria-label="Paketaufnahme und Inspektion" title="Paketaufnahme und Inspektion"
+          aria-haspopup="menu" aria-expanded={dialog === 'packets'}
+          aria-controls={dialog === 'packets' ? 'packet-capture-menu' : undefined} onClick={openPacketSettings}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m3 4 3 3 3-3" /></svg>
         </button>
       </div>
@@ -293,8 +293,17 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
       <h2 className="toolbar-dialog-title">Einstellungen</h2>
       <InspectorSettingsContent value={inspectorLayout} onChange={onInspectorLayoutChange} />
     </FloatingPopover>}
-    <PacketAnimationControl menuAnchor={packetAnchor} settingsOpen={dialog === 'animation'}
-      onSettingsClose={() => setDialog(current => current === 'animation' ? null : current)} />
+    {dialog === 'packets' && <FloatingPopover anchor={packetAnchor} id="packet-capture-menu" label="Packets"
+      role="menu" width={250} className="labs-menu" onClose={() => setDialog(null)}>
+      {[
+        { label: packetInspectorOpen ? 'Paketinspektor ausblenden' : 'Paketinspektor öffnen', run: togglePackets, disabled: false },
+        { label: 'Start capture', run: () => useStore.getState().startPacketCapture(), disabled: captureStatus !== 'stopped' },
+        { label: 'Pause capture', run: () => useStore.getState().pausePacketCapture(), disabled: captureStatus !== 'capturing' },
+        { label: 'Resume capture', run: () => useStore.getState().resumePacketCapture(), disabled: captureStatus !== 'paused' },
+        { label: 'Stop capture', run: () => useStore.getState().stopPacketCapture(), disabled: captureStatus === 'stopped' },
+      ].map(item => <button key={item.label} type="button" role="menuitem" className="labs-menu-item"
+        disabled={item.disabled} onClick={() => { item.run(); setDialog(null); }}>{item.label}</button>)}
+    </FloatingPopover>}
     <input ref={fileRef} type="file" accept="application/json" hidden onChange={event => onFile(event.target.files?.[0])} />
     {notice && <div className="notice toolbar-notice" role="status" aria-live="polite">{notice}</div>}
   </header>;

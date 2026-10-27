@@ -9,10 +9,10 @@ import { sameIpv4, validIpv4, type InterfaceIpv4 } from './engine/ipv4Config';
 import { runDhclient } from './commands/dhclient';
 import { Network, type PingProgress } from './engine/network';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
-import { DEFAULT_PACKET_ANIMATION_SPEED, normalizePacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
+import { DEFAULT_PACKET_ANIMATION_SPEED, normalizePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
-import { Host, IpDevice } from './engine/ipdevice';
+import { Host, IpDevice, RouterDevice } from './engine/ipdevice';
 import { chooseHostOs, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
 import type { DeviceKind } from './engine/device';
 import { serializeNetwork, type SaveFile } from './engine/serialize';
@@ -25,6 +25,7 @@ import { listRuleset } from './engine/firewall-fmt';
 import { cidrToString, parseCidr, parseIp } from './engine/ip';
 import { ApDevice, SwitchDevice } from './engine/switch';
 import { disposeSession, getSession, refreshSessionProfile } from './terminals';
+import { canQuickPing, pingAddresses, preferredPingAddress, quickPingCommand, type QuickPingSelection } from './quickPing';
 import { sim } from './sim';
 import type { LabDef } from './labs/types';
 import { runChecks } from './labs/checker';
@@ -135,6 +136,10 @@ interface NetsimState {
   reconnectingCable: { id: string; end: 'a' | 'b'; before: HistoryLink } | null;
   beginCableReconnect(id: string, end: 'a' | 'b'): void;
   cancelCableReconnect(): void;
+  quickPing: QuickPingSelection | null;
+  beginQuickPing(sourceId: string): void;
+  cancelQuickPing(): void;
+  chooseQuickPingTarget(targetId: string, address?: string): void;
   reconnectCable(deviceId: string, ifaceName?: string): string | null;
   hoveredLinkId: string | null;
   cableStyle: CableStyle;
@@ -202,6 +207,8 @@ interface NetsimState {
   setNameserver(deviceId: string, text: string): string | null;
   bindLegacyDhcp(deviceId:string,ifaceName:string):string|null;
   setDhcpPool(deviceId:string,ifaceName:string,settings:PoolSettings):string|null;
+  setDhcpServerEnabled(deviceId: string, enabled: boolean): void;
+  clearArpCache(deviceId: string): void;
   toggleDhcpServer(deviceId: string): void;
   setDhcpField(deviceId: string, field: 'rangeStart' | 'rangeEnd' | 'router' | 'dns', text: string): string | null;
   toggleDnsServer(deviceId: string): void;
@@ -317,6 +324,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   };
   const navigateHistory = (direction: 'undo' | 'redo') => {
     get().cancelCableReconnect();
+    get().cancelQuickPing();
     if (movement?.source === 'drag' || ignoreDrag) return;
     get().finishNodeMovement();
     checkHistoryConfiguration();
@@ -451,20 +459,21 @@ export const useStore = create<NetsimState>()((set, get) => {
     };
     net.onWireTransfer = (t, context, trace) => {
       if (sim.net !== net) return;
+      const before = get().guidedPacket, payload = context.frame.payload;
+      const to = net.devices.get(t.toDeviceId);
+      const iface = to?.getInterface(context.toInterface);
+      const destination = payload.kind === 'ipv4' && to instanceof IpDevice && to.hasIp(payload.dst) &&
+        iface?.up === true && iface.mac === context.frame.dstMac;
+      // The existing ping observer now follows automatically, independently of
+      // the technical Live/Guided API and of Packet Capture.
+      const guidedPacket = updateGuidedObservation(observeGuidedPacket(currentGuided(), t, context, trace, destination), net.now);
+      if (guidedPacket !== before) set({ guidedPacket });
       if (get().packetVisualizationMode === 'live') {
         const packets = get().packets;
-        const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(get().packetAnimationSpeed));
+        const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(1));
+        visual.pingTraffic = !!trace?.arpPing || payload.kind === 'ipv4' && payload.l4.kind === 'icmp' &&
+          (payload.l4.msg.type === 'echo-request' || payload.l4.msg.type === 'echo-reply');
         set({ packets: [...packets, visual] });
-      } else {
-        const before = get().guidedPacket, payload = context.frame.payload;
-        const to = net.devices.get(t.toDeviceId);
-        const iface = to?.getInterface(context.toInterface);
-        // Endpoint ownership identifies the last known link, not correlation or successful delivery.
-        const destination = payload.kind === 'ipv4' && to instanceof IpDevice && to.hasIp(payload.dst) &&
-          iface?.up === true && iface.mac === context.frame.dstMac;
-        // Observe newly emitted continuations before testing completion at a delivery boundary.
-        const guidedPacket = updateGuidedObservation(observeGuidedPacket(currentGuided(), t, context, trace, destination), net.now);
-        if (guidedPacket !== before) set({ guidedPacket });
       }
       if (sim.net === net) capture.observe(t, context);
     };
@@ -472,7 +481,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (sim.net !== net) return;
       if (event.type === 'started') latestPing = { start: event, finished: false };
       else if (event.type === 'finished' && latestPing?.start.deviceId === event.deviceId && latestPing.start.icmpId === event.icmpId) latestPing.finished = true;
-      if (get().packetVisualizationMode !== 'guided') return;
+      if (event.type !== 'started' && latestPing &&
+        (event.deviceId !== latestPing.start.deviceId || event.icmpId !== latestPing.start.icmpId)) return;
       const guidedPacket = observeGuidedPingProgress(currentGuided(), event, net.now);
       if (guidedPacket !== get().guidedPacket) set({ guidedPacket });
     };
@@ -529,6 +539,8 @@ export const useStore = create<NetsimState>()((set, get) => {
 
   const removeElements = (nodeIds: string[], edgeIds: string[]) => {
     const ids = new Set(nodeIds), links = new Set(edgeIds), oldPanels = get().terminalPanels;
+    const ping = get().quickPing;
+    if (ping && (ids.has(ping.sourceId) || ids.has(ping.targetId ?? ''))) get().cancelQuickPing();
     if (ids.size) { labCheckGeneration++; set({ labChecking: false }); }
     for (const id of ids) disposeSession(id);
     for (const id of links) sim.net.disconnect(id);
@@ -573,7 +585,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       notice: null, autosavePending: false, shareLink: null,
       nodes,
       edges: edgesFromEngine(),
-      ...presentation, reconnectingCable: null,
+      ...presentation, reconnectingCable: null, quickPing: null,
       hoveredLinkId: null,
       packets: [],
       guidedPacket: emptyGuidedPacket(),
@@ -718,7 +730,35 @@ export const useStore = create<NetsimState>()((set, get) => {
       const link = sim.net.links.get(id);
       if (!link || link.medium !== 'ethernet' || (end !== 'a' && end !== 'b')) return;
       get().finishNodeMovement();
-      set({ reconnectingCable: { id, end, before: captureLink(link) }, hoveredLinkId: null });
+      set({ reconnectingCable: { id, end, before: captureLink(link) }, hoveredLinkId: null, quickPing: null });
+    },
+    quickPing: null,
+    beginQuickPing(sourceId) {
+      if (get().quickPing?.sourceId === sourceId) { get().cancelQuickPing(); return; }
+      if (!canQuickPing(sim.net.devices.get(sourceId))) return;
+      get().finishNodeMovement();
+      set({ quickPing: { sourceId }, reconnectingCable: null, hoveredLinkId: null });
+    },
+    cancelQuickPing() { set({ quickPing: null }); },
+    chooseQuickPingTarget(targetId, address) {
+      const selection = get().quickPing;
+      if (!selection) return;
+      const source = sim.net.devices.get(selection.sourceId), target = sim.net.devices.get(targetId);
+      if (!canQuickPing(source)) { get().cancelQuickPing(); return; }
+      const addresses = pingAddresses(target);
+      if (!target || !addresses.length) {
+        set({ quickPing: { sourceId: source.id, message: 'Dieses Gerät hat keine nutzbare IPv4-Adresse.' } }); return;
+      }
+      const chosen = address === undefined ? preferredPingAddress(source, target) : addresses.find(a => a.address === address)?.address;
+      if (!chosen) {
+        set({ quickPing: { sourceId: source.id, targetId, addresses, message: 'IPv4-Adresse auswählen' } }); return;
+      }
+      get().openTerminal(source.id);
+      const result = getSession(source).executeCommand(quickPingCommand(source, chosen));
+      if (result === 'accepted') { set({ quickPing: null }); return; }
+      set({ quickPing: { sourceId: source.id, message: result === 'unapplied-input'
+        ? 'Im Quellterminal steht eine Eingabe. Bitte zuerst übernehmen oder löschen.'
+        : 'Das Quellterminal ist beschäftigt. Befehl beenden und Ziel erneut auswählen.' } });
     },
     cancelCableReconnect() { set({ reconnectingCable: null }); },
     reconnectCable(deviceId, ifaceName) {
@@ -770,8 +810,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     setPacketAnimationSpeed(value) {
       const speed = normalizePacketAnimationSpeed(value);
       if (speed === get().packetAnimationSpeed) return;
-      set({ packetAnimationSpeed: speed, packets: retimePacketAnimations(get().packets, animationNow, packetAnimationDuration(speed)) });
-      savePacketAnimationSpeed(speed);
+      // Ping playback stores fractional progress, so changing its duration
+      // affects only subsequent movement. Live traffic and protocol time stay put.
+      set({ packetAnimationSpeed: speed });
     },
     packetCapture: capture.state,
     packetInspectorOpen: false,
@@ -1084,6 +1125,22 @@ export const useStore = create<NetsimState>()((set, get) => {
       applyDhcpConfiguration(d,after); get().refresh();
       commitEdit({type:'set-dhcp-configuration',label:'DHCP '+ifaceName,deviceId,before,after});saveSoon();return null;
     },
+    clearArpCache(deviceId) {
+      const device = sim.net.devices.get(deviceId);
+      if (!(device instanceof IpDevice) || device.disposed) return;
+      device.clearArpCache();
+      get().refresh();
+    },
+    setDhcpServerEnabled(deviceId, enabled) {
+      const device = sim.net.devices.get(deviceId);
+      if (!(device instanceof RouterDevice) || device.disposed || typeof enabled !== 'boolean' || device.dhcpServerEnabled === enabled) return;
+      prepareEdit();
+      const before = device.dhcpServerEnabled;
+      device.dhcpServerEnabled = enabled;
+      get().refresh();
+      commitEdit({type:'set-dhcp-server-enabled',label:'DHCP-Server global',deviceId,before,after:enabled});
+      saveSoon();
+    },
     toggleDhcpServer(deviceId) {
       const d = sim.net.devices.get(deviceId);
       if (!(d instanceof IpDevice) || d.disposed) return;
@@ -1290,7 +1347,9 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!d || !(d instanceof IpDevice)) return;
       getSession(d, {
         onSchedulerRequired: () => {
-          if (d.network === sim.net && !d.disposed && get().paused && get().pauseReason === 'activation') get().setPaused(false);
+          if (d.network !== sim.net || d.disposed || !get().paused) return;
+          if (get().pauseReason === 'activation') get().setPaused(false);
+          else if (get().pauseReason === 'manual') return 'manual-pause';
         },
         onAfterCommand: (configurationChanged) => {
           // A completed ping must not invalidate newer movement history just
@@ -1491,14 +1550,14 @@ export const useStore = create<NetsimState>()((set, get) => {
       const elapsed = Number.isFinite(dtMs) ? Math.max(0, dtMs) : 0;
       if (get().paused) {
         // Guided playback is independent of network pause; collecting still waits for simulated delivery.
-        if (get().packetVisualizationMode === 'guided') {
-          const guidedPacket = advanceGuidedPacket(currentGuided(), elapsed, packetAnimationDuration(get().packetAnimationSpeed, 'guided'));
+        if (get().guidedPacket.observation.session) {
+          const guidedPacket = advanceGuidedPacket(currentGuided(), elapsed, packetAnimationDuration(get().packetAnimationSpeed));
           if (guidedPacket !== get().guidedPacket) set({ guidedPacket });
         }
         return;
       }
       animationNow += Number.isFinite(dtMs) ? Math.max(0, dtMs) : 0;
-      const dt = Math.min(dtMs, 100) * get().speed;
+      const dt = Math.min(elapsed, 100);
       sim.net.scheduler.advanceTo(sim.net.scheduler.now + dt);
       const now = sim.net.scheduler.now;
       const packets = get().packets;
@@ -1508,8 +1567,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       const pulse = Math.floor(now / 400);
       set({
         clock: now,
-        ...(get().packetVisualizationMode === 'guided' ? { guidedPacket: advanceGuidedPacket(
-          updateGuidedObservation(currentGuided(), now), elapsed, packetAnimationDuration(get().packetAnimationSpeed, 'guided')) } : {}),
+        ...(get().guidedPacket.observation.session ? { guidedPacket: advanceGuidedPacket(
+          updateGuidedObservation(currentGuided(), now), elapsed, packetAnimationDuration(get().packetAnimationSpeed)) } : {}),
         packetAnimationClock: animationNow,
         ...(alive.length !== packets.length ? { packets: alive } : {}),
         ...(aliveFlashes.length !== flashes.length ? { dropFlashes: aliveFlashes } : {}),
@@ -1524,8 +1583,9 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({ paused: p, pauseReason });
     },
 
-    setSpeed(s) {
-      set({ speed: s });
+    setSpeed(_s) {
+      // Keep the compatibility API while the protocol clock stays at 1×.
+      set({ speed: 1 });
     },
 
     setNotice(msg) {

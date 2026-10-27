@@ -4,7 +4,8 @@ import { cableGeometry } from '../cableGeometry';
 import { linkAttachment } from '../deviceArtwork';
 import { useStore } from '../store';
 import { NODE_H, NODE_W } from './DeviceNode';
-import { packetAnimationProgress } from '../packetAnimation';
+import { isPingAnimationActive, packetAnimationProgress } from '../packetAnimation';
+import { visibleGuidedHops } from '../guidedPacket';
 import { sim } from '../sim';
 import { inactiveWireless } from '../wirelessPresentation';
 
@@ -24,7 +25,8 @@ export function PacketLayer() {
   const clock = useStore((s) => s.clock);
   const animationClock = useStore((s) => s.packetAnimationClock);
   const mode = useStore((s) => s.packetVisualizationMode);
-  const guided = useStore((s) => s.guidedPacket.playback);
+  const guidedState = useStore((s) => s.guidedPacket);
+  const guided = guidedState.playback;
   const nodes = useStore((s) => s.nodes);
   const edges = useStore(s => s.edges);
   const cableStyle = useStore(s => s.cableStyle);
@@ -49,8 +51,14 @@ export function PacketLayer() {
     });
   }
 
-  const visible = mode === 'live' ? packets.map((p) => ({ p, t: packetAnimationProgress(p, animationClock) }))
-    : guided.hops[guided.index] ? [{ p: guided.hops[guided.index], t: guided.progress }] : [];
+  const hasPing = !!guidedState.observation.session;
+  const pingPlaying = hasPing && guided.hops.length > 0 && isPingAnimationActive(guidedState);
+  // The existing sequential player owns the ping dot automatically. Do not
+  // draw its Live copies as well, or leave a dot at the final endpoint forever.
+  const live = mode === 'live' ? packets.filter(p => !hasPing || !p.pingTraffic)
+    .map(p => ({ p, t: packetAnimationProgress(p, animationClock) })) : [];
+  const visible = [...live, ...(mode === 'guided' || pingPlaying
+    ? visibleGuidedHops(guided).map(p => ({ p, t: guided.progress })) : [])];
   const frontDots: React.ReactNode[] = [];
   const dots = visible
     .map(({ p, t }) => {
@@ -61,7 +69,9 @@ export function PacketLayer() {
       const path = paths.get(p.linkId);
       const point = path ? path.geometry.pointAt(path.source === p.fromDeviceId ? t : 1 - t)
         : { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-      const dot = <circle key={p.id} data-link-id={p.linkId} cx={point.x} cy={point.y} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;
+      const dot = <circle key={p.id} data-link-id={p.linkId} data-transfer-id={p.id}
+        data-ping-sequence={'ping' in p ? p.ping : undefined} data-direction={'direction' in p ? p.direction : undefined}
+        cx={point.x} cy={point.y} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;
       if (path?.geometry.isFrontAt(path.source === p.fromDeviceId ? t : 1 - t)) {
         frontDots.push(dot); return null;
       }
