@@ -51,6 +51,8 @@ import { firstReconnectInterface, reconnectTargetError } from './cableInteractio
 import type { HistoryLink } from './topologyHistory';
 import { DEFAULT_MARKING, markingBounds, pruneAreaMarkings, readBaseOffsets, readMarkingRect, validBaseOffsets, validMarkingStyle, type AreaMarking, type MarkingBaseOffsets, type MarkingStyle } from './areaMarkings';
 import { readExtensions, touchesArea, validAreaRect, type AreaRect, type MarkingExtension } from './markingGeometry';
+import { captureDeviceClipboard, prepareDevicePaste, type DeviceClipboard } from './deviceClipboard';
+import { freePosition, groupBounds, insertionPosition, placementBox, type PlacementBox } from './devicePlacement';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -214,6 +216,9 @@ interface NetsimState {
   quizAnswers: Record<string, number>;
 
   addDeviceAt(kind: DeviceKind, pos: { x: number; y: number }): void;
+  addDeviceSmart(kind: DeviceKind, visible: PlacementBox): void;
+  copySelectedDevices(): boolean;
+  pasteDevices(desired: Point, visible?: PlacementBox): boolean;
   onNodesChange(changes: NodeChange<DevNode>[]): void;
   onEdgesChange(changes: EdgeChange[]): void;
   onConnect(c: Connection): void;
@@ -299,6 +304,8 @@ let lastPulse = 0;
 
 export const useStore = create<NetsimState>()((set, get) => {
   let workspacePersistence: WorkspacePersistenceSink | null = null;
+  let deviceClipboard: DeviceClipboard | null = null;
+  let lastCreatedId: string | null = null;
   let legacyReadOnly = false;
   const capture = new PacketCapture((packetCapture) => set({ packetCapture }));
   // Set before advancing the scheduler so new emissions use this frame's
@@ -418,10 +425,12 @@ export const useStore = create<NetsimState>()((set, get) => {
         get().refresh();
         if (Object.keys(tabLayouts).length) saveTabs();
       }
-    } else if (operation.type === 'delete-devices') {
+    } else if (operation.type === 'delete-devices' || operation.type === 'paste-devices') {
       const ids = operation.devices.map((d) => d.saved.id);
-      if (operation.markings && JSON.stringify(get().areaMarkings) !== JSON.stringify(direction === 'undo' ? operation.markings.after : operation.markings.before)) { get().invalidateTopologyHistory(); return; }
-      if (direction === 'undo') {
+      const markings = operation.type === 'delete-devices' ? operation.markings : undefined;
+      const restoring = (operation.type === 'delete-devices') === (direction === 'undo');
+      if (markings && JSON.stringify(get().areaMarkings) !== JSON.stringify(direction === 'undo' ? markings.after : markings.before)) { get().invalidateTopologyHistory(); return; }
+      if (restoring) {
         if (get().nodes.some((n) => ids.includes(n.id)) || !restoreDeletedDevices(sim.net, operation.devices, operation.links)) {
           get().invalidateTopologyHistory(); get().setNotice('Cannot restore devices: topology conflicts with this operation.'); return;
         }
@@ -429,8 +438,9 @@ export const useStore = create<NetsimState>()((set, get) => {
         for (const { saved, index } of [...operation.devices].sort((a, b) => a.index - b.index)) {
           nodes.splice(index, 0, deviceNode(saved.id, saved.kind, saved.name, saved.x, saved.y));
         }
-        set({ nodes, edges: edgesFromEngine(), terminalColors: { ...get().terminalColors, ...operation.colors }, cableColors: { ...get().cableColors, ...operation.cableColors } });
-        if (operation.markings) set({ areaMarkings: structuredClone(operation.markings.before) });
+        set({ nodes: operation.type === 'paste-devices' ? nodes.map(n=>({...n,selected:ids.includes(n.id)})) : nodes,
+          edges: edgesFromEngine(), terminalColors: { ...get().terminalColors, ...operation.colors }, cableColors: { ...get().cableColors, ...operation.cableColors } });
+        if (markings) set({ areaMarkings: structuredClone(markings.before) });
         get().refresh();
         if (Object.keys(tabLayouts).length) saveTabs();
       } else {
@@ -616,6 +626,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     rangeEditGroup = null;
     ipv4EditGroup = null;
     markingEditGroup = null;
+    lastCreatedId = null;
     if (noticeTimer) clearTimeout(noticeTimer);
     noticeTimer = null;
     const nodes = data.devices.map((d) => deviceNode(d.id, d.kind, d.name, d.x, d.y));
@@ -1085,13 +1096,44 @@ export const useStore = create<NetsimState>()((set, get) => {
       saveSoon();
     },
     addDeviceAt(kind, pos) {
+      if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
       prepareEdit();
       const d = createDevice(sim.net, kind, (kind === 'host' || kind === 'notebook') ? { os: chooseHostOs(get().hostCreationMode) } : {});
       const creation = captureCreation(sim.net, d, pos, get().nodes.length);
       set({ nodes: [...get().nodes, deviceNode(d.id, kind, d.name, pos.x, pos.y)] });
+      lastCreatedId = d.id;
       commitEdit({ type: 'create-device', label: `Create ${d.name}`, device: creation });
       if (Object.keys(tabLayouts).length) saveTabs();
       saveSoon();
+    },
+    addDeviceSmart(kind, visible) {
+      const state=get(), selected=state.nodes.filter(n=>n.selected);
+      const reference=selected[0]?.id ?? state.selected ?? lastCreatedId;
+      state.addDeviceAt(kind,insertionPosition(kind,state.nodes,reference,visible));
+    },
+    copySelectedDevices() {
+      const state=get();
+      if (state.drawingMarking || state.pendingMarkingRect || state.markingGeometry || state.quickPing || state.reconnectingCable) return false;
+      const copy=captureDeviceClipboard(sim.net,state.nodes,state.nodes.filter(n=>n.selected).map(n=>n.id),state.terminalColors,state.cableColors);
+      if (!copy) return false;
+      deviceClipboard=copy;
+      return true;
+    },
+    pasteDevices(desired, visible) {
+      const state=get();
+      if (!deviceClipboard || state.drawingMarking || state.pendingMarkingRect || state.markingGeometry || state.quickPing || state.reconnectingCable || !Number.isFinite(desired.x) || !Number.isFinite(desired.y)) return false;
+      prepareEdit();
+      const bounds=groupBounds(deviceClipboard.boxes), position=freePosition(deviceClipboard.boxes,state.nodes.map(placementBox),desired,visible);
+      const batch=prepareDevicePaste(sim.net,deviceClipboard,{x:position.x-bounds.x,y:position.y-bounds.y},state.nodes.length);
+      if (!restoreDeletedDevices(sim.net,batch.devices,batch.links)) { get().setNotice('Einfügen nicht möglich. Die Topologie bleibt unverändert.'); return false; }
+      const added=batch.devices.map(({saved})=>({...deviceNode(saved.id,saved.kind,saved.name,saved.x,saved.y),selected:true}));
+      set({nodes:[...get().nodes.map(n=>({...n,selected:false})),...added],edges:edgesFromEngine(),selected:null,
+        terminalColors:{...state.terminalColors,...batch.colors},cableColors:{...state.cableColors,...batch.cableColors}});
+      lastCreatedId=added.at(-1)!.id;
+      get().refresh();
+      commitEdit({type:'paste-devices',label:`${added.length} Geräte einfügen`,...batch});
+      get().setNotice(`${added.length} Kopien · IPv4 leer · DHCP-Pools/RIP aus.`);
+      saveSoon(); return true;
     },
 
     onNodesChange(changes) {

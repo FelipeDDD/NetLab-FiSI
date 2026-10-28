@@ -1,4 +1,6 @@
 import { useId, useState, type DragEvent } from 'react';
+import { useReactFlow } from '@xyflow/react';
+import { canvasWorldBounds } from '../devicePlacement';
 import { useStore } from '../store';
 import type { DeviceKind } from '../engine/device';
 import { DeviceIcon } from './DeviceNode';
@@ -26,8 +28,12 @@ const CATEGORIES: { id: PaletteCategory; label: string; items: { kind: DeviceKin
 ];
 
 export function Palette({ compact = false }: { compact?: boolean } = {}) {
-  const addDeviceAt = useStore((s) => s.addDeviceAt);
-  const nodeCount = useStore((s) => s.nodes.length);
+  const addDeviceSmart = useStore((s) => s.addDeviceSmart);
+  const { screenToFlowPosition } = useReactFlow();
+  const add = (kind: DeviceKind) => {
+    const canvas=document.querySelector('.react-flow');
+    if(canvas) addDeviceSmart(kind,canvasWorldBounds(canvas.getBoundingClientRect(),screenToFlowPosition));
+  };
   const hostMode = useStore((s) => s.hostCreationMode);
   const [preference, setPreference] = useState(loadPalettePreference);
   const [compactExpanded, setCompactExpanded] = useState(false);
@@ -85,7 +91,7 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
                   {category.items.map(it => <button type="button" key={it.kind}
                     className={`palette-item kind-${it.kind}`} draggable aria-label={it.label}
                     onDragStart={e => onDragStart(e, it.kind)}
-                    onClick={() => addDeviceAt(it.kind, { x: 140 + (nodeCount % 5) * 60, y: 120 + (nodeCount % 7) * 50 })}
+                    onClick={() => add(it.kind)}
                     title={`${it.blurb} · Zum Hinzufügen klicken oder auf die Arbeitsfläche ziehen`}>
                     <span className="palette-item-icon"><DeviceIcon kind={it.kind} size={26} /></span>
                     <span className="palette-item-label">{it.label}</span>

@@ -19,8 +19,11 @@ Shift, arraste de seleção, clique em dispositivos e demais interações normai
 não produzem prévias. Áreas automáticas/livres, bounds, offsets, L/U/T, união SVG,
 histórico e documentos existentes mantêm seus contratos.
 
-### Limitação encontrada em Ctrl+C/Ctrl+V
+### Limitação encontrada em Ctrl+C/Ctrl+V na auditoria inicial
 
+**Atualização posterior:** o clipboard de equipamentos foi implementado na rodada
+seguinte; consulte [`device-clipboard-placement.md`](device-clipboard-placement.md).
+O texto abaixo registra o diagnóstico anterior à implementação.
 
 Neste checkout não há handlers de copiar/colar equipamentos ou seleção no canvas,
 nem esse comportamento automático na versão instalada do React Flow. Existem

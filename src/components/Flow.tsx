@@ -20,7 +20,8 @@ import { PacketLayer } from './PacketLayer';
 import { LinkDetails } from './LinkDetails';
 import { linkPresentation } from '../linkPresentation';
 import { sim } from '../sim';
-import { protectsTopologyKeys, topologyHistoryDirection } from '../topologyShortcuts';
+import { deviceClipboardAction, protectsTopologyKeys, topologyHistoryDirection } from '../topologyShortcuts';
+import { canvasWorldBounds } from '../devicePlacement';
 import { CANVAS_BACKGROUNDS, useCanvasBackground } from '../canvasBackground';
 import { BackgroundParticles } from './BackgroundParticles';
 import { CableManager, type CableMenuPoint } from './CableManager';
@@ -78,6 +79,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const tick = useStore((s) => s.tick);
   const addDeviceAt = useStore((s) => s.addDeviceAt);
   const { screenToFlowPosition, getViewport } = useReactFlow();
+  const canvas = useRef<HTMLDivElement>(null), clipboardPointer = useRef<{x:number;y:number}|null>(null);
   const keyboardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyboardMoving = useRef(false);
   const pingClick = useRef<{ id: string; time: number } | null>(null);
@@ -179,6 +181,21 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
 
   return (
     <ReactFlow
+      ref={canvas} tabIndex={0} aria-label="Netzwerkarbeitsfläche"
+      onPointerMove={event=>{ clipboardPointer.current={x:event.clientX,y:event.clientY}; }}
+      onPointerLeave={()=>{ clipboardPointer.current=null; }}
+      onKeyDown={event=>{
+        const action=deviceClipboardAction(event.nativeEvent,event.target as Element,document.activeElement);
+        if (!action || !canvas.current) return;
+        finishKeyboard();
+        const state=useStore.getState();
+        if (action==='copy') { if(state.copySelectedDevices()) event.preventDefault(); }
+        else {
+          const visible=canvasWorldBounds(canvas.current.getBoundingClientRect(),screenToFlowPosition);
+          const point=clipboardPointer.current ? screenToFlowPosition(clipboardPointer.current) : {x:visible.x+visible.width/2,y:visible.y+visible.height/2};
+          if(state.pasteDevices(point,visible)) event.preventDefault();
+        }
+      }}
       className={[experimentalBackground && 'experimental-canvas-background', quickPing && 'is-quick-ping'].filter(Boolean).join(' ') || undefined}
       style={experimentalBackground ? { backgroundImage: `linear-gradient(${shade}, ${shade}), url("${experimentalBackground}")` } : undefined}
       nodes={nodes}
@@ -211,6 +228,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       onSelectionDragStop={() => { alignment.reset(); useStore.getState().finishNodeMovement(); }}
       onPointerDownCapture={(event) => {
         finishKeyboard();
+        if (!(event.target as Element).closest('button, input, textarea, select, [contenteditable], .react-flow__node, .react-flow__edge')) event.currentTarget.focus({preventScroll:true});
         cableBeforeDrag.current = (event.target as Element).closest('.react-flow__node') ? useStore.getState().edges.find(e => e.selected)?.id ?? null : null;
       }}
       onPointerCancelCapture={() => { alignment.reset(); useStore.getState().cancelNodeMovement(); }}

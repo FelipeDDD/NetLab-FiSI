@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { topologyHistoryDirection } from './topologyShortcuts';
+import { deviceClipboardAction, topologyHistoryDirection } from './topologyShortcuts';
 const key = { key: 'z', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false, isComposing: false, defaultPrevented: false };
 const element = (protectedControl = false) => ({ closest: () => protectedControl ? {} : null }) as unknown as Element;
 
@@ -10,6 +10,16 @@ it('recognizes Ctrl/Cmd Undo and Shift Redo only when the event is available', (
   for (const override of [{ defaultPrevented: true }, { isComposing: true }, { altKey: true }, { ctrlKey: false }, { key: 'a' }]) {
     expect(topologyHistoryDirection({ ...key, ...override }, element(), element())).toBeNull();
   }
+});
+
+it('uses clipboard only for the focused canvas, leaving terminal, fields, popovers and other buttons alone',()=>{
+  const canvas={closest:(s:string)=>s==='.react-flow'?{}:null} as unknown as Element;
+  expect(deviceClipboardAction({...key,key:'c'},canvas,canvas)).toBe('copy');
+  expect(deviceClipboardAction({...key,key:'v'},canvas,canvas)).toBe('paste');
+  expect(deviceClipboardAction({...key,key:'v'},canvas,element(true))).toBeNull();
+  expect(deviceClipboardAction({...key,key:'c'},element(true),canvas)).toBeNull();
+  expect(deviceClipboardAction({...key,key:'c'},canvas,null)).toBeNull();
+  expect(deviceClipboardAction({...key,key:'c',defaultPrevented:true},canvas,canvas)).toBeNull();
 });
 
 it('protects both the event origin and actual focused control (including portaled fields and xterm)', () => {

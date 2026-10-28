@@ -126,6 +126,56 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('device clipboard and insertion',()=>{
+  const selectAll=()=>useStore.getState().onNodesChange(useStore.getState().nodes.map(n=>({type:'select',id:n.id,selected:true})));
+  it('pastes four PCs with exact spacing, repeatable fresh identities, selection and one undo entry per paste',()=>{
+    const store=useStore.getState();
+    for(const pos of [{x:100,y:100},{x:350,y:120},{x:120,y:350},{x:370,y:370}])store.addDeviceAt('host',pos);
+    const original=useStore.getState().nodes.map(n=>({id:n.id,position:{...n.position}}));
+    const first=sim.net.devices.get(original[0].id) as Host, session=open(first);
+    selectAll();expect(store.copySelectedDevices()).toBe(true);
+    const count=useStore.getState().topologyHistory.past.length;
+    expect(store.pasteDevices({x:750,y:300})).toBe(true);
+    const copies=useStore.getState().nodes.filter(n=>n.selected), dx=copies[0].position.x-original[0].position.x,dy=copies[0].position.y-original[0].position.y;
+    expect(copies).toHaveLength(4);expect(useStore.getState().topologyHistory.past).toHaveLength(count+1);
+    copies.forEach((n,i)=>expect(n.position).toEqual({x:original[i].position.x+dx,y:original[i].position.y+dy}));
+    expect(store.pasteDevices({x:750,y:300})).toBe(true);expect(sim.net.devices.size).toBe(12);
+    const macs=[...sim.net.devices.values()].flatMap(d=>d.interfaces.map(i=>i.mac));expect(new Set(macs).size).toBe(macs.length);
+    store.undoTopology();expect(sim.net.devices.size).toBe(8);store.undoTopology();expect(sim.net.devices.size).toBe(4);
+    expect(getSession(first)).toBe(session);expect(session.term.dispose).not.toHaveBeenCalled();
+    store.redoTopology();expect(useStore.getState().nodes.filter(n=>n.selected).map(n=>n.id)).toEqual(copies.map(n=>n.id));
+    store.redoTopology();expect(sim.net.devices.size).toBe(12);
+  });
+  it('keeps internal cabling, Markierungen and copied colors through history and document roundtrip',()=>{
+    const store=useStore.getState();store.addDeviceAt('host',{x:0,y:0});store.addDeviceAt('switch',{x:250,y:0});store.addDeviceAt('router',{x:500,y:0});
+    const [a,b,c]=useStore.getState().nodes;store.onConnect({source:a.id,target:b.id,sourceHandle:null,targetHandle:null});store.onConnect({source:b.id,target:c.id,sourceHandle:null,targetHandle:null});
+    store.setCableColor(useStore.getState().edges[0].id,'purple');store.setTerminalColor(a.id,'#d788aa');
+    store.onNodesChange([{type:'select',id:a.id,selected:true},{type:'select',id:b.id,selected:true}]);store.createMarking({...DEFAULT_MARKING,name:'Existing'});
+    const marking=structuredClone(useStore.getState().areaMarkings), session=open(sim.net.devices.get(c.id) as IpDevice);
+    expect(store.copySelectedDevices()).toBe(true);expect(store.pasteDevices({x:800,y:0})).toBe(true);
+    expect(sim.net.links.size).toBe(3);expect(useStore.getState().areaMarkings).toEqual(marking);expect(useStore.getState().terminals).toEqual([c.id]);
+    const cloned=useStore.getState().nodes.filter(n=>n.selected), link=[...sim.net.links.values()].find(l=>cloned.some(n=>n.id===l.a.device.id))!;
+    expect(useStore.getState().cableColors[link.id].color).toBe('#a383dd');
+    store.undoTopology();expect(sim.net.devices.size).toBe(3);expect(sim.net.links.size).toBe(2);store.redoTopology();expect(sim.net.links.size).toBe(3);expect(getSession(sim.net.devices.get(c.id) as IpDevice)).toBe(session);
+    const doc=store.captureWorkspaceDocument(), restored=prepareTopologyDocument(doc.topology);store.activateWorkspaceDocument(restored,{sessionId:'clipboard-test',draftId:'pasted'});
+    expect(store.captureWorkspaceDocument()).toEqual(doc);expect(sim.net.devices.size).toBe(5);expect(useStore.getState().areaMarkings).toEqual(marking);
+  });
+  it('keeps clipboard across plans without copying Lab metadata or original grading IDs',()=>{
+    const store=useStore.getState();store.loadBundledLab(0);selectAll();const originals=useStore.getState().nodes.map(n=>n.id);
+    expect(store.copySelectedDevices()).toBe(true);store.newTopology();expect(store.pasteDevices({x:20,y:20})).toBe(true);
+    expect(useStore.getState().lab).toBeNull();expect(useStore.getState().nodes.every(n=>!originals.includes(n.id))).toBe(true);
+    const document=store.captureWorkspaceDocument();expect(document.topology.labProgress).toBeUndefined();
+  });
+  it('uses selected or last created reference without assigning new devices to a free area',()=>{
+    const store=useStore.getState(), visible={x:1000,y:500,width:1200,height:700};
+    store.setPendingMarkingRect({x:0,y:0,width:5000,height:5000});store.createFreeMarking(DEFAULT_MARKING);
+    for(let i=0;i<10;i++)store.addDeviceSmart('host',visible);
+    const nodes=useStore.getState().nodes, last=nodes.at(-1)!;expect(nodes.every(n=>n.position.x>=1000)).toBe(true);
+    store.onNodesChange([{type:'select',id:last.id,selected:true}]);store.addDeviceSmart('server',{x:0,y:0,width:10000,height:10000});
+    expect(useStore.getState().nodes.at(-1)!.position.y).toBe(last.position.y);expect(useStore.getState().areaMarkings[0].deviceIds).toEqual([]);
+  });
+});
+
 describe('network commands after automatic activation pause', () => {
   beforeEach(() => { useStore.getState().setPaused(false); useStore.getState().setPacketVisualizationMode('live'); });
   afterEach(() => { useStore.getState().setPaused(false); useStore.getState().setPacketVisualizationMode('live'); });

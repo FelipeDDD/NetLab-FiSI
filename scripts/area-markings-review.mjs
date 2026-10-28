@@ -233,9 +233,10 @@ export async function runAreaMarkingsReview({ page, url, root, report }) {
       await page.evaluate('await flow.setViewport({x:20,y:20,zoom:.75});');await delay(100);
       await selectWithShift(['pc1','pc2','pc3','pc5']);
       await key('c','KeyC',2);await key('v','KeyV',2);
-      assert.deepEqual(await selected(),['pc1','pc2','pc3','pc5']);assert.deepEqual(await marks(),[]);
+      assert.equal((await selected()).length,4);assert.equal(await page.evaluate('return store.getState().nodes.length;'),12);assert.deepEqual(await marks(),[]);
       assert.equal(await page.evaluate('return store.getState().pendingMarkingRect;'),null);
-      report.deviceClipboard={implemented:false,checked:'Ctrl+C/Ctrl+V do not create markings; this source tree has no device-copy/paste handlers.'};
+      await page.evaluate('store.getState().undoTopology();');await selectWithShift(['pc1','pc2','pc3','pc5']);
+      report.deviceClipboard={implemented:true,checked:'Native Shift selects four PCs; Ctrl+C/Ctrl+V duplicates them without creating a marking; one Undo removes the batch.'};
       await openMenu();await field('[aria-label="Name der Fläche"]','Büro Grün · 東京');await click('[aria-label=Grün]');await textClick('.markings-actions button','Bereich markieren');geometryId=(await marks())[0].id;await key('Escape');
       await page.evaluate("store.getState().onNodesChange(store.getState().nodes.map(n=>({type:'select',id:n.id,selected:false})));store.getState().clearLinkSelection();");
       automatic=await page.evaluate(`return (await import('/src/areaMarkings.ts')).markingBounds(store.getState().areaMarkings[0],store.getState().nodes,flow.getViewport().zoom);`);
