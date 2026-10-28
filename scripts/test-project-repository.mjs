@@ -310,6 +310,11 @@ try {
     await runDeviceEditingReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_DEFAULTS_REVIEW === '1') {
+    const { runDefaultsReview } = await import('./defaults-review.mjs');
+    await runDefaultsReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_USABILITY_REVIEW === '1') {
     const { runUsabilityReview } = await import('./usability-refinements-review.mjs');
     await runUsabilityReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });

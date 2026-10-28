@@ -1,7 +1,24 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { BACKGROUND_KEY, DEFAULT_BACKGROUND, normalizeBackground, readBackground, useCanvasBackground } from './canvasBackground';
+import { BACKGROUND_KEY, CANVAS_BACKGROUNDS, DEFAULT_BACKGROUND, normalizeBackground, readBackground, useCanvasBackground } from './canvasBackground';
 
 afterEach(() => vi.unstubAllGlobals());
+it('defaults to Blue Circuit without saving over an existing user choice',()=>{
+  const setItem=vi.fn();vi.stubGlobal('localStorage',{getItem:()=>null,setItem});
+  expect(readBackground()).toEqual({...DEFAULT_BACKGROUND,choice:'bg2'});
+  expect(CANVAS_BACKGROUNDS[readBackground().choice].label).toBe('Blue Circuit');
+  expect(setItem).not.toHaveBeenCalled();
+});
+it.each(Object.keys(CANVAS_BACKGROUNDS))('preserves the saved %s choice ahead of the new default',choice=>{
+  const saved={choice,intensity:37,dots:false,animation:'fireflies'},setItem=vi.fn();
+  vi.stubGlobal('localStorage',{getItem:()=>JSON.stringify(saved),setItem});
+  expect(readBackground()).toEqual(saved);expect(setItem).not.toHaveBeenCalled();
+});
+it('restores the same Blue Circuit default through the existing settings update path',()=>{
+  const values=new Map<string,string>();vi.stubGlobal('localStorage',{getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>values.set(key,value)});
+  useCanvasBackground.getState().update({choice:'verde1',intensity:37,dots:false});
+  useCanvasBackground.getState().update(DEFAULT_BACKGROUND);
+  expect(readBackground()).toEqual(DEFAULT_BACKGROUND);expect(readBackground('?background=original').choice).toBe('original');
+});
 it('normalizes invalid settings and clamps intensity', () => {
   expect(normalizeBackground(null)).toEqual(DEFAULT_BACKGROUND);
   expect(normalizeBackground({ choice: 'bad' as never, intensity: NaN, dots: 'yes' as never })).toEqual(DEFAULT_BACKGROUND);
