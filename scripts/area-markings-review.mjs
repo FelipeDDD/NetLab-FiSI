@@ -47,6 +47,8 @@ export async function runAreaMarkingsReview({ page, url, root, report }) {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bounds.right, y: bounds.bottom, button: 'left', clickCount: 1, modifiers: 8 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 }); await delay(100);
     assert.deepEqual(await selected(), [...ids].sort());
+    assert.equal(await page.evaluate('return store.getState().pendingMarkingRect;'),null,'Shift selection must never create an area draft');
+    assert.equal(await page.evaluate('return store.getState().drawingMarking;'),false);
   };
   const drag = async (selector, dx, dy) => {
     const p = await point(selector); await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...p, button: 'left', clickCount: 1 });
@@ -229,7 +231,12 @@ export async function runAreaMarkingsReview({ page, url, root, report }) {
       await page.evaluate("const r=await ws.controller.openDocument({schemaVersion:1,topology:membersFixture});if(!r.ok)throw Error(JSON.stringify(r));theme.getState().setTheme('graphite-dark');");
       await wait("document.querySelectorAll('.react-flow__node').length===8&&store.getState().nodes.every(n=>n.measured?.width)");
       await page.evaluate('await flow.setViewport({x:20,y:20,zoom:.75});');await delay(100);
-      await selectWithShift(['pc1','pc2','pc3','pc5']);await openMenu();await field('[aria-label="Name der Fläche"]','Büro Grün · 東京');await click('[aria-label=Grün]');await textClick('.markings-actions button','Bereich markieren');geometryId=(await marks())[0].id;await key('Escape');
+      await selectWithShift(['pc1','pc2','pc3','pc5']);
+      await key('c','KeyC',2);await key('v','KeyV',2);
+      assert.deepEqual(await selected(),['pc1','pc2','pc3','pc5']);assert.deepEqual(await marks(),[]);
+      assert.equal(await page.evaluate('return store.getState().pendingMarkingRect;'),null);
+      report.deviceClipboard={implemented:false,checked:'Ctrl+C/Ctrl+V do not create markings; this source tree has no device-copy/paste handlers.'};
+      await openMenu();await field('[aria-label="Name der Fläche"]','Büro Grün · 東京');await click('[aria-label=Grün]');await textClick('.markings-actions button','Bereich markieren');geometryId=(await marks())[0].id;await key('Escape');
       await page.evaluate("store.getState().onNodesChange(store.getState().nodes.map(n=>({type:'select',id:n.id,selected:false})));store.getState().clearLinkSelection();");
       automatic=await page.evaluate(`return (await import('/src/areaMarkings.ts')).markingBounds(store.getState().areaMarkings[0],store.getState().nodes,flow.getViewport().zoom);`);
       await shot('09-rectangle-original.png','graphite-dark',1440);
@@ -361,13 +368,101 @@ export async function runAreaMarkingsReview({ page, url, root, report }) {
       const persistedPath=await page.evaluate('return document.querySelector("[data-area-marking] path").getAttribute("d");');
       await page.evaluate('await flow.setViewport({x:20,y:20,zoom:2});');await delay(80);assert.equal(await page.evaluate('return document.querySelector("[data-area-marking] path").getAttribute("d");'),persistedPath);
     });
+    await test('free areas: explicit drawing, empty preview, independent membership, geometry and restoration', async () => {
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});
+      await page.evaluate('await ws.controller.openDocument({schemaVersion:1,topology:{app:"netsim",version:1,devices:[],links:[]}});theme.getState().setTheme("graphite-dark");');
+      await wait('store.getState().nodes.length===0');await page.evaluate('await flow.setViewport({x:30,y:25,zoom:.75});');await delay(150);
+      const marquee = async (a,b) => {
+        await openMenu();await textClick('.markings-editor button','Neue Fläche zeichnen');
+        await wait("document.querySelector('.marking-draw-surface')&&!document.querySelector('#area-markings-popover')");
+        assert.equal(await page.evaluate('return getComputedStyle(document.querySelector(".marking-draw-surface")).cursor;'),'crosshair');
+        await drawWorld(a,b);await wait('document.querySelector("#area-markings-popover")');
+        assert.equal(await page.evaluate('return store.getState().drawingMarking;'),false);
+      };
+      const rectangle={x:100,y:100,width:330,height:230};
+      await marquee({x:rectangle.x,y:rectangle.y},{x:rectangle.x+rectangle.width,y:rectangle.y+rectangle.height});
+      await wait('store.getState().pendingMarkingRect&&document.querySelector("[data-marking-preview]")');
+      const pending=await page.evaluate('return store.getState().pendingMarkingRect;');
+      for(const field of ['x','y','width','height'])assert(Math.abs(pending[field]-rectangle[field])<2);
+      assert.deepEqual(await marks(),[]);assert.equal(await page.evaluate('return ws.controller.recoveryDocument().topology.ui?.areaMarkings;'),undefined);
+      await openMenu();assert.equal(await page.evaluate('return !!document.querySelector(".marking-picker");'),false);
+      await field('[aria-label="Name der Fläche"]','Büro zuerst · 東京');await click('[aria-label=Petrol]');
+      await shot('16-free-empty-preview.png','graphite-dark',1440);
+      await textClick('.markings-actions button','Bereich speichern');const freeId=(await marks())[0].id;
+      assert.equal((await marks())[0].geometry,'free');assert.deepEqual((await marks())[0].deviceIds,[]);assert.equal(await page.evaluate('return store.getState().pendingMarkingRect;'),null);
+      await key('Escape');await page.evaluate('store.getState().undoTopology();');assert.deepEqual(await marks(),[]);await page.evaluate('store.getState().redoTopology();');
+      const freeBase=structuredClone((await marks())[0].bounds);
+      const emptyArea=await marks();
+      await page.evaluate('let r=await ws.controller.save("Leerer Raum");if(!r.ok)throw Error(JSON.stringify(r));await ws.controller.flush();ws.dispose();');
+      await mount();assert.deepEqual(await marks(),emptyArea);assert.equal(await page.evaluate('return sim.net.devices.size;'),0);
+      await page.evaluate('await flow.setViewport({x:30,y:25,zoom:.75});');await delay(100);
+      await page.evaluate(`store.getState().addDeviceAt('host',{x:${freeBase.x+35},y:${freeBase.y+35}});store.getState().addDeviceAt('host',{x:${freeBase.x+185},y:${freeBase.y+35}});`);
+      await wait('store.getState().nodes.length===2&&store.getState().nodes.every(n=>n.measured?.width)');await delay(120);
+      assert.deepEqual((await marks())[0].deviceIds,[]);assert.deepEqual((await marks())[0].bounds,freeBase);
+      const ids=await page.evaluate('return store.getState().nodes.map(n=>n.id);');
+      await page.evaluate('await flow.setViewport({x:30,y:25,zoom:.75});');await delay(120);
+      const selectClients = async () => {
+        // Begin outside the area's interactive title, not within its text stroke.
+        const a=await screen({x:freeBase.x-20,y:freeBase.y-20}),b=await screen({x:freeBase.x+freeBase.width+60,y:freeBase.y+freeBase.height-15});
+        await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Shift',code:'ShiftLeft',modifiers:8,windowsVirtualKeyCode:16});
+        await page.send('Input.dispatchMouseEvent',{type:'mousePressed',...a,button:'left',clickCount:1,modifiers:8});
+        for(let i=1;i<=12;i++)await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:a.x+(b.x-a.x)*i/12,y:a.y+(b.y-a.y)*i/12,buttons:1,modifiers:8});
+        await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',...b,button:'left',clickCount:1,modifiers:8});
+        await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Shift',code:'ShiftLeft',windowsVirtualKeyCode:16});await delay(100);
+        assert.deepEqual(await selected(),[...ids].sort());assert.equal(await page.evaluate('return store.getState().pendingMarkingRect;'),null);
+      };
+      await selectClients();
+      await openMenu();await choose(freeId);await textClick('.marking-members button','Auswahl hinzufügen');
+      assert.deepEqual((await marks())[0].deviceIds,ids);assert.deepEqual((await marks())[0].bounds,freeBase);
+      await textClick('.marking-members button','Auswahl entfernen');assert.deepEqual((await marks())[0].deviceIds,[]);await key('Escape');
+      // Drawing another rectangle inside the existing region creates a new draft, not an edit.
+      const beforeOverlap=await marks();
+      await marquee({x:freeBase.x+20,y:freeBase.y+150},{x:freeBase.x+180,y:freeBase.y+215});
+      await wait('store.getState().pendingMarkingRect');assert.deepEqual(await marks(),beforeOverlap);
+      await openMenu();await field('[aria-label="Name der Fläche"]','Nebenraum');await click('[aria-label=Violett]');await textClick('.markings-actions button','Bereich speichern');
+      assert.equal((await marks()).length,2);assert.deepEqual((await marks())[0],beforeOverlap[0]);await key('Escape');
+      const saved=await marks();await marquee({x:600,y:100},{x:780,y:240});await key('Escape');assert.deepEqual(await marks(),saved);assert.equal(await page.evaluate('return store.getState().pendingMarkingRect;'),null);
+      await marquee({x:600,y:100},{x:780,y:240});await openMenu();await textClick('.markings-actions button','Abbrechen');assert.deepEqual(await marks(),saved);assert.equal(await page.evaluate('return store.getState().markingPreview;'),null);
+      await openMenu();await textClick('.markings-editor button','Neue Fläche zeichnen');await wait('document.querySelector(".marking-draw-surface")');await key('Escape');
+      assert.equal(await page.evaluate('return store.getState().drawingMarking;'),false);assert.equal(await page.evaluate('return !!document.querySelector(".marking-draw-surface");'),false);
+      await selectClients();
+      await page.evaluate('store.getState().onNodesChange(store.getState().nodes.map(n=>({type:"select",id:n.id,selected:false})));store.getState().select(null);store.getState().clearLinkSelection();');
+      // Reuse exactly the same extension editor/union as automatic regions.
+      await rightClickWorld({x:freeBase.x+freeBase.width-8,y:freeBase.y+freeBase.height-8});await textClick('#marking-context-menu button','Teilfläche hinzufügen');
+      await drawWorld({x:freeBase.x,y:freeBase.y+freeBase.height-12},{x:freeBase.x+80,y:freeBase.y+freeBase.height+125});
+      assert.equal((await marks())[0].extensions.length,1);
+      const extension=structuredClone((await marks())[0].extensions);
+      await rightClickWorld({x:freeBase.x+freeBase.width-8,y:freeBase.y+freeBase.height-8});await textClick('#marking-context-menu button','Teilflächen bearbeiten');await click('.marking-base-control');
+      await page.evaluate('await flow.setViewport({x:80,y:70,zoom:.75});');await delay(100);
+      const zoom=await page.evaluate('return flow.getViewport().zoom;');await drag('[data-base-corner=se]',24,12);
+      const resized=await marks();assert(Math.abs(resized[0].bounds.width-freeBase.width-24/zoom)<2);assert(Math.abs(resized[0].bounds.height-freeBase.height-12/zoom)<2);
+      assert.deepEqual(resized[0].extensions,extension);assert.equal(resized[0].baseOffsets,undefined);await key('Escape');
+      for(const shape of ['L','U','T']){
+        await page.evaluate(`const a=store.getState().areaMarkings[0],b=a.bounds,l=${JSON.stringify(extension[0])};store.getState().setMarkingExtensions(a.id,${JSON.stringify(shape)}==='L'?[l]:${JSON.stringify(shape)}==='U'?[l,{...l,id:'free-right',x:b.x+b.width-l.width}]:[{...l,x:b.x+(b.width-l.width)/2}]);`);
+        let path;
+        for(const z of [.5,1,2]){await page.evaluate(`await flow.setViewport({x:30,y:25,zoom:${z}});`);await delay(70);const current=await page.evaluate('return document.querySelector("[data-area-marking] path").getAttribute("d");');path??=current;assert.equal(current,path);}
+      }
+      await page.evaluate('await flow.setViewport({x:30,y:25,zoom:.75});');
+      await shot('17-free-devices-graphite.png','graphite-dark',1440);
+      await page.evaluate('theme.getState().setTheme("classic-light");');await shot('18-free-devices-classic.png','classic-light',1440);
+      await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:960,deviceScaleFactor:1,mobile:false});await delay(100);
+      await marquee({x:100,y:350},{x:300,y:500});await openMenu();assert(await page.evaluate('const r=document.querySelector("#area-markings-popover").getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&document.documentElement.scrollWidth<=innerWidth;'));
+      await shot('19-free-editor-classic-700.png','classic-light',700);await textClick('.markings-actions button','Abbrechen');
+      const expected=await marks();
+      await page.evaluate('let r=await ws.controller.save("Freie Bereiche");if(!r.ok)throw Error(JSON.stringify(r));r=await ws.controller.save("Freie Bereiche Kopie");if(!r.ok)throw Error(JSON.stringify(r));window.freeExport=JSON.stringify(ws.controller.recoveryDocument());window.freeDraft=ws.controller.getState().activeDraftId;await ws.controller.flush();await ws.controller.openDocument({schemaVersion:1,topology:{app:"netsim",version:1,devices:[],links:[]}});');
+      assert.deepEqual(await marks(),[]);await page.evaluate('await ws.controller.openDocument(JSON.parse(freeExport));');assert.deepEqual(await marks(),expected);
+      await page.evaluate('await ws.controller.switchDraft(freeDraft);await ws.controller.flush();ws.dispose();');await mount();assert.deepEqual(await marks(),expected);
+      assert.equal(await page.evaluate('return store.getState().pendingMarkingRect;'),null);
+      await page.evaluate('store.getState().selectMarking(store.getState().areaMarkings[1].id);');await wait('document.querySelector("#area-markings-popover")');await textClick('.markings-actions button','Bereich entfernen');assert.equal((await marks()).length,1);
+      await page.evaluate('store.getState().undoTopology();');assert.deepEqual(await marks(),expected);
+    });
   } finally {
     try{await page.evaluate('window.ws?.dispose();');}catch{}
     await page.evaluate(`await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase(${JSON.stringify(database)});r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error('Markings cleanup blocked'));});`);
     Object.assign(report.results,results);await writeFile(path.join(directory,'results.json'),JSON.stringify({results,screenshots},null,2));
-    if(Object.keys(results).length===13&&Object.values(results).every(r=>r.passed)){
+    if(Object.keys(results).length===14&&Object.values(results).every(r=>r.passed)){
       const captures=screenshots.map(s=>({source:path.relative(root,path.join(directory,s.name)).split(path.sep).join('/'),scene:s.name.slice(3,-4),variant:s.theme,state:'normal',width:s.width,height:s.height}));
-      const manifest=path.join(directory,'manifest.json');await writeFile(manifest,JSON.stringify({id:'area-marking-extensions',title:'Markierungen · extensões L/U/T',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['normal'],captures,share:captures.slice(-5).map(s=>({...s,name:s.scene})),shareContactSheet:false},null,2));
+      const manifest=path.join(directory,'manifest.json');await writeFile(manifest,JSON.stringify({id:'area-marking-free-areas',title:'Markierungen · áreas livres e automáticas',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['normal'],captures,share:captures.slice(-4).map(s=>({...s,name:s.scene})),shareContactSheet:false},null,2));
       report.markingsReview=await generateReview(manifest);
     }
   }

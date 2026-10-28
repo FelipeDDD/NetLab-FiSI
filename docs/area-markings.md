@@ -5,17 +5,31 @@ VLANs, grupos físicos nem novos dispositivos da simulação.
 
 ## Uso
 
-1. Segure **Shift** e arraste um retângulo sobre pelo menos dois equipamentos.
-2. Abra **Markierungen** na toolbar. Em janelas estreitas, o botão mostra somente
-   o ícone e conserva seu nome acessível/tooltip.
-3. Escolha nome opcional, uma das seis cores e intensidade de 5% a 50%
-   (padrão 18%). A área tracejada é uma prévia temporária.
-4. Clique **Bereich markieren** para confirmar.
+1. Abra **Markierungen** e clique **Neue Fläche zeichnen**.
+2. O menu fecha e o canvas recebe cursor crosshair temporário. Arraste um retângulo,
+   inclusive em espaço vazio. Ao soltar, o editor compacto abre automaticamente;
+   a prévia permanece no canvas.
+3. Escolha nome opcional e intensidade de 5% a 50% (padrão 18%). A prévia reage
+   imediatamente e ainda não pertence ao documento, autosave ou histórico.
+4. Clique **Bereich speichern**. A nova área é livre e não exige equipamentos.
+   **Abbrechen** ou Escape cancela; fechar o popover por clique fora mantém a
+   prévia para continuar depois. Reabrir recupera a aparência já escolhida.
+
+**Shift + arrastar continua sendo exclusivamente seleção múltipla nativa**, sem
+prévia de marcação ou ativação de desenho. Para criar uma área automática pelo
+fluxo anterior, selecione pelo menos dois dispositivos com Shift e use
+**Bereich markieren** no menu da toolbar. O desenho livre só recebe ponteiros
+depois da ação explícita; encerra ao terminar o retângulo, salvar ou cancelar.
+Escape e **Abbrechen** também cancelam antes de começar um arraste.
+
+Em janelas estreitas, o botão da toolbar mostra somente o ícone e conserva seu
+nome acessível. Não existe nova barra permanente de ferramentas no canvas.
 
 Para editar, escolha a área no seletor **Bereich** do mesmo popover. Nome, cor e
 intensidade são aplicados imediatamente; o popover permanece aberto. **Neu**
 volta à criação. **Bereich entfernen** remove somente a marcação. Escape/clique
-fora fecha o editor; a prévia não confirmada é descartada.
+fora fecha o editor. Prévia livre pendente é descartada somente por cancelamento,
+Escape, novo desenho explícito ou troca de documento; não é persistida.
 
 O seletor mostra uma amostra da cor, o nome completo (incluindo Unicode) e a
 quantidade de equipamentos. Pode ser usado por clique, touch ou teclado: setas,
@@ -35,12 +49,17 @@ os títulos ficam inertes para não competir com essas operações.
 3. **Auswahl hinzufügen** inclui somente os selecionados ainda não associados.
 4. **Auswahl entfernen** retira somente os selecionados que pertencem à área.
 
-Os limites se atualizam imediatamente. IDs não se duplicam e o mesmo aparelho
+Em áreas automáticas, os limites se atualizam imediatamente. Em áreas livres,
+adicionar/remover membros nunca altera posição ou tamanho. IDs não se duplicam e o mesmo aparelho
 pode pertencer a mais de uma marcação. Nenhum equipamento, cabo ou configuração
 é excluído ao remover uma associação. As ações ficam desabilitadas quando não
-há mudança aplicável. Se a seleção retiraria todos os membros, a remoção é
+há mudança aplicável. Em uma área automática, se a seleção retiraria todos os membros, a remoção é
 bloqueada com uma explicação em alemão: use **Bereich entfernen** para apagar
 explicitamente a área. Cada alteração de membros tem seu próprio Undo/Redo.
+
+Áreas livres podem ficar sem membros, inclusive após excluir o último dispositivo
+associado. Elas só são removidas explicitamente. Colocar ou criar um equipamento
+visualmente dentro delas não o associa automaticamente.
 
 O contorno automático continua sendo um retângulo envolvente. Um equipamento removido da
 associação pode continuar geometricamente dentro da região se estiver entre os
@@ -77,7 +96,7 @@ As alças recebem foco por Tab; setas ajustam o canto e Shift aumenta o passo.
 O interior seleciona a base, sem deslocar os membros nem permitir apagá-la como
 se fosse uma extensão. **Teilfläche entfernen** fica desabilitado nessa seleção.
 
-O ajuste grava somente quatro `baseOffsets` opcionais (`left`, `top`, `right`,
+Nas áreas automáticas, o ajuste grava somente quatro `baseOffsets` opcionais (`left`, `top`, `right`,
 `bottom`), em coordenadas do mundo. Valores positivos expandem para fora e
 negativos reduzem a borda. A base automática continua sendo recalculada pelos
 membros; os ajustes são aplicados depois. Extensões não são reposicionadas.
@@ -88,6 +107,10 @@ dos membros fizerem as bordas se cruzarem, o tamanho é limitado durante o cálc
 sem reescrever os offsets salvos. Valores não finitos são rejeitados; quatro zeros
 omitem o metadado. Documentos antigos continuam sem qualquer ajuste implícito.
 Cada arraste confirmado cria um único Undo; prévias e cancelamento não são salvos.
+
+Nas áreas livres, as mesmas alças alteram diretamente `bounds` em coordenadas do
+mundo. Não são criados offsets nem dependências da posição dos membros. O editor
+de extensões e a união SVG são exatamente os mesmos para os dois modos.
 
 Os controles e prévias não alteram a simulação, os membros ou as posições dos
 equipamentos. Cada arraste confirmado gera uma única operação de Undo/Redo. Uma
@@ -109,6 +132,7 @@ ilhas separadas são preservados. Sem extensões, o retângulo arredondado origi
 - `src/areaMarkings.ts`: modelo, paleta, validação e cálculo dos limites.
 - `src/markingGeometry.ts`: união ortogonal, hit-testing e validação dos retângulos.
 - `src/components/MarkingGeometryEditor.tsx`: menu contextual e edição temporária.
+- `src/components/MarkingFreeDraw.tsx`: ferramenta temporária de desenho livre explícito.
 - `src/components/AreaMarkings.tsx` / `areaMarkings.css`: camada SVG em coordenadas
   do React Flow, prévia e controles com os tokens do tema existente.
 - `src/store.ts` / `src/topologyHistory.ts`: ações e histórico compartilhado.
@@ -118,6 +142,19 @@ Cada registro contém `id`, `name`, `color`, `intensity` e `deviceIds`. Os membr
 são identificados por IDs estáveis, não por nomes. Os limites são derivados das
 posições/dimensões atuais dos nodes e de suas legendas na escala nominal de 1×.
 Mover um membro não move os demais.
+
+Áreas livres acrescentam explicitamente `geometry: 'free'` e
+`bounds: { x, y, width, height }`, aceitando `deviceIds: []`. Ausência de `geometry`
+mantém o formato automático legado, sem conversão silenciosa. Bounds inválidos
+não geram áreas órfãs. Ao limpar referências a dispositivos excluídos, o leitor
+preserva áreas livres vazias e continua aplicando as regras anteriores às
+automáticas. Não há migração, nova store ou versão do IndexedDB.
+
+`MarkingFreeDraw.tsx` reutiliza `screenToFlowPosition` e os componentes da edição
+geométrica. A superfície de desenho existe apenas durante a ferramenta explícita;
+não observa nem altera o retângulo de seleção do React Flow. `drawingMarking`,
+`pendingMarkingRect` e `markingPreview` são transitórios e ficam fora da captura de
+documentos. Não há listener de seleção para criar marcações.
 
 O zoom visual das legendas não altera os limites da região automática: L/U/T e
 suas junções permanecem idênticos em coordenadas do mundo, e somente o viewport
@@ -148,12 +185,13 @@ ignorados na leitura; nenhum dado de rede é reconfigurado.
 Criar, editar e remover usam o Undo/Redo da topologia. Ajustes consecutivos na
 mesma sessão de edição são reunidos em uma operação; uma operação intermediária
 de topologia interrompe esse agrupamento. Excluir equipamentos remove suas
-referências e apaga uma área somente quando ela não tem mais membros. O Undo
+referências e apaga uma área automática somente quando ela não tem mais membros.
+Áreas livres permanecem mesmo sem membros. O Undo
 da exclusão restaura também a associação original.
 
 Prévia e seleção da marcação são transitórias e não são salvas. Labs e
 verificadores de Übungen não foram modificados. O recurso não implementa desenho
-livre, arraste de grupos nem inclusão de áreas
+à mão livre, arraste de grupos nem inclusão de áreas
 no exportador de diagramas SVG; a exportação JSON preserva as marcações.
 
 ## Validação reutilizável
@@ -168,7 +206,7 @@ porta e banco descartáveis. Exercita Shift real, seletor com amostras e teclado
 títulos interativos, associação sobreposta, proteção do último membro, L/U/T,
 desenho, cancelamento, movimento/redimensionamento de partes, opacidade uniforme, histórico,
 conexões, persistência, recarregamento, zoom/pan e larguras
-700–1440 px nos temas Graphite Dark e Classic Light. Publica cinco PNGs
+700–1440 px nos temas Graphite Dark e Classic Light. Publica um conjunto pequeno de PNGs
 selecionados na raiz de `.playwright-mcp/reviews/`; a revisão anterior é arquivada
 pelo gerador Visual Review, sem apagar as capturas originais. Os artefatos são
 ignorados pelo Git.
@@ -181,3 +219,15 @@ Também foram conferidos offsets após movimento de membro, zoom 0,5×/1×/2×,
 Save/Save As, JSON, troca de planos e recarga, em Graphite Dark e Classic Light.
 TypeScript, build e `git diff --check` passaram. O aviso existente de chunk acima
 de 500 kB continua; não foram adicionadas dependências.
+
+Rodada de áreas livres: 311 testes direcionados e 117 casos no harness Chromium
+passaram (14 cenários de Markierungen). Inclui confirmação/cancelamento, recarga
+de topologia sem equipamentos, seleção nativa preservada, edição de membros sem
+alterar bounds, sobreposição, redimensionamento e L/U/T nas duas geometrias.
+
+Correção do conflito Shift: a seleção nativa não cria mais rascunhos de área.
+O desenho começa exclusivamente por **Neue Fläche zeichnen**, abre o editor ao
+soltar e termina ao confirmar ou cancelar. A validação atual passou com 328
+testes direcionados e 117 casos no Chromium. O inventário de downloads, sua causa
+nos testes e a correção de isolamento estão em
+[`markings-shift-download-audit.md`](markings-shift-download-audit.md).

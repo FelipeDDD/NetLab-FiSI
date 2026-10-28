@@ -49,7 +49,7 @@ import { applyAccessVlan, applyInspectorEdit, applyLinkEdit, canApplyLinkEdit, d
 import { CABLE_COLORS, automaticCableAppearance, initialCableColors, isCableColor, readCableColors, sameCableAppearance, type CableColor, type CableAppearances } from './cableAppearance';
 import { firstReconnectInterface, reconnectTargetError } from './cableInteraction';
 import type { HistoryLink } from './topologyHistory';
-import { markingBounds, pruneAreaMarkings, readBaseOffsets, validBaseOffsets, validMarkingStyle, type AreaMarking, type MarkingBaseOffsets, type MarkingStyle } from './areaMarkings';
+import { DEFAULT_MARKING, markingBounds, pruneAreaMarkings, readBaseOffsets, readMarkingRect, validBaseOffsets, validMarkingStyle, type AreaMarking, type MarkingBaseOffsets, type MarkingStyle } from './areaMarkings';
 import { readExtensions, touchesArea, validAreaRect, type AreaRect, type MarkingExtension } from './markingGeometry';
 
 export interface DevNodeData extends Record<string, unknown> {
@@ -136,17 +136,23 @@ interface NetsimState {
   areaMarkings: AreaMarking[];
   selectedMarkingId: string | null;
   markingPreview: AreaMarking | null;
+  pendingMarkingRect: AreaRect | null;
+  drawingMarking: boolean;
+  beginMarkingDrawing(): void;
+  setPendingMarkingRect(rect: AreaRect | null): void;
   previewMarking(style: MarkingStyle | null): void;
   selectMarking(id: string | null): void;
   createMarking(style: MarkingStyle): string | null;
+  createFreeMarking(style: MarkingStyle): string | null;
   updateMarking(id: string, style: MarkingStyle, editGroup?: object): void;
   changeMarkingMembers(id: string, action: 'add' | 'remove'): void;
   markingGeometry: { areaId: string; mode: 'draw' | 'edit' } | null;
-  markingExtensionPreview: { areaId: string; extensions: MarkingExtension[]; baseOffsets?: MarkingBaseOffsets } | null;
+  markingExtensionPreview: { areaId: string; extensions: MarkingExtension[]; baseOffsets?: MarkingBaseOffsets; bounds?: AreaRect } | null;
   setMarkingGeometry(id: string | null, mode?: 'draw' | 'edit'): void;
   addMarkingExtension(id: string, rect: AreaRect, zoom?: number): boolean;
   setMarkingExtensions(id: string, extensions: MarkingExtension[]): void;
   setMarkingBaseOffsets(id: string, offsets: MarkingBaseOffsets): void;
+  setFreeMarkingBounds(id: string, bounds: AreaRect): void;
   removeMarking(id: string): void;
   setCableColor(id: string, color: CableColor): void;
   resetCableColor(id: string): void;
@@ -342,7 +348,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     saveSoon(); return true;
   };
   const navigateHistory = (direction: 'undo' | 'redo') => {
-    set({ markingGeometry: null, markingExtensionPreview: null });
+    set({ markingGeometry: null, markingExtensionPreview: null, pendingMarkingRect: null, markingPreview: null, drawingMarking: false });
     get().cancelCableReconnect();
     get().cancelQuickPing();
     if (movement?.source === 'drag' || ignoreDrag) return;
@@ -588,6 +594,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       areaMarkings: pruneAreaMarkings(get().areaMarkings, sim.net.devices.keys()),
       selectedMarkingId: null,
       markingPreview: null,
+      pendingMarkingRect: null,
+      drawingMarking: false,
       markingGeometry: null,
       markingExtensionPreview: null,
     });
@@ -626,6 +634,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       selected: null,
       selectedMarkingId: null,
       markingPreview: null,
+      pendingMarkingRect: null,
+      drawingMarking: false,
       markingGeometry: null,
       markingExtensionPreview: null,
       terminals: [],
@@ -749,7 +759,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     setMarkingGeometry(id, mode = 'draw') {
       const area = get().areaMarkings.find(m => m.id === id);
       if (area) { get().cancelQuickPing(); get().cancelCableReconnect(); }
-      set({ markingGeometry: area ? { areaId: area.id, mode } : null, selectedMarkingId: null, markingPreview: null, markingExtensionPreview: null });
+      set({ markingGeometry: area ? { areaId: area.id, mode } : null, selectedMarkingId: null, markingPreview: null, markingExtensionPreview: null, pendingMarkingRect: null, drawingMarking: false });
     },
     addMarkingExtension(id, rect, zoom = 1) {
       const area = get().areaMarkings.find(m => m.id === id), base = area && markingBounds(area, get().nodes, zoom);
@@ -770,7 +780,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     setMarkingBaseOffsets(id, offsets) {
       if (!validBaseOffsets(offsets)) return;
       const before = get().areaMarkings, current = before.find(m => m.id === id);
-      if (!current) return;
+      if (!current || current.geometry === 'free') return;
       const baseOffsets = readBaseOffsets(offsets);
       if (JSON.stringify(current.baseOffsets) === JSON.stringify(baseOffsets)) return;
       const { baseOffsets: _old, ...base } = current;
@@ -779,13 +789,50 @@ export const useStore = create<NetsimState>()((set, get) => {
       commitEdit({ type: 'set-area-markings', label: 'Hauptfläche anpassen', before: structuredClone(before), after: structuredClone(after) });
       saveSoon();
     },
+    setFreeMarkingBounds(id, bounds) {
+      const checked = readMarkingRect(bounds), before = get().areaMarkings, current = before.find(m => m.id === id);
+      if (!checked || current?.geometry !== 'free' || JSON.stringify(current.bounds) === JSON.stringify(checked)) return;
+      const after = before.map(m => m.id === id ? { ...m, bounds: checked } : m);
+      prepareEdit(); set({ areaMarkings: after });
+      commitEdit({ type: 'set-area-markings', label: 'Hauptfläche anpassen', before: structuredClone(before), after: structuredClone(after) });
+      saveSoon();
+    },
     selectedMarkingId: null,
     markingPreview: null,
+    pendingMarkingRect: null,
+    drawingMarking: false,
+    beginMarkingDrawing() {
+      get().cancelQuickPing(); get().cancelCableReconnect();
+      set({ drawingMarking: true, markingGeometry: null, markingExtensionPreview: null, selectedMarkingId: null, pendingMarkingRect: null, markingPreview: null });
+    },
+    setPendingMarkingRect(rect) {
+      const bounds = readMarkingRect(rect) ?? null;
+      set({ pendingMarkingRect: bounds, drawingMarking: false, selectedMarkingId: null,
+        markingPreview: bounds ? { ...DEFAULT_MARKING, id: 'marking-preview', geometry: 'free', bounds: { ...bounds }, deviceIds: [] } : null });
+    },
     previewMarking(style) {
       const deviceIds = get().nodes.filter(n => n.selected && sim.net.devices.has(n.id)).map(n => n.id);
+      const bounds = get().pendingMarkingRect;
+      if (bounds) {
+        if (style && validMarkingStyle(style)) set({ markingPreview: { ...style, id: 'marking-preview', geometry: 'free', bounds: { ...bounds }, deviceIds: [] } });
+        return; // Closing a popover must not discard a completed marquee draft.
+      }
       set({ markingPreview: style && deviceIds.length >= 2 && validMarkingStyle(style) ? { ...style, id: 'marking-preview', deviceIds } : null });
     },
-    selectMarking(id) { set({ selectedMarkingId: get().areaMarkings.some(m => m.id === id) ? id : null }); },
+    selectMarking(id) {
+      const selectedMarkingId = get().areaMarkings.some(m => m.id === id) ? id : null;
+      set({ selectedMarkingId, ...(selectedMarkingId ? { pendingMarkingRect: null, markingPreview: null, drawingMarking: false } : {}) });
+    },
+    createFreeMarking(style) {
+      const bounds = readMarkingRect(get().pendingMarkingRect);
+      if (!bounds || !validMarkingStyle(style)) return null;
+      prepareEdit(); const before = structuredClone(get().areaMarkings);
+      const marking: AreaMarking = { ...style, name: style.name.trim(), id: crypto.randomUUID(), deviceIds: [], geometry: 'free', bounds };
+      const after = [...before, marking];
+      set({ areaMarkings: after, selectedMarkingId: marking.id, pendingMarkingRect: null, markingPreview: null });
+      commitEdit({ type: 'set-area-markings', label: 'Bereich speichern', before, after });
+      saveSoon(); return marking.id;
+    },
     createMarking(style) {
       const deviceIds = get().nodes.filter(n => n.selected && sim.net.devices.has(n.id)).map(n => n.id);
       if (deviceIds.length < 2 || !validMarkingStyle(style)) return null;
@@ -793,7 +840,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       const before = structuredClone(get().areaMarkings);
       const marking: AreaMarking = { ...style, name: style.name.trim(), id: crypto.randomUUID(), deviceIds };
       const after = [...before, marking];
-      set({ areaMarkings: after, selectedMarkingId: marking.id });
+      set({ areaMarkings: after, selectedMarkingId: marking.id, pendingMarkingRect: null, markingPreview: null });
       commitEdit({ type: 'set-area-markings', label: 'Bereich markieren', before, after });
       saveSoon(); return marking.id;
     },
@@ -819,7 +866,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         : current.deviceIds.filter(deviceId => !selected.has(deviceId));
       // Never delete an area implicitly. The editor explains the last-member
       // guard and offers the explicit, separately undoable area removal action.
-      if (!deviceIds.length || JSON.stringify(deviceIds) === JSON.stringify(current.deviceIds)) return;
+      if ((!deviceIds.length && current.geometry !== 'free') || JSON.stringify(deviceIds) === JSON.stringify(current.deviceIds)) return;
       prepareEdit();
       const after = before.map(m => m.id === id ? { ...m, deviceIds } : m);
       set({ areaMarkings: after });

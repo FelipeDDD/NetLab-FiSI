@@ -3282,6 +3282,90 @@ describe('Quick Ping uses the existing terminal and engine', () => {
 
 describe('decorative area markings share topology presentation and Undo/Redo', () => {
   const store = () => useStore.getState();
+  it('keeps native selection separate from the explicit, transient free-drawing tool', () => {
+    const { a, b } = pair();
+    store().onNodesChange([a,b].map(d => ({ type: 'select' as const, id: d.id, selected: true })));
+    expect(store().pendingMarkingRect).toBeNull(); expect(store().drawingMarking).toBe(false);
+    const history = store().topologyHistory;
+    store().beginMarkingDrawing(); expect(store().drawingMarking).toBe(true);
+    expect(store().captureWorkspaceDocument().topology.ui?.areaMarkings).toBeUndefined();
+    store().setPendingMarkingRect(null); expect(store().drawingMarking).toBe(false);
+    expect(store().topologyHistory).toBe(history);
+    store().beginMarkingDrawing(); store().setPendingMarkingRect({ x: 400, y: 80, width: 150, height: 100 });
+    expect(store().drawingMarking).toBe(false); expect(store().pendingMarkingRect).not.toBeNull();
+    const id = store().createFreeMarking(DEFAULT_MARKING)!;
+    expect(store().drawingMarking).toBe(false); expect(store().pendingMarkingRect).toBeNull();
+    store().beginMarkingDrawing(); store().setMarkingGeometry(id, 'edit'); expect(store().drawingMarking).toBe(false);
+    store().beginMarkingDrawing(); store().newTopology(); expect(store().drawingMarking).toBe(false);
+  });
+  it('keeps a free rectangle pending until explicit confirmation, preserves selection, and cancels without history', () => {
+    const { a, b, net } = pair(), engine = serializeNetwork(net, {});
+    store().onNodesChange([a, b].map(d => ({ type: 'select' as const, id: d.id, selected: true })));
+    const history = store().topologyHistory, rect = { x: 400, y: 80, width: 240, height: 180 };
+    store().setPendingMarkingRect(rect); rect.x = 999;
+    expect(store().pendingMarkingRect!.x).toBe(400);
+    expect(store().markingPreview).toMatchObject({ geometry: 'free', deviceIds: [], bounds: { x: 400 } });
+    expect(store().captureWorkspaceDocument().topology.ui?.areaMarkings).toBeUndefined();
+    store().previewMarking({ name: 'Neue Fläche', color: 'green', intensity: 24 });
+    store().previewMarking(null); expect(store().markingPreview!.name).toBe('Neue Fläche');
+    expect(store().topologyHistory).toBe(history);
+    store().setPendingMarkingRect(null); expect(store().markingPreview).toBeNull();
+    expect(store().topologyHistory).toBe(history); expect(store().areaMarkings).toEqual([]);
+    expect(store().nodes.filter(n => n.selected).map(n => n.id)).toEqual([a.id, b.id]);
+    expect(serializeNetwork(net, {})).toEqual(engine);
+    expect(store().createFreeMarking(DEFAULT_MARKING)).toBeNull();
+  });
+  it('saves empty free areas, edits members independently, resizes and preserves them through history and autosave', () => {
+    const { a, b, net } = pair(), engine = serializeNetwork(net, {});
+    const bounds = { x: 500, y: 100, width: 220, height: 160 };
+    store().setPendingMarkingRect(bounds);
+    const id = store().createFreeMarking({ ...DEFAULT_MARKING, name: 'Leeres Büro' })!;
+    expect(store().pendingMarkingRect).toBeNull(); expect(store().markingPreview).toBeNull();
+    expect(store().areaMarkings[0]).toMatchObject({ id, geometry: 'free', deviceIds: [], bounds });
+    store().undoTopology(); expect(store().areaMarkings).toEqual([]);
+    store().redoTopology(); expect(store().areaMarkings[0].deviceIds).toEqual([]);
+    store().onNodesChange([a, b].map(d => ({ type: 'select' as const, id: d.id, selected: true })));
+    store().changeMarkingMembers(id, 'add'); expect(store().areaMarkings[0].deviceIds).toEqual([a.id, b.id]);
+    expect(markingBounds(store().areaMarkings[0], store().nodes)).toEqual(bounds);
+    store().changeMarkingMembers(id, 'remove'); expect(store().areaMarkings[0].deviceIds).toEqual([]);
+    store().changeMarkingMembers(id, 'add');
+    store().deleteDevice(a.id); store().deleteDevice(b.id);
+    expect(store().areaMarkings[0]).toMatchObject({ id, geometry: 'free', deviceIds: [], bounds });
+    store().undoTopology(); store().undoTopology();
+    const restoredEngine = serializeNetwork(sim.net, {});
+    expect({ ...restoredEngine, devices: [...restoredEngine.devices].sort((a,b) => a.id.localeCompare(b.id)) })
+      .toEqual({ ...engine, devices: [...engine.devices].sort((a,b) => a.id.localeCompare(b.id)) });
+    const extension = { id: 'leg', x: bounds.x, y: bounds.y + bounds.height - 10, width: 70, height: 160 };
+    store().setMarkingExtensions(id, [extension]);
+    store().setFreeMarkingBounds(id, { ...bounds, width: 280 });
+    expect(store().areaMarkings[0].extensions).toEqual([extension]);
+    const past = store().topologyHistory;
+    store().setFreeMarkingBounds(id, { ...bounds, width: -10 });
+    store().setMarkingBaseOffsets(id, { left: 10, right: 10, top: 10, bottom: 10 });
+    expect(store().topologyHistory).toBe(past);
+    store().undoTopology(); expect(store().areaMarkings[0].bounds).toEqual(bounds);
+    store().redoTopology(); expect(store().areaMarkings[0].bounds!.width).toBe(280);
+    store().flushAutosave(); const json = storage.get('netsim:autosave:v1')!;
+    expect(json).not.toContain('pendingMarkingRect');
+    const expected = structuredClone(store().areaMarkings);
+    expect(store().importJson(json)).toBeNull(); expect(store().areaMarkings).toEqual(expected);
+    store().newTopology(); expect(store().areaMarkings).toEqual([]);
+    expect(store().importJson(json)).toBeNull(); expect(store().areaMarkings).toEqual(expected);
+  });
+  it('keeps placing and moving a device independent from free membership and clears drafts on document switches', () => {
+    const { a } = pair();
+    store().setPendingMarkingRect({ x: 100, y: 100, width: 300, height: 200 });
+    const id = store().createFreeMarking(DEFAULT_MARKING)!;
+    store().addDeviceAt('host', { x: 140, y: 140 });
+    store().onNodesChange([{ type: 'position', id: a.id, position: { x: 160, y: 150 }, dragging: false }]);
+    expect(store().areaMarkings[0].deviceIds).toEqual([]);
+    expect(markingBounds(store().areaMarkings[0], store().nodes)).toEqual({ x: 100, y: 100, width: 300, height: 200 });
+    const before = structuredClone(store().areaMarkings);
+    store().setPendingMarkingRect({ x: 500, y: 100, width: 200, height: 200 });
+    expect(store().areaMarkings).toEqual(before);
+    store().newTopology(); expect(store().pendingMarkingRect).toBeNull(); expect(store().markingPreview).toBeNull();
+    expect(id).toBeTruthy();
+  });
   it('requires at least two selected devices, previews without persistence and preserves the engine', () => {
     const { a, b, net } = pair(), before = serializeNetwork(net, {});
     expect(store().createMarking(DEFAULT_MARKING)).toBeNull();

@@ -20,7 +20,8 @@ export function AreaMarkingsLayer() {
   return <ViewportPortal><svg className="area-markings-layer" aria-label="Bereichsmarkierungen">
     {visible.map(marking => {
       const basePreview = extensionPreview?.areaId === marking.id ? extensionPreview.baseOffsets : undefined;
-      const box = markingBounds(basePreview ? { ...marking, baseOffsets: basePreview } : marking, nodes, zoom); if (!box) return null;
+      const boundsPreview = extensionPreview?.areaId === marking.id ? extensionPreview.bounds : undefined;
+      const box = markingBounds(boundsPreview ? { ...marking, bounds: boundsPreview } : basePreview ? { ...marking, baseOffsets: basePreview } : marking, nodes, zoom); if (!box) return null;
       const color = MARKING_COLORS[marking.color].value;
       const selected = marking.id === selectedId || marking.id === geometry?.areaId, interactive = marking !== preview && !busy && !geometry;
       const extensions = extensionPreview?.areaId === marking.id ? extensionPreview.extensions : marking.extensions;
@@ -44,25 +45,30 @@ export function AreaMarkingsLayer() {
 export function MarkingsButton({ onOpen }: { onOpen(): void }) {
   const [open, setOpen] = useState(false), anchor = useRef<HTMLButtonElement>(null);
   const count = useStore(s => s.nodes.filter(n => n.selected).length);
+  const pending = useStore(s => s.pendingMarkingRect);
+  const drawing = useStore(s => s.drawingMarking);
   const generation = useStore(s => s.topologyGeneration);
   const geometry = useStore(s => s.markingGeometry);
   const selectedId = useStore(s => s.selectedMarkingId), onOpenRef = useRef(onOpen);
   onOpenRef.current = onOpen;
   const close = () => { setOpen(false); useStore.getState().selectMarking(null); useStore.getState().previewMarking(null); };
   useEffect(() => setOpen(false), [generation]);
-  useEffect(() => { if (geometry) setOpen(false); }, [geometry]);
+  useEffect(() => { if (geometry || drawing) setOpen(false); }, [geometry, drawing]);
+  useEffect(() => { if (pending) { onOpenRef.current(); setOpen(true); } }, [pending]);
   // A title click selects only presentation metadata, not React Flow nodes.
   useEffect(() => { if (selectedId) { onOpenRef.current(); setOpen(true); } }, [selectedId]);
   return <>
     <button ref={anchor} type="button" className="btn btn--toolbar markings-trigger" aria-label="Markierungen"
       aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? 'area-markings-popover' : undefined}
-      title={count >= 2 ? `${deviceCount(count)} ausgewählt · Bereich markieren` : 'Markierungen'}
-      data-can-create={count >= 2} onClick={() => { if (open) close(); else { if (geometry) useStore.getState().setMarkingGeometry(null); onOpen(); setOpen(true); } }}>
+      title={pending ? 'Neue Fläche · Bereich speichern' : count >= 2 ? `${deviceCount(count)} ausgewählt · Bereich markieren` : 'Markierungen'}
+      data-can-create={!!pending || count >= 2} onClick={() => { if (open) close(); else { if (drawing) useStore.getState().setPendingMarkingRect(null); if (geometry) useStore.getState().setMarkingGeometry(null); onOpen(); setOpen(true); } }}>
       <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="3" strokeDasharray="3 2"/><path d="M6 7h8M6 11h5"/></svg>
       <span className="markings-trigger-label">Markierungen</span>
     </button>
     {open && <FloatingPopover anchor={anchor} id="area-markings-popover" label="Markierungen" width={280}
-      className="area-markings-popover" onClose={close}><MarkingsEditor /></FloatingPopover>}
+      className="area-markings-popover" onClose={close}
+      onKeyDown={e => { if (e.key === 'Escape' && useStore.getState().pendingMarkingRect) useStore.getState().setPendingMarkingRect(null); }}>
+      <MarkingsEditor onCancel={() => { useStore.getState().setPendingMarkingRect(null); close(); }} /></FloatingPopover>}
   </>;
 }
 
@@ -104,22 +110,26 @@ function MarkingPicker({ markings, selectedId }: { markings: AreaMarking[]; sele
   </div>;
 }
 
-function MarkingsEditor() {
+function MarkingsEditor({ onCancel }: { onCancel(): void }) {
   const markings = useStore(s => s.areaMarkings), selectedId = useStore(s => s.selectedMarkingId);
   const count = useStore(s => s.nodes.filter(n => n.selected).length);
   const selection = useStore(s => JSON.stringify(s.nodes.filter(n => n.selected).map(n => n.id)));
-  const [draft, setDraft] = useState<MarkingStyle>({ ...DEFAULT_MARKING });
+  const pending = useStore(s => s.pendingMarkingRect);
+  const [draft, setDraft] = useState<MarkingStyle>(() => {
+    const preview = useStore.getState().markingPreview;
+    return preview ? { name: preview.name, color: preview.color, intensity: preview.intensity } : { ...DEFAULT_MARKING };
+  });
   const group = useRef<object>({});
   const marking = markings.find(m => m.id === selectedId), value = marking ?? draft;
   const selectedDevices = JSON.parse(selection) as string[];
   const addCount = marking ? selectedDevices.filter(id => !marking.deviceIds.includes(id)).length : 0;
   const removeCount = marking ? selectedDevices.filter(id => marking.deviceIds.includes(id)).length : 0;
-  const removesAll = !!marking && removeCount === marking.deviceIds.length;
+  const removesAll = !!marking && marking.geometry !== 'free' && removeCount > 0 && removeCount === marking.deviceIds.length;
   useEffect(() => { group.current = {}; }, [selectedId]);
   useEffect(() => {
     useStore.getState().previewMarking(marking ? null : draft);
     return () => useStore.getState().previewMarking(null);
-  }, [marking?.id, draft.name, draft.color, draft.intensity, selection]);
+  }, [marking?.id, draft.name, draft.color, draft.intensity, selection, pending]);
   const change = (patch: Partial<MarkingStyle>) => {
     const next = { name: value.name, color: value.color, intensity: value.intensity, ...patch };
     if (marking) useStore.getState().updateMarking(marking.id, next, group.current);
@@ -127,7 +137,8 @@ function MarkingsEditor() {
   };
   return <div className="markings-editor">
     <strong>Markierungen</strong>
-    <MarkingPicker markings={markings} selectedId={marking?.id ?? null} />
+    {!pending && <button type="button" className="btn" onClick={() => useStore.getState().beginMarkingDrawing()}>Neue Fläche zeichnen</button>}
+    {!pending && <MarkingPicker markings={markings} selectedId={marking?.id ?? null} />}
     <label>Name der Fläche<input aria-label="Name der Fläche" maxLength={80} placeholder="Optional, z. B. Büro oder DMZ" value={value.name} onChange={e => change({ name: e.target.value })} /></label>
     <fieldset><legend>Farbe</legend><div className="marking-colors">
       {(Object.keys(MARKING_COLORS) as MarkingColor[]).map(color => <label key={color} title={MARKING_COLORS[color].label} style={{ '--marking-color': MARKING_COLORS[color].value } as CSSProperties}>
@@ -137,7 +148,7 @@ function MarkingsEditor() {
     <label className="marking-intensity">Intensität <output>{value.intensity}%</output>
       <input type="range" aria-label="Intensität der Markierung" min="5" max="50" step="1" value={value.intensity} onChange={e => change({ intensity: Number(e.target.value) })} />
     </label>
-    <p className="markings-hint">{marking ? `${deviceCount(marking.deviceIds.length)} · Änderungen werden sofort übernommen.` : `${deviceCount(count)} ausgewählt. Mit Shift einen Rahmen um mindestens zwei Geräte ziehen.`}</p>
+    {!pending && <p className="markings-hint">{marking ? `${deviceCount(marking.deviceIds.length)} · Änderungen werden sofort übernommen.` : 'Neue Fläche zeichnen oder mindestens zwei Geräte für einen automatischen Bereich auswählen. Shift + Ziehen wählt nur Geräte aus.'}</p>}
     {marking && <div className="marking-members">
       <p className="markings-hint">{deviceCount(count)} ausgewählt</p>
       <button type="button" className="btn" disabled={!addCount} onClick={() => useStore.getState().changeMarkingMembers(marking.id, 'add')}>Auswahl hinzufügen</button>
@@ -149,7 +160,10 @@ function MarkingsEditor() {
       <button type="button" className="btn" onClick={() => useStore.getState().setMarkingGeometry(marking.id, 'draw')}>Teilfläche hinzufügen</button>
       <button type="button" className="btn" onClick={() => useStore.getState().setMarkingGeometry(marking.id, 'edit')}>Teilflächen bearbeiten</button>
     </div>}
-    <div className="markings-actions">{marking ? <>
+    <div className="markings-actions">{pending ? <>
+      <button type="button" className="btn btn--primary" onClick={() => useStore.getState().createFreeMarking(draft)}>Bereich speichern</button>
+      <button type="button" className="btn" onClick={onCancel}>Abbrechen</button>
+    </> : marking ? <>
       <button type="button" className="btn" onClick={() => useStore.getState().selectMarking(null)}>Neu</button>
       <button type="button" className="btn btn--danger" onClick={() => useStore.getState().removeMarking(marking.id)}>Bereich entfernen</button>
     </> : <button type="button" className="btn btn--primary" disabled={count < 2} onClick={() => useStore.getState().createMarking(draft)}>Bereich markieren</button>}</div>

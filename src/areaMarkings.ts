@@ -1,6 +1,12 @@
 import { DEVICE_ARTWORK, hasDeviceArtwork, type VisualNode } from './deviceArtwork';
 import { deviceLabelLayout } from './canvasNetwork';
-import { MIN_EXTENSION_SIZE, readExtensions, type AreaRect, type MarkingExtension } from './markingGeometry';
+import { MIN_EXTENSION_SIZE, readExtensions, validAreaRect, type AreaRect, type MarkingExtension } from './markingGeometry';
+
+export function readMarkingRect(value: unknown): AreaRect | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !validAreaRect(value as AreaRect)) return undefined;
+  const { x, y, width, height } = value as AreaRect;
+  return { x, y, width, height };
+}
 
 /** Positive offsets expand outward; negative offsets inset that edge. World units. */
 export interface MarkingBaseOffsets { left: number; top: number; right: number; bottom: number }
@@ -34,6 +40,9 @@ export interface AreaMarking {
   deviceIds: string[];
   extensions?: MarkingExtension[];
   baseOffsets?: MarkingBaseOffsets;
+  /** Absent on legacy/member-derived areas. Free areas require their own bounds. */
+  geometry?: 'free';
+  bounds?: AreaRect;
 }
 export type MarkingStyle = Pick<AreaMarking, 'name' | 'color' | 'intensity'>;
 export const DEFAULT_MARKING: MarkingStyle = { name: '', color: 'blue', intensity: 18 };
@@ -51,12 +60,15 @@ export function readAreaMarkings(value: unknown, deviceIds: Iterable<string>): A
     if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !raw.id || seen.has(raw.id) ||
         !validMarkingStyle(raw) || !Array.isArray(raw.deviceIds)) return [];
     const members = [...new Set<string>(raw.deviceIds.filter((id: unknown): id is string => typeof id === 'string' && allowed.has(id)))];
-    if (!members.length) return [];
+    if (raw.geometry !== undefined && raw.geometry !== 'free') return [];
+    const bounds = raw.geometry === 'free' ? readMarkingRect(raw.bounds) : undefined;
+    if (raw.geometry === 'free' ? !bounds : !members.length) return [];
     seen.add(raw.id);
     const extensions = readExtensions(raw.extensions);
-    const baseOffsets = readBaseOffsets(raw.baseOffsets);
+    const baseOffsets = raw.geometry === 'free' ? undefined : readBaseOffsets(raw.baseOffsets);
     return [{ id: raw.id, name: raw.name, color: raw.color, intensity: raw.intensity, deviceIds: members,
-      ...(extensions.length ? { extensions } : {}), ...(baseOffsets ? { baseOffsets } : {}) }];
+      ...(extensions.length ? { extensions } : {}), ...(baseOffsets ? { baseOffsets } : {}),
+      ...(bounds ? { geometry: 'free' as const, bounds } : {}) }];
   });
 }
 
@@ -89,6 +101,7 @@ export function automaticMarkingBounds(marking: AreaMarking, nodes: readonly Vis
 
 /** Retain the optional zoom argument for callers; it never changes geometry. */
 export function markingBounds(marking: AreaMarking, nodes: readonly VisualNode[], _zoom = 1) {
+  if (marking.geometry === 'free') return readMarkingRect(marking.bounds) ?? null;
   const base = automaticMarkingBounds(marking, nodes), offsets = readBaseOffsets(marking.baseOffsets);
   if (!base || !offsets) return base;
   // A changed member layout can make old insets cross; clamp the derived size,

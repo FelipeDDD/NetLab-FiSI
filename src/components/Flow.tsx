@@ -29,6 +29,7 @@ import { DEVICE_COLORS } from '../deviceColors';
 import { AlignmentGuides } from './AlignmentGuides';
 import { useSmartAlignment } from './useSmartAlignment';
 import { AreaMarkingsLayer } from './AreaMarkings';
+import { MarkingFreeDraw } from './MarkingFreeDraw';
 import { MarkingGeometryEditor, markingsAtPoint, type MarkingMenuPoint } from './MarkingGeometryEditor';
 
 const nodeTypes = { device: DeviceNode };
@@ -324,6 +325,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         </button>
       </Panel>
       <AreaMarkingsLayer />
+      <MarkingFreeDraw />
       <MarkingGeometryEditor menu={markingMenu} closeMenu={() => setMarkingMenu(null)} />
       <WifiCoverage />
       <AlignmentGuides guides={alignment.guides} />

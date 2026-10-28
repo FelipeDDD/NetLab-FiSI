@@ -15,7 +15,7 @@ export function markingsAtPoint(point: AreaPoint, zoom: number): string[] {
   }).reverse().map(area => area.id);
 }
 
-type Gesture = { start: AreaPoint; before: MarkingExtension[]; extensionId?: string; corner?: 'nw' | 'ne' | 'sw' | 'se'; rect?: AreaRect; automaticBase?: AreaRect };
+type Gesture = { start: AreaPoint; before: MarkingExtension[]; extensionId?: string; corner?: 'nw' | 'ne' | 'sw' | 'se'; rect?: AreaRect; automaticBase?: AreaRect; freeBase?: boolean };
 
 /** All normal backgrounds remain inert. Only this explicit, temporary editor
  * catches gestures; previews never enter the document or the undo stack. */
@@ -48,7 +48,7 @@ export function MarkingGeometryEditor({ menu, closeMenu }: { menu: MarkingMenuPo
     if (e.button !== 0 || !area) return;
     e.preventDefault(); e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId);
     gesture.current = { start: world(e), before: structuredClone(extensions), extensionId: extension?.id, corner, rect: main ?? extension,
-      ...(main ? { automaticBase: automaticMarkingBounds(area, nodes)! } : {}) };
+      ...(main ? { automaticBase: area.geometry === 'free' ? area.bounds : automaticMarkingBounds(area, nodes)!, freeBase: area.geometry === 'free' } : {}) };
     setBaseSelected(!!main);
     if (main) setSelected(null);
     if (extension) setSelected(extension.id);
@@ -71,7 +71,8 @@ export function MarkingGeometryEditor({ menu, closeMenu }: { menu: MarkingMenuPo
     }
     setDraft(rect);
     if (g.automaticBase) {
-      useStore.setState({ markingExtensionPreview: { areaId: area.id, extensions, baseOffsets: offsetsFromBounds(g.automaticBase, rect) } });
+      useStore.setState({ markingExtensionPreview: { areaId: area.id, extensions,
+        ...(g.freeBase ? { bounds: rect } : { baseOffsets: offsetsFromBounds(g.automaticBase, rect) }) } });
       return;
     }
     const next = g.extensionId ? g.before.map(r => r.id === g.extensionId ? { ...r, ...rect } : r)
@@ -81,10 +82,11 @@ export function MarkingGeometryEditor({ menu, closeMenu }: { menu: MarkingMenuPo
   };
   const finish = (e: ReactPointerEvent) => {
     const g = gesture.current; if (!g || !area) return;
-    move(e); const next = staged.current, baseOffsets = useStore.getState().markingExtensionPreview?.baseOffsets;
+    move(e); const next = staged.current, preview = useStore.getState().markingExtensionPreview, baseOffsets = preview?.baseOffsets;
     gesture.current = null; staged.current = null;
     useStore.setState({ markingExtensionPreview: null }); setDraft(null);
-    if (g.automaticBase && baseOffsets) useStore.getState().setMarkingBaseOffsets(area.id, baseOffsets);
+    if (g.freeBase && preview?.bounds) useStore.getState().setFreeMarkingBounds(area.id, preview.bounds);
+    else if (g.automaticBase && baseOffsets) useStore.getState().setMarkingBaseOffsets(area.id, baseOffsets);
     else if (g.extensionId && next) useStore.getState().setMarkingExtensions(area.id, next);
     else if (next && useStore.getState().addMarkingExtension(area.id, next.at(-1)!, zoom)) cancel();
     else setMessage('Teilfläche zu klein oder ohne Verbindung. An einer vorhandenen Fläche ansetzen.');
@@ -137,7 +139,8 @@ export function MarkingGeometryEditor({ menu, closeMenu }: { menu: MarkingMenuPo
                 const adjusted = { x: left ? Math.min(base.x + dx, base.x + base.width - 12) : base.x,
                   y: top ? Math.min(base.y + dy, base.y + base.height - 12) : base.y,
                   width: Math.max(12, base.width + (left ? -dx : dx)), height: Math.max(12, base.height + (top ? -dy : dy)) };
-                useStore.getState().setMarkingBaseOffsets(area.id, offsetsFromBounds(automaticMarkingBounds(area, nodes)!, adjusted));
+                if (area.geometry === 'free') useStore.getState().setFreeMarkingBounds(area.id, adjusted);
+                else useStore.getState().setMarkingBaseOffsets(area.id, offsetsFromBounds(automaticMarkingBounds(area, nodes)!, adjusted));
               }} />)}
           </g>;
         })()}

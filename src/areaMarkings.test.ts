@@ -121,3 +121,29 @@ it('applies edge adjustments over moving automatic bounds, clamps crossed edges 
   expect(markingBounds(inset, nodes)).toMatchObject({ width: 12, height: 12 });
   expect(inset.baseOffsets.right).toBe(-10000);
 });
+
+it('keeps empty free areas while sanitizing geometry and preserving the legacy member-derived format', () => {
+  const free: AreaMarking = { ...area, id: 'free', deviceIds: [], geometry: 'free', bounds: { x: -50, y: 10.5, width: 200, height: 100 } };
+  const old = structuredClone(area), stored = readAreaMarkings([old, free], area.deviceIds);
+  expect(stored).toEqual([old, free]);
+  expect(pruneAreaMarkings(stored, [])).toEqual([free]);
+  expect(readAreaMarkings([{ ...free, bounds: { ...free.bounds, width: -1 } }, { ...free, geometry: 'unknown' }, { ...free, bounds: null }], [])).toEqual([]);
+  free.bounds!.x = 999; expect(stored[1].bounds!.x).toBe(-50);
+  expect(markingBounds(stored[1], [])).toEqual({ x: -50, y: 10.5, width: 200, height: 100 });
+  const nodes = [{ id: 'a', position: { x: 900, y: 900 }, data: { kind: 'host' as const } }];
+  for (const zoom of [.5, 1, 2]) expect(markingBounds({ ...stored[1], deviceIds: ['a'] }, nodes, zoom)).toEqual(stored[1].bounds);
+  expect(old.geometry).toBeUndefined(); expect(old.bounds).toBeUndefined();
+});
+
+it('round-trips an empty free area and L/U/T parts through the canonical document without requiring engine members', () => {
+  const net = new Network(), bounds = { x: 0, y: 0, width: 200, height: 100 };
+  const free: AreaMarking = { ...area, deviceIds: [], geometry: 'free', bounds,
+    extensions: [{ id: 'leg', x: 0, y: 90, width: 60, height: 150 }] };
+  try {
+    const captured = captureTopologyDocument(net, { nodes: [], areaMarkings: [free], terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE }, terminalColors: {}, cableColors: {}, terminalLayoutMode: 'free', lab: null, labStep: 0, labResults: {}, quizAnswers: {} });
+    const document = normalizeProjectDocument(JSON.parse(JSON.stringify({ schemaVersion: 1, topology: captured })));
+    const restored = prepareTopologyDocument(document.topology);
+    try { expect(restored.presentation.areaMarkings).toEqual([free]); expect(restored.network.devices.size).toBe(0); }
+    finally { disposeNetwork(restored.network); }
+  } finally { disposeNetwork(net); }
+});
