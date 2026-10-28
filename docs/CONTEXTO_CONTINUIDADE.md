@@ -18,6 +18,20 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
   schema IndexedDB. Ver [area-markings.md](area-markings.md). Prints e logs ficam
   ignorados em `.playwright-mcp/`; não os incluir nos commits.
 
+- **Fábrica interna de Netzwerk:** 20 novos drafts em `src/exercises/factory/`,
+  separados dos cinco drafts anteriores e dos dois exercícios Beta publicados.
+  São seis fundamentais, seis VLSM, quatro configurações e quatro diagnósticos.
+  O gerador v1 tem cinco famílias determinísticas por seed/dificuldade/versão;
+  150 variantes são conferidas por oráculo independente. Os oito práticos usam
+  a engine real; unicidade/host válido em C02/C04 ainda exige revisão manual.
+  Não há UI de respostas matemáticas nem publicação dos novos drafts. Soluções
+  ficam fora do bundle público; `validate-network-factory.mjs --check-bundle`
+  complementa a inspeção. Ver [arquitetura](network-exercise-factory.md) e
+  [catálogo completo](network-exercise-catalog.md). Não reimplementar ou publicar
+  automaticamente. Markierungen foi consolidado localmente em `b7bc871`; esta
+  consolidação não inclui push. Conferir `git status -sb` antes de retomar em
+  outro computador; commits locais só estarão disponíveis após sincronização.
+
 - **Rodada de usabilidade concluída (`7abb278`):** Inspector mantém o CIDR visível
   e sincroniza a máscara; labels do canvas continuam sem `/x`. Routing tem checkbox
   de IP-Forwarding compartilhando o estado real com `sysctl`, persistência e Undo/Redo.
