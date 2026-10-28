@@ -15,7 +15,17 @@ export async function runApplicationBootReview({ page, url, root, report, restar
     for (let i = 0; i < 160; i++) { try { if (await page.evaluate(`return !!(${expression});`)) return; } catch {} await delay(50); }
     throw Error('Boot condition timed out: ' + expression);
   };
-  const test = async (name, run) => { try { await run(); results[name] = { passed: true }; } catch (error) { results[name] = { passed: false, error: error.stack }; throw error; } };
+  const test = async (name, run) => {
+    const before = report.downloads.length;
+    page.labelDownloads(name);
+    try {
+      await run(); await delay(100); await page.drainDownloads();
+      const expected = name.includes('quota errors') || name.includes('unavailable IndexedDB') || name.includes('manual topology export') ? 1
+        : name.includes('rejected legacy and incompatible drafts') ? 3 : 0;
+      assert.equal(report.downloads.length - before, expected, `Unexpected downloads during ${name}`);
+      results[name] = { passed: true, downloads: expected };
+    } catch (error) { results[name] = { passed: false, error: error.stack }; throw error; }
+  };
   const database = () => { const name = 'netlab-idb-test-' + crypto.randomUUID(); databases.push(name); return name; };
   const navigate = async () => {
     await page.send('Page.navigate', { url }); await wait(`location.pathname==='/__application_boot_test__'&&document.readyState==='complete'`);
@@ -54,7 +64,6 @@ export async function runApplicationBootReview({ page, url, root, report, restar
   const initialLegacy = await page.evaluate(`return localStorage.getItem('netsim:autosave:v1');`);
   let original, mainDatabase, beforeRestart;
   try {
-    await page.send('Browser.setDownloadBehavior', { behavior: 'deny' });
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
     await test('boot-ui: first migration preserves exact legacy bytes and starts one paused simulation', async () => {
       await navigate(); mainDatabase = database();
@@ -113,8 +122,10 @@ export async function runApplicationBootReview({ page, url, root, report, restar
       assert.equal(await guard(), true); await page.evaluate(`releaseForm();application.repository.workspace.updateDraft=writeOriginal;`); assert.equal(await guard(), false);
     });
     await test('boot-ui: quota errors preserve the local draft, permit export and recover through explicit retry', async () => {
+      const before = report.downloads.length;
       await page.evaluate(`window.updateOriginal=application.repository.workspace.updateDraft.bind(application.repository.workspace);application.repository.workspace.updateDraft=async()=>({ok:false,error:{code:'quota-exceeded',message:'Injected disposable failure'}});store.getState().renameDevice(store.getState().nodes[0].id,'Recover this local draft');await application.controller.flush();`);
       await wait(`document.querySelector('.workspace-recovery')`); await capture('04-write-error-graphite-1440.png', 1440, 'graphite-dark');
+      assert.equal(report.downloads.length, before, 'Showing recovery must not export automatically');
       await textButton('Backup exportieren', '.workspace-recovery');
       assert.equal(await page.evaluate(`return JSON.parse(await backups.at(-1).text()).devices[0].name;`), 'Recover this local draft');
       assert.equal(await guard(), true);
@@ -169,6 +180,13 @@ export async function runApplicationBootReview({ page, url, root, report, restar
       const before = await snapshot(); await dispose(); await navigate(); await mount(name); await ready();
       assert.equal((await snapshot()).state.activeDraftId, before.state.activeDraftId);
       assert.equal(await page.evaluate(`return localStorage.getItem('netsim:autosave:v1');`), null);
+    });
+    await test('boot-ui: manual topology export downloads only by request', async () => {
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});await delay(100);
+      await textButton('Datei','.toolbar');
+      await page.evaluate('[...document.querySelectorAll(".toolbar-command-menu button")].find(b=>b.querySelector("span")?.textContent==="Export").click();');
+      await wait('document.querySelector("#toolbar-export-menu")');
+      await page.evaluate('[...document.querySelectorAll("#toolbar-export-menu button")].find(b=>b.textContent.includes("Topology (.json)")).click();');
     });
     await test('boot-ui: real app.html owns normal boot and restores its draft through F5 without legacy listeners', async () => {
       await dispose(); await navigate(); const name = database();

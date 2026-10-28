@@ -59,10 +59,9 @@ export async function runWorkspaceUIReview({ page, url, root, report, openPage }
       assert(layout.canvas.width <= 410, 'Inspector must reserve space rather than cover the narrow canvas.');
     }
   };
-  const test = async (name, work) => { try { await work(); results[name] = { passed: true }; } catch (error) { results[name] = { passed: false, error: error.stack }; throw error; } };
+  const test = async (name, work) => { page.labelDownloads(name); try { await work(); await delay(100); await page.drainDownloads(); results[name] = { passed: true }; } catch (error) { results[name] = { passed: false, error: error.stack }; throw error; } };
   let mainDatabase;
   try {
-    await page.send('Browser.setDownloadBehavior', { behavior: 'deny' });
     mainDatabase = database();
     await test('ui: one plan and existing canvas mount in the isolated entry', async () => {
       await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });

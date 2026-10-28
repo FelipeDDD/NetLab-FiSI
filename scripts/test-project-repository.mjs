@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer as createPortProbe } from 'node:net';
 import path from 'node:path';
@@ -14,9 +15,22 @@ const binary = process.env.NETLAB_CHROMIUM_PATH ?? [
   '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/opt/google/chrome/chrome',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
 ].find(existsSync);
-const report = { results: {}, browserErrors: [], fatal: null };
+const report = { results: {}, browserErrors: [], downloads: [], downloadPolicies: [], fatal: null };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 let server, browser, scratch, pageOne, pageTwo;
+let downloadOperation = 'repository checks', browserGeneration = 0;
+
+async function drainDownloads() {
+  for (let i = 0; i < 200 && report.downloads.some(d => d.state === 'inProgress'); i++) await delay(25);
+  for (const entry of report.downloads) {
+    assert.equal(entry.state, 'completed', `Download did not complete: ${entry.suggestedFilename}`);
+    if (entry.verified) continue;
+    assert(/^[a-f\d-]+$/i.test(entry.guid), 'Unexpected download GUID');
+    // allowAndName saves by GUID, never by an untrusted suggested filename.
+    const bytes = await readFile(path.join(scratch, 'downloads', entry.guid));
+    entry.bytes = bytes.length; entry.sha256 = createHash('sha256').update(bytes).digest('hex'); entry.verified = true;
+  }
+}
 
 async function connect(endpoint) {
   const socket = new WebSocket(endpoint);
@@ -29,6 +43,14 @@ async function connect(endpoint) {
       if (call) { clearTimeout(call.timer); requests.delete(message.id); message.error ? call.reject(Error(JSON.stringify(message.error))) : call.resolve(message.result); }
     }
     if (message.method === 'Runtime.exceptionThrown') report.browserErrors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
+    if (message.method === 'Browser.downloadWillBegin' && !report.downloads.some(d => d.guid === message.params.guid)) {
+      report.downloads.push({ guid: message.params.guid, suggestedFilename: message.params.suggestedFilename,
+        operation: downloadOperation, browserGeneration, state: 'inProgress' });
+    }
+    if (message.method === 'Browser.downloadProgress') {
+      const entry = report.downloads.find(d => d.guid === message.params.guid);
+      if (entry) entry.state = message.params.state;
+    }
   };
   const send = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++sequence;
@@ -42,7 +64,7 @@ async function connect(endpoint) {
   };
   const close = () => { for (const call of requests.values()) clearTimeout(call.timer); socket.close(); };
   await send('Runtime.enable'); await send('Page.enable');
-  return { send, evaluate, close };
+  return { send, evaluate, close, labelDownloads: name => { downloadOperation = name; }, drainDownloads };
 }
 
 async function launchBrowser() {
@@ -59,7 +81,14 @@ async function launchBrowser() {
     try {
       const debug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
       const pages = await (await fetch(debug + '/json/list')).json();
-      return { debug, page: await connect(pages.find(p => p.type === 'page').webSocketDebuggerUrl) };
+      const page = await connect(pages.find(p => p.type === 'page').webSocketDebuggerUrl);
+      await mkdir(path.join(scratch, 'downloads'), { recursive: true });
+      // Browser policy is process-scoped: reapply before any application navigation,
+      // including every restart. A temporary profile alone still uses Windows Downloads.
+      await page.send('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath: path.join(scratch, 'downloads'), eventsEnabled: true });
+      browserGeneration++;
+      report.downloadPolicies.push({ browserGeneration, destination: 'disposable-profile/downloads', configuredBeforeNavigation: true });
+      return { debug, page };
     } catch { await delay(100); }
   }
   throw Error('Disposable browser did not start.');
@@ -312,6 +341,7 @@ try {
     await prepare(pageOne);
   }
   const state = await pageOne.evaluate('return {autosave:localStorage.getItem("netsim:autosave:v1"),databases:await indexedDB.databases()};');
+  await drainDownloads();
   assert.equal(state.autosave, 'isolated legacy sentinel; never migrate');
   assert(!state.databases.some(db => db.name === 'netlab-projects' || db.name.startsWith('netlab-idb-test-')), 'A test database leaked or the default production database was opened.');
   assert.deepEqual(report.browserErrors, []);
