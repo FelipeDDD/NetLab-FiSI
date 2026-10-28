@@ -40,7 +40,7 @@ export function normalizeTerminalAppearance(value: unknown, fallbackFontSize = D
 
 // UI metadata extends the existing v1 file; the engine never reads these fields.
 export interface AppearanceSaveFile extends SaveFile {
-  ui?: { cableColors?: Record<string, import('./cableAppearance').CableAppearance | import('./cableAppearance').CableColor>; terminalColors?: Record<string, string>; terminalAppearance?: Partial<TerminalAppearance>; terminalLayoutMode?: TerminalLayoutMode };
+  ui?: { areaMarkings?: import('./areaMarkings').AreaMarking[]; cableColors?: Record<string, import('./cableAppearance').CableAppearance | import('./cableAppearance').CableColor>; terminalColors?: Record<string, string>; terminalAppearance?: Partial<TerminalAppearance>; terminalLayoutMode?: TerminalLayoutMode };
 }
 
 export function readTerminalAppearance(data: AppearanceSaveFile): TerminalAppearance {

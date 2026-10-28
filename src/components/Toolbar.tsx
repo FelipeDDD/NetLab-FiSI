@@ -8,6 +8,7 @@ import type { InspectorLayoutPreference } from '../inspectorLayout';
 import { confirmReplacement, REPLACEMENT_WARNING } from '../persistence/replacement';
 import { useWorkspaceUI } from '../workspace/WorkspaceUI';
 import { ExerciseMenu } from '../exercises/ExerciseUI';
+import { MarkingsButton } from './AreaMarkings';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 const MENUS = [
@@ -189,6 +190,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
     </nav>
 
     <div className="toolbar-group toolbar-quick-actions" aria-label="Schnellaktionen">
+      <MarkingsButton onOpen={() => { closeMenu(); setDialog(null); }} />
       <div className="toolbar-group toolbar-quick-history">
         <button type="button" className="btn topology-history-action toolbar-history-button" disabled={!history.past.length} aria-label="Undo"
           title={history.past.length ? 'Undo: ' + history.past.at(-1)!.label + ' (Ctrl+Z / Cmd+Z)' : 'Undo (Ctrl+Z / Cmd+Z)'}

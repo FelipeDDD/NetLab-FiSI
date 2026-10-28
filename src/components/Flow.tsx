@@ -28,6 +28,8 @@ import { cableEndAt } from '../cableInteraction';
 import { DEVICE_COLORS } from '../deviceColors';
 import { AlignmentGuides } from './AlignmentGuides';
 import { useSmartAlignment } from './useSmartAlignment';
+import { AreaMarkingsLayer } from './AreaMarkings';
+import { MarkingGeometryEditor, markingsAtPoint, type MarkingMenuPoint } from './MarkingGeometryEditor';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { floating: FloatingEdge };
@@ -47,6 +49,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const quickPing = useStore(s => s.quickPing);
   const alignment = useSmartAlignment(!!reconnecting || !!quickPing);
   const [cableMenu, setCableMenu] = useState<CableMenuPoint | null>(null);
+  const [markingMenu, setMarkingMenu] = useState<MarkingMenuPoint | null>(null);
   const [cableMessage, setCableMessage] = useState<string | null>(null);
   const openCableMenu = (id: string, element: Element, click?: { x: number; y: number }) => {
     const path = element.closest('.react-flow__edge')?.querySelector<SVGPathElement>('.react-flow__edge-path');
@@ -73,7 +76,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const openTerminal = useStore((s) => s.openTerminal);
   const tick = useStore((s) => s.tick);
   const addDeviceAt = useStore((s) => s.addDeviceAt);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getViewport } = useReactFlow();
   const keyboardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyboardMoving = useRef(false);
   const pingClick = useRef<{ id: string; time: number } | null>(null);
@@ -93,6 +96,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
     pingClick.current = null;
     alignment.reset();
     setCableMenu(null); setCableMessage(null); setPointer(null);
+    setMarkingMenu(null);
   }, [generation]);
   useEffect(() => {
     // Node action buttons stop bubbling keyboard events to protect dragging.
@@ -263,10 +267,19 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         event.preventDefault();
         if (reconnecting || quickPing) return;
         setPointer(null); useStore.getState().hoverLink(null);
+        setMarkingMenu(null);
         useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id })));
         openCableMenu(edge.id, event.target as Element, { x: event.clientX, y: event.clientY });
       }}
-      onPaneClick={() => { setCableMenu(null); if (!reconnecting && !quickPing) { select(null); useStore.getState().clearLinkSelection(); } }}
+      onPaneContextMenu={event => {
+        if (reconnecting || quickPing || useStore.getState().markingGeometry) return;
+        const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        const ids = markingsAtPoint(point, getViewport().zoom);
+        if (!ids.length) { setMarkingMenu(null); return; }
+        event.preventDefault(); setCableMenu(null);
+        setMarkingMenu({ ids, x: event.clientX, y: event.clientY });
+      }}
+      onPaneClick={() => { setCableMenu(null); setMarkingMenu(null); if (!reconnecting && !quickPing) { select(null); useStore.getState().clearLinkSelection(); } }}
       onNodeDoubleClick={(_, n: DevNode) => {
         if (pingClick.current?.id === n.id && performance.now() - pingClick.current.time < 500) return;
         if (!reconnecting && !quickPing && hasTerminalKind(n.data.kind)) openTerminal(n.id);
@@ -310,6 +323,8 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
           Minimap
         </button>
       </Panel>
+      <AreaMarkingsLayer />
+      <MarkingGeometryEditor menu={markingMenu} closeMenu={() => setMarkingMenu(null)} />
       <WifiCoverage />
       <AlignmentGuides guides={alignment.guides} />
       <PacketLayer />

@@ -1,0 +1,55 @@
+.area-markings-layer { position: absolute; width: 1px; height: 1px; overflow: visible; z-index: -2; pointer-events: none; }
+.area-markings-layer * { pointer-events: none; }
+.area-marking-title { fill: var(--canvas-text, #dbe6f4); paint-order: stroke fill; stroke: var(--canvas-background, #0a0f1c); stroke-opacity: .75; stroke-width: 3px; font: 600 12px Verdana, sans-serif; }
+.area-markings-layer .area-marking-title[data-interactive] { pointer-events: visiblePainted; cursor: pointer; }
+.area-marking-title:focus-visible { outline: 1px solid var(--canvas-accent, #88b5ce); outline-offset: 3px; }
+.markings-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.markings-trigger svg { flex: none; }
+.markings-trigger[data-can-create="true"] { border-color: var(--ui-accent); }
+.area-markings-popover { padding: 12px; background: var(--ui-surface-panel); color: var(--ui-text); }
+.markings-editor { display: grid; gap: 10px; font: 13px var(--font-ui); }
+.markings-editor label { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.markings-editor :is(input:not([type="radio"]), select) { width: 100%; min-width: 0; font-size: 13px; }
+.markings-editor :is(input[type="text"], input:not([type]), select) { background: var(--ui-form-surface); color: var(--ui-form-text); border: 1px solid var(--ui-form-border); border-radius: 5px; padding: 5px 7px; min-height: 30px; }
+.markings-editor input[type="range"] { accent-color: var(--ui-accent); margin: 3px 0; }
+.markings-editor fieldset { padding: 0; border: 0; margin: 0; min-width: 0; }
+.markings-editor legend { padding: 0; margin-bottom: 6px; }
+.marking-colors { display: flex; gap: 9px; }
+.marking-colors label { position: relative; width: 28px; height: 28px; cursor: pointer; }
+.marking-colors input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.marking-colors span { width: 100%; height: 100%; border-radius: 6px; background: var(--marking-color); border: 2px solid transparent; pointer-events: none; }
+.marking-colors input:checked + span { border-color: var(--ui-text); box-shadow: 0 0 0 2px var(--ui-surface-panel) inset; }
+.marking-colors input:focus-visible + span { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.marking-intensity output { margin-left: auto; font-variant-numeric: tabular-nums; }
+.markings-hint { color: var(--ui-text-muted); font-size: 12px; line-height: 1.4; margin: 0; }
+.markings-actions { display: flex; gap: 8px; }
+.marking-picker { display: grid; gap: 5px; min-width: 0; }
+.marking-picker-trigger, .marking-picker [role="option"] { display: flex; align-items: center; gap: 6px; min-width: 0; text-align: left; font: inherit; }
+.marking-picker-trigger { width: 100%; min-height: 30px; background: var(--ui-form-surface); color: var(--ui-form-text); border: 1px solid var(--ui-form-border); border-radius: 5px; padding: 5px 7px; cursor: pointer; }
+.marking-picker [role="listbox"] { max-height: 146px; overflow-y: auto; border: 1px solid var(--ui-form-border); border-radius: 5px; background: var(--ui-form-surface); }
+.marking-picker [role="option"] { padding: 7px; cursor: pointer; }
+.marking-picker [role="option"][data-active="true"] { background: var(--ui-surface-selected); }
+.marking-picker [role="option"][aria-selected="true"] { box-shadow: inset 2px 0 var(--ui-accent); }
+.marking-sample { width: 11px; height: 11px; flex: none; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--ui-text) 25%, transparent); }
+.marking-option-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.marking-member-count { flex: none; color: var(--ui-text-muted); font-size: 12px; }
+.marking-members { display: grid; gap: 6px; border-top: 1px solid var(--ui-form-border); padding-top: 8px; }
+.marking-extension-actions { flex-direction: column; }
+.marking-menu-anchor { position: fixed; width: 1px; height: 1px; pointer-events: none; }
+.marking-context-content { display: grid; gap: 8px; padding: 10px; color: var(--ui-text); font-size: 13px; }
+.marking-context-content strong { display: flex; gap: 6px; align-items: center; overflow-wrap: anywhere; }
+.marking-context-content label { display: grid; gap: 5px; }
+.marking-context-content select { width: 100%; min-width: 0; color: var(--ui-form-text); background: var(--ui-form-surface); border: 1px solid var(--ui-form-border); padding: 5px; }
+.marking-draw-surface { position: absolute; inset: 0; z-index: 6; cursor: crosshair; touch-action: none; outline: none; }
+.marking-geometry-status { z-index: 7; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: calc(100% - 90px); padding: 7px; border: 1px solid var(--ui-form-border); border-radius: 6px; color: var(--ui-text); background: var(--ui-surface-panel); font-size: 12px; }
+.marking-geometry-status small { flex-basis: 100%; }
+.marking-geometry-controls { position: absolute; width: 1px; height: 1px; overflow: visible; z-index: 5; pointer-events: none; color: var(--canvas-accent, #88b5ce); }
+.marking-extension-control { fill: transparent; stroke: currentColor; stroke-width: 1px; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: all; cursor: move; touch-action: none; }
+.marking-base-control { cursor: pointer; }
+.marking-extension-control:focus-visible, [data-extension-selected="true"] .marking-extension-control { stroke-width: 2px; outline: none; }
+.marking-resize-handle { fill: var(--ui-surface-panel); stroke: currentColor; stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: all; touch-action: none; }
+.marking-resize-handle:is(.nw,.se) { cursor: nwse-resize; }
+.marking-resize-handle:is(.ne,.sw) { cursor: nesw-resize; }
+.marking-draw-preview { fill: none; stroke: var(--canvas-accent, #88b5ce); stroke-dasharray: 5 3; stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.marking-draw-preview[data-connected="false"] { stroke: var(--ui-text-muted); }
+@media (max-width: 1350px) { .markings-trigger-label { display: none; } .toolbar .markings-trigger { width: 32px; min-width: 32px; padding: 5px; } }

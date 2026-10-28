@@ -47,10 +47,11 @@ export function sameServicePorts(a: Iterable<number>, b: Iterable<number>): bool
 }
 export type TopologyOperation = MoveOperation
   | InspectorOperation
+  | { type: 'set-area-markings'; label: string; before: import('./areaMarkings').AreaMarking[]; after: import('./areaMarkings').AreaMarking[] }
   | { type: 'set-cable-color'; label: string; linkId: string; before: import('./cableAppearance').CableAppearance | null; after: import('./cableAppearance').CableAppearance }
   | { type: 'reconnect-link'; label: string; end: 'a' | 'b'; before: HistoryLink; after: HistoryLink; beforeColor: import('./cableAppearance').CableAppearance | null; afterColor: import('./cableAppearance').CableAppearance | null }
   | { type: 'add-links' | 'remove-links'; label: string; links: HistoryLink[]; cableColors?: import('./cableAppearance').CableAppearances }
-  | { type: 'delete-devices'; label: string; devices: CreatedDevice[]; links: HistoryLink[]; colors: Record<string, string>; cableColors?: import('./cableAppearance').CableAppearances }
+  | { type: 'delete-devices'; label: string; devices: CreatedDevice[]; links: HistoryLink[]; colors: Record<string, string>; cableColors?: import('./cableAppearance').CableAppearances; markings?: { before: import('./areaMarkings').AreaMarking[]; after: import('./areaMarkings').AreaMarking[] } }
   | { type: 'create-device'; label: string; device: CreatedDevice };
 export const isInspectorOperation = (operation: TopologyOperation): operation is InspectorOperation => 'deviceId' in operation;
 export interface TopologyHistory { past: TopologyOperation[]; future: TopologyOperation[] }

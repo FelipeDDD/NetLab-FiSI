@@ -49,6 +49,8 @@ import { applyAccessVlan, applyInspectorEdit, applyLinkEdit, canApplyLinkEdit, d
 import { CABLE_COLORS, automaticCableAppearance, initialCableColors, isCableColor, readCableColors, sameCableAppearance, type CableColor, type CableAppearances } from './cableAppearance';
 import { firstReconnectInterface, reconnectTargetError } from './cableInteraction';
 import type { HistoryLink } from './topologyHistory';
+import { markingBounds, pruneAreaMarkings, readBaseOffsets, validBaseOffsets, validMarkingStyle, type AreaMarking, type MarkingBaseOffsets, type MarkingStyle } from './areaMarkings';
+import { readExtensions, touchesArea, validAreaRect, type AreaRect, type MarkingExtension } from './markingGeometry';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -131,6 +133,21 @@ interface NetsimState {
   nodes: DevNode[];
   edges: Edge[];
   cableColors: CableAppearances;
+  areaMarkings: AreaMarking[];
+  selectedMarkingId: string | null;
+  markingPreview: AreaMarking | null;
+  previewMarking(style: MarkingStyle | null): void;
+  selectMarking(id: string | null): void;
+  createMarking(style: MarkingStyle): string | null;
+  updateMarking(id: string, style: MarkingStyle, editGroup?: object): void;
+  changeMarkingMembers(id: string, action: 'add' | 'remove'): void;
+  markingGeometry: { areaId: string; mode: 'draw' | 'edit' } | null;
+  markingExtensionPreview: { areaId: string; extensions: MarkingExtension[]; baseOffsets?: MarkingBaseOffsets } | null;
+  setMarkingGeometry(id: string | null, mode?: 'draw' | 'edit'): void;
+  addMarkingExtension(id: string, rect: AreaRect, zoom?: number): boolean;
+  setMarkingExtensions(id: string, extensions: MarkingExtension[]): void;
+  setMarkingBaseOffsets(id: string, offsets: MarkingBaseOffsets): void;
+  removeMarking(id: string): void;
   setCableColor(id: string, color: CableColor): void;
   resetCableColor(id: string): void;
   reconnectingCable: { id: string; end: 'a' | 'b'; before: HistoryLink } | null;
@@ -306,6 +323,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   // edit/navigation or invalidation breaks the group without a second history.
   let rangeEditGroup: { token: object; history: TopologyHistory } | null = null;
   let ipv4EditGroup: { token: object; history: TopologyHistory } | null = null;
+  let markingEditGroup: { token: object; history: TopologyHistory } | null = null;
   const checkHistoryConfiguration = () => {
     const current = configuration();
     if (historyConfiguration && current !== historyConfiguration) get().invalidateTopologyHistory();
@@ -324,6 +342,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     saveSoon(); return true;
   };
   const navigateHistory = (direction: 'undo' | 'redo') => {
+    set({ markingGeometry: null, markingExtensionPreview: null });
     get().cancelCableReconnect();
     get().cancelQuickPing();
     if (movement?.source === 'drag' || ignoreDrag) return;
@@ -337,6 +356,11 @@ export const useStore = create<NetsimState>()((set, get) => {
       const nodes = applyMovement(get().nodes, operation, direction);
       if (!nodes) { get().invalidateTopologyHistory(); return; }
       set({ nodes });
+    } else if (operation.type === 'set-area-markings') {
+      const from = direction === 'undo' ? operation.after : operation.before;
+      const to = direction === 'undo' ? operation.before : operation.after;
+      if (JSON.stringify(get().areaMarkings) !== JSON.stringify(from)) { get().invalidateTopologyHistory(); return; }
+      set({ areaMarkings: structuredClone(to), selectedMarkingId: null });
     } else if (operation.type === 'set-cable-color') {
       const from = direction === 'undo' ? operation.after : operation.before;
       const to = direction === 'undo' ? operation.before : operation.after;
@@ -390,6 +414,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       }
     } else if (operation.type === 'delete-devices') {
       const ids = operation.devices.map((d) => d.saved.id);
+      if (operation.markings && JSON.stringify(get().areaMarkings) !== JSON.stringify(direction === 'undo' ? operation.markings.after : operation.markings.before)) { get().invalidateTopologyHistory(); return; }
       if (direction === 'undo') {
         if (get().nodes.some((n) => ids.includes(n.id)) || !restoreDeletedDevices(sim.net, operation.devices, operation.links)) {
           get().invalidateTopologyHistory(); get().setNotice('Cannot restore devices: topology conflicts with this operation.'); return;
@@ -399,6 +424,7 @@ export const useStore = create<NetsimState>()((set, get) => {
           nodes.splice(index, 0, deviceNode(saved.id, saved.kind, saved.name, saved.x, saved.y));
         }
         set({ nodes, edges: edgesFromEngine(), terminalColors: { ...get().terminalColors, ...operation.colors }, cableColors: { ...get().cableColors, ...operation.cableColors } });
+        if (operation.markings) set({ areaMarkings: structuredClone(operation.markings.before) });
         get().refresh();
         if (Object.keys(tabLayouts).length) saveTabs();
       } else {
@@ -559,6 +585,11 @@ export const useStore = create<NetsimState>()((set, get) => {
       terminalHasFocus: get().terminalHasFocus && !ids.has(get().activeTerminal ?? ''),
       selected: ids.has(get().selected ?? '') ? null : get().selected,
       terminalColors: Object.fromEntries(Object.entries(get().terminalColors).filter(([id]) => !ids.has(id))),
+      areaMarkings: pruneAreaMarkings(get().areaMarkings, sim.net.devices.keys()),
+      selectedMarkingId: null,
+      markingPreview: null,
+      markingGeometry: null,
+      markingExtensionPreview: null,
     });
     rememberPanels(get().terminalPanels, oldPanels.filter((p) => !get().terminalPanels.some((next) => next.id === p.id)).map((p) => p.id));
     saveSoon();
@@ -576,6 +607,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     flashSeq = 0;
     rangeEditGroup = null;
     ipv4EditGroup = null;
+    markingEditGroup = null;
     if (noticeTimer) clearTimeout(noticeTimer);
     noticeTimer = null;
     const nodes = data.devices.map((d) => deviceNode(d.id, d.kind, d.name, d.x, d.y));
@@ -592,6 +624,10 @@ export const useStore = create<NetsimState>()((set, get) => {
       guidedPacket: emptyGuidedPacket(),
       dropFlashes: [],
       selected: null,
+      selectedMarkingId: null,
+      markingPreview: null,
+      markingGeometry: null,
+      markingExtensionPreview: null,
       terminals: [],
       activeTerminal: null,
       terminalPanels: [],
@@ -706,6 +742,97 @@ export const useStore = create<NetsimState>()((set, get) => {
         set({ rejectedDocument: { text: original, error: String(error) } });
       }
       history.replaceState(null, '', location.pathname + (location.search ?? ''));
+    },
+    areaMarkings: [],
+    markingGeometry: null,
+    markingExtensionPreview: null,
+    setMarkingGeometry(id, mode = 'draw') {
+      const area = get().areaMarkings.find(m => m.id === id);
+      if (area) { get().cancelQuickPing(); get().cancelCableReconnect(); }
+      set({ markingGeometry: area ? { areaId: area.id, mode } : null, selectedMarkingId: null, markingPreview: null, markingExtensionPreview: null });
+    },
+    addMarkingExtension(id, rect, zoom = 1) {
+      const area = get().areaMarkings.find(m => m.id === id), base = area && markingBounds(area, get().nodes, zoom);
+      if (!area || !base || !validAreaRect(rect) || ![base, ...area.extensions ?? []].some(r => touchesArea(rect, r))) return false;
+      get().setMarkingExtensions(id, [...area.extensions ?? [], { ...rect, id: crypto.randomUUID() }]); return true;
+    },
+    setMarkingExtensions(id, extensions) {
+      const before = get().areaMarkings, current = before.find(m => m.id === id);
+      if (!current) return;
+      const checked = readExtensions(extensions);
+      if (checked.length !== extensions.length || JSON.stringify(current.extensions ?? []) === JSON.stringify(checked)) return;
+      const { extensions: _old, ...base } = current;
+      const after = before.map(m => m.id === id ? { ...base, ...(checked.length ? { extensions: checked } : {}) } : m);
+      prepareEdit(); set({ areaMarkings: after });
+      commitEdit({ type: 'set-area-markings', label: 'Teilflächen bearbeiten', before: structuredClone(before), after: structuredClone(after) });
+      saveSoon();
+    },
+    setMarkingBaseOffsets(id, offsets) {
+      if (!validBaseOffsets(offsets)) return;
+      const before = get().areaMarkings, current = before.find(m => m.id === id);
+      if (!current) return;
+      const baseOffsets = readBaseOffsets(offsets);
+      if (JSON.stringify(current.baseOffsets) === JSON.stringify(baseOffsets)) return;
+      const { baseOffsets: _old, ...base } = current;
+      const after = before.map(m => m.id === id ? { ...base, ...(baseOffsets ? { baseOffsets } : {}) } : m);
+      prepareEdit(); set({ areaMarkings: after });
+      commitEdit({ type: 'set-area-markings', label: 'Hauptfläche anpassen', before: structuredClone(before), after: structuredClone(after) });
+      saveSoon();
+    },
+    selectedMarkingId: null,
+    markingPreview: null,
+    previewMarking(style) {
+      const deviceIds = get().nodes.filter(n => n.selected && sim.net.devices.has(n.id)).map(n => n.id);
+      set({ markingPreview: style && deviceIds.length >= 2 && validMarkingStyle(style) ? { ...style, id: 'marking-preview', deviceIds } : null });
+    },
+    selectMarking(id) { set({ selectedMarkingId: get().areaMarkings.some(m => m.id === id) ? id : null }); },
+    createMarking(style) {
+      const deviceIds = get().nodes.filter(n => n.selected && sim.net.devices.has(n.id)).map(n => n.id);
+      if (deviceIds.length < 2 || !validMarkingStyle(style)) return null;
+      prepareEdit();
+      const before = structuredClone(get().areaMarkings);
+      const marking: AreaMarking = { ...style, name: style.name.trim(), id: crypto.randomUUID(), deviceIds };
+      const after = [...before, marking];
+      set({ areaMarkings: after, selectedMarkingId: marking.id });
+      commitEdit({ type: 'set-area-markings', label: 'Bereich markieren', before, after });
+      saveSoon(); return marking.id;
+    },
+    updateMarking(id, style, editGroup) {
+      if (!validMarkingStyle(style)) return;
+      const before = get().areaMarkings, current = before.find(m => m.id === id);
+      if (!current) return;
+      const after = before.map(m => m.id === id ? { ...m, ...style } : m);
+      if (JSON.stringify(before) === JSON.stringify(after)) return;
+      prepareEdit(); set({ areaMarkings: after });
+      const history = get().topologyHistory, last = history.past.at(-1);
+      if (editGroup && markingEditGroup?.token === editGroup && markingEditGroup.history === history && last?.type === 'set-area-markings') {
+        set({ topologyHistory: { past: [...history.past.slice(0, -1), { ...last, after: structuredClone(after) }], future: [] } });
+      } else commitEdit({ type: 'set-area-markings', label: 'Markierung bearbeiten', before: structuredClone(before), after: structuredClone(after) });
+      markingEditGroup = editGroup ? { token: editGroup, history: get().topologyHistory } : null;
+      saveSoon();
+    },
+    changeMarkingMembers(id, action) {
+      const before = get().areaMarkings, current = before.find(m => m.id === id);
+      if (!current) return;
+      const selected = new Set(get().nodes.filter(n => n.selected && sim.net.devices.has(n.id)).map(n => n.id));
+      const deviceIds = action === 'add' ? [...new Set([...current.deviceIds, ...selected])]
+        : current.deviceIds.filter(deviceId => !selected.has(deviceId));
+      // Never delete an area implicitly. The editor explains the last-member
+      // guard and offers the explicit, separately undoable area removal action.
+      if (!deviceIds.length || JSON.stringify(deviceIds) === JSON.stringify(current.deviceIds)) return;
+      prepareEdit();
+      const after = before.map(m => m.id === id ? { ...m, deviceIds } : m);
+      set({ areaMarkings: after });
+      commitEdit({ type: 'set-area-markings', label: action === 'add' ? 'Auswahl hinzufügen' : 'Auswahl entfernen',
+        before: structuredClone(before), after: structuredClone(after) });
+      saveSoon();
+    },
+    removeMarking(id) {
+      const before = get().areaMarkings, after = before.filter(m => m.id !== id);
+      if (before.length === after.length) return;
+      prepareEdit(); set({ areaMarkings: after, selectedMarkingId: null });
+      commitEdit({ type: 'set-area-markings', label: 'Markierung entfernen', before: structuredClone(before), after: structuredClone(after) });
+      saveSoon();
     },
     cableColors: {},
     reconnectingCable: null,
@@ -981,9 +1108,11 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!devices.length && !links.length) return;
       const colors = Object.fromEntries(Object.entries(get().terminalColors).filter(([id]) => ids.has(id)));
       const cableColors = readCableColors(get().cableColors, links.map(l => l.id));
+      const markingsBefore = structuredClone(get().areaMarkings);
       removeElements([...ids], links.map((l) => l.id));
       commitEdit(devices.length ? {
         type: 'delete-devices', label: devices.length === 1 ? 'Delete device' : `Delete ${devices.length} devices`, devices, links, colors, cableColors,
+        ...(markingsBefore.length ? { markings: { before: markingsBefore, after: structuredClone(get().areaMarkings) } } : {}),
       } : { type: 'remove-links', label: links.length === 1 ? 'Remove cable' : `Remove ${links.length} cables`, links, cableColors });
     },
 

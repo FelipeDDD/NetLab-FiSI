@@ -5,12 +5,14 @@ import { readCableColors, type CableAppearances } from '../cableAppearance';
 import { readTerminalAppearance, readTerminalColors, type AppearanceSaveFile, type TerminalAppearance } from '../terminalAppearance';
 import { normalizeTerminalLayoutMode, type TerminalLayoutMode } from '../terminalPanels';
 import type { LabDef, LabProgress } from '../labs/types';
+import { readAreaMarkings, type AreaMarking } from '../areaMarkings';
 
 export interface TopologyDocumentState {
   nodes: readonly { id: string; position: { x: number; y: number } }[];
   terminalColors: Record<string, string>;
   terminalAppearance: TerminalAppearance;
   cableColors: CableAppearances;
+  areaMarkings?: readonly AreaMarking[];
   terminalLayoutMode: TerminalLayoutMode;
   lab: LabDef | null;
   labStep: number;
@@ -27,6 +29,8 @@ export function captureTopologyDocument(net: Network, state: TopologyDocumentSta
   const colors = readCableColors(state.cableColors, net.links.keys());
   if (Object.keys(colors).length) save.ui.cableColors = colors;
   if (state.terminalLayoutMode !== 'free') save.ui.terminalLayoutMode = state.terminalLayoutMode;
+  const markings = readAreaMarkings(state.areaMarkings, net.devices.keys());
+  if (markings.length) save.ui.areaMarkings = markings;
   if (state.lab) {
     save.lab = state.lab;
     save.labProgress = { step: state.labStep, results: state.labResults, quiz: state.quizAnswers };
@@ -75,6 +79,7 @@ export interface PreparedTopology {
     terminalAppearance: TerminalAppearance;
     cableColors: CableAppearances;
     terminalLayoutMode: TerminalLayoutMode;
+    areaMarkings: AreaMarking[];
   };
 }
 
@@ -91,6 +96,7 @@ export function prepareTopologyDocument(input: unknown): PreparedTopology {
         terminalColors: readTerminalColors(document), terminalAppearance: readTerminalAppearance(document),
         cableColors: readCableColors(document.ui?.cableColors, network.links.keys()),
         terminalLayoutMode: normalizeTerminalLayoutMode(document.ui?.terminalLayoutMode),
+        areaMarkings: readAreaMarkings(document.ui?.areaMarkings, network.devices.keys()),
       },
     };
   } catch (error) {

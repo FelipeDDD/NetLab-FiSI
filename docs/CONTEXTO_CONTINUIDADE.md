@@ -1,11 +1,46 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **27/10/2026**, para continuar no notebook usando VS Code/Codex.
+Atualizado em **28/10/2026**, para continuar no notebook usando VS Code/Codex.
 Branch: **`main`**, remoto `origin` (`FelipeDDD/NetLab-FiSI`). Base desta retomada:
-**`46b897f`**, com Save/Load, recuperação segura, viewport e causalidade já integrados.
+**`7abb278`**, enviado ao remoto junto com **`adee445`** (Übungen Beta).
 Este documento descreve o estado encontrado; o código e os testes continuam sendo a fonte de verdade.
 
 ## Leia primeiro — estado atual e decisões pendentes
+
+- **Markierungen implementado:** botão compacto na toolbar, seleção Shift, seis
+  cores, intensidade, edição de membros por IDs e seleção por título. Extensões
+  retangulares formam L/U/T por união SVG; modo temporário permite mover,
+  redimensionar e remover extensões. A Hauptfläche também é redimensionável,
+  mesmo sem extensões: offsets opcionais nas quatro bordas são aplicados sobre
+  os limites automáticos dos membros. Geometria em coordenadas do mundo,
+  independente do zoom; legendas mantêm sua compensação visual separada.
+  Save/Load, JSON, F5, abas e Undo/Redo reutilizam os fluxos existentes, sem novo
+  schema IndexedDB. Ver [area-markings.md](area-markings.md). Prints e logs ficam
+  ignorados em `.playwright-mcp/`; não os incluir nos commits.
+
+- **Rodada de usabilidade concluída (`7abb278`):** Inspector mantém o CIDR visível
+  e sincroniza a máscara; labels do canvas continuam sem `/x`. Routing tem checkbox
+  de IP-Forwarding compartilhando o estado real com `sysctl`, persistência e Undo/Redo.
+  Quick Ping prepara o terminal pela fila existente: descarta entrada parcial e limpa
+  a tela visível quando livre, preservando histórico e comandos ativos. Ctrl+C simples/
+  duplo e cancelamento durante preparação foram testados. Free Panels preserva ordem
+  de abertura e ordem manual sem reordenar painéis novos ao restaurar slots antigos.
+  O cursor vira alvo azul ao selecionar Ping e verde-escuro (`#166534`) sobre destinos
+  com IPv4 elegível; verde não é garantia de conectividade. Tudo já foi commitado/pushado.
+  Não repetir esse pacote de implementação por causa de prompts antigos.
+
+- **Übungen (Beta) implementado (`adee445`):** menu independente de Labs, com
+  `fisi-office-warehouse-routing` e `fisi-service-portal`. Abre um rascunho separado,
+  mostra enunciado/requisitos e verifica somente ao clicar em **Überprüfen**, usando
+  a rede real da tentativa e os checks compartilhados. Conclusão só fica confirmada
+  após commit da gravação CAS em `meta`, chave `exercises:beta:v1`, sem novo schema.
+  F5/reinício e troca de planos preservam progresso; repetir mantém a conclusão anterior.
+  Importações não geram conquistas. A associação é ao ID do rascunho original.
+  Checks dos exercícios exigem `resolveBy: 'id'`: nomes editáveis/Unicode não alteram
+  a identidade. Labs legados mantêm busca por nome. Trocas/edições durante um check
+  invalidam callbacks antigos. As projeções `betaStudents.json`/`betaChecks.json` não
+  incluem soluções; os outros três exercícios permanecem drafts internos.
+  Ver [Beta](exercises-beta.md) e [autoria de drafts](exercise-drafts.md).
 
 - **Inspector/Terminal sobrepostos:** o Inspector normal à direita mantém a
   altura útil abaixo do header e pode cobrir o dock. Clique ou foco real
@@ -94,7 +129,8 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
 Referências recentes: [pacotes](packet-animation.md),
 [viewport](workspace-ui.md), [legibilidade](device-legibility.md),
 [auditoria DHCP e Run](interface-dhcp-audit.md),
-[ações definitivas, Quick Ping e modos](device-actions-and-presentation.md).
+[ações definitivas, Quick Ping e modos](device-actions-and-presentation.md),
+[Übungen Beta](exercises-beta.md) e [drafts independentes](exercise-drafts.md).
 
 ## 1. Visão geral e mapa do projeto
 
@@ -361,21 +397,26 @@ conferir sempre o código atual antes de tratá-los como inventário definitivo.
 ## 4. Histórico do Git e transferência entre computadores
 
 - Branch inspecionado: **`main`**. Remoto: `origin`, repositório `FelipeDDD/NetLab-FiSI`.
-- Base anterior desta entrega: **`c7ffdd3`** — `feat: activate safe workspace save/load and session recovery`.
-- Esta rodada acompanha o commit **`feat: refine packet presentation, viewport and device actions`**:
+- Último commit de aplicação sincronizado: **`7abb278`** —
+  `fix: refine inspector, quick ping and terminal panel behavior`.
+- **`adee445`** — `feat: add beta exercises with persistent progress and stable device identity`.
+- **`bdd2133`** — `feat: consolidate UI, terminal and network improvements`.
+- **`46b897f`** — `feat: refine packet presentation, viewport and device actions`:
   causalidade ARP/ICMP, Live/Schrittmodus, viewport, legibilidade, Run por comandos,
-  auditoria DHCP, variantes A/B e regressões. Localizar seu hash com `git log -5`;
-  o documento não tenta registrar o próprio hash do commit que o contém.
+  auditoria DHCP, variantes A/B e regressões. As variantes A/B foram removidas depois;
+  os controles definitivos e o Quick Ping já estão integrados.
+- **`c7ffdd3`** — Save/Load, recuperação segura e ativação normal do workspace.
 - `433f264` integra as Fases 1–5B2-A; `13460d1` contém temas, cabos e terminais.
 - Anteriores relevantes: `9c7e315` (toolbar/Palette e restauração do Switch),
   `047a315` (assets, clientes Wi-Fi e DHCP por interface), `e42cd95` (MAC aging),
   `99eba26` (Hybrid/interatividade de links).
 - A versão canônica em `docs/CONTEXTO_CONTINUIDADE.md` acompanha o código no Git;
   o arquivo da raiz aponta para esta versão.
-- Auditoria desta entrega: **nenhuma alteração em `public/assets` ou `docs/img`**,
-  nem em dependências/lockfile. Os novos arquivos candidatos são fontes, testes,
-  fixtures sintéticas, runners reutilizáveis e documentação; não PNGs, dumps de
-  topologia real, bancos, prints ou arquivos de autenticação.
+- Auditoria da consolidação recente: em `public/assets` entraram somente os dois
+  SVGs de cursor em `cursors/`. Nenhuma alteração em PNGs dos equipamentos,
+  `docs/img`, dependências ou lockfile. Fontes, testes, fixtures sintéticas,
+  runners e documentação foram incluídos; prints, logs, bancos, backups,
+  topologias reais e arquivos de autenticação ficaram fora.
   `docs/img/screenshot.jpg` já era documentação rastreada e referenciada, não um descarte.
 - `.gitignore` exclui `.playwright-mcp/`, `assets-tests/`, `node_modules/`, `dist/`,
   `samples/`, coverage/resultados de testes, logs/scratch e `.env` locais.
@@ -390,17 +431,18 @@ conferir sempre o código atual antes de tratá-los como inventário definitivo.
 
 ## 5. Próximas tarefas — não reimplementar o que já existe
 
-### Próxima decisão: ações dos dispositivos, antes de Quick Ping
+### Estado consolidado — aguardar uma nova tarefa do usuário
 
-- Pedir/consultar a escolha do usuário entre A e B. Só depois consolidar a posição
-  de Terminal/Ping; até lá manter as duas variantes por URL e o layout atual como padrão.
-- **Quick Ping ainda é apenas intenção futura.** O botão de prévia não executa
-  comandos ou pacotes. Antes de implementar, definir escolha de destino, uso das
-  interfaces/rotas reais e integração com o mesmo motor/cadência/Run gate.
-- Não criar uma segunda implementação de ping nos componentes ou iniciar Run
-  ao simplesmente abrir um plano/menu. Preservar Pause manual e o Schrittmodus.
-- Limpeza ARP por comandos Windows/Linux permanece uma ideia pendente: conferir
-  parsers/escopo antes de implementar. Comandos desconhecidos nunca podem virar outro comando.
+- Não há escolha A/B pendente. Terminal/Ping têm posição definitiva e Quick Ping
+  funciona pelo shell real; cursor e feedback de pressão também estão implementados.
+- O pacote CIDR/forwarding/Quick Ping/Free Panels já foi concluído e sincronizado.
+  Corrigir somente regressões reproduzidas, sem reimplementar esses recursos.
+- Limpeza ARP já existe no CLI e no Inspector; consultar `docs/arp-cache.md`.
+- Não criar outro motor de ping nem iniciar Run ao simplesmente abrir planos/menus.
+  Pause manual, captura, animações e mecanismos didáticos internos devem ser preservados.
+- Übungen Beta já permite abrir, resolver, verificar e persistir conclusão dos dois
+  exercícios publicados. Não misturar esse catálogo com os cinco Labs nem expor
+  soluções de referência ao aluno. Próximos exercícios dependem de autorização/revisão.
 
 ### Terminais: já implementados, somente verificar regressões quando pertinente
 
@@ -422,7 +464,9 @@ Não iniciar uma segunda implementação. Para mudanças na área, conferir:
 - Gerenciamento avançado de planos, pastas, lixeira, histórico ampliado e outras
   melhorias de organização. **Abas de planos, IndexedDB, drafts, Save/Save As/Load,
   migração e recuperação já estão implementados.** Não confundir isso com abas xterm.
-- Exercícios/desafios adicionais sobre a infraestrutura de Labs existente.
+- Expandir o catálogo independente de Übungen; os drafts IPv4, DHCP e firewall
+  ainda exigem revisão humana em alguns critérios. Backend, geração por API de IA,
+  publicação automática e um histórico genérico de tentativas não estão implementados.
 - Possível integração com DAAproject: planejamento, sem integração encontrada no código atual.
 
 O controller mantém somente uma `sim.net` ativa, usando documentos preparados,
@@ -431,7 +475,14 @@ simulações paralelas nem contornar o controller para trocar planos.
 
 ## 6. Testes e limitações atuais
 
-Validação pré-commit em **27/10/2026**: **1.185 testes passando em 88 arquivos**
+Validação da consolidação mais recente em **28/10/2026**: **516 testes direcionados
+em 20 arquivos**, **109 casos do harness Chromium** (incluindo os seis cenários de
+usabilidade), TypeScript, build e `git diff --check` passaram. O harness usa perfil,
+porta e IndexedDB descartáveis. A regressão anterior de Übungen também passou com
+F5, reinício completo, nomes Unicode, homônimos, exclusão e preservação de conclusões.
+Não interpretar os 516 como uma execução da suíte completa.
+
+Referência histórica de suíte completa em **27/10/2026**: **1.185 testes em 88 arquivos**
 (`vitest run --maxWorkers=2 --minWorkers=1`). TypeScript, build Vite e
 `git diff --check` também passaram. O build avisa sobre chunk grande; não falha.
 Isso não é uma execução da CI remota nem validação das ferramentas reais abaixo.
@@ -446,6 +497,10 @@ node node_modules/vitest/vitest.mjs run src/terminalPanels.test.ts src/terminals
 node node_modules/vitest/vitest.mjs run src/alignmentGuides.test.ts src/alignmentPreferences.test.ts src/cableEditing.test.ts src/engine/cableReconnect.test.ts
 node node_modules/vitest/vitest.mjs run src/engine/dhcpPools.test.ts src/engine/dhcpRoutingTrace.test.ts src/engine/wirelessRange.test.ts src/engine/mobileClients.test.ts
 node node_modules/vitest/vitest.mjs run src/engine/switchCapacity.test.ts src/engine/switchRestore.test.ts src/labs/labs.test.ts src/labs/persistence.test.ts
+node node_modules/vitest/vitest.mjs run src/exercises/ src/labs/checkerIdentity.test.ts
+node scripts/validate-exercise-drafts.mjs
+node scripts/test-exercise-beta.mjs
+node scripts/test-usability-refinements.mjs
 git diff --check
 ```
 
@@ -514,8 +569,8 @@ a localização correta. Não gerar/apagar capturas antigas indiscriminadamente.
    mexer em reservas ou parar serviços sem autorização. `127.0.0.1` é outra origem.
 4. Importar o JSON da topologia de trabalho exportado separadamente. Selecionar
    Graphite Dark e as preferências desejadas, pois o navegador pode começar com Original.
-5. Retomar pela escolha A/B e pelo planejamento de Quick Ping da seção 5.
-   Save/Load, distribuição dos terminais e correções de viewport já existem.
+5. Consultar a nova tarefa do usuário e o estado consolidado da seção 5.
+   Save/Load, distribuição dos terminais, viewport, Quick Ping e Übungen Beta já existem.
    Não transformar propostas em tarefas autorizadas sem instrução do usuário.
 6. Fazer mudanças pequenas e reversíveis, preservar sessões/IDs e executar os
    testes direcionados e TypeScript. Usar Chromium para mudanças visuais; manter
