@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { Children, createElement, isValidElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { ReactFlowProvider } from '@xyflow/react';
 import { Inspector, HostOverview, RouterOverview, ServerOverview, OverviewServices, OverviewInterface, SwitchOverview, SwitchCapacity, ApOverview, ApClients, FirewallSummary } from './Inspector';
 import { ApDevice, SwitchDevice } from '../engine/switch';
 import { Palette } from './Palette';
@@ -108,7 +109,7 @@ it('classifies AP links from current neighbors and returns disconnected ports to
 });
 
 it('keeps draggable device controls without the permanent cabling instruction', () => {
-  const html = renderToStaticMarkup(createElement(Palette));
+  const html = renderToStaticMarkup(createElement(ReactFlowProvider, null, createElement(Palette)));
   expect(html).not.toContain('Drag between the dots'); expect(html).not.toContain('palette-hint');
   expect(html.match(/draggable="true"/g)).toHaveLength(8);
 });
@@ -366,7 +367,11 @@ it('organizes the dedicated Firewall into five persistent pages without duplicat
   expect(html).not.toMatch(/<details class="router-interface-editor" open/);
   expect(html.match(/role="switch" aria-label="DNS Server" aria-checked="true"/g)).toHaveLength(2);
   for (const value of ['Firewall (nftables)', 'Copy config', 'Conntrack erklären', 'Firewall-Begriffe erklären', 'Firewall logs', 'Routing-Tabelle', 'ARP-Tabelle', 'RIP aktivieren',
-    'sysctl -w net.ipv4.ip_forward=1', 'DHCP · Schnittstellen', 'DNS server', 'Web server', 'lab.local', 'Delete device']) expect(html).toContain(value);
+    'IP-Forwarding aktivieren', 'DHCP · Schnittstellen', 'DNS server', 'Web server', 'lab.local', 'Delete device']) expect(html).toContain(value);
+  const routing = html.slice(html.indexOf('-panel-routing" aria-labelledby'), html.indexOf('-panel-services" aria-labelledby'));
+  expect(routing).toMatch(/<input type="checkbox" checked=""\/>IP-Forwarding aktivieren/);
+  device.forwarding = false;
+  expect(render()).toMatch(/<input type="checkbox"\/>IP-Forwarding aktivieren/);
   expect(html).not.toContain('Open terminal');
 });
 
