@@ -35,9 +35,10 @@ async function drainDownloads() {
 async function connect(endpoint) {
   const socket = new WebSocket(endpoint);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
-  let sequence = 0; const requests = new Map();
+  let sequence = 0; const requests = new Map(), subscribers = new Map();
   socket.onmessage = event => {
     const message = JSON.parse(event.data);
+    for (const handler of subscribers.get(message.method) ?? []) handler(message.params);
     if (message.id) {
       const call = requests.get(message.id);
       if (call) { clearTimeout(call.timer); requests.delete(message.id); message.error ? call.reject(Error(JSON.stringify(message.error))) : call.resolve(message.result); }
@@ -62,9 +63,10 @@ async function connect(endpoint) {
     if (result.exceptionDetails) throw Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
     return result.result.value;
   };
-  const close = () => { for (const call of requests.values()) clearTimeout(call.timer); socket.close(); };
+  const close = () => { subscribers.clear(); for (const call of requests.values()) clearTimeout(call.timer); socket.close(); };
   await send('Runtime.enable'); await send('Page.enable');
-  return { send, evaluate, close, labelDownloads: name => { downloadOperation = name; }, drainDownloads };
+  const onEvent = (method, handler) => { const set = subscribers.get(method) ?? new Set(); set.add(handler); subscribers.set(method, set); return () => { set.delete(handler); if (!set.size) subscribers.delete(method); }; };
+  return { send, evaluate, close, onEvent, labelDownloads: name => { downloadOperation = name; }, drainDownloads };
 }
 
 async function launchBrowser() {
@@ -313,6 +315,16 @@ try {
   if (process.env.NETLAB_DEFAULTS_REVIEW === '1') {
     const { runDefaultsReview } = await import('./defaults-review.mjs');
     await runDefaultsReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_HOMEPAGE_REVIEW === '1') {
+    const { runHomepageReview } = await import('./homepage-review.mjs');
+    await runHomepageReview({ page: pageOne, url, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_JOURNEY_REVIEW === '1') {
+    const { runJourneyReview } = await import('./journey-review.mjs');
+    await runJourneyReview({ page: pageOne, url, root, report });
     await prepare(pageOne);
   }
   if (process.env.NETLAB_USABILITY_REVIEW === '1') {

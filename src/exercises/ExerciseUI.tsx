@@ -7,6 +7,7 @@ import { sim } from '../sim';
 import { BETA_EXERCISES, betaChecks } from './beta';
 import { ExerciseController, type ExerciseState } from './exerciseController';
 import './exercises.css';
+import { useTranslation } from '../i18n';
 
 const Context = createContext<{ controller: ExerciseController; state: ExerciseState } | null>(null);
 export function ExerciseProvider({ sessions, repository, children }: { sessions: SessionController; repository: ProjectRepository; children: ReactNode }) {
@@ -31,22 +32,23 @@ export function ExerciseProvider({ sessions, repository, children }: { sessions:
 
 export function ExerciseMenu({ close }: { close(): void }) {
   const ui = useContext(Context);
+  const { t, language } = useTranslation();
   useEffect(() => { if (ui) void ui.controller.refresh(); }, [ui?.controller]);
-  if (!ui) return <p>Übungen benötigen den lokalen Planspeicher.</p>;
+  if (!ui) return <p>{t('exercises.storage')}</p>;
   const { controller, state } = ui;
   return <>
-    <p className="exercise-note">Experimentelle Übungen · Fortschritt nur auf diesem Browserprofil.</p>
-    {state.error && <p role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>Erneut versuchen</button></p>}
+    <p className="exercise-note">{t('exercises.note')} {t('exercises.contentLanguage')}</p>
+    {state.error && <p role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>{t('common.retry')}</button></p>}
     {BETA_EXERCISES.map(e => {
       const completion = state.progress.completed[e.id], resume = controller.resumable(e.id);
       const started = Object.values(state.progress.attempts).some(a => a.exerciseId === e.id);
       return <section key={e.id} className="exercise-menu-entry" data-exercise={e.id}>
         <strong>{e.student.title}</strong>
-        <span className={completion ? 'exercise-completed' : 'exercise-note'}>{completion ? '✓ Abgeschlossen' : started ? 'In Bearbeitung' : 'Noch nicht begonnen'}</span>
-        {completion && <small>{new Date(completion.completedAt).toLocaleDateString('de-DE')} · Version {completion.contentVersion}</small>}
+        <span className={completion ? 'exercise-completed' : 'exercise-note'}>{completion ? '✓ ' + t('exercises.completed') : started ? t('exercises.started') : t('exercises.untouched')}</span>
+        {completion && <small>{new Date(completion.completedAt).toLocaleDateString(language)} · Version {completion.contentVersion}</small>}
         <div className="exercise-menu-actions">
-          {resume && <button role="menuitem" className="btn" disabled={!state.ready || state.busy} onClick={() => { void controller.resume(resume.draftId); close(); }}>Fortsetzen</button>}
-          <button role="menuitem" className="btn" disabled={!state.ready || state.busy} onClick={() => { void controller.start(e.id); close(); }}>{completion ? 'Erneut starten' : resume ? 'Neuer Versuch' : 'Starten'}</button>
+          {resume && <button role="menuitem" className="btn" disabled={!state.ready || state.busy} onClick={() => { void controller.resume(resume.draftId); close(); }}>{t('exercises.resume')}</button>}
+          <button role="menuitem" className="btn" disabled={!state.ready || state.busy} onClick={() => { void controller.start(e.id); close(); }}>{t(completion ? 'exercises.restart' : resume ? 'exercises.attempt' : 'exercises.start')}</button>
         </div>
       </section>;
     })}

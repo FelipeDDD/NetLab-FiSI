@@ -6,6 +6,8 @@ import { useStore } from '../store';
 import { BackgroundSettings } from './BackgroundSettings';
 import { UI_THEMES, useUiTheme, type UiTheme } from '../uiTheme';
 import { useAlignmentPreference } from '../alignmentPreferences';
+import { LanguageSelector } from '../i18n/LanguageSelector';
+import { useTranslation } from '../i18n';
 
 export function InspectorLayoutSettings({ value, onChange }: {
   value: InspectorLayoutPreference; onChange: (value: InspectorLayoutPreference) => void;
@@ -26,10 +28,13 @@ export function InspectorSettingsContent({ value, onChange }: {
   value: InspectorLayoutPreference; onChange: (value: InspectorLayoutPreference) => void;
 }) {
   const coverage = useWifiCoverage();
+  const { t } = useTranslation();
   const cableStyle = useStore(s => s.cableStyle);
   const { theme, setTheme } = useUiTheme();
   const alignment = useAlignmentPreference();
   return <>
+      <LanguageSelector />
+      <p className="hint">{t('navigation.languageNote')}</p>
       <fieldset className="theme-settings">
         <legend>Darstellung</legend>
         <label htmlFor="ui-theme-choice">UI Theme</label>

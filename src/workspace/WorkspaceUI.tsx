@@ -6,6 +6,7 @@ import type { ProjectRepository } from '../projects/repository';
 import type { ProjectDocument, ProjectMetadata } from '../projects/types';
 import { hasPendingForms } from '../persistence/pendingForms';
 import { encodeDraftDocument } from '../projects/workspaceDocument';
+import { useTranslation } from '../i18n';
 
 export const emptyPlan: ProjectDocument = { schemaVersion: 1, topology: { app: 'netsim', version: 1, devices: [], links: [] } };
 /** An unnamed draft still needs Save As, even when it contains nothing to lose.
@@ -46,6 +47,7 @@ interface WorkspaceUIValue {
   status: string;
   newPlan(): void;
   loadPlans(): void;
+  openPlan(id: string): void;
   save(as?: boolean): void;
   close(id?: string): void;
   switchTo(id: string): void;
@@ -60,6 +62,7 @@ type Dialog = { kind: 'name'; id: string; closeSequence?: number; forms?: boolea
   { kind: 'forms'; proceed: () => void } | { kind: 'delete'; plan: ProjectMetadata };
 
 function Modal({ title, children, cancel, busy }: { title: string; children: ReactNode; cancel(): void; busy: boolean }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const focused = document.activeElement as HTMLElement | null; ref.current?.showModal();
@@ -67,12 +70,13 @@ function Modal({ title, children, cancel, busy }: { title: string; children: Rea
   }, []);
   return createPortal(<dialog ref={ref} className="workspace-dialog" aria-labelledby="workspace-dialog-title"
     onCancel={event => { event.preventDefault(); if (!busy) cancel(); }}>
-    <header><h2 id="workspace-dialog-title">{title}</h2><button type="button" aria-label="Dialog schließen" disabled={busy} onClick={cancel}>×</button></header>
+    <header><h2 id="workspace-dialog-title">{title}</h2><button type="button" aria-label={t('common.close')} disabled={busy} onClick={cancel}>×</button></header>
     {children}
   </dialog>, document.body);
 }
 
 export function WorkspaceProvider({ controller, repository, children }: { controller: SessionController; repository: ProjectRepository; children: ReactNode }) {
+  const { t, language } = useTranslation();
   const [state, setState] = useState(() => controller.getState()), [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null), [name, setName] = useState(''), [plans, setPlans] = useState<ProjectMetadata[]>([]);
   const [error, setError] = useState<SessionError | null>(null), [muted, setMuted] = useState('');
@@ -138,6 +142,7 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
   };
   const active = state.drafts.find(d => d.id === state.activeDraftId), problem = error ?? (state.error?.message !== muted ? state.error : null);
   const value: WorkspaceUIValue = { state, busy, status: workspaceStatus(state), newPlan: () => openDocument(emptyPlan), loadPlans, save, close, openDocument,
+    openPlan: id => guarded(discard => controller.openPlan(id, { discardUnappliedForms: discard })),
     switchTo: id => { if (id !== controller.getState().activeDraftId) guarded(discard => controller.switchDraft(id, { discardUnappliedForms: discard })); },
     importJson: text => { try { openDocument({ schemaVersion: 1, topology: JSON.parse(text) }); } catch { retry.current = null; setErrorDraftId(undefined); setError({ code: 'invalid-document', message: 'Invalid JSON.' }); } },
     reorder: (id, before) => { const ids = controller.getState().session?.draftIds ?? []; const order = ids.filter(d => d !== id); order.splice(order.indexOf(before), 0, id); void run(() => controller.reorderTabs(order)); },
@@ -151,7 +156,7 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
   };
   return <WorkspaceContext.Provider value={value}>
     {children}
-    {!state.activeDraftId && <aside className="workspace-empty-state"><h2>Kein Plan geöffnet</h2><p>Erstellen Sie einen neuen Plan oder öffnen Sie einen gespeicherten.</p><button className="btn btn--primary" onClick={value.newPlan}>Neuer Plan</button><button className="btn" onClick={loadPlans}>Gespeicherte Pläne…</button></aside>}
+    {!state.activeDraftId && <aside className="workspace-empty-state"><h2>{t('workspace.noPlan')}</h2><p>{t('workspace.newNote')}</p><button className="btn btn--primary" onClick={value.newPlan}>{t('workspace.new')}</button><button className="btn" onClick={loadPlans}>{t('navigation.plans')}</button></aside>}
     {problem && <aside className="workspace-recovery" role="alert" data-error-code={problem.code}>
       <div><strong>Änderungen bleiben erhalten</strong><p>{sessionErrorMessage(problem)}</p></div>
       {retryOperation && <button type="button" className="btn" disabled={busy} onClick={() => void run(retryOperation.work, retryOperation.draftId)}>Erneut versuchen</button>}
@@ -159,12 +164,12 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
       <button type="button" className="btn" onClick={() => { setError(null); setMuted(state.error?.message ?? ''); }}>Abbrechen</button>
     </aside>}
     {state.pendingShare && <aside className="workspace-share" role="status"><span>Geteilte Topologie öffnen? Ihre Pläne bleiben erhalten.</span><button className="btn" onClick={() => guarded(discard => controller.acceptShare({ discardUnappliedForms: discard }))}>In neuer Registerkarte öffnen</button><button className="btn" onClick={() => controller.dismissShare()}>Abbrechen</button></aside>}
-    {dialog && <Modal key={dialog.kind} title={dialog.kind === 'name' ? 'Plan speichern' : dialog.kind === 'load' ? 'Gespeicherte Pläne' : dialog.kind === 'forms' ? 'Nicht übernommene Eingaben' : dialog.kind === 'delete' ? 'Gespeicherten Plan löschen?' : 'Plan schließen?'} cancel={() => setDialog(null)} busy={busy}>
+    {dialog && <Modal key={dialog.kind} title={dialog.kind === 'name' ? t('workspace.saveTitle') : dialog.kind === 'load' ? t('workspace.plans') : dialog.kind === 'forms' ? 'Nicht übernommene Eingaben' : dialog.kind === 'delete' ? t('workspace.deleteTitle') : 'Plan schließen?'} cancel={() => setDialog(null)} busy={busy}>
       {problem && <div className="workspace-dialog-error" role="alert"><p>{sessionErrorMessage(problem)}</p><button className="btn" type="button" onClick={backup}>Backup exportieren</button></div>}
       {dialog.kind === 'name' && <form onSubmit={event => { event.preventDefault(); if (!name.trim() || busy) return; if (dialog.closeSequence !== undefined) void saveThenClose(dialog.id, dialog.closeSequence, !!dialog.forms, name.trim()); else void run(() => controller.saveOpenDraft(dialog.id, name.trim()), dialog.id).then(r => { if (r?.ok) setDialog(null); }); }}>
-        <label className="workspace-name-label">Name des Plans<input autoFocus maxLength={200} value={name} placeholder="z. B. Büro-Netzwerk" onChange={e => setName(e.target.value)} /></label>
-        <p className="workspace-dialog-note">Speichert die übernommenen Einstellungen dieses Plans.</p>
-        <footer><button type="button" className="btn" disabled={busy} onClick={() => setDialog(null)}>Abbrechen</button><button className="btn btn--primary" disabled={busy || !name.trim()}>{busy ? 'Speichert…' : 'Speichern'}</button></footer>
+        <label className="workspace-name-label">{t('workspace.name')}<input autoFocus maxLength={200} value={name} placeholder={t('workspace.placeholder')} onChange={e => setName(e.target.value)} /></label>
+        <p className="workspace-dialog-note">{t('workspace.saveNote')}</p>
+        <footer><button type="button" className="btn" disabled={busy} onClick={() => setDialog(null)}>{t('common.cancel')}</button><button className="btn btn--primary" disabled={busy || !name.trim()}>{t(busy ? 'common.loading' : 'navigation.save')}</button></footer>
       </form>}
       {dialog.kind === 'close' && <>
         <p>Änderungen an „{state.drafts.find(d => d.id === dialog.id)?.base?.planName ?? 'Unbenannt'}“ vor dem Schließen speichern?</p>
@@ -173,11 +178,11 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
           <button className="btn btn--primary" disabled={busy} onClick={() => { const draft = state.drafts.find(d => d.id === dialog.id); if (!draft?.base) { setName(''); setDialog({ kind: 'name', id: dialog.id, closeSequence: dialog.sequence, forms: dialog.forms }); } else void saveThenClose(dialog.id, dialog.sequence, dialog.forms); }}>Speichern</button></footer>
       </>}
       {dialog.kind === 'forms' && <><p>Einige Eingaben wurden noch nicht übernommen. Übernehmen Sie diese im Formular oder verwerfen Sie sie ausdrücklich.</p><footer><button className="btn" onClick={() => setDialog(null)}>Abbrechen</button><button className="btn btn--primary" onClick={dialog.proceed}>Verwerfen und fortfahren</button></footer></>}
-      {dialog.kind === 'load' && <><p className="workspace-dialog-note">Öffnet einen Plan, ohne Ihre anderen Entwürfe zu ersetzen.</p><div className="workspace-plan-list">
-        {!plans.length && <p className="workspace-empty-list">Noch keine gespeicherten Pläne. Mit „Speichern unter…“ legen Sie den ersten an.</p>}
-        {plans.map(plan => <div className="workspace-plan-row" key={plan.id}><button className="workspace-plan-open" disabled={busy} onClick={() => { setDialog(null); guarded(discard => controller.openPlan(plan.id, { discardUnappliedForms: discard })); }}><strong>{plan.name}</strong><span>{new Date(plan.updatedAt).toLocaleString('de-DE')} · {state.drafts.some(d => d.base?.planId === plan.id) ? 'Bereits geöffnet' : 'Gespeichert'}</span></button><button className="btn" disabled={busy} aria-label={`${plan.name} löschen`} onClick={() => setDialog({ kind: 'delete', plan })}>Löschen</button></div>)}
-      </div><footer><button className="btn" onClick={() => setDialog(null)}>Abbrechen</button></footer></>}
-      {dialog.kind === 'delete' && <><p>„{dialog.plan.name}“ löschen? Geöffnete Entwürfe bleiben erhalten. Der gespeicherte Plan wird nicht mehr in dieser Liste angezeigt.</p><footer><button className="btn" disabled={busy} onClick={loadPlans}>Abbrechen</button><button className="btn" disabled={busy} onClick={() => void run(() => repository.deleteProject(dialog.plan.id, dialog.plan.revision)).then(r => { if (r?.ok) loadPlans(); })}>Löschen</button></footer></>}
+      {dialog.kind === 'load' && <><p className="workspace-dialog-note">{t('workspace.loadNote')}</p><div className="workspace-plan-list">
+        {!plans.length && <p className="workspace-empty-list">{t('workspace.empty')}</p>}
+        {plans.map(plan => <div className="workspace-plan-row" key={plan.id}><button className="workspace-plan-open" disabled={busy} onClick={() => { setDialog(null); value.openPlan(plan.id); }}><strong>{plan.name}</strong><span>{new Date(plan.updatedAt).toLocaleString(language)} · {t(state.drafts.some(d => d.base?.planId === plan.id) ? 'workspace.opened' : 'workspace.saved')}</span></button><button className="btn" disabled={busy} aria-label={t('workspace.deleteNamed', { name: plan.name })} onClick={() => setDialog({ kind: 'delete', plan })}>{t('workspace.delete')}</button></div>)}
+      </div><footer><button className="btn" onClick={() => setDialog(null)}>{t('common.cancel')}</button></footer></>}
+      {dialog.kind === 'delete' && <><p>{t('workspace.deleteNote', { name: dialog.plan.name })}</p><footer><button className="btn" disabled={busy} onClick={loadPlans}>{t('common.cancel')}</button><button className="btn" disabled={busy} onClick={() => void run(() => repository.deleteProject(dialog.plan.id, dialog.plan.revision)).then(r => { if (r?.ok) loadPlans(); })}>{t('workspace.delete')}</button></footer></>}
     </Modal>}
   </WorkspaceContext.Provider>;
 }

@@ -17,6 +17,8 @@ import type { SessionController } from '../persistence/sessionController';
 import type { ProjectRepository } from '../projects/repository';
 import type { SessionError, SessionRuntime } from '../persistence/sessionTypes';
 import './workspace.css';
+import { installLanguageDocument } from '../i18n';
+import { HomeLink } from '../i18n/HomeLink';
 
 export function mountWorkspaceApplication(element: HTMLElement, options: {
   repositoryOptions?: RepositoryOptions;
@@ -25,6 +27,7 @@ export function mountWorkspaceApplication(element: HTMLElement, options: {
 } = {}) {
   // This claim precedes opening IDB, migration, retries and lifecycle listeners.
   useStore.getState().protectLegacyAutosave();
+  const releaseLanguage = installLanguageDocument();
   applyDeviceColors(document.documentElement); applyUiTheme(useUiTheme.getState().theme);
   document.documentElement.dataset.interfaceCards = new URLSearchParams(location.search).get('interfaceCards') === 'elevated' ? 'elevated' : 'accent';
   const root = createRoot(element), runtime = options.runtime ?? createZustandSessionRuntime({ pauseOnActivation: true });
@@ -78,7 +81,7 @@ export function mountWorkspaceApplication(element: HTMLElement, options: {
           <button className="btn" disabled={recoveryBusy} onClick={cancel}>Abbrechen</button>
         </footer><p>Das Speicher-Backup enthält rohe Datensätze zur Wiederherstellung, kein direkt importierbares Topologie-JSON.</p></>}
       {starting && <button className="btn" onClick={cancel}>Abbrechen</button>}
-    </section></main>);
+    </section><HomeLink /></main>);
   };
   const receiveShare = () => {
     if (!controller || !location.hash.startsWith('#t=')) return;
@@ -103,7 +106,7 @@ export function mountWorkspaceApplication(element: HTMLElement, options: {
       if (disposed || currentAttempt !== attempt || currentAttempt.signal.aborted) { if (opened.ok) { opened.controller.dispose(); opened.repository.close(); } return; }
       if (opened.ok) {
         controller = opened.controller; repository = opened.repository;
-        root.render(<WorkspaceProvider controller={controller} repository={repository}><ExerciseProvider sessions={controller} repository={repository}><App /></ExerciseProvider></WorkspaceProvider>);
+        root.render(<WorkspaceProvider controller={controller} repository={repository}><ExerciseProvider sessions={controller} repository={repository}><App /><HomeLink /></ExerciseProvider></WorkspaceProvider>);
         receiveShare();
       } else error = opened.error;
     } catch { if (currentAttempt === attempt && !currentAttempt.signal.aborted) error = { code: 'storage-error', message: 'Startup failed; original storage and local work were preserved.' }; }
@@ -115,7 +118,7 @@ export function mountWorkspaceApplication(element: HTMLElement, options: {
   const ready = start();
   return { ready, get controller() { return controller; }, get repository() { return repository; },
     dispose() {
-      disposed = true; attempt.abort(); releaseLifecycle(); window.removeEventListener('hashchange', receiveShare);
+      disposed = true; attempt.abort(); releaseLifecycle(); releaseLanguage(); window.removeEventListener('hashchange', receiveShare);
       controller?.dispose(); repository?.close(); root.unmount();
     },
   };

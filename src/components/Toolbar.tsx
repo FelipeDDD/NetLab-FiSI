@@ -9,12 +9,14 @@ import { confirmReplacement, REPLACEMENT_WARNING } from '../persistence/replacem
 import { useWorkspaceUI } from '../workspace/WorkspaceUI';
 import { ExerciseMenu } from '../exercises/ExerciseUI';
 import { MarkingsButton } from './AreaMarkings';
+import { useTranslation } from '../i18n';
+import { consumeHomeIntent } from '../home/navigation';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 const MENUS = [
-  { id: 'file', label: 'Datei' }, { id: 'labs', label: 'Labs' },
-  { id: 'exercises', label: 'Übungen (Beta)' },
-  { id: 'settings', label: 'Einstellungen' }, { id: 'help', label: 'Hilfe' },
+  { id: 'file', label: 'navigation.file' }, { id: 'labs', label: 'navigation.labs' },
+  { id: 'exercises', label: 'navigation.exercises' },
+  { id: 'settings', label: 'navigation.settings' }, { id: 'help', label: 'navigation.help' },
 ] as const;
 type MenuId = typeof MENUS[number]['id'];
 type MenuPage = Exclude<MenuId, 'settings'> | 'compact';
@@ -32,6 +34,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   inspectorLayout: InspectorLayoutPreference; onInspectorLayoutChange: (value: InspectorLayoutPreference) => void;
 }) {
   const workspace = useWorkspaceUI();
+  const { t, language } = useTranslation();
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1100px)').matches);
   const [menu, setMenu] = useState<MenuPage | null>(null);
   const [dialog, setDialog] = useState<'settings' | 'packets' | null>(null);
@@ -92,6 +95,16 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
     setDialog(id === 'settings' ? 'settings' : null);
     setMenu(id === 'settings' ? null : id);
   };
+  useEffect(() => {
+    if (!workspace) return;
+    const intent = consumeHomeIntent();
+    if (!intent) return;
+    if (workspace.state.pendingShare) return;
+    if (intent.action === 'new') workspace.newPlan();
+    else if (intent.action === 'load') workspace.loadPlans();
+    else if (intent.action === 'plan') workspace.openPlan(intent.id);
+    else openMenu(intent.action);
+  }, [!!workspace]);
   const perform = (action: () => void) => {
     try { action(); }
     catch (error) { useStore.getState().setNotice('Aktion fehlgeschlagen: ' + (error instanceof Error ? error.message : String(error))); }
@@ -110,7 +123,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
     const items = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]')];
     const index = items.indexOf(document.activeElement as HTMLElement);
     const ordered = [...items.slice(index + 1), ...items.slice(0, index + 1)];
-    const match = ordered.find(item => item.textContent?.trim().toLocaleLowerCase('de').startsWith(event.key.toLocaleLowerCase('de')));
+    const match = ordered.find(item => item.textContent?.trim().toLocaleLowerCase(language).startsWith(event.key.toLocaleLowerCase(language)));
     if (match) { event.preventDefault(); event.stopPropagation(); match.focus(); }
   };
   const menuKeys = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -147,21 +160,21 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const togglePackets = () => useStore.getState().setPacketInspectorOpen(!packetInspectorOpen);
   const openPacketSettings = () => { closeMenu(); setDialog(current => current === 'packets' ? null : 'packets'); };
   const runTitle = paused ? 'Run — Simulationsuhr fortsetzen' : 'Pause — Simulationsuhr anhalten';
-  const popupLabel = menu === 'compact' ? 'Menü' : MENUS.find(item => item.id === menu)?.label;
+  const popupLabel = menu === 'compact' ? 'navigation.menu' : MENUS.find(item => item.id === menu)?.label;
 
   return <header className="toolbar">
     <div className="brand"><span className="brand-name">NetLab - FiSi</span>
       <span className="autosave-state" role="status">{workspace ? workspace.status : autosaveBlocked ? 'Temporär · Autosave geschützt' : autosaveError ? 'Speicherfehler' : autosavePending ? 'Nicht gespeichert' : 'Gespeichert'}</span>
     </div>
-    <nav className="toolbar-navigation" aria-label="Hauptmenü">
+    <nav className="toolbar-navigation" aria-label={t('navigation.main')}>
       {compact ? <button type="button" className="toolbar-menu-trigger" ref={el => { triggers.current.compact = el; }}
         aria-haspopup="menu" aria-expanded={menu !== null} aria-controls={menu ? 'toolbar-' + menu + '-menu' : undefined}
         onClick={() => menu ? closeMenu() : openMenu('compact')}
         onKeyDown={event => {
           if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
           event.preventDefault(); openMenu('compact', event.key === 'ArrowUp' ? 'last' : 'first');
-        }}>Menü <span aria-hidden="true">▾</span></button>
-        : <div role="menubar" aria-label="Hauptmenü">
+        }}>{t('navigation.menu')} <span aria-hidden="true">▾</span></button>
+        : <div role="menubar" aria-label={t('navigation.main')}>
           {MENUS.map((item, index) => <button type="button" role="menuitem" className="toolbar-menu-trigger" key={item.id}
             ref={el => { triggers.current[item.id] = el; }} tabIndex={focusedMenu === item.id ? 0 : -1}
             aria-haspopup={item.id === 'settings' ? 'dialog' : 'menu'}
@@ -185,7 +198,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
                 triggers.current[MENUS[next].id]?.focus({ preventScroll: true });
                 if (menu) { if (MENUS[next].id === 'settings') closeMenu(); else openMenu(MENUS[next].id); }
               }
-            }}>{item.label}</button>)}
+            }}>{t(item.label)}</button>)}
         </div>}
     </nav>
 
@@ -226,28 +239,28 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
       <span className="clock toolbar-clock">t = {(clock / 1000).toFixed(1)}s</span>
     </div>
 
-    {menu && <FloatingPopover key={menu} anchor={anchor} id={'toolbar-' + menu + '-menu'} label={popupLabel ?? 'Menü'}
+    {menu && <FloatingPopover key={menu} anchor={anchor} id={'toolbar-' + menu + '-menu'} label={t(popupLabel ?? 'navigation.menu')}
       role="menu" width={menu === 'labs' || menu === 'exercises' ? 360 : menu === 'help' ? 200 : 210} initialFocus={menuFocus}
       popupRef={parentPopup} relatedRefs={[exportPopup]} className="labs-menu toolbar-command-menu"
       onClose={() => closeMenu()} onKeyDown={menuKeys}
       onPointerLeave={event => { if (event.pointerType === 'mouse' && exportOpen) scheduleExportClose(); }}>
       {compact && menu !== 'compact' && <button type="button" role="menuitem" className="labs-menu-item toolbar-menu-back"
-        onClick={() => { closeExport(); setMenuFocus('first'); setMenu('compact'); }}>‹ Menü</button>}
+        onClick={() => { closeExport(); setMenuFocus('first'); setMenu('compact'); }}>‹ {t('navigation.menu')}</button>}
       {menu === 'compact' && MENUS.map(item => <button type="button" role="menuitem" className="labs-menu-item toolbar-menu-action"
         aria-haspopup={item.id === 'settings' ? 'dialog' : 'menu'} key={item.id} onClick={() => openMenu(item.id)}>
-        <span>{item.label}</span><span aria-hidden="true">{item.id === 'settings' ? '' : '›'}</span>
+        <span>{t(item.label)}</span><span aria-hidden="true">{item.id === 'settings' ? '' : '›'}</span>
       </button>)}
       {menu === 'exercises' && <ExerciseMenu close={() => closeMenu(true)} />}
       {menu === 'file' && <>
         {workspace ? <>
-          {action('Neu', workspace.newPlan)}
-          {action('Öffnen…', workspace.loadPlans)}
-          {action('Speichern', () => workspace.save(), !workspace.state.activeDraftId)}
-          {action('Speichern unter…', () => workspace.save(true), !workspace.state.activeDraftId)}
-          {action('Plan schließen', () => workspace.close(), !workspace.state.activeDraftId)}
-          {action('Gespeicherte Pläne…', workspace.loadPlans)}
-          <div className="labs-menu-section">Austausch</div>
-          {action('JSON importieren…', () => fileRef.current?.click())}
+          {action(t('navigation.new'), workspace.newPlan)}
+          {action(t('navigation.open'), workspace.loadPlans)}
+          {action(t('navigation.save'), () => workspace.save(), !workspace.state.activeDraftId)}
+          {action(t('navigation.saveAs'), () => workspace.save(true), !workspace.state.activeDraftId)}
+          {action(t('navigation.closePlan'), () => workspace.close(), !workspace.state.activeDraftId)}
+          {action(t('navigation.plans'), workspace.loadPlans)}
+          <div className="labs-menu-section">{t('navigation.exchange')}</div>
+          {action(t('navigation.import'), () => fileRef.current?.click())}
         </> : <>
           {action('New', () => replace(() => useStore.getState().newTopology()))}
           {action('Import', () => fileRef.current?.click())}
@@ -256,8 +269,8 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
           aria-expanded={exportOpen} aria-controls={exportOpen ? 'toolbar-export-menu' : undefined}
           onPointerEnter={event => { if (event.pointerType === 'mouse') openExport('none'); }}
           onPointerLeave={event => { if (event.pointerType === 'mouse') scheduleExportClose(); }}
-          onClick={() => openExport('first')}><span>Export</span><span className="toolbar-submenu-arrow" aria-hidden="true">›</span></button>
-        {action('Share link', () => useStore.getState().shareUrl())}
+          onClick={() => openExport('first')}><span>{t('navigation.export')}</span><span className="toolbar-submenu-arrow" aria-hidden="true">›</span></button>
+        {action(t('navigation.share'), () => useStore.getState().shareUrl())}
       </>}
       {menu === 'labs' && <>
         {action('Demo', () => workspace ? workspace.openDocument(useStore.getState().createDemoDocument()) : replace(() => useStore.getState().loadDemo()))}
@@ -274,7 +287,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         <div className="labs-menu-note">{workspace ? 'Übungen und Beispiele öffnen in einem neuen Plan.' : 'Loading a lab or example replaces the current canvas.'}</div>
       </>}
       {menu === 'help' && <a className="labs-menu-item toolbar-help-link" role="menuitem" href={USER_GUIDE_URL}
-        target="_blank" rel="noopener noreferrer" onClick={() => closeMenu(true)}>Help / Dokumentation ↗</a>}
+        target="_blank" rel="noopener noreferrer" onClick={() => closeMenu(true)}>{t('navigation.documentation')} ↗</a>}
     </FloatingPopover>}
 
     {menu === 'file' && exportOpen && <FloatingPopover anchor={exportAnchor} id="toolbar-export-menu" label="Export" role="menu"
@@ -293,9 +306,9 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
       </button>)}
     </FloatingPopover>}
 
-    {dialog === 'settings' && <FloatingPopover anchor={anchor} id="inspector-layout-settings" label="Settings" width={300}
+    {dialog === 'settings' && <FloatingPopover anchor={anchor} id="inspector-layout-settings" label={t('navigation.settings')} width={300}
       className="inspector-layout-settings" onClose={() => setDialog(null)}>
-      <h2 className="toolbar-dialog-title">Einstellungen</h2>
+      <h2 className="toolbar-dialog-title">{t('navigation.settings')}</h2>
       <InspectorSettingsContent value={inspectorLayout} onChange={onInspectorLayoutChange} />
     </FloatingPopover>}
     {dialog === 'packets' && <FloatingPopover anchor={packetAnchor} id="packet-capture-menu" label="Packets"

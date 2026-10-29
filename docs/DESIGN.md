@@ -691,6 +691,9 @@ cancelamento e apresentação próprios. Não implementar histórico de comandos
 
 ## NetLab-FiSI — ideias futuras
 
+- **Future network defense challenge / Netzwerkverteidigung:** cenário educacional
+  com ataque simulado, investigação do problema e defesa da infraestrutura.
+  Ideia de backlog, sem exercício, menu ou implementação disponível atualmente.
 - Expandir Undo/Redo para as demais configurações do Inspector, com
   transações próprias e tratamento seguro de timers e referências do motor.
 - Ampliar o subconjunto Windows dos hosts conforme as limitações acima;
