@@ -343,6 +343,11 @@ try {
     });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_PRACTICE_REVIEW === '1') {
+    const { runPracticeReview } = await import('./practice-review.mjs');
+    await runPracticeReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_APPLICATION_BOOT_REVIEW === '1') {
     const { runApplicationBootReview } = await import('./application-boot-review.mjs');
     await runApplicationBootReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report,

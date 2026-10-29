@@ -1,5 +1,11 @@
 export type TerminalDirection = -1 | 1;
 
+/** Physical key left of 1, independent of character/dead-key layout. Focus guards stay at the caller. */
+export function terminalDockShortcut(event: Pick<KeyboardEvent, 'code' | 'repeat' | 'defaultPrevented' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey' | 'isComposing'>): boolean {
+  return event.code === 'Backquote' && !event.repeat && !event.defaultPrevented && !event.isComposing &&
+    !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
+}
+
 export function terminalEscapeToEditor(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey' | 'isComposing'>): boolean {
   return event.key === 'Escape' && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && !event.isComposing;
 }

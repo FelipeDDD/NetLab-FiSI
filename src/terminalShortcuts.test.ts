@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { adjacentTerminal, terminalEscapeToEditor, terminalNavigationDirection } from './terminalShortcuts';
+import { adjacentTerminal, terminalDockShortcut, terminalEscapeToEditor, terminalNavigationDirection } from './terminalShortcuts';
 
 const event = { key: '', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, isComposing: false };
+
+describe('physical terminal dock shortcut', () => {
+  const base = { ...event, code: 'Backquote', repeat: false, defaultPrevented: false };
+  it.each(["'", '`', '^', 'Dead', 'º'])('recognizes the same physical key producing %s', key => {
+    expect(terminalDockShortcut({ ...base, key } as KeyboardEvent)).toBe(true);
+    expect(terminalDockShortcut({ ...base, code: 'Quote', key } as KeyboardEvent)).toBe(false);
+  });
+  it.each(['ctrlKey', 'shiftKey', 'altKey', 'metaKey', 'repeat', 'defaultPrevented', 'isComposing'])('ignores %s', flag => {
+    expect(terminalDockShortcut({ ...base, [flag]: true })).toBe(false);
+  });
+});
 
 describe('terminal navigation keys', () => {
   it('recognizes plain Escape without intercepting modified/composing input', () => {

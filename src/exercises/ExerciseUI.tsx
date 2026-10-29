@@ -8,6 +8,8 @@ import { BETA_EXERCISES, betaChecks } from './beta';
 import { ExerciseController, type ExerciseState } from './exerciseController';
 import './exercises.css';
 import { useTranslation } from '../i18n';
+import { PracticeLauncher } from './practice/PracticeSurface';
+import { usePractice } from './practice/session';
 
 const Context = createContext<{ controller: ExerciseController; state: ExerciseState } | null>(null);
 export function ExerciseProvider({ sessions, repository, children }: { sessions: SessionController; repository: ProjectRepository; children: ReactNode }) {
@@ -34,9 +36,10 @@ export function ExerciseMenu({ close }: { close(): void }) {
   const ui = useContext(Context);
   const { t, language } = useTranslation();
   useEffect(() => { if (ui) void ui.controller.refresh(); }, [ui?.controller]);
-  if (!ui) return <p>{t('exercises.storage')}</p>;
+  if (!ui) return <><PracticeLauncher close={close} /><p>{t('exercises.storage')}</p></>;
   const { controller, state } = ui;
   return <>
+    <PracticeLauncher close={close} />
     <p className="exercise-note">{t('exercises.note')} {t('exercises.contentLanguage')}</p>
     {state.error && <p role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>{t('common.retry')}</button></p>}
     {BETA_EXERCISES.map(e => {
@@ -56,10 +59,11 @@ export function ExerciseMenu({ close }: { close(): void }) {
 }
 
 export function ExercisePanel() {
+  const practiceOpen=usePractice(s=>s.open);
   const ui = useContext(Context), [collapsed, setCollapsed] = useState(false);
   const active = ui?.controller.activeAttempt();
   useEffect(() => setCollapsed(false), [active?.id]);
-  if (!ui) return null;
+  if (!ui || practiceOpen) return null;
   const { controller, state } = ui;
   const exercise = BETA_EXERCISES.find(e => e.id === active?.exerciseId);
   if (!exercise || !active) return state.error ? <aside className="exercise-error" role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>Erneut versuchen</button></aside> : null;

@@ -5,11 +5,12 @@ import navigation from './catalogs/navigation';
 import exercises from './catalogs/exercises';
 import workspace from './catalogs/workspace';
 import journey from './catalogs/journey';
+import practice from './catalogs/practice';
 
 export const LANGUAGES = { de: 'Deutsch', en: 'English', 'pt-BR': 'Português (Brasil)' } as const;
 export type Language = keyof typeof LANGUAGES;
 export const LANGUAGE_KEY = 'netlab:language:v1';
-export const catalogs = { common, home, navigation, exercises, workspace, journey };
+export const catalogs = { common, home, navigation, exercises, workspace, journey, practice };
 type Domain = keyof typeof catalogs;
 export type TranslationKey = { [D in Domain]: `${D}.${keyof typeof catalogs[D]['en'] & string}` }[Domain];
 export function normalizeLanguage(value: unknown): Language {

@@ -18,6 +18,8 @@ import { PersistenceStatus } from './components/PersistenceStatus';
 import { WorkspaceTabs, useWorkspaceUI } from './workspace/WorkspaceUI';
 import { WorkspaceViewport } from './workspace/WorkspaceViewport';
 import { PacketAnimationControl } from './components/PacketAnimationControl';
+import { terminalDockShortcut } from './terminalShortcuts';
+import { PracticeSurface } from './exercises/practice/PracticeSurface';
 
 export default function App() {
   const workspace = useWorkspaceUI();
@@ -54,8 +56,7 @@ export default function App() {
         onPointerDownCapture={event => prioritizePanel(event.target)}
         onFocusCapture={event => prioritizePanel(event.target)}
         onKeyDown={event => {
-          if (event.key !== "'" || event.repeat || event.defaultPrevented || event.nativeEvent.isComposing ||
-              event.ctrlKey || event.altKey || event.metaKey || event.shiftKey ||
+          if (!terminalDockShortcut(event.nativeEvent) ||
               protectsTopologyKeys(event.target as Element) || protectsTopologyKeys(document.activeElement)) return;
           const state = useStore.getState();
           if (!state.terminals.length) return;
@@ -76,6 +77,7 @@ export default function App() {
             <Flow fitOnInit={!workspace} />
             <LabPanel />
             <ExercisePanel />
+            <PracticeSurface />
             <PacketAnimationControl />
           </div>
           {selected && <ResizableInspector hidden={false} side={packetInspectorOpen && packetLayout.side === 'right' ? 'left' : 'right'}

@@ -17,7 +17,7 @@
 .exercise-panel footer > small { display: block; margin-top: 6px; }
 .exercise-panel footer p:empty { display: none; }
 .exercise-note, .exercise-panel small { color: var(--ui-text-muted); }
-.exercise-menu-entry { display: flex; flex-direction: column; gap: 6px; padding: 10px 4px; border-top: 1px solid var(--ui-border); }
+.exercise-menu-entry, .practice-menu-entry { display: flex; flex-direction: column; gap: 6px; padding: 10px 4px; border-top: 1px solid var(--ui-border); }
 .exercise-menu-actions { display: flex; gap: 8px; }
 .exercise-error { position: absolute; bottom: 12px; left: 12px; max-width: calc(100% - 24px); z-index: 9; background: var(--ui-surface-panel); color: var(--ui-text); padding: 12px; border: 1px solid var(--ui-border); }
 @media (max-width: 900px) { .exercise-panel { max-height: min(52%, 460px); } }

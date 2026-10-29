@@ -42,18 +42,18 @@ describe('catalog contracts', () => {
     }
   });
   it('every static key referenced by migrated consumers exists', () => {
-    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx'];
+    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx'];
     for (const file of files) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-      for (const match of source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey)\.\w+)['"]/g)) {
+      for (const match of source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey|practice)\.\w+)['"]/g)) {
         expect(translate('en', match[1] as TranslationKey)).toBeTruthy();
       }
     }
   });
   it('catalog keys are used by migrated components (explicit finite dynamic families)', () => {
-    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx'];
+    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx'];
     const source = files.map(file => readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
-    const references = new Set([...source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey)\.\w+)['"]/g)].map(m => m[1]));
+    const references = new Set([...source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey|practice)\.\w+)['"]/g)].map(m => m[1]));
     for (const feature of ['terminal', 'switch', 'routing', 'capture', 'exercise']) { references.add(`journey.${feature}Title`); references.add(`journey.${feature}Body`); references.add(`journey.${feature}Label`); }
     const unused = Object.entries(catalogs).flatMap(([domain, table]) => Object.keys(table.en).map(key => `${domain}.${key}`)).filter(key => !references.has(key));
     expect(unused).toEqual([]);
