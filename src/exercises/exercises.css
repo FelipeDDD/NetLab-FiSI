@@ -19,5 +19,10 @@
 .exercise-note, .exercise-panel small { color: var(--ui-text-muted); }
 .exercise-menu-entry, .practice-menu-entry { display: flex; flex-direction: column; gap: 6px; padding: 10px 4px; border-top: 1px solid var(--ui-border); }
 .exercise-menu-actions { display: flex; gap: 8px; }
+.exercise-body .exercise-criteria { padding-left: 12px; font-size: 12px; border-left: 1px solid var(--ui-border); }
+.exercise-criteria strong { font-weight: 500; }
+.exercise-check-details > summary { margin-top: 6px; color: var(--ui-text-muted); cursor: pointer; }
+.exercise-panel:has(.exercise-check-details) footer { flex-shrink: 0; }
+.exercise-manual { margin: 12px 0; color: var(--ui-text-muted); }
 .exercise-error { position: absolute; bottom: 12px; left: 12px; max-width: calc(100% - 24px); z-index: 9; background: var(--ui-surface-panel); color: var(--ui-text); padding: 12px; border: 1px solid var(--ui-border); }
 @media (max-width: 900px) { .exercise-panel { max-height: min(52%, 460px); } }

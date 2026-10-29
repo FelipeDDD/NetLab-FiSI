@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ExerciseController, EXERCISE_PROGRESS_KEY, readExerciseProgress } from './exerciseController';
-import { BETA_EXERCISES, betaChecks } from './beta';
+import { BETA_EXERCISES, betaChecks, PRACTICAL_EXERCISES } from './beta';
+import { PRACTICAL_SOURCES } from './practicalPublication';
 import { EXERCISE_DRAFTS } from './drafts';
 import { restoreNetwork, serializeNetwork } from '../engine/serialize';
 import { disposeNetwork } from '../engine/networkLifecycle';
@@ -49,6 +50,7 @@ function fixture() {
     disposeNetwork(net); net = restoreNetwork(structuredClone(file)); mutate();
   };
   return { controller, repository, sessions, runtime, mutate, solve,
+    configure:(file:ProjectDocument['topology'])=>{disposeNetwork(net);net=restoreNetwork(structuredClone(file));mutate();},
     net: () => net, meta: () => meta, fail: (v: boolean) => { failWrite = v; }, conflict: () => { conflict = true; },
     forms: (v: boolean) => { forms = v; }, delay: (v: () => Promise<void>) => { delayWrite = v; },
     close: () => { state.drafts = state.drafts.filter(d => d.id !== state.activeDraftId); state.activeDraftId = null; publish(); },
@@ -61,6 +63,38 @@ it('ships exactly the two student/check projections, synchronized with drafts an
   expect(BETA_EXERCISES).toEqual(selected.map(({ id, contentVersion, student }) => ({ id, contentVersion, student })));
   expect(betaChecks).toEqual(Object.fromEntries(selected.map(d => [d.id, d.review.assessments])));
   expect(JSON.stringify(BETA_EXERCISES)).not.toMatch(/"review"|"reference"|"commands"|"alternatives"/);
+});
+
+describe.each(PRACTICAL_EXERCISES)('practical attempt $id',exercise=>{
+  it('preserves an existing document, evaluates actual criteria and keeps historical completion separate on restart',async()=>{
+    const f=fixture();
+    try {
+      await f.controller.initialize();await f.sessions.openDocument({schemaVersion:1,topology:BETA_EXERCISES[0].student.initialTopology});
+      const personal=f.sessions.getState().activeDraftId!,before=serializeNetwork(f.net(),{});
+      await f.controller.start(exercise.id);const attempt=f.controller.activeAttempt()!;
+      expect(f.sessions.getState().drafts).toHaveLength(2);expect(attempt.draftId).not.toBe(personal);
+      await f.controller.verify();f.net().scheduler.advanceTo(120_000);await settle();
+      expect(!!f.controller.getState().progress.completed[exercise.id]).toBe(exercise.id.includes('e06'));
+      f.configure(PRACTICAL_SOURCES[exercise.id].review.reference.topology);
+      await f.controller.verify();f.net().scheduler.advanceTo(120_000);await settle();
+      expect(Object.values(f.controller.getState().results).every(r=>r.pass)).toBe(true);
+      expect(f.controller.getState().message).toContain('Technische Anforderungen erfüllt');
+      expect(f.controller.getState().progress.completed[exercise.id]).toBeDefined();
+      await f.controller.resume(personal);expect(serializeNetwork(f.net(),{})).toEqual(before);expect(f.controller.activeAttempt()).toBeUndefined();
+      await f.controller.start(exercise.id);expect(f.controller.activeAttempt()?.id).not.toBe(attempt.id);expect(f.sessions.getState().drafts).toHaveLength(3);
+      const reopened=new ExerciseController(f.sessions,f.repository,f.runtime);await reopened.initialize();
+      expect(reopened.activeAttempt()?.id).toBe(f.controller.activeAttempt()?.id);expect(reopened.getState().progress.completed[exercise.id]).toBeDefined();reopened.dispose();
+    }finally {f.dispose();}
+  });
+  it('cancels pending evaluation and refuses stale completion after switching drafts',async()=>{
+    const f=fixture();try {
+      await f.controller.initialize();await f.controller.start(exercise.id);f.configure(PRACTICAL_SOURCES[exercise.id].review.reference.topology);
+      await f.controller.verify();f.controller.cancel();f.net().scheduler.advanceTo(120_000);await settle();
+      expect(f.controller.getState().progress.completed[exercise.id]).toBeUndefined();
+      await f.controller.verify();const prior=f.net();await f.controller.start(BETA_EXERCISES[0].id);prior.scheduler.advanceTo(240_000);await settle();
+      expect(f.controller.getState().progress.completed[exercise.id]).toBeUndefined();expect(f.controller.getState().results).toEqual({});
+    }finally {f.dispose();}
+  });
 });
 
 describe.each([0, 1])('Beta exercise %s', index => {

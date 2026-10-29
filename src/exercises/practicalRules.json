@@ -1,0 +1,586 @@
+{
+  "pilot-e06-v1": [
+    {
+      "id": "preserve-structure",
+      "requirementId": "structure",
+      "kind": "structure",
+      "policy": {
+        "editable": {}
+      },
+      "label": "Netzstruktur und geschützte Konfiguration",
+      "success": "Netzstruktur und nicht freigegebene Einstellungen sind erhalten.",
+      "failure": "Die Verbindung allein genügt nicht: Netzstruktur oder geschützte Einstellungen wurden verändert. Erlaubt sind nur die im Auftrag genannten Änderungen."
+    },
+    {
+      "id": "ip-a-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "a",
+        "iface": "eth0",
+        "cidr": "192.168.10.50/16",
+        "resolveBy": "id"
+      },
+      "label": "a / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-b-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "b",
+        "iface": "eth0",
+        "cidr": "192.168.11.60/16",
+        "resolveBy": "id"
+      },
+      "label": "b / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ping-a-b",
+      "requirementId": "traffic",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "a",
+        "toDevice": "b",
+        "expect": "success",
+        "resolveBy": "id"
+      },
+      "label": "a → b",
+      "success": "ICMP-Antwort empfangen.",
+      "failure": "Keine erfolgreiche ICMP-Antwort. Prüfen Sie Hinweg, Rückweg und Interfacezustände."
+    },
+    {
+      "id": "ping-b-a",
+      "requirementId": "traffic",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "b",
+        "toDevice": "a",
+        "expect": "success",
+        "resolveBy": "id"
+      },
+      "label": "b → a",
+      "success": "ICMP-Antwort empfangen.",
+      "failure": "Keine erfolgreiche ICMP-Antwort. Prüfen Sie Hinweg, Rückweg und Interfacezustände."
+    },
+    {
+      "id": "route-0",
+      "requirementId": "routing",
+      "kind": "route",
+      "device": "a",
+      "target": "192.168.11.60",
+      "via": null,
+      "iface": "eth0",
+      "label": "a: Weg zu 192.168.11.60",
+      "success": "Das Ziel wird direkt im lokalen Segment zugestellt.",
+      "failure": "Die effektive Route zum geforderten Ziel fehlt oder verwendet einen ungeeigneten Next Hop/Ausgang. Prüfen Sie Maske, Route und Rückweg."
+    },
+    {
+      "id": "route-1",
+      "requirementId": "routing",
+      "kind": "route",
+      "device": "b",
+      "target": "192.168.10.50",
+      "via": null,
+      "iface": "eth0",
+      "label": "b: Weg zu 192.168.10.50",
+      "success": "Das Ziel wird direkt im lokalen Segment zugestellt.",
+      "failure": "Die effektive Route zum geforderten Ziel fehlt oder verwendet einen ungeeigneten Next Hop/Ausgang. Prüfen Sie Maske, Route und Rückweg."
+    }
+  ],
+  "pilot-e08-v1": [
+    {
+      "id": "preserve-structure",
+      "requirementId": "structure",
+      "kind": "structure",
+      "policy": {
+        "editable": {
+          "a": {
+            "routes": true,
+            "gatewayIfaces": [
+              "eth0"
+            ]
+          }
+        }
+      },
+      "label": "Netzstruktur und geschützte Konfiguration",
+      "success": "Netzstruktur und nicht freigegebene Einstellungen sind erhalten.",
+      "failure": "Die Verbindung allein genügt nicht: Netzstruktur oder geschützte Einstellungen wurden verändert. Erlaubt sind nur die im Auftrag genannten Änderungen."
+    },
+    {
+      "id": "ip-a-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "a",
+        "iface": "eth0",
+        "cidr": "192.168.10.50/24",
+        "resolveBy": "id"
+      },
+      "label": "a / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-b-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "b",
+        "iface": "eth0",
+        "cidr": "192.168.11.60/24",
+        "resolveBy": "id"
+      },
+      "label": "b / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-r-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "r",
+        "iface": "eth0",
+        "cidr": "192.168.10.1/24",
+        "resolveBy": "id"
+      },
+      "label": "r / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-r-eth1",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "r",
+        "iface": "eth1",
+        "cidr": "192.168.11.1/24",
+        "resolveBy": "id"
+      },
+      "label": "r / eth1",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "forward-r",
+      "requirementId": "routing",
+      "kind": "engine",
+      "check": {
+        "type": "forwarding",
+        "device": "r",
+        "expect": true,
+        "resolveBy": "id"
+      },
+      "label": "r: IP-Forwarding",
+      "success": "Weiterleitung ist aktiv.",
+      "failure": "Die geforderte Weiterleitung ist nicht aktiv."
+    },
+    {
+      "id": "ping-a-b",
+      "requirementId": "traffic",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "a",
+        "toDevice": "b",
+        "expect": "success",
+        "resolveBy": "id"
+      },
+      "label": "a → b",
+      "success": "ICMP-Antwort empfangen.",
+      "failure": "Keine erfolgreiche ICMP-Antwort. Prüfen Sie Hinweg, Rückweg und Interfacezustände."
+    },
+    {
+      "id": "ping-b-a",
+      "requirementId": "traffic",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "b",
+        "toDevice": "a",
+        "expect": "success",
+        "resolveBy": "id"
+      },
+      "label": "b → a",
+      "success": "ICMP-Antwort empfangen.",
+      "failure": "Keine erfolgreiche ICMP-Antwort. Prüfen Sie Hinweg, Rückweg und Interfacezustände."
+    },
+    {
+      "id": "route-0",
+      "requirementId": "routing",
+      "kind": "route",
+      "device": "a",
+      "target": "192.168.11.60",
+      "via": "192.168.10.1",
+      "iface": "eth0",
+      "label": "a: Weg zu 192.168.11.60",
+      "success": "Die Route verwendet den vorgesehenen Nachbarn und Ausgang.",
+      "failure": "Die effektive Route zum geforderten Ziel fehlt oder verwendet einen ungeeigneten Next Hop/Ausgang. Prüfen Sie Maske, Route und Rückweg."
+    },
+    {
+      "id": "route-1",
+      "requirementId": "routing",
+      "kind": "route",
+      "device": "b",
+      "target": "192.168.10.50",
+      "via": "192.168.11.1",
+      "iface": "eth0",
+      "label": "b: Weg zu 192.168.10.50",
+      "success": "Die Route verwendet den vorgesehenen Nachbarn und Ausgang.",
+      "failure": "Die effektive Route zum geforderten Ziel fehlt oder verwendet einen ungeeigneten Next Hop/Ausgang. Prüfen Sie Maske, Route und Rückweg."
+    }
+  ],
+  "pilot-e09-v1": [
+    {
+      "id": "preserve-structure",
+      "requirementId": "structure",
+      "kind": "structure",
+      "policy": {
+        "editable": {
+          "a": {
+            "ipIfaces": [
+              "eth0"
+            ]
+          }
+        }
+      },
+      "label": "Netzstruktur und geschützte Konfiguration",
+      "success": "Netzstruktur und nicht freigegebene Einstellungen sind erhalten.",
+      "failure": "Die Verbindung allein genügt nicht: Netzstruktur oder geschützte Einstellungen wurden verändert. Erlaubt sind nur die im Auftrag genannten Änderungen."
+    },
+    {
+      "id": "ip-a-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "a",
+        "iface": "eth0",
+        "cidr": "192.168.10.50/24",
+        "resolveBy": "id"
+      },
+      "label": "a / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-b-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "b",
+        "iface": "eth0",
+        "cidr": "192.168.11.60/24",
+        "resolveBy": "id"
+      },
+      "label": "b / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-r-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "r",
+        "iface": "eth0",
+        "cidr": "192.168.10.1/24",
+        "resolveBy": "id"
+      },
+      "label": "r / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-r-eth1",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "r",
+        "iface": "eth1",
+        "cidr": "192.168.11.1/24",
+        "resolveBy": "id"
+      },
+      "label": "r / eth1",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "forward-r",
+      "requirementId": "routing",
+      "kind": "engine",
+      "check": {
+        "type": "forwarding",
+        "device": "r",
+        "expect": true,
+        "resolveBy": "id"
+      },
+      "label": "r: IP-Forwarding",
+      "success": "Weiterleitung ist aktiv.",
+      "failure": "Die geforderte Weiterleitung ist nicht aktiv."
+    },
+    {
+      "id": "ping-a-b",
+      "requirementId": "traffic",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "a",
+        "toDevice": "b",
+        "expect": "success",
+        "resolveBy": "id"
+      },
+      "label": "a → b",
+      "success": "ICMP-Antwort empfangen.",
+      "failure": "Keine erfolgreiche ICMP-Antwort. Prüfen Sie Hinweg, Rückweg und Interfacezustände."
+    },
+    {
+      "id": "ping-b-a",
+      "requirementId": "traffic",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "b",
+        "toDevice": "a",
+        "expect": "success",
+        "resolveBy": "id"
+      },
+      "label": "b → a",
+      "success": "ICMP-Antwort empfangen.",
+      "failure": "Keine erfolgreiche ICMP-Antwort. Prüfen Sie Hinweg, Rückweg und Interfacezustände."
+    },
+    {
+      "id": "route-0",
+      "requirementId": "routing",
+      "kind": "route",
+      "device": "a",
+      "target": "192.168.11.60",
+      "via": "192.168.10.1",
+      "iface": "eth0",
+      "label": "a: Weg zu 192.168.11.60",
+      "success": "Die Route verwendet den vorgesehenen Nachbarn und Ausgang.",
+      "failure": "Die effektive Route zum geforderten Ziel fehlt oder verwendet einen ungeeigneten Next Hop/Ausgang. Prüfen Sie Maske, Route und Rückweg."
+    },
+    {
+      "id": "route-1",
+      "requirementId": "routing",
+      "kind": "route",
+      "device": "b",
+      "target": "192.168.10.50",
+      "via": "192.168.11.1",
+      "iface": "eth0",
+      "label": "b: Weg zu 192.168.10.50",
+      "success": "Die Route verwendet den vorgesehenen Nachbarn und Ausgang.",
+      "failure": "Die effektive Route zum geforderten Ziel fehlt oder verwendet einen ungeeigneten Next Hop/Ausgang. Prüfen Sie Maske, Route und Rückweg."
+    }
+  ],
+  "pilot-d02-v1": [
+    {
+      "id": "preserve-structure",
+      "requirementId": "structure",
+      "kind": "structure",
+      "policy": {
+        "editable": {
+          "west": {
+            "routes": true
+          },
+          "east": {
+            "routes": true
+          }
+        }
+      },
+      "label": "Netzstruktur und geschützte Konfiguration",
+      "success": "Netzstruktur und nicht freigegebene Einstellungen sind erhalten.",
+      "failure": "Die Verbindung allein genügt nicht: Netzstruktur oder geschützte Einstellungen wurden verändert. Erlaubt sind nur die im Auftrag genannten Änderungen."
+    },
+    {
+      "id": "ip-office-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "office",
+        "iface": "eth0",
+        "cidr": "10.72.1.10/26",
+        "resolveBy": "id"
+      },
+      "label": "office / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-west-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "west",
+        "iface": "eth0",
+        "cidr": "10.72.1.1/26",
+        "resolveBy": "id"
+      },
+      "label": "west / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-west-eth1",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "west",
+        "iface": "eth1",
+        "cidr": "10.72.254.1/30",
+        "resolveBy": "id"
+      },
+      "label": "west / eth1",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-east-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "east",
+        "iface": "eth0",
+        "cidr": "10.72.254.2/30",
+        "resolveBy": "id"
+      },
+      "label": "east / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-east-eth1",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "east",
+        "iface": "eth1",
+        "cidr": "10.72.2.1/27",
+        "resolveBy": "id"
+      },
+      "label": "east / eth1",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "ip-warehouse-eth0",
+      "requirementId": "addressing",
+      "kind": "engine",
+      "check": {
+        "type": "iface-ip",
+        "device": "warehouse",
+        "iface": "eth0",
+        "cidr": "10.72.2.10/27",
+        "resolveBy": "id"
+      },
+      "label": "warehouse / eth0",
+      "success": "Adresse und Maske entsprechen der Vorgabe.",
+      "failure": "Adresse oder Maske entspricht noch nicht der Netzvorgabe."
+    },
+    {
+      "id": "forward-west",
+      "requirementId": "routing",
+      "kind": "engine",
+      "check": {
+        "type": "forwarding",
+        "device": "west",
+        "expect": true,
+        "resolveBy": "id"
+      },
+      "label": "west: IP-Forwarding",
+      "success": "Weiterleitung ist aktiv.",
+      "failure": "Die geforderte Weiterleitung ist nicht aktiv."
+    },
+    {
+      "id": "forward-east",
+      "requirementId": "routing",
+      "kind": "engine",
+      "check": {
+        "type": "forwarding",
+        "device": "east",
+        "expect": true,
+        "resolveBy": "id"
+      },
+      "label": "east: IP-Forwarding",
+      "success": "Weiterleitung ist aktiv.",
+      "failure": "Die geforderte Weiterleitung ist nicht aktiv."
+    },
+    {
+      "id": "ping-office-warehouse",
+      "requirementId": "traffic",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "office",
+        "toDevice": "warehouse",
+        "expect": "success",
+        "resolveBy": "id"
+      },
+      "label": "office → warehouse",
+      "success": "ICMP-Antwort empfangen.",
+      "failure": "Keine erfolgreiche ICMP-Antwort. Prüfen Sie Hinweg, Rückweg und Interfacezustände."
+    },
+    {
+      "id": "ping-warehouse-office",
+      "requirementId": "traffic",
+      "kind": "engine",
+      "check": {
+        "type": "ping",
+        "from": "warehouse",
+        "toDevice": "office",
+        "expect": "success",
+        "resolveBy": "id"
+      },
+      "label": "warehouse → office",
+      "success": "ICMP-Antwort empfangen.",
+      "failure": "Keine erfolgreiche ICMP-Antwort. Prüfen Sie Hinweg, Rückweg und Interfacezustände."
+    },
+    {
+      "id": "route-0",
+      "requirementId": "routing",
+      "kind": "route",
+      "device": "west",
+      "target": "10.72.2.10",
+      "via": "10.72.254.2",
+      "iface": "eth1",
+      "label": "west: Weg zu 10.72.2.10",
+      "success": "Die Route verwendet den vorgesehenen Nachbarn und Ausgang.",
+      "failure": "Die effektive Route zum geforderten Ziel fehlt oder verwendet einen ungeeigneten Next Hop/Ausgang. Prüfen Sie Maske, Route und Rückweg."
+    },
+    {
+      "id": "route-1",
+      "requirementId": "routing",
+      "kind": "route",
+      "device": "east",
+      "target": "10.72.1.10",
+      "via": "10.72.254.1",
+      "iface": "eth0",
+      "label": "east: Weg zu 10.72.1.10",
+      "success": "Die Route verwendet den vorgesehenen Nachbarn und Ausgang.",
+      "failure": "Die effektive Route zum geforderten Ziel fehlt oder verwendet einen ungeeigneten Next Hop/Ausgang. Prüfen Sie Maske, Route und Rückweg."
+    }
+  ]
+}

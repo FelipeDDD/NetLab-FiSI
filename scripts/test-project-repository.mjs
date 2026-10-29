@@ -348,6 +348,11 @@ try {
     await runPracticeReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_PRACTICAL_REVIEW === '1') {
+    const {runPracticalReview}=await import('./practical-exercises-review.mjs');
+    await runPracticalReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_APPLICATION_BOOT_REVIEW === '1') {
     const { runApplicationBootReview } = await import('./application-boot-review.mjs');
     await runApplicationBootReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report,

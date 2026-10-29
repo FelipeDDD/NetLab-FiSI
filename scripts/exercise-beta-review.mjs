@@ -47,8 +47,8 @@ export async function runExerciseReview({ page, url, root, report, restart }) {
   try {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false }); await mount();
     await page.evaluate("theme.getState().setTheme('graphite-dark');");
-    await test('exercises: menu exposes only two drafts; solved JSON import creates no achievement', async () => {
-      await menu(); assert.equal(await page.evaluate("return document.querySelectorAll('.exercise-menu-entry').length;"), 2);
+    await test('exercises: menu exposes two original exercises and four selected pilots; solved JSON import creates no achievement', async () => {
+      await menu(); assert.equal(await page.evaluate("return document.querySelectorAll('.exercise-menu-entry').length;"), 6);
       assert.equal(await page.evaluate("return document.querySelector('#toolbar-exercises-menu').textContent.includes('Noch nicht begonnen');"), true);
       await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape' });
       await page.evaluate(`await ws.controller.openDocument({schemaVersion:1,topology:drafts.find(d=>d.id===${JSON.stringify(routing)}).review.reference.topology});`);

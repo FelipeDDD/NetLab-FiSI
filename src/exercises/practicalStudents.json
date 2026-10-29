@@ -1,0 +1,822 @@
+[
+  {
+    "id": "pilot-e06-v1",
+    "contentVersion": 1,
+    "pilot": true,
+    "difficulty": "beginner",
+    "manualReview": [
+      "Erklären Sie die lokale ARP-Entscheidung und gegebenenfalls den Hin- und Rückweg. Diese Begründung wird nicht automatisch bewertet. Technisch bestanden bedeutet keinen Nachweis des Diagnosewegs oder aller denkbaren Netzwerkdienste."
+    ],
+    "student": {
+      "title": "E06 · Ungewöhnliche Adressen im selben LAN (Beta)",
+      "description": "PC A und PC B verwenden unterschiedliche dritte Oktette. Untersuchen Sie, ob die bestehende Konfiguration die lokale Kommunikation ermöglicht. Es ist nicht vorausgesetzt, dass ein Fehler vorliegt.",
+      "task": "Beurteilen Sie die Adressen anhand der vorhandenen Masken und prüfen Sie beide Kommunikationsrichtungen. Falls die Vorgaben bereits erfüllt sind, ist keine Änderung erforderlich. Erhalten Sie die gesamte Netzkonfiguration.",
+      "initialTopology": {
+        "app": "netsim",
+        "version": 1,
+        "devices": [
+          {
+            "id": "a",
+            "kind": "host",
+            "name": "PC A",
+            "x": 100,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:01",
+                "ip": "192.168.10.50/16",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [],
+            "os": "linux"
+          },
+          {
+            "id": "b",
+            "kind": "host",
+            "name": "PC B",
+            "x": 370,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:02",
+                "ip": "192.168.11.60/16",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [],
+            "os": "linux"
+          },
+          {
+            "id": "sw",
+            "kind": "switch",
+            "name": "Zugang",
+            "x": 640,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:03",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth1",
+                "mac": "02:00:00:00:00:04",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth2",
+                "mac": "02:00:00:00:00:05",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth3",
+                "mac": "02:00:00:00:00:06",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth4",
+                "mac": "02:00:00:00:00:07",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth5",
+                "mac": "02:00:00:00:00:08",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth6",
+                "mac": "02:00:00:00:00:09",
+                "ip": null,
+                "up": true
+              },
+              {
+                "name": "eth7",
+                "mac": "02:00:00:00:00:0a",
+                "ip": null,
+                "up": true
+              }
+            ],
+            "routes": []
+          }
+        ],
+        "links": [
+          {
+            "id": "line-1",
+            "latency": 80,
+            "a": [
+              "a",
+              "eth0"
+            ],
+            "b": [
+              "sw",
+              "eth0"
+            ]
+          },
+          {
+            "id": "line-2",
+            "latency": 80,
+            "a": [
+              "b",
+              "eth0"
+            ],
+            "b": [
+              "sw",
+              "eth1"
+            ]
+          }
+        ]
+      },
+      "learningObjectives": [
+        {
+          "id": "diagnose",
+          "text": "Adressierung, Zustellentscheidung und Erreichbarkeit getrennt untersuchen."
+        },
+        {
+          "id": "preserve",
+          "text": "Nur freigegebene Änderungen vornehmen und die Netzstruktur erhalten."
+        }
+      ],
+      "requirements": [
+        {
+          "id": "addressing",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Die dokumentierten /16-Hostadressen bleiben erhalten."
+        },
+        {
+          "id": "routing",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Die direkte Zustellung im gemeinsamen LAN funktioniert ohne zusätzliches Gateway."
+        },
+        {
+          "id": "traffic",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Die geforderten Endgeräte erreichen sich per ICMP in beiden Richtungen."
+        },
+        {
+          "id": "structure",
+          "objectiveIds": [
+            "preserve"
+          ],
+          "evidence": "final",
+          "text": "Geräte, Ports, Kabel und nicht freigegebene Netzkonfigurationen bleiben erhalten. Namen, Positionen und visuelle Einstellungen dürfen verändert werden."
+        }
+      ]
+    }
+  },
+  {
+    "id": "pilot-e08-v1",
+    "contentVersion": 1,
+    "pilot": true,
+    "difficulty": "intermediate",
+    "manualReview": [
+      "Erklären Sie die lokale ARP-Entscheidung und gegebenenfalls den Hin- und Rückweg. Diese Begründung wird nicht automatisch bewertet. Technisch bestanden bedeutet keinen Nachweis des Diagnosewegs oder aller denkbaren Netzwerkdienste."
+    ],
+    "student": {
+      "title": "E08 · Archiv nicht erreichbar: Next Hop untersuchen (Beta)",
+      "description": "Büro und Archiv liegen in zwei getrennten /24-Segmenten. Die Routerinterfaces und das Archiv sind vorkonfiguriert. Prüfen Sie auf Büro, wie Pakete zum entfernten Archiv zugestellt werden.",
+      "task": "Stellen Sie die Kommunikation zum Archiv in beiden Richtungen her. Verändern Sie ausschließlich Büros Routen oder Gateway-Eintrag; Hostadressen, Masken und alle anderen Konfigurationen bleiben erhalten. Eine passende Zielroute ist ebenso zulässig wie ein funktionierender Default.",
+      "initialTopology": {
+        "app": "netsim",
+        "version": 1,
+        "devices": [
+          {
+            "id": "a",
+            "kind": "host",
+            "name": "Büro",
+            "x": 100,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:01",
+                "ip": "192.168.10.50/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [
+              {
+                "dest": "0.0.0.0/0",
+                "via": "192.168.10.254",
+                "dev": "eth0"
+              }
+            ],
+            "os": "linux"
+          },
+          {
+            "id": "b",
+            "kind": "server",
+            "name": "Archiv",
+            "x": 370,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:02",
+                "ip": "192.168.11.60/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [
+              {
+                "dest": "0.0.0.0/0",
+                "via": "192.168.11.1",
+                "dev": "eth0"
+              }
+            ]
+          },
+          {
+            "id": "r",
+            "kind": "router",
+            "name": "Router",
+            "x": 640,
+            "y": 100,
+            "forwarding": true,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:03",
+                "ip": "192.168.10.1/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth1",
+                "mac": "02:00:00:00:00:04",
+                "ip": "192.168.11.1/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth2",
+                "mac": "02:00:00:00:00:05",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth3",
+                "mac": "02:00:00:00:00:06",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": []
+          }
+        ],
+        "links": [
+          {
+            "id": "line-1",
+            "latency": 80,
+            "a": [
+              "a",
+              "eth0"
+            ],
+            "b": [
+              "r",
+              "eth0"
+            ]
+          },
+          {
+            "id": "line-2",
+            "latency": 80,
+            "a": [
+              "b",
+              "eth0"
+            ],
+            "b": [
+              "r",
+              "eth1"
+            ]
+          }
+        ]
+      },
+      "learningObjectives": [
+        {
+          "id": "diagnose",
+          "text": "Adressierung, Zustellentscheidung und Erreichbarkeit getrennt untersuchen."
+        },
+        {
+          "id": "preserve",
+          "text": "Nur freigegebene Änderungen vornehmen und die Netzstruktur erhalten."
+        }
+      ],
+      "requirements": [
+        {
+          "id": "addressing",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Alle dokumentierten IPv4-Adressen und /24-Masken bleiben erhalten."
+        },
+        {
+          "id": "routing",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Büro wählt für das Archiv den angeschlossenen Router als Next Hop; der Rückweg bleibt erhalten."
+        },
+        {
+          "id": "traffic",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Die geforderten Endgeräte erreichen sich per ICMP in beiden Richtungen."
+        },
+        {
+          "id": "structure",
+          "objectiveIds": [
+            "preserve"
+          ],
+          "evidence": "final",
+          "text": "Geräte, Ports, Kabel und nicht freigegebene Netzkonfigurationen bleiben erhalten. Namen, Positionen und visuelle Einstellungen dürfen verändert werden."
+        }
+      ]
+    }
+  },
+  {
+    "id": "pilot-e09-v1",
+    "contentVersion": 1,
+    "pilot": true,
+    "difficulty": "intermediate",
+    "manualReview": [
+      "Erklären Sie die lokale ARP-Entscheidung und gegebenenfalls den Hin- und Rückweg. Diese Begründung wird nicht automatisch bewertet. Technisch bestanden bedeutet keinen Nachweis des Diagnosewegs oder aller denkbaren Netzwerkdienste."
+    ],
+    "student": {
+      "title": "E09 · ARP oder Gateway? Maskenentscheidung untersuchen (Beta)",
+      "description": "Laut Netzplan verbindet der Router das Bürosegment 192.168.10.0/24 mit dem Archivsegment 192.168.11.0/24. Die Routerinterfaces, Gateways und das Archiv sind eingerichtet. Prüfen Sie die lokale Zustellentscheidung von Büro.",
+      "task": "Stellen Sie die vorgesehene /24-Adressierung auf Büro und die gegenseitige Erreichbarkeit her. Nur die Maske von Büro darf geändert werden. Die Hostadresse, Gateways, Routen und der übrige Netzaufbau bleiben erhalten.",
+      "initialTopology": {
+        "app": "netsim",
+        "version": 1,
+        "devices": [
+          {
+            "id": "a",
+            "kind": "host",
+            "name": "Büro",
+            "x": 100,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:01",
+                "ip": "192.168.10.50/16",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [
+              {
+                "dest": "0.0.0.0/0",
+                "via": "192.168.10.1",
+                "dev": "eth0"
+              }
+            ],
+            "os": "linux"
+          },
+          {
+            "id": "b",
+            "kind": "server",
+            "name": "Archiv",
+            "x": 370,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:02",
+                "ip": "192.168.11.60/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [
+              {
+                "dest": "0.0.0.0/0",
+                "via": "192.168.11.1",
+                "dev": "eth0"
+              }
+            ]
+          },
+          {
+            "id": "r",
+            "kind": "router",
+            "name": "Router",
+            "x": 640,
+            "y": 100,
+            "forwarding": true,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:03",
+                "ip": "192.168.10.1/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth1",
+                "mac": "02:00:00:00:00:04",
+                "ip": "192.168.11.1/24",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth2",
+                "mac": "02:00:00:00:00:05",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth3",
+                "mac": "02:00:00:00:00:06",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": []
+          }
+        ],
+        "links": [
+          {
+            "id": "line-1",
+            "latency": 80,
+            "a": [
+              "a",
+              "eth0"
+            ],
+            "b": [
+              "r",
+              "eth0"
+            ]
+          },
+          {
+            "id": "line-2",
+            "latency": 80,
+            "a": [
+              "b",
+              "eth0"
+            ],
+            "b": [
+              "r",
+              "eth1"
+            ]
+          }
+        ]
+      },
+      "learningObjectives": [
+        {
+          "id": "diagnose",
+          "text": "Adressierung, Zustellentscheidung und Erreichbarkeit getrennt untersuchen."
+        },
+        {
+          "id": "preserve",
+          "text": "Nur freigegebene Änderungen vornehmen und die Netzstruktur erhalten."
+        }
+      ],
+      "requirements": [
+        {
+          "id": "addressing",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Die Endgeräte entsprechen den beiden dokumentierten /24-Segmenten; Hostadressen bleiben erhalten."
+        },
+        {
+          "id": "routing",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Beide Endgeräte verwenden für das entfernte Ziel den vorhandenen Router, statt dort lokal nach ARP zu fragen."
+        },
+        {
+          "id": "traffic",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Die geforderten Endgeräte erreichen sich per ICMP in beiden Richtungen."
+        },
+        {
+          "id": "structure",
+          "objectiveIds": [
+            "preserve"
+          ],
+          "evidence": "final",
+          "text": "Geräte, Ports, Kabel und nicht freigegebene Netzkonfigurationen bleiben erhalten. Namen, Positionen und visuelle Einstellungen dürfen verändert werden."
+        }
+      ]
+    }
+  },
+  {
+    "id": "pilot-d02-v1",
+    "contentVersion": 1,
+    "pilot": true,
+    "difficulty": "intermediate",
+    "manualReview": [
+      "Erklären Sie die lokale ARP-Entscheidung und gegebenenfalls den Hin- und Rückweg. Diese Begründung wird nicht automatisch bewertet. Technisch bestanden bedeutet keinen Nachweis des Diagnosewegs oder aller denkbaren Netzwerkdienste."
+    ],
+    "student": {
+      "title": "D02 · Zwei Standorte: Hin- und Rückweg (Beta)",
+      "description": "Büro und Lager besitzen ihre lokalen Gateways. Die Router West und Ost sind über ein /30-Transitnetz verbunden. Stellen Sie fest, welche Wege für den Austausch zwischen den beiden Endgeräten benötigt werden.",
+      "task": "Ergänzen oder korrigieren Sie ausschließlich statische Routen auf West und Ost. Alle Adressen, Interfacezustände und aktives Forwarding bleiben erhalten. Spezifische Zielrouten oder funktional gleichwertige Default-Routen sind in dieser abgeschlossenen Topologie zulässig. Prüfen Sie Büro und Lager gegenseitig.",
+      "initialTopology": {
+        "app": "netsim",
+        "version": 1,
+        "devices": [
+          {
+            "id": "office",
+            "kind": "host",
+            "name": "Büro",
+            "x": 100,
+            "y": 100,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:01",
+                "ip": "10.72.1.10/26",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [
+              {
+                "dest": "0.0.0.0/0",
+                "via": "10.72.1.1",
+                "dev": "eth0"
+              }
+            ],
+            "os": "linux"
+          },
+          {
+            "id": "west",
+            "kind": "router",
+            "name": "West",
+            "x": 370,
+            "y": 100,
+            "forwarding": true,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:02",
+                "ip": "10.72.1.1/26",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth1",
+                "mac": "02:00:00:00:00:03",
+                "ip": "10.72.254.1/30",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth2",
+                "mac": "02:00:00:00:00:04",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth3",
+                "mac": "02:00:00:00:00:05",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": []
+          },
+          {
+            "id": "east",
+            "kind": "router",
+            "name": "Ost",
+            "x": 640,
+            "y": 100,
+            "forwarding": true,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:06",
+                "ip": "10.72.254.2/30",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth1",
+                "mac": "02:00:00:00:00:07",
+                "ip": "10.72.2.1/27",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth2",
+                "mac": "02:00:00:00:00:08",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              },
+              {
+                "name": "eth3",
+                "mac": "02:00:00:00:00:09",
+                "ip": null,
+                "up": true,
+                "ipv4Mode": "unconfigured",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": []
+          },
+          {
+            "id": "warehouse",
+            "kind": "server",
+            "name": "Lager",
+            "x": 100,
+            "y": 330,
+            "forwarding": false,
+            "ifaces": [
+              {
+                "name": "eth0",
+                "mac": "02:00:00:00:00:0a",
+                "ip": "10.72.2.10/27",
+                "up": true,
+                "ipv4Mode": "static",
+                "gateway": null,
+                "dns": null
+              }
+            ],
+            "routes": [
+              {
+                "dest": "0.0.0.0/0",
+                "via": "10.72.2.1",
+                "dev": "eth0"
+              }
+            ]
+          }
+        ],
+        "links": [
+          {
+            "id": "line-1",
+            "latency": 80,
+            "a": [
+              "office",
+              "eth0"
+            ],
+            "b": [
+              "west",
+              "eth0"
+            ]
+          },
+          {
+            "id": "line-2",
+            "latency": 80,
+            "a": [
+              "west",
+              "eth1"
+            ],
+            "b": [
+              "east",
+              "eth0"
+            ]
+          },
+          {
+            "id": "line-3",
+            "latency": 80,
+            "a": [
+              "east",
+              "eth1"
+            ],
+            "b": [
+              "warehouse",
+              "eth0"
+            ]
+          }
+        ]
+      },
+      "learningObjectives": [
+        {
+          "id": "diagnose",
+          "text": "Adressierung, Zustellentscheidung und Erreichbarkeit getrennt untersuchen."
+        },
+        {
+          "id": "preserve",
+          "text": "Nur freigegebene Änderungen vornehmen und die Netzstruktur erhalten."
+        }
+      ],
+      "requirements": [
+        {
+          "id": "addressing",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "LAN- und Transitadressen mit ihren vorgegebenen Masken bleiben erhalten."
+        },
+        {
+          "id": "routing",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "West und Ost wählen für das jeweils entfernte Endgerät den Transitnachbarn; Forwarding bleibt aktiv."
+        },
+        {
+          "id": "traffic",
+          "objectiveIds": [
+            "diagnose"
+          ],
+          "evidence": "final",
+          "text": "Die geforderten Endgeräte erreichen sich per ICMP in beiden Richtungen."
+        },
+        {
+          "id": "structure",
+          "objectiveIds": [
+            "preserve"
+          ],
+          "evidence": "final",
+          "text": "Geräte, Ports, Kabel und nicht freigegebene Netzkonfigurationen bleiben erhalten. Namen, Positionen und visuelle Einstellungen dürfen verändert werden."
+        }
+      ]
+    }
+  }
+]

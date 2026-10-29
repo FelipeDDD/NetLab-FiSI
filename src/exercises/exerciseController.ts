@@ -3,7 +3,8 @@ import type { ProjectRepository } from '../projects/repository';
 import type { MetaValue } from '../projects/types';
 import type { Network } from '../engine/network';
 import { runChecks, type CheckResult } from '../labs/checker';
-import { BETA_EXERCISES, betaChecks } from './beta';
+import { AVAILABLE_EXERCISES, betaChecks, exerciseChecks, practicalChecks, practicalExercise } from './beta';
+import { runPracticalChecks } from './practicalChecker';
 
 export const EXERCISE_PROGRESS_KEY = 'exercises:beta:v1';
 export interface Attempt { id: string; draftId: string; exerciseId: string; contentVersion: number; startedAt: number }
@@ -87,7 +88,7 @@ export class ExerciseController {
   }
   async start(exerciseId: string) {
     if (!this.state.ready || this.state.busy || this.sessions.hasPendingOperations()) return;
-    const exercise = BETA_EXERCISES.find(e => e.id === exerciseId); if (!exercise) return;
+    const exercise = AVAILABLE_EXERCISES.find(e => e.id === exerciseId); if (!exercise) return;
     if (this.runtime.pendingForms()) { this.update({ error: 'Bitte zuerst offene Formulare übernehmen oder verwerfen.' }); return; }
     this.cancel(); this.update({ busy: true, error: '', results: {}, message: '' });
     try {
@@ -133,7 +134,7 @@ export class ExerciseController {
   }
   async verify() {
     if (!this.state.ready || this.state.busy || this.state.checking || this.sessions.hasPendingOperations()) return;
-    const attempt = this.activeAttempt(), exercise = BETA_EXERCISES.find(e => e.id === attempt?.exerciseId);
+    const attempt = this.activeAttempt(), exercise = AVAILABLE_EXERCISES.find(e => e.id === attempt?.exerciseId);
     if (!attempt || !exercise || exercise.contentVersion !== attempt.contentVersion) return;
     if (this.runtime.pendingForms()) { this.update({ error: 'Bitte zuerst offene Formulare übernehmen.' }); return; }
     this.cancel(); this.update({ busy: true, error: '', message: '' });
@@ -144,19 +145,23 @@ export class ExerciseController {
       const ticket: Ticket = { draftId: attempt.draftId, attempt, net: this.runtime.network(), signature: this.runtime.signature(),
         sequence: this.sessions.getState().drafts.find(d => d.id === attempt.draftId)!.editSequence, abort: new AbortController() };
       this.ticket = ticket; this.update({ checking: true }); this.runtime.run();
-      const checks = betaChecks[exercise.id];
-      runChecks(ticket.net, checks.map(a => ({ id: a.id, label: a.id, check: a.check })), result => {
+      const receive = (result:CheckResult) => {
         if (this.valid(ticket)) this.update({ results: { ...this.state.results, [result.id]: result } }); else this.invalidate();
-      }, () => { void this.finish(ticket); }, () => {
+      };
+      const done = () => { void this.finish(ticket); };
+      const active = () => {
         if (this.valid(ticket)) return true;
         this.invalidate(); return false;
-      });
+      };
+      const practical=practicalExercise(exercise.id);
+      if(practical)runPracticalChecks(ticket.net,practical,practicalChecks[exercise.id],receive,done,active);
+      else runChecks(ticket.net,betaChecks[exercise.id].map(a=>({id:a.id,label:a.id,check:a.check})),receive,done,active);
     } catch (e) { this.update({ error: (e as Error).message }); }
     finally { this.update({ busy: false }); }
   }
   private async finish(t: Ticket) {
     if (!this.valid(t)) { this.invalidate(); return; }
-    const checks = betaChecks[t.attempt.exerciseId];
+    const checks = exerciseChecks(t.attempt.exerciseId);
     if (!checks.every(a => this.state.results[a.id]?.pass)) {
       this.ticket = undefined; this.resultTicket = t;
       this.update({ checking: false, message: 'Noch nicht alle Anforderungen erfüllt. Korrigieren und erneut überprüfen.' }); return;
@@ -169,7 +174,8 @@ export class ExerciseController {
         // Keep the earlier earned completion through retries and later edits.
         p.completed[t.attempt.exerciseId] ??= { attemptId: t.attempt.id, contentVersion: t.attempt.contentVersion, completedAt: Date.now() };
       }, t.abort.signal);
-      if (this.valid(t)) { this.ticket = undefined; this.resultTicket = t; this.update({ message: 'Abgeschlossen – lokal gespeichert.' }); }
+      if (this.valid(t)) { this.ticket = undefined; this.resultTicket = t; this.update({ message: practicalExercise(t.attempt.exerciseId)
+        ? 'Technische Anforderungen erfüllt – lokal gespeichert. Die Diagnosebegründung bleibt manuell zu besprechen.' : 'Abgeschlossen – lokal gespeichert.' }); }
     } catch (e) {
       if (!t.abort.signal.aborted) { this.resultTicket = t; this.update({ error: (e as Error).message, message: 'Keine bestätigte Speicherung. Bitte erneut überprüfen.' }); }
     } finally { this.ticket = undefined; this.update({ checking: false, busy: false, saving: false }); }

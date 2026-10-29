@@ -1,8 +1,17 @@
 # Übungen (Beta): first functional MVP
 
-Open **Übungen (Beta)** in the toolbar (under **Menü** below 1100px). Two exercises
-are available: office/warehouse routing and DNS/HTTP portal diagnosis. Labs remains
-a separate, unchanged catalog with its existing quizzes and checks.
+Open **Übungen (Beta)** in the toolbar (under **Menü** below 1100px). The original
+office/warehouse routing and DNS/HTTP portal exercises remain available. Stage 2 adds
+four explicit **practical pilots: E06, E08, E09 and D02**, with structural and effective-route
+criteria, independent drafts and technical-only completion. See
+[practical-exercises-beta.md](practical-exercises-beta.md) for publication scope, manual
+discussion and persistence limitations. Labs remains a separate, unchanged catalog.
+
+The same menu also offers **Rechenpraxis (Beta)**, a selective, visit-local calculation
+area for subnetting, VLSM and E02 gateway membership. It creates no topology draft and
+does not write the network progress record described below. See
+[calculation-practice.md](calculation-practice.md) for its fields, recipes, temporary
+attempt lifecycle and international terminal shortcut.
 
 ## Learner flow
 
