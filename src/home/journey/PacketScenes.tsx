@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { homeExperience } from '../experience';
 import { Packet, positionPacket } from './Packet';
 import { JourneyArtwork, artworkPlacement, type JourneyDevice } from './JourneyArtwork';
 import { paintArrival } from './arrival';
@@ -28,7 +27,6 @@ function ControlIcon({ kind }: { kind: 'previous' | 'next' | 'play' | 'pause' | 
 }
 export function PacketScenes() {
   const { t } = useTranslation();
-  const dataPreview = homeExperience(location.search).dataPreview;
   const sourceData = useRef<SVGGElement>(null), destinationData = useRef<SVGGElement>(null);
   const root = useRef<HTMLElement>(null), path = useRef<SVGPathElement>(null), camera = useRef<SVGGElement>(null), packet = useRef<SVGGElement>(null);
   const command = useRef<(action: Command) => void>(() => {});
@@ -49,7 +47,7 @@ export function PacketScenes() {
       artwork.forEach((art, i) => paintArrival(art, length * visualProgress, length * stops[i], reduced));
       element.dataset.travel = visualProgress.toFixed(6); element.dataset.assets = assets; element.dataset.cycles = String(cycles);
       positionPacket(packet.current, point);
-      if (dataPreview) paintDataPreview(sourceData.current, destinationData.current, packet.current, progress, assets === 'ready' && !reduced && !seek);
+      paintDataPreview(sourceData.current, destinationData.current, packet.current, progress, assets === 'ready' && !reduced && !seek);
       camera.current?.setAttribute('transform', `translate(${(-cameraForX(point.x)).toFixed(3)} 0)`);
       packet.current?.setAttribute('data-reply', String(progress > HERO_REPLY_PROGRESS));
       element.dataset.progress = progress.toFixed(6); element.dataset.seeking = String(!!seek);
@@ -103,7 +101,7 @@ export function PacketScenes() {
   }, []);
   const titles = ['journey.scene1', 'journey.scene2', 'journey.scene3'] as const;
   const details = ['journey.detail1', 'journey.detail2', 'journey.detail3'] as const;
-  return <section className="journey-scenes" data-preview={dataPreview} data-duration={JOURNEY_DURATION_MS} ref={root} aria-label={t('journey.scenes')} tabIndex={0}
+  return <section className="journey-scenes" data-preview="true" data-duration={JOURNEY_DURATION_MS} ref={root} aria-label={t('journey.scenes')} tabIndex={0}
     onKeyDown={event => {
       if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return;
       if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
@@ -125,11 +123,11 @@ export function PacketScenes() {
           <text x="280" y="125">LAN A</text><text x="1210" y="242">LAN B</text>
         </g>
         <Packet ref={packet} id="scenes" />
-        {dataPreview && <><DataDocument kind="source" ref={sourceData} /><DataDocument kind="destination" ref={destinationData} /></>}
+        <DataDocument kind="source" ref={sourceData} /><DataDocument kind="destination" ref={destinationData} />
       </g>
     </svg>
     <div className="journey-scene-caption" aria-live="polite">
-      <span className="journey-sr-only journey-protocol">{t(dataPreview ? (view.reply ? 'journey.dataReturn' : 'journey.dataSignal') : (view.reply ? 'journey.reply' : 'journey.request'))}</span>
+      <span className="journey-sr-only journey-protocol">{t(view.reply ? 'journey.dataReturn' : 'journey.dataSignal')}</span>
       <h2>{t(titles[view.scene])}</h2><p>{t(view.reply ? 'journey.replyDetail' : details[view.scene])}</p>
     </div>
     <div className="journey-controls" role="group" aria-label={t('journey.controls')}>

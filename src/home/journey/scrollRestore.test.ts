@@ -8,7 +8,7 @@ function setup(saved?: { url: string; y: number }) {
   const state = { state: { keep: 'untouched', ...(saved ? { 'netlab:journey-scroll': saved } : {}) }, scrollRestoration: 'auto', replaceState: vi.fn((next: typeof state.state) => { state.state = next; }) };
   const scroll = vi.fn(), frames = new Map<number, FrameRequestCallback>(); let id = 0;
   vi.stubGlobal('window', Object.assign(events, { setTimeout: (...args: Parameters<typeof setTimeout>) => setTimeout(...args) }));
-  vi.stubGlobal('history', state); vi.stubGlobal('location', { href: 'https://example.test/?experience=journey' });
+  vi.stubGlobal('history', state); vi.stubGlobal('location', { href: 'https://example.test/' });
   vi.stubGlobal('scrollY', 420); vi.stubGlobal('scrollTo', scroll);
   vi.stubGlobal('document', { fonts: { ready: Promise.resolve() } });
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.set(++id, callback); return id; });
@@ -16,7 +16,7 @@ function setup(saved?: { url: string; y: number }) {
   return { events, state, scroll, frames };
 }
 it('restores only the current history entry and debounces saves without adding history entries', () => {
-  const { events, state, scroll } = setup({ url: 'https://example.test/?experience=journey', y: 840 });
+  const { events, state, scroll } = setup({ url: 'https://example.test/', y: 840 });
   const release = installJourneyScrollRestore(); expect(scroll).toHaveBeenCalledWith(0, 840);
   expect(state.scrollRestoration).toBe('manual');
   for (let i = 0; i < 20; i++) events.dispatchEvent(new Event('scroll'));
@@ -31,7 +31,7 @@ it('ignores invalid or unrelated positions and releases callbacks/listeners on u
   events.dispatchEvent(new Event('pagehide')); expect(state.replaceState).not.toHaveBeenCalled(); expect(frames.size).toBe(0);
 });
 it('does not pull the user back after interacting before fonts finish loading', async () => {
-  const { events, scroll, frames } = setup({ url: 'https://example.test/?experience=journey', y: 840 });
+  const { events, scroll, frames } = setup({ url: 'https://example.test/', y: 840 });
   const release = installJourneyScrollRestore(); scroll.mockClear(); events.dispatchEvent(new Event('wheel'));
   await Promise.resolve(); for (const callback of frames.values()) callback(16);
   expect(scroll).not.toHaveBeenCalled(); release();

@@ -14,6 +14,9 @@ design and firewall-config testing as first-class goals.
 
 ## Documentation
 
+- **[Packet Journey homepage](docs/homepage-packet-journey.md)** — `/` is the official landing page; the editor remains at `/app.html`. Includes animation architecture and isolated browser checks.
+- **[Homepage navigation and i18n](docs/homepage-i18n.md)** — DE/EN/PT-BR, workspace entrypoints and preference isolation.
+
 - **[User guide](docs/USER_GUIDE.md)** — the interface, workflow, and what is and isn't simulated
 - **[Labs & examples catalogue](docs/LABS.md)** — the five bundled labs and two example networks
 - **[Lab authoring guide](docs/LAB_AUTHORING.md)** — write and grade your own labs (for educators)

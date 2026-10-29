@@ -1,23 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { alternatingScrollSegments, cameraForX, follow, SCENE_PROGRESS, sceneForX, scrollProgress, scrollSegments, smoothStep, travelProgress } from './geometry';
+import { alternatingScrollSegments, cameraForX, SCENE_PROGRESS, sceneForX, scrollSegments, smoothStep, travelProgress } from './geometry';
 import { arrivalState } from './arrival';
 import { artworkPlacement, ARTWORK_PORTS } from './JourneyArtwork';
 import { DEVICE_ARTWORK } from '../../deviceArtwork';
 import { HERO_REPLY_PROGRESS, HERO_TIMING, JOURNEY_DURATION_MS, HERO_TIMELINE } from './geometry';
 
 describe('illustrative packet journey geometry', () => {
-  it('maps scroll forward and backward to the same point, including a mid-page reload', () => {
-    const at = (y: number) => scrollProgress(y, 1000, 100, 1100, 1000);
-    expect(at(0)).toBe(0); expect(at(1020)).toBe(.5); expect(at(3000)).toBe(1);
-    expect([1520, 1020, 520].map(at)).toEqual([1, .5, 0]);
-  });
-  it('follows without overshoot and settles completely rather than keeping a loop alive', () => {
-    for (const [start, target] of [[0, .8], [1, .2]]) {
-      let p = start;
-      for (let i = 0; i < 100; i++) { const next = follow(p, target, 16); expect(next).toBeGreaterThanOrEqual(Math.min(p, target)); expect(next).toBeLessThanOrEqual(Math.max(p, target)); p = next; }
-      expect(p).toBe(target); expect(follow(p, target, 1000)).toBe(target);
-    }
-  });
   it('keeps request/reply continuous at the destination; reply returns to the origin', () => {
     expect(travelProgress(0)).toBe(0); expect(travelProgress(HERO_REPLY_PROGRESS)).toBe(1);
     expect(travelProgress(HERO_REPLY_PROGRESS + 1e-7)).toBeCloseTo(1, 5); expect(travelProgress(1)).toBe(0);

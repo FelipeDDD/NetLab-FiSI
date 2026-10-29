@@ -37,14 +37,6 @@ export function pathFractionAtX(path: Pick<SVGPathElement, 'getTotalLength' | 'g
 export function sceneForX(x: number): number { return x < 480 ? 0 : x < 960 ? 1 : 2; }
 export function cameraForX(x: number): number { return clamp(x - 240, 0, 960); }
 export function smoothStep(t: number): number { t = clamp(t); return t * t * (3 - 2 * t); }
-/** A bounded, non-oscillating low-pass filter; no velocity/spring overshoot. */
-export function follow(current: number, target: number, elapsed: number): number {
-  if (Math.abs(current - target) < .0005) return target;
-  return current + (target - current) * (1 - Math.exp(-Math.min(elapsed, 50) / 65));
-}
-export function scrollProgress(scrollY: number, top: number, firstY: number, lastY: number, viewportHeight: number): number {
-  return clamp((scrollY + viewportHeight * .58 - top - firstY) / Math.max(1, lastY - firstY));
-}
 /** Vertical tangents keep the same reversible path between measured connectors. */
 export function scrollSegments(points: readonly Point[]): string[] {
   return points.slice(1).map((point, i) => {

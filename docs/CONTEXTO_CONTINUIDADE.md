@@ -7,6 +7,17 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
 
 ## Leia primeiro — estado atual e decisões pendentes
 
+- **Homepage oficial (29/10/2026):** `/` abre Packet Journey com DATA, cinco
+  estações alternadas, movimento por estações e hero de 21,24 segundos.
+  Homepage clássica e seletores de protótipos removidos; URLs experimentais
+  antigas abrem a versão oficial. `/app.html`, projetos, Share Links e
+  preferências do editor preservados. Homepage não abre IndexedDB nem engine.
+  Graphite Dark local à homepage; idiomas DE/EN/PT-BR persistem separadamente.
+  Checkpoint da promoção: `311e70c`. Consulte
+  [homepage-packet-journey.md](homepage-packet-journey.md) e
+  [homepage-i18n.md](homepage-i18n.md). Verifique `git status`/`git log` antes
+  de presumir sincronização: os commits desta rodada não incluem push.
+
 - **Markierungen implementado:** botão compacto na toolbar, seleção Shift, seis
   cores, intensidade, edição de membros por IDs e seleção por título. Extensões
   retangulares formam L/U/T por união SVG; modo temporário permite mover,

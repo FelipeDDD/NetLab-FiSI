@@ -1,6 +1,5 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { homeExperience } from './experience';
 import { applyUiTheme, useUiTheme } from '../uiTheme';
 import { installLanguageDocument } from '../i18n';
 import '../themes.css';
@@ -10,11 +9,8 @@ applyUiTheme(useUiTheme.getState().theme);
 const releaseLanguage = installLanguageDocument();
 const root = createRoot(document.getElementById('root')!);
 let disposed = false;
-// Keep the former homepage behind an explicit URL, without loading it on normal visits.
-const page = homeExperience(location.search).classic
-  ? import('./Home').then(module => module.Home)
-  : import('./journey/ThematicHome').then(module => module.default);
-void page.then(Page => {
-  if (!disposed) flushSync(() => root.render(<Page />));
+// Old presentation query parameters are intentionally ignored; editor URLs are independent.
+void import('./journey/ThematicHome').then(({ default: ThematicHome }) => {
+  if (!disposed) flushSync(() => root.render(<ThematicHome />));
 });
 if (import.meta.hot) import.meta.hot.dispose(() => { disposed = true; releaseLanguage(); root.unmount(); });

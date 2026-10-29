@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import { catalogs, LANGUAGES, LANGUAGE_KEY, normalizeLanguage, readLanguage, translate, useLanguage, type Language, type TranslationKey } from './index';
-import { Home } from '../home/Home';
+import ThematicHome from '../home/journey/ThematicHome';
 
 afterEach(() => { vi.unstubAllGlobals(); useLanguage.setState({ language: 'de' }); });
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort();
@@ -21,16 +21,15 @@ describe('catalog contracts', () => {
     }
   }
   it('uses English fallback for an untranslated valid key, never the key itself', () => {
-    const previous = catalogs.home['pt-BR'].title;
-    try { catalogs.home['pt-BR'].title = ''; expect(translate('pt-BR', 'home.title')).toBe(catalogs.home.en.title); }
-    finally { catalogs.home['pt-BR'].title = previous; }
+    const previous = catalogs.journey['pt-BR'].title;
+    try { catalogs.journey['pt-BR'].title = ''; expect(translate('pt-BR', 'journey.title')).toBe(catalogs.journey.en.title); }
+    finally { catalogs.journey['pt-BR'].title = previous; }
   });
   it('interpolates literal technical/user values without translating or interpreting markup', () => {
     expect(translate('en', 'workspace.deleteNamed', { name: '<eth0>192.168.1.1/24' })).toBe('Delete <eth0>192.168.1.1/24');
-    expect(translate('en', 'home.recentOther', { count: 3 })).toBe('3 saved plans');
   });
   it('fully migrated homepage JSX has no uncatalogued natural-language text or attributes', () => {
-    for (const file of ['Home', 'HomeTopology']) {
+    for (const file of ['journey/ThematicHome']) {
       const source = readFileSync(new URL(`../home/${file}.tsx`, import.meta.url), 'utf8');
       const ast = ts.createSourceFile(file + '.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
       const literals: string[] = [];
@@ -43,7 +42,7 @@ describe('catalog contracts', () => {
     }
   });
   it('every static key referenced by migrated consumers exists', () => {
-    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', '../home/Home.tsx', '../home/HomeTopology.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx'];
+    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx'];
     for (const file of files) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');
       for (const match of source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey)\.\w+)['"]/g)) {
@@ -52,12 +51,9 @@ describe('catalog contracts', () => {
     }
   });
   it('catalog keys are used by migrated components (explicit finite dynamic families)', () => {
-    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', '../home/Home.tsx', '../home/HomeTopology.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx'];
+    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx'];
     const source = files.map(file => readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
     const references = new Set([...source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey)\.\w+)['"]/g)].map(m => m[1]));
-    for (const type of ['host', 'router', 'switch', 'server']) { references.add(`home.${type}`); references.add(`home.${type}Hint`); }
-    for (const feature of ['simulation', 'terminals', 'capture', 'routing', 'learning', 'editor']) { references.add(`home.${feature}`); references.add(`home.${feature}Text`); }
-    for (const key of ['combined', 'scrollOnly', 'slidesOnly']) references.add(`journey.${key}`);
     for (const feature of ['terminal', 'switch', 'routing', 'capture', 'exercise']) { references.add(`journey.${feature}Title`); references.add(`journey.${feature}Body`); references.add(`journey.${feature}Label`); }
     const unused = Object.entries(catalogs).flatMap(([domain, table]) => Object.keys(table.en).map(key => `${domain}.${key}`)).filter(key => !references.has(key));
     expect(unused).toEqual([]);
@@ -80,10 +76,10 @@ it('works when storage is denied', () => {
   expect(useLanguage.getState().language).toBe('en');
 });
 it('renders the compatibility-default homepage and all language options without a simulation', () => {
-  const html = renderToStaticMarkup(createElement(Home));
-  expect(html).toContain(catalogs.home.de.title);
+  const html = renderToStaticMarkup(createElement(ThematicHome));
+  expect(html).toContain('Bauen.'); expect(html).toContain('Verstehen.');
   for (const name of Object.values(LANGUAGES)) expect(html).toContain(name);
   expect(html).toContain('./app.html?home=new'); expect(html).toContain('./app.html?home=load');
   expect(html).toContain('./app.html?home=exercises'); expect(html).toContain('./app.html?home=labs');
-  expect(html).not.toContain('xterm'); expect(html).not.toContain('home.title');
+  expect(html).not.toContain('xterm'); expect(html).not.toContain('journey.title');
 });

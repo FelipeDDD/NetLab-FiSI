@@ -11,15 +11,10 @@ export async function runJourneyReview({ page, url, root, report }) {
   const wait = async condition => { for (let i = 0; i < 250; i++) { if (await page.evaluate(`return !!(${condition});`)) return; await delay(40); } throw Error('Timed out: ' + condition); };
   const test = async (name, run) => { if(process.env.NETLAB_JOURNEY_REVIEW_FILTER&&!name.includes(process.env.NETLAB_JOURNEY_REVIEW_FILTER))return;page.labelDownloads(name); try { await run(); report.results[name] = { passed: true }; } catch (e) { report.results[name] = { passed: false, error: e.stack }; throw e; } };
   const navigate = async route => { await page.send('Page.navigate', { url: origin + route }); await wait(`location.href === ${JSON.stringify(origin + route)} && document.readyState === 'complete'`); };
-  const home = async (demo = '', manual = true, alternate = false, dataPreview = false, continuous = false) => {
-    const query = new URLSearchParams();
-    if (demo) query.set('demo', demo);
-    if (!alternate) query.set('stations', 'original');
-    if (!dataPreview) query.set('dataPreview', '0');
-    if (continuous) query.set('scrollMotion', 'continuous');
-    await navigate('/' + (query.size ? '?' + query : ''));
+  const home = async (manual = true) => {
+    await navigate('/');
     await wait('document.querySelector(".journey-page")'); await delay(200);
-    if (demo !== 'scroll') {
+    {
       await wait('document.querySelector(".journey-scenes").dataset.assets === "ready"');
       if (manual) { await page.evaluate('document.querySelector(".journey-scenes").scrollIntoView({block:"center"});'); await delay(100); await click('[data-scene="0"]'); await wait('document.querySelector(".journey-scenes").dataset.seeking==="false"'); await page.evaluate('scrollTo(0,0);'); }
     }
@@ -96,17 +91,14 @@ export async function runJourneyReview({ page, url, root, report }) {
       await home();
     });
     await test('journey: final polish navigation, languages and preserved preferences', async () => {
-      await size(1440); await home('',true,true,true);
+      await size(1440); await home(true);
       await select('.language-selector select','en');
-      const baseline = process.env.NETLAB_JOURNEY_POLISH_BEFORE === '1';
-      if (baseline) await select('.home-theme select','graphite-dark');
-      await shot(baseline?'polish-hero-before':'polish-hero-after','graphite-dark',1440);
+      await shot('polish-hero','graphite-dark',1440);
       await page.evaluate('document.querySelector(".journey-terminal-showcase").scrollIntoView({block:"start"});'); await delay(3400);
-      await shot(baseline?'polish-terminals-before':'polish-terminals-after','graphite-dark',1440);
+      await shot('polish-terminals','graphite-dark',1440);
       await page.evaluate('document.querySelector(".journey-scroll").scrollIntoView({block:"start"});'); await delay(1200);
-      await shot(baseline?'polish-stations-before':'polish-stations-after','graphite-dark',1440);
+      await shot('polish-stations','graphite-dark',1440);
       report.polishActivation = await page.evaluate(`const cards=[...document.querySelectorAll('.journey-feature')],a=cards[0].querySelector('[data-station-port]').getBoundingClientRect(),b=cards[1].querySelector('[data-station-port]').getBoundingClientRect(),r=cards[1].getBoundingClientRect();const trigger=(a.top+a.height/2+b.top+b.height/2)/2+14-innerHeight*.58;return {viewport:innerHeight,nextCenterAtTrigger:b.top+b.height/2-trigger,panelTopAtTrigger:r.top-trigger,panelBottomAtTrigger:r.bottom-trigger};`);
-      if (baseline) { report.polishCaptures=captures; return; }
       assert(!await page.evaluate('return !!document.querySelector(".home-theme");'));
       const labels={en:['CONNECTION','SWITCH PORTS','ROUTING','PACKET CAPTURE','QUICK CHECK'],de:['VERBINDUNG','SWITCH-PORTS','ROUTING','PAKETMITSCHNITT','KURZCHECK'],'pt-BR':['CONEXÃO','PORTAS DO SWITCH','ROTEAMENTO','CAPTURA DE PACOTES','TESTE RÁPIDO']};
       const ctas={en:['Start a new project','Continue learning','Browse projects','Explore exercises'],de:['Neues Projekt starten','Weiterlernen','Projekte ansehen','Übungen entdecken'],'pt-BR':['Criar novo projeto','Continuar aprendendo','Ver projetos','Explorar exercícios']};
@@ -135,20 +127,14 @@ export async function runJourneyReview({ page, url, root, report }) {
         }
       }
       await size(1440);await select('.language-selector select','en');await scrollTo(0);
-      // Evaluate native Windows flag rendering without shipping emoji-only controls.
-      await page.evaluate(`for(const option of document.querySelectorAll('.language-selector option')){option.dataset.original=option.textContent;option.textContent=({de:'🇩🇪',en:'🇬🇧','pt-BR':'🇧🇷'})[option.value]+' '+option.textContent;}`);
-      await shot('polish-native-flags-trial','graphite-dark',1440);
-      await page.evaluate('for(const option of document.querySelectorAll(".language-selector option"))option.textContent=option.dataset.original;');
-      await navigate('/?experience=classic');await wait('document.querySelector(".home-topology")');
-      assert.equal(await page.evaluate('return document.documentElement.dataset.uiTheme;'),'classic-light');
-      await home('',true,true,true);await page.evaluate('localStorage.removeItem("netsim:autosave:v1");');
+      await home(true);await page.evaluate('localStorage.removeItem("netsim:autosave:v1");');
       await click('.home-actions a[href="./app.html?home=new"]');await wait('document.querySelector(".react-flow")');
       await wait('!location.search.includes("home=")');
       assert.equal(await page.evaluate('return document.querySelectorAll(".react-flow__node").length;'),0);
       assert.equal(await page.evaluate('return document.documentElement.dataset.uiTheme;'),'classic-light');
-      await home('',true,true,true);await click('.journey-entry-links a[href="./app.html?home=load"]');await wait('document.querySelector(".workspace-empty-list")');
-      await home('',true,true,true);await click('.journey-entry-links a[href="./app.html?home=exercises"]');await wait('document.querySelector(".exercise-menu-entry")');
-      await home('',true,true,true);await click('.home-actions a[href="./app.html"]');await wait('document.querySelector(".react-flow")');
+      await home(true);await click('.journey-entry-links a[href="./app.html?home=load"]');await wait('document.querySelector(".workspace-empty-list")');
+      await home(true);await click('.journey-entry-links a[href="./app.html?home=exercises"]');await wait('document.querySelector(".exercise-menu-entry")');
+      await home(true);await click('.home-actions a[href="./app.html"]');await wait('document.querySelector(".react-flow")');
       await navigate('/__project_repository_test__');
       await page.evaluate('await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase("netlab-projects");r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error("Isolated cleanup blocked"));});');
       await page.evaluate(`const saved=${JSON.stringify(saved.storage)};for(const k of Object.keys(localStorage))if(!(k in saved))localStorage.removeItem(k);for(const[k,v]of Object.entries(saved))localStorage.setItem(k,v);`);
@@ -159,7 +145,7 @@ export async function runJourneyReview({ page, url, root, report }) {
       await size(1440);
       const gate=await page.send('Page.addScriptToEvaluateOnNewDocument',{source:`{const original=HTMLImageElement.prototype.decode;const pending=[];window.releaseArtwork=()=>pending.splice(0).forEach(release=>release());HTMLImageElement.prototype.decode=function(){return new Promise((resolve,reject)=>pending.push(()=>original.call(this).then(resolve,reject)));};}`});
       try {
-        await navigate('/?experience=journey');await wait('document.querySelector(".journey-scenes")');await delay(300);
+        await navigate('/');await wait('document.querySelector(".journey-scenes")');await delay(300);
         assert.equal(await page.evaluate('return document.querySelector(".journey-scenes").dataset.assets;'),'loading');
         assert.equal(await progress('.journey-scenes'),0);assert(await page.evaluate('return !!document.querySelector(".journey-asset-placeholder");'));
         await page.evaluate('releaseArtwork();'); await wait('document.querySelector(".journey-scenes").dataset.animating==="true"');
@@ -177,14 +163,14 @@ export async function runJourneyReview({ page, url, root, report }) {
     await test('journey: failed artwork decode keeps static controls and never starts playback', async () => {
       const gate=await page.send('Page.addScriptToEvaluateOnNewDocument',{source:'HTMLImageElement.prototype.decode=function(){return Promise.reject(Error("Synthetic decode failure"));};'});
       try {
-        await navigate('/?experience=journey');await wait('document.querySelector(".journey-scenes")?.dataset.assets==="failed"');
+        await navigate('/');await wait('document.querySelector(".journey-scenes")?.dataset.assets==="failed"');
         assert.equal(await progress('.journey-scenes'),0);
         assert(await page.evaluate('return document.querySelector("[data-action=play]").disabled;'));
         await click('[data-scene="2"]');await delay(100);assert.equal(await progress('.journey-scenes'),await sceneProgress(2));
         assert.equal(await page.evaluate('return document.querySelector(".journey-scenes").dataset.animating;'),'false');
       } finally { await page.send('Page.removeScriptToEvaluateOnNewDocument',{identifier:gate.identifier}); }
     });
-    await test('journey: comparison overrides leave storage and simulator unloaded', async () => {
+    await test('journey: homepage leaves storage and simulator unloaded', async () => {
       await size(1440); await home();
       assert.deepEqual(await page.evaluate('return Object.fromEntries(Object.entries(localStorage));'), saved.storage);
       assert.deepEqual(await page.evaluate('return (await indexedDB.databases()).map(d=>d.name).sort();'), saved.databases);
@@ -216,7 +202,7 @@ export async function runJourneyReview({ page, url, root, report }) {
       assert(await page.evaluate('return originalPacket===document.querySelector("[data-packet=scenes]");'));
       await wait('document.querySelector("[data-packet=scenes]").dataset.reply==="true"');
       await click('[data-action="play"]');
-      assert(await page.evaluate('return document.querySelector(".journey-protocol").textContent.includes("novo pacote");'));
+      assert(await page.evaluate('return document.querySelector(".journey-protocol").textContent.includes("Resposta");'));
       await shot('classic-reply', 'classic-light', 1440);
       await click('[data-action="replay"]'); await wait('Number(document.querySelector(".journey-scenes").dataset.progress)<.04');
       await click('[data-action="play"]');
@@ -245,7 +231,7 @@ export async function runJourneyReview({ page, url, root, report }) {
       assert.equal(await page.evaluate('return document.documentElement.scrollHeight;'), pageHeight);
       assert.equal(await page.evaluate('return document.querySelector(".journey-stations").dataset.animating;'), 'false');
       await select('.home-theme select', 'graphite-dark');
-      await page.evaluate(`const el=document.querySelector('.journey-stations'),r=el.getBoundingClientRect(),cards=[...el.querySelectorAll('.journey-feature')],port=c=>{const p=c.querySelector('[data-station-port]').getBoundingClientRect();return p.top+p.height/2-r.top};const first=port(cards[0]),last=port(cards.at(-1)),t=Number(cards[1].dataset.threshold);scrollTo(0,r.top+scrollY+(el.dataset.motion==='continuous'?first+t*(last-first):port(cards[1]))-innerHeight*.58);`);await delay(60);await wait('document.querySelector(".journey-stations").dataset.animating==="false"');
+      await page.evaluate(`const el=document.querySelector('.journey-stations'),r=el.getBoundingClientRect(),cards=[...el.querySelectorAll('.journey-feature')],port=c=>{const p=c.querySelector('[data-station-port]').getBoundingClientRect();return p.top+p.height/2-r.top};scrollTo(0,r.top+scrollY+port(cards[1])-innerHeight*.58);`);await delay(60);await wait('document.querySelector(".journey-stations").dataset.animating==="false"');
       await shot('graphite-scroll', 'graphite-dark', 1440, true);
     });
     await test('journey: F5 at mid-page reconstructs the scroll position; resize remeasures', async () => {
@@ -258,8 +244,8 @@ export async function runJourneyReview({ page, url, root, report }) {
     });
     await test('journey: station destinations finish after scrolling stops, reverse without jumps and keep geometry cached',async()=>{
       report.scrollComparisons=[];
-      for(const continuous of [true,false]){
-        await size(1440);await home('',true,true,false,continuous);await select('.home-theme select','graphite-dark');
+      {
+        await size(1440);await home(true);await select('.home-theme select','graphite-dark');
         const positions=await page.evaluate(`return [...document.querySelectorAll('.journey-feature [data-station-port]')].map(p=>{const r=p.getBoundingClientRect();return r.top+r.height/2+scrollY-innerHeight*.58;});`);
         await scrollTo(positions[0]);
         const measurements=await page.evaluate('return document.querySelector(".journey-stations").dataset.measurements;');
@@ -269,9 +255,9 @@ export async function runJourneyReview({ page, url, root, report }) {
           for(let i=1;i<=5;i++){await page.evaluate(`scrollTo(0,${positions[0]+(positions[1]-positions[0])*.4*i/5});`);await delay(45);}
           await wait('document.querySelector(".journey-stations").dataset.animating==="false"');
           const resting=await progress('.journey-stations'),firstThreshold=await page.evaluate('return Number(document.querySelectorAll(".journey-feature")[1].dataset.threshold);');
-          if(continuous)assert(resting>0&&resting<firstThreshold);else assert.equal(resting,0);
-          await shot(continuous?'continuous-between-stations':'station-resting-at-connector','graphite-dark',1440);
-          if(!continuous){
+          assert.equal(resting,0);
+          await shot('station-resting-at-connector','graphite-dark',1440);
+          {
             await page.evaluate(`scrollTo(0,${(positions[0]+positions[1])/2+20});`);await wait('document.querySelector(".journey-stations").dataset.destination==="1"');
             const moving=await progress('.journey-stations');await wait('document.querySelector(".journey-stations").dataset.animating==="false"');
             assert.equal(await progress('.journey-stations'),Number(firstThreshold.toFixed(6)));assert(moving<firstThreshold);
@@ -288,7 +274,7 @@ export async function runJourneyReview({ page, url, root, report }) {
           }
           const reads=await page.evaluate('return window.geometryReads;');assert.equal(reads,0,'No layout reads should occur in the motion/scroll handlers');
           assert.equal(await page.evaluate('return document.querySelector(".journey-stations").dataset.measurements;'),measurements);
-          report.scrollComparisons.push({mode:continuous?'continuous':'stations',restingProgress:resting,layoutReads:reads});
+          report.scrollComparisons.push({mode:'stations',restingProgress:resting,layoutReads:reads});
         } finally {await page.evaluate('Element.prototype.getBoundingClientRect=window.originalRect;');}
       }
       await home();
@@ -310,20 +296,20 @@ export async function runJourneyReview({ page, url, root, report }) {
       assert(await page.evaluate('return [...document.querySelectorAll(".journey-console .journey-energy rect")].every(el=>Number(getComputedStyle(el).opacity)===0);'));
     });
     await test('journey: alternate composition preserves exact reversible arrivals and responsive terminals',async()=>{
-      for(const alternate of [false,true]){
-        await home('',true,alternate);
+      {
+        await home(true);
         for(const theme of ['graphite-dark','classic-light'])for(const width of [390,700,1024,1440]){
           await size(width);await select('.home-theme select',theme);await select('.language-selector select','pt-BR');
           await page.evaluate('scrollTo(0,document.querySelector(".journey-terminal-showcase").getBoundingClientRect().top+scrollY-20);');await delay(100);
           assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth;'));
           await wait('document.querySelector(".journey-terminal-showcase").dataset.complete==="true"');
-          await shot(`terminals-${alternate?'b':'a'}-${theme}`,theme,width);
+          await shot(`terminals-alternate-${theme}`,theme,width);
           for(const index of [1,3,1]){
-            await page.evaluate(`const root=document.querySelector('.journey-stations'),box=root.getBoundingClientRect(),cards=[...root.querySelectorAll('.journey-feature')],y=c=>{const p=c.querySelector('[data-station-port]').getBoundingClientRect();return p.top+p.height/2-box.top;};scrollTo(0,box.top+scrollY+(root.dataset.motion==='continuous'?y(cards[0])+Number(cards[${index}].dataset.threshold)*(y(cards.at(-1))-y(cards[0])):y(cards[${index}]))-innerHeight*.58);`);await delay(60);await wait('document.querySelector(".journey-stations").dataset.animating==="false"');
-            const error=await page.evaluate(`const p=document.querySelectorAll('.journey-feature')[${index}].querySelector('[data-station-port]').getBoundingClientRect(),m=document.querySelector('[data-packet=scroll]').getScreenCTM();return Math.hypot(m.e-p.left-p.width/2,m.f-p.top-p.height/2);`);assert(error<1.5,JSON.stringify({alternate,width,theme,error}));
+            await page.evaluate(`const root=document.querySelector('.journey-stations'),box=root.getBoundingClientRect(),cards=[...root.querySelectorAll('.journey-feature')],y=c=>{const p=c.querySelector('[data-station-port]').getBoundingClientRect();return p.top+p.height/2-box.top;};scrollTo(0,box.top+scrollY+y(cards[${index}])-innerHeight*.58);`);await delay(60);await wait('document.querySelector(".journey-stations").dataset.animating==="false"');
+            const error=await page.evaluate(`const p=document.querySelectorAll('.journey-feature')[${index}].querySelector('[data-station-port]').getBoundingClientRect(),m=document.querySelector('[data-packet=scroll]').getScreenCTM();return Math.hypot(m.e-p.left-p.width/2,m.f-p.top-p.height/2);`);assert(error<1.5,JSON.stringify({width,theme,error}));
           }
-          await shot(`stations-${alternate?'alternate':'approved'}-${theme}`,theme,width,theme==='graphite-dark'&&width===1440);
-          if(alternate) {
+          await shot(`stations-alternate-${theme}`,theme,width,theme==='graphite-dark'&&width===1440);
+          {
             const geometry=await page.evaluate(`const root=document.querySelector('.journey-stations'),path=root.querySelector('.journey-route'),matrix=path.getScreenCTM(),panels=[...root.querySelectorAll('.journey-station-panel')].map(el=>el.getBoundingClientRect());let intersections=0;for(let s=0;s<=path.getTotalLength();s+=2){const p=path.getPointAtLength(s),v=new DOMPoint(p.x,p.y).matrixTransform(matrix);if(panels.some(r=>v.x>r.left-2&&v.x<r.right+2&&v.y>r.top-2&&v.y<r.bottom+2))intersections++;}return {intersections,sides:[...root.querySelectorAll('.journey-feature')].map(card=>card.querySelector('.journey-equipment').getBoundingClientRect().left>card.querySelector('.journey-station-panel').getBoundingClientRect().left?'right':'left')};`);
             assert.equal(geometry.intersections,0,JSON.stringify({width,theme,...geometry}));
             assert.deepEqual(geometry.sides,width>800?['right','left','right','left','right']:['left','left','left','left','left']);
@@ -333,11 +319,11 @@ export async function runJourneyReview({ page, url, root, report }) {
       await home();
     });
     await test('journey: arrival pulses return to normal and final station confirms in both directions',async()=>{
-      await size(1440);await home('',true,true);await select('.home-theme select','graphite-dark');
+      await size(1440);await home(true);await select('.home-theme select','graphite-dark');
       for(const lang of ['de','en','pt-BR']){
         await scrollTo(0);await select('.language-selector select',lang);
         for(const index of [4,1,4]){
-          await page.evaluate(`const root=document.querySelector('.journey-stations'),box=root.getBoundingClientRect(),cards=[...root.querySelectorAll('.journey-feature')],y=c=>{const p=c.querySelector('[data-station-port]').getBoundingClientRect();return p.top+p.height/2-box.top;};scrollTo(0,box.top+scrollY+(root.dataset.motion==='continuous'?y(cards[0])+Number(cards[${index}].dataset.threshold)*(y(cards.at(-1))-y(cards[0])):y(cards[${index}]))-innerHeight*.58);`);
+          await page.evaluate(`const root=document.querySelector('.journey-stations'),box=root.getBoundingClientRect(),cards=[...root.querySelectorAll('.journey-feature')],y=c=>{const p=c.querySelector('[data-station-port]').getBoundingClientRect();return p.top+p.height/2-box.top;};scrollTo(0,box.top+scrollY+y(cards[${index}])-innerHeight*.58);`);
           await wait(`document.querySelectorAll('.journey-feature')[${index}].dataset.arriving==='true'`);
           await wait(`document.querySelectorAll('.journey-feature')[${index}].querySelector('.journey-energy rect').getAnimations().some(a=>a.playState==='running')`);
           if(lang==='pt-BR'&&index===4&&!captures.some(c=>c.scene==='final-confirmation'))await shot('final-confirmation','graphite-dark',1440);
@@ -346,9 +332,9 @@ export async function runJourneyReview({ page, url, root, report }) {
       }
       await home();
     });
-    await test('journey: data metaphor is opt-in, follows pause/replay and stays out of reduced motion',async()=>{
-      assert.equal(await page.evaluate('return document.querySelectorAll(".journey-data-document").length;'),0);
-      await home('',true,false,true);await select('.home-theme select','graphite-dark');
+    await test('journey: data metaphor is always enabled, follows pause/replay and stays out of reduced motion',async()=>{
+      assert.equal(await page.evaluate('return document.querySelectorAll(".journey-data-document").length;'),2);
+      await home(true);await select('.home-theme select','graphite-dark');
       await click('[data-action="play"]');await wait('Number(document.querySelector(".journey-scenes").dataset.progress)>.025');await click('[data-action="play"]');
       const sample=await page.evaluate('const el=document.querySelector("[data-document=source]");return [el.getAttribute("transform"),el.getAttribute("opacity")];');
       assert(Number(sample[1])>.5);await delay(250);
@@ -371,7 +357,7 @@ export async function runJourneyReview({ page, url, root, report }) {
       for (const width of [390, 700, 1024, 1440]) for (const lang of ['de', 'en', 'pt-BR']) {
         await size(width); await select('.language-selector select', lang);
         for (let index = 0; index < 5; index++) {
-          await page.evaluate(`const root=document.querySelector('.journey-stations'),box=root.getBoundingClientRect(),cards=[...root.querySelectorAll('.journey-feature')];const y=c=>{const r=c.querySelector('[data-station-port]').getBoundingClientRect();return r.top+r.height/2-box.top;};scrollTo(0,box.top+scrollY+(root.dataset.motion==='continuous'?y(cards[0])+Number(cards[${index}].dataset.threshold)*(y(cards.at(-1))-y(cards[0])):y(cards[${index}]))-innerHeight*.58);`);
+          await page.evaluate(`const root=document.querySelector('.journey-stations'),box=root.getBoundingClientRect(),cards=[...root.querySelectorAll('.journey-feature')];const y=c=>{const r=c.querySelector('[data-station-port]').getBoundingClientRect();return r.top+r.height/2-box.top;};scrollTo(0,box.top+scrollY+y(cards[${index}])-innerHeight*.58);`);
           await delay(60);await wait('document.querySelector(".journey-stations").dataset.animating==="false"');
           const error = await page.evaluate(`const card=document.querySelectorAll('.journey-feature')[${index}],port=card.querySelector('[data-station-port]').getBoundingClientRect(),packet=document.querySelector('[data-packet=scroll]'),m=packet.getScreenCTM();return {distance:Math.hypot(m.e-port.left-port.width/2,m.f-port.top-port.height/2),arriving:card.dataset.arriving};`);
           assert(error.distance < 1.5, JSON.stringify({width,lang,index,...error})); assert.equal(error.arriving,'true'); report.arrivalErrors.push(error.distance);
@@ -399,7 +385,7 @@ export async function runJourneyReview({ page, url, root, report }) {
       assert(await page.evaluate('return [...document.querySelectorAll(".journey-energy rect")].every(el=>getComputedStyle(el).animationName==="none");'));
       assert.equal(await page.evaluate('return document.querySelectorAll(".journey-feature[data-reached=true]").length;'), 5);
       await delay(150); assert.equal(await progress('.journey-scenes'), await sceneProgress(2));
-      await home('', false);await delay(200);assert.equal(await progress('.journey-scenes'),0);
+      await home(false);await delay(200);assert.equal(await progress('.journey-scenes'),0);
       assert(await page.evaluate('return document.querySelector("[data-action=play]").disabled;'));
       await page.send('Emulation.setEmulatedMedia', { features: [] });
     });
@@ -447,18 +433,25 @@ export async function runJourneyReview({ page, url, root, report }) {
       await size(1440,600);await page.evaluate('document.querySelector(".journey-hero h1").style.fontSize="78px";document.querySelector(".journey-hero .home-intro").style.fontSize="23px";document.querySelector(".journey-controls").scrollIntoView({block:"center"});');await delay(100);
       assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth&&document.querySelector(".journey-controls").getBoundingClientRect().bottom<=innerHeight;'));
       await size(1440);await select('.home-theme select','graphite-dark');await select('.language-selector select','en');
-      await navigate('/?experience=journey&headline=break-fix');await wait('document.querySelector("h1")');await delay(150);
-      assert.equal(await page.evaluate('return document.querySelector("h1").textContent;'),'Build. Connect. Break. Fix.');
-      await shot('headline-alternative','graphite-dark',1440);
       await home();await select('.language-selector select','de');
     });
-    await test('journey: independent demos and intact classic entry', async () => {
-      await home('scroll'); assert(!await page.evaluate('return !!document.querySelector(".journey-scenes");')); assert(await page.evaluate('return !!document.querySelector(".journey-stations");'));
-      await home('slides'); assert(await page.evaluate('return !!document.querySelector(".journey-scenes");')); assert(!await page.evaluate('return !!document.querySelector(".journey-stations");'));
+    await test('journey: obsolete URLs open the official homepage without changing legitimate parameters', async () => {
+      const before=await page.evaluate('return Object.fromEntries(Object.entries(localStorage));');
+      for(const query of ['experience=classic','demo=scroll','demo=slides','stations=original','dataPreview=0','scrollMotion=continuous','headline=break-fix','experience=journey&stations=alternate&dataPreview=1','experience=classic&demo=scroll&stations=original&dataPreview=0&scrollMotion=continuous&headline=break-fix&home=load#t=untouched']) {
+        await navigate('/?'+query); await wait('document.querySelector(".journey-scenes")?.dataset.assets==="ready"');
+        assert.equal(await page.evaluate('return location.search+location.hash;'),'?'+query);
+        assert.equal(await page.evaluate('return document.documentElement.dataset.uiTheme;'),'graphite-dark');
+        assert.equal(await page.evaluate('return document.querySelector(".journey-stations").dataset.motion;'),'stations');
+        assert.equal(await page.evaluate('return document.querySelectorAll(".journey-feature").length;'),5);
+        assert.equal(await page.evaluate('return document.querySelectorAll(".journey-data-document").length;'),2);
+        assert(await page.evaluate('return !!document.querySelector(".journey-scroll-alternate") && !document.querySelector(".journey-variants,.home-topology");'));
+        assert.equal(await page.evaluate('return document.querySelector("h1").textContent;'),'Bauen. Verbinden. Verstehen.');
+        assert.deepEqual(await page.evaluate('return Object.fromEntries(Object.entries(localStorage));'),before);
+        assert(!await page.evaluate('return performance.getEntriesByType("resource").some(r=>["/src/store.ts","/src/engine/","xterm"].some(s=>r.name.includes(s)));'));
+      }
       const hrefs = await page.evaluate('return [...document.querySelectorAll("a")].map(a=>a.getAttribute("href"));');
       for (const action of ['new','load','exercises','labs']) assert(hrefs.includes('./app.html?home='+action));
-      await navigate('/?experience=classic'); await wait('document.querySelector(".home-topology")'); assert(!await page.evaluate('return !!document.querySelector(".journey-page");'));
-      await home(); assert.equal(await progress('.journey-scenes'), 0);
+      await home(); assert.equal(await progress('.journey-scenes'),0);
     });
     await test('journey: editor link and browser Back recover the page without changing projects', async () => {
       assert(!saved.databases.includes('netlab-projects'));
@@ -478,7 +471,7 @@ export async function runJourneyReview({ page, url, root, report }) {
       report.journeyPerformance = { intervalMs: 1500, idleScriptMs: (b.ScriptDuration-a.ScriptDuration)*1000, playingScriptMs: (c.ScriptDuration-b.ScriptDuration)*1000, idleTaskMs: (b.TaskDuration-a.TaskDuration)*1000, playingTaskMs: (c.TaskDuration-b.TaskDuration)*1000 };
     });
     if (process.env.NETLAB_JOURNEY_VIDEO === '1') {
-      await home('',true,true,true);
+      await home(true);
       await size(1440, 950); await select('.home-theme select', 'graphite-dark'); await select('.language-selector select', 'en'); await scrollTo(0);
       const frames = path.join(directory, 'video-frames'); await mkdir(frames);
       const samples = [], writes = []; let recordingError;

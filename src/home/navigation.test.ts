@@ -1,6 +1,5 @@
 import { expect, it, vi, afterEach } from 'vitest';
 import { consumeHomeIntent, editorHref, readHomeIntent } from './navigation';
-import { readRecentPlans } from './recentPlans';
 const id = '00000000-0000-4000-8000-000000000001';
 afterEach(() => vi.unstubAllGlobals());
 it.each(['new', 'load', 'labs', 'exercises'] as const)('routes %s through an existing workspace intent', action => {
@@ -21,7 +20,4 @@ it('consumes creation once, preserving unrelated URL preferences', () => {
 });
 it('leaves Share Link handling to the existing guarded offer flow', () => {
   expect(readHomeIntent(new URL('https://test/app.html?home=new#t=shared'))).toBeNull();
-});
-it('reports unavailable storage without creating a replacement', async () => {
-  const result = await readRecentPlans({ factory: null }); expect(result.ok).toBe(false);
 });

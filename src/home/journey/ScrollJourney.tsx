@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from '../../i18n';
-import { homeExperience } from '../experience';
 import { Packet, positionPacket } from './Packet';
-import { alternatingScrollSegments, clamp, follow, scrollProgress, scrollSegments, type Point } from './geometry';
+import { alternatingScrollSegments, clamp, scrollSegments, type Point } from './geometry';
 import { JourneyArtwork, type JourneyDevice } from './JourneyArtwork';
 import { paintArrival } from './arrival';
 import { EnergyBorder } from './EnergyBorder';
@@ -12,8 +11,6 @@ const sections = ['terminal', 'switch', 'routing', 'capture', 'exercise'] as con
 const devices: JourneyDevice[] = ['host', 'switch', 'router', 'server', 'host'];
 export function ScrollJourney() {
   const { t, language } = useTranslation();
-  const alternate = homeExperience(location.search).alternateStations;
-  const continuous = new URLSearchParams(location.search).get('scrollMotion') === 'continuous';
   const root = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), route = useRef<SVGPathElement>(null), light = useRef<SVGPathElement>(null), packet = useRef<SVGGElement>(null);
   const measureAgain = useRef(() => {});
   useEffect(() => {
@@ -37,8 +34,7 @@ export function ScrollJourney() {
       frame = 0;
       if (disposed || document.hidden || !inside || reduced) { last = 0; return; }
       const elapsed = last ? Math.min(50, time - last) : 16; last = time;
-      if (continuous) current = follow(current, target, elapsed);
-      else if (move) { move.elapsed = Math.min(move.duration, move.elapsed + elapsed); current = stationMovePosition(move); if (move.elapsed === move.duration) { current = target; move = null; } }
+      if (move) { move.elapsed = Math.min(move.duration, move.elapsed + elapsed); current = stationMovePosition(move); if (move.elapsed === move.duration) { current = target; move = null; } }
       paint();
       if (current !== target) frame = requestAnimationFrame(tick);
       else { last = 0; element.dataset.animating = 'false'; }
@@ -48,10 +44,10 @@ export function ScrollJourney() {
       element.dataset.paused = String(document.hidden || !inside);
       const previousTarget = target;
       destination = stationAt(scrollY + innerHeight * STATION_MOTION.activationLine - top, points.map(p => p.y), immediate ? undefined : destination);
-      target = continuous ? scrollProgress(scrollY, top, points[0].y, points.at(-1)!.y, innerHeight) : thresholds[destination];
+      target = thresholds[destination];
       if (immediate || reduced || !inside || document.hidden) { cancelAnimationFrame(frame); frame = 0; last = 0; current = target; move = null; paint(); element.dataset.animating = 'false'; }
       else {
-        if (!continuous && (target !== previousTarget || remeasured)) { move = current === target ? null : stationMove(current, target, length); last = 0; }
+        if (target !== previousTarget || remeasured) { move = current === target ? null : stationMove(current, target, length); last = 0; }
         if (!frame && current !== target) { element.dataset.animating = 'true'; frame = requestAnimationFrame(tick); }
       }
     };
@@ -63,7 +59,7 @@ export function ScrollJourney() {
       points = cards.map(card => { const rect = card.querySelector('[data-station-port]')!.getBoundingClientRect(); return { x: rect.left - box.left + rect.width / 2, y: rect.top - box.top + rect.height / 2 }; });
       overlay.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`);
       const rows = cards.map(card => { const r = card.getBoundingClientRect(); return { top: r.top - box.top, bottom: r.bottom - box.top }; });
-      const segments = alternate && matchMedia('(min-width: 801px)').matches ? alternatingScrollSegments(points, rows) : scrollSegments(points);
+      const segments = matchMedia('(min-width: 801px)').matches ? alternatingScrollSegments(points, rows) : scrollSegments(points);
       const d = segments[0] + segments.slice(1).map(s => s.replace(/^M[^LCQ]+/, '')).join('');
       shape.setAttribute('d', d); light.current!.setAttribute('d', d); length = shape.getTotalLength();
       // Cache arc-length thresholds once per real layout change, not per frame.
@@ -71,8 +67,8 @@ export function ScrollJourney() {
       thresholds = [0, ...segments.map(segment => { probe.setAttribute('d', segment); traversed += probe.getTotalLength(); return clamp(traversed / length); })];
       cards.forEach((card, i) => { card.dataset.threshold = String(thresholds[i]); });
       element.dataset.measurements = String(Number(element.dataset.measurements ?? 0) + 1);
-      if (measured && !continuous) current = remapStationPosition(current, before, thresholds);
-      update(!measured || continuous, true); measured = true;
+      if (measured) current = remapStationPosition(current, before, thresholds);
+      update(!measured, true); measured = true;
     };
     const queueMeasure = () => { if (!measureFrame && !disposed) measureFrame = requestAnimationFrame(measure); };
     measureAgain.current = queueMeasure;
@@ -87,9 +83,9 @@ export function ScrollJourney() {
     return () => { disposed = true; cancelAnimationFrame(frame); cancelAnimationFrame(measureFrame); resize.disconnect(); intersection.disconnect(); window.removeEventListener('scroll', scroll); window.removeEventListener('resize', queueMeasure); document.removeEventListener('visibilitychange', visibility); motion.removeEventListener('change', preference); measureAgain.current = () => {}; };
   }, []);
   useEffect(() => { measureAgain.current(); }, [language]);
-  return <section className={`journey-scroll${alternate ? ' journey-scroll-alternate' : ''}`} aria-labelledby="journey-scroll-title">
+  return <section className="journey-scroll journey-scroll-alternate" aria-labelledby="journey-scroll-title">
     <header><p className="home-eyebrow">{t('journey.inside')}</p><h2 id="journey-scroll-title">{t('journey.scrollTitle')}</h2><p>{t('journey.scrollHint')}</p></header>
-    <div className="journey-stations" data-motion={continuous ? 'continuous' : 'stations'} ref={root}>
+    <div className="journey-stations" data-motion="stations" ref={root}>
       <svg ref={svg} className="journey-scroll-svg" aria-hidden="true"><path ref={route} className="journey-route"/><path ref={light} className="journey-route-lit"/><Packet ref={packet} id="scroll"/></svg>
       {sections.map((section, i) => <article key={section} className="journey-feature" data-section={section} data-reached="false">
         <div className="journey-equipment"><JourneyArtwork kind={devices[i]} /></div>
