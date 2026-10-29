@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { normalizeAnimation, type BackgroundAnimation } from './backgroundParticles';
 
 export const CANVAS_BACKGROUNDS = {
-  original: { label: 'Original', image: null },
+  original: { label: 'Classic Blue', image: null },
   verde1: { label: 'Verde 1', image: 'background-verde1.png' },
   verde2: { label: 'Verde 2', image: 'background-verde2.png' },
   bg1: { label: 'Cyan Circuit', image: 'background-cyan-circuit.png' },
