@@ -15,7 +15,7 @@ export async function runHomepageReview({ page, url, root, report }) {
   const wait = async condition => { for (let i = 0; i < 240; i++) { if (await page.evaluate(`return !!(${condition});`)) return; await delay(40); } throw Error('Timed out: ' + condition); };
   const test = async (name, run) => { page.labelDownloads(name); try { await run(); report.results[name] = { passed: true }; } catch (e) { report.results[name] = { passed: false, error: e.stack }; throw e; } };
   const navigate = async route => { await page.send('Page.navigate', { url: origin + route }); await wait(`location.pathname === ${JSON.stringify(route.split('?')[0])} && document.readyState === 'complete'`); };
-  const home = async () => { await navigate('/'); await wait('document.querySelector(".home-empty,.home-plan")'); };
+  const home = async () => { await navigate('/?experience=classic'); await wait('document.querySelector(".home-empty,.home-plan")'); };
   const editor = async () => { await wait('document.querySelector(".react-flow")'); await page.evaluate('window.store=(await import("/src/store.ts")).useStore;'); await delay(120); };
   const click = async selector => { await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).click();`); };
   const select = async (selector, value) => { await page.evaluate(`const el=document.querySelector(${JSON.stringify(selector)});el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('change',{bubbles:true}));`); await delay(60); };
@@ -108,6 +108,7 @@ export async function runHomepageReview({ page, url, root, report }) {
     let preserved;
     await test('home: new topology uses normal paused boot; F5 does not create another draft', async () => {
       await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+      await navigate('/'); await wait('document.querySelector(".journey-page")');
       await click('.home-button-primary'); await editor();
       assert.equal(await page.evaluate('return store.getState().paused;'), true);
       assert.equal(await page.evaluate('return new URL(location.href).searchParams.has("home");'), false);
@@ -136,19 +137,23 @@ export async function runHomepageReview({ page, url, root, report }) {
       preserved = await page.evaluate('return store.getState().captureWorkspaceDocument();');
     });
     await test('home: returning home does not mutate the session; Continue restores the existing draft', async () => {
-      await click('.home-link'); await wait('document.querySelector(".home-plan")');
-      const before = await archive(); await page.send('Page.reload'); await wait('document.querySelector(".home-plan")');
+      await click('.home-link'); await wait('document.querySelector(".journey-page")');
+      const before = await archive(); await page.send('Page.reload'); await wait('document.querySelector(".journey-page")');
       assert.deepEqual(await archive(), before);
-      await click('.home-continue'); await editor();
+      await click('.home-actions a[href="./app.html"]'); await editor();
       assert.deepEqual(await page.evaluate('return store.getState().captureWorkspaceDocument();'), preserved);
       assert(await page.evaluate('return store.getState().paused;'));
     });
     await test('home: Open uses the existing translated plan dialog; recent links preserve other drafts', async () => {
-      await home(); await select('.language-selector select', 'pt-BR'); await click('.home-actions a[href*="load"]'); await editor();
+      await navigate('/'); await wait('document.querySelector(".journey-page")'); await select('.language-selector select', 'pt-BR'); await click('.journey-entry-links a[href*="load"]'); await editor();
       await wait('document.querySelector(".workspace-plan-list")');
       assert.equal(await page.evaluate('return document.querySelector(".workspace-dialog h2").textContent;'), 'Planos salvos');
       assert.deepEqual(await page.evaluate('return store.getState().captureWorkspaceDocument();'), preserved);
-      await click('.workspace-dialog header button'); await home();
+      const chosen = await page.evaluate('return document.querySelector(".workspace-plan-open strong").textContent;');
+      await click('.workspace-plan-open');
+      await wait(`document.querySelector('.workspace-tab-wrap[data-active=true] .workspace-tab-name')?.textContent===${JSON.stringify(chosen)}`);
+      assert.equal(await page.evaluate('return store.getState().captureWorkspaceDocument().topology.devices.length;'),0);
+      await home();
       const target = await page.evaluate('return document.querySelector(".home-plan strong").textContent;');
       await click('.home-plan'); await editor(); await wait('document.querySelector(".workspace-tab-wrap[data-active=true]")');
       await wait(`document.querySelector('.workspace-tab-wrap[data-active=true] .workspace-tab-name').textContent===${JSON.stringify(target)}`);
@@ -156,7 +161,7 @@ export async function runHomepageReview({ page, url, root, report }) {
       const raw = await archive(); assert(JSON.stringify(raw).includes('pc-home-check'));
     });
     await test('home: Labs and published exercises open the existing menus and retain pedagogical text', async () => {
-      await home(); await click('.home-exercises'); await editor(); await wait('document.querySelector(".exercise-menu-entry button:not(:disabled)")');
+      await navigate('/'); await wait('document.querySelector(".journey-page")'); await click('.journey-entry-links a[href*="exercises"]'); await editor(); await wait('document.querySelector(".exercise-menu-entry button:not(:disabled)")');
       const catalog = await page.evaluate('return (await import("/src/exercises/beta.ts")).BETA_EXERCISES.map(e=>e.student.title);');
       assert.deepEqual(await page.evaluate('return [...document.querySelectorAll(".exercise-menu-entry strong")].map(e=>e.textContent);'), catalog);
       assert(await page.evaluate('return document.querySelector(".exercise-note").textContent.includes("Exercícios experimentais");'));

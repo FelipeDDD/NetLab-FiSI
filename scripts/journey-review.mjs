@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { generateReview } from './visual-review.mjs';
 
@@ -13,7 +12,12 @@ export async function runJourneyReview({ page, url, root, report }) {
   const test = async (name, run) => { if(process.env.NETLAB_JOURNEY_REVIEW_FILTER&&!name.includes(process.env.NETLAB_JOURNEY_REVIEW_FILTER))return;page.labelDownloads(name); try { await run(); report.results[name] = { passed: true }; } catch (e) { report.results[name] = { passed: false, error: e.stack }; throw e; } };
   const navigate = async route => { await page.send('Page.navigate', { url: origin + route }); await wait(`location.href === ${JSON.stringify(origin + route)} && document.readyState === 'complete'`); };
   const home = async (demo = '', manual = true, alternate = false, dataPreview = false, continuous = false) => {
-    await navigate('/?experience=journey' + (demo ? '&demo=' + demo : '') + (alternate ? '&stations=alternate' : '') + (dataPreview ? '&dataPreview=1' : '') + (continuous ? '&scrollMotion=continuous' : ''));
+    const query = new URLSearchParams();
+    if (demo) query.set('demo', demo);
+    if (!alternate) query.set('stations', 'original');
+    if (!dataPreview) query.set('dataPreview', '0');
+    if (continuous) query.set('scrollMotion', 'continuous');
+    await navigate('/' + (query.size ? '?' + query : ''));
     await wait('document.querySelector(".journey-page")'); await delay(200);
     if (demo !== 'scroll') {
       await wait('document.querySelector(".journey-scenes").dataset.assets === "ready"');
@@ -46,6 +50,51 @@ export async function runJourneyReview({ page, url, root, report }) {
   };
   const saved = await page.evaluate('return {storage:Object.fromEntries(Object.entries(localStorage)),databases:(await indexedDB.databases()).map(d=>d.name).sort()};');
   try {
+    await test('journey: official root enables approved defaults without loading or mutating the workspace', async () => {
+      await size(1440); await navigate('/');
+      await wait('document.querySelector(".journey-scenes")?.dataset.assets==="ready"');
+      await wait('document.querySelector(".journey-scenes").dataset.animating==="true"');
+      assert.equal(await page.evaluate('return location.pathname+location.search;'),'/');
+      assert.equal(await page.evaluate('return document.documentElement.dataset.uiTheme;'),'graphite-dark');
+      assert(await page.evaluate('return !!document.querySelector(".journey-scroll-alternate") && document.querySelector(".journey-stations").dataset.motion==="stations";'));
+      assert.equal(await page.evaluate('return document.querySelector(".journey-scenes").dataset.preview;'),'true');
+      assert.equal(await page.evaluate('return document.querySelectorAll(".journey-data-document").length;'),2);
+      assert.deepEqual(await page.evaluate('return Object.fromEntries(Object.entries(localStorage));'),saved.storage);
+      assert.deepEqual(await page.evaluate('return (await indexedDB.databases()).map(d=>d.name).sort();'),saved.databases);
+      assert(!await page.evaluate('return performance.getEntriesByType("resource").some(r=>["/src/store.ts","/src/sim.ts","/src/engine/","WorkspaceApplication","xterm","/src/home/recentPlans.ts"].some(s=>r.name.includes(s)));'));
+      report.officialRootMatrix=[];
+      for(const language of ['de','en','pt-BR']) {
+        await select('.language-selector select',language);await page.send('Page.reload');
+        await wait('document.querySelector(".journey-scenes")?.dataset.assets==="ready"');
+        assert.equal(await page.evaluate('return document.documentElement.lang;'),language);
+        assert(!await page.evaluate('return !!document.querySelector(".journey-variants,a[href*=experience],.home-theme") || /EXPERIMENT|PROTOTYP/i.test(document.body.innerText);'));
+        for(const width of [390,700,1440]) {
+          await size(width);await page.evaluate('document.querySelector(".journey-scenes").scrollIntoView({block:"center"});');
+          await click('[data-scene="0"]');await wait('document.querySelector(".journey-scenes").dataset.seeking==="false"');
+          if(language==='en'&&width===1440) {
+            await click('[data-action="play"]');await wait('Number(document.querySelector(".journey-scenes").dataset.progress)>.035');await click('[data-action="play"]');
+            assert(Number(await page.evaluate('return document.querySelector("[data-document=source]").getAttribute("opacity");'))>0);
+          }
+          await page.evaluate('scrollTo(0,0);');await delay(120);
+          assert.equal(await page.evaluate('return location.search;'),'');
+          await shot(`official-${language.toLowerCase()}`,'graphite-dark',width);
+          report.officialRootMatrix.push({language,width});
+        }
+      }
+      await select('.language-selector select','en');
+      await page.evaluate('document.querySelector(".journey-terminal-showcase").scrollIntoView({block:"start"});');await wait('document.querySelector(".journey-terminal-showcase").dataset.complete==="true"');
+      await shot('official-terminals','graphite-dark',1440);
+      await page.evaluate('document.querySelector(".journey-scroll").scrollIntoView({block:"start"});');await delay(1200);
+      await shot('official-stations','graphite-dark',1440);
+      await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+      await navigate('/');await wait('document.querySelector(".journey-scenes")?.dataset.assets==="ready"');
+      assert(await page.evaluate('return document.querySelector("[data-action=play]").disabled && document.querySelectorAll(".journey-feature[data-reached=true]").length===5;'));
+      await page.send('Emulation.setEmulatedMedia',{features:[]});
+      await navigate('/?experience=journey&stations=alternate&dataPreview=1');await wait('document.querySelector(".journey-scroll-alternate")');
+      assert(!await page.evaluate('return !!document.querySelector(".journey-variants");'));
+      await page.evaluate(`const saved=${JSON.stringify(saved.storage)};for(const k of Object.keys(localStorage))if(!(k in saved))localStorage.removeItem(k);for(const[k,v]of Object.entries(saved))localStorage.setItem(k,v);`);
+      await home();
+    });
     await test('journey: final polish navigation, languages and preserved preferences', async () => {
       await size(1440); await home('',true,true,true);
       await select('.language-selector select','en');
@@ -90,7 +139,7 @@ export async function runJourneyReview({ page, url, root, report }) {
       await page.evaluate(`for(const option of document.querySelectorAll('.language-selector option')){option.dataset.original=option.textContent;option.textContent=({de:'🇩🇪',en:'🇬🇧','pt-BR':'🇧🇷'})[option.value]+' '+option.textContent;}`);
       await shot('polish-native-flags-trial','graphite-dark',1440);
       await page.evaluate('for(const option of document.querySelectorAll(".language-selector option"))option.textContent=option.dataset.original;');
-      await click('a[href="./"]');await wait('document.querySelector(".home-topology")');
+      await navigate('/?experience=classic');await wait('document.querySelector(".home-topology")');
       assert.equal(await page.evaluate('return document.documentElement.dataset.uiTheme;'),'classic-light');
       await home('',true,true,true);await page.evaluate('localStorage.removeItem("netsim:autosave:v1");');
       await click('.home-actions a[href="./app.html?home=new"]');await wait('document.querySelector(".react-flow")');
@@ -135,7 +184,7 @@ export async function runJourneyReview({ page, url, root, report }) {
         assert.equal(await page.evaluate('return document.querySelector(".journey-scenes").dataset.animating;'),'false');
       } finally { await page.send('Page.removeScriptToEvaluateOnNewDocument',{identifier:gate.identifier}); }
     });
-    await test('journey: opt-in entry leaves storage and simulator unloaded', async () => {
+    await test('journey: comparison overrides leave storage and simulator unloaded', async () => {
       await size(1440); await home();
       assert.deepEqual(await page.evaluate('return Object.fromEntries(Object.entries(localStorage));'), saved.storage);
       assert.deepEqual(await page.evaluate('return (await indexedDB.databases()).map(d=>d.name).sort();'), saved.databases);
@@ -390,7 +439,7 @@ export async function runJourneyReview({ page, url, root, report }) {
         const layout=await page.evaluate(`const card=document.querySelector('.journey-scenes').getBoundingClientRect(),hero=document.querySelector('.journey-hero').getBoundingClientRect(),term=document.querySelector('.journey-terminal-showcase').getBoundingClientRect(),buttons=[...document.querySelectorAll('.journey-controls button')];return {overflow:document.documentElement.scrollWidth>innerWidth,heroBottom:hero.bottom,terminalTop:term.top,viewportHeight:innerHeight,viewportWidth:innerWidth,buttonsFit:buttons.every(el=>{const r=el.getBoundingClientRect();return r.width>=30&&r.height>=36&&r.left>=card.left&&r.right<=card.right&&!!el.getAttribute('aria-label')&&!!el.title;}),deviceNames:[...document.querySelectorAll('[data-hero-device] text')].map(el=>el.textContent)};`);
         assert(!layout.overflow,JSON.stringify({width,zoom,lang,theme,...layout}));assert(layout.buttonsFit,JSON.stringify({width,zoom,lang,theme,...layout}));
         assert(!layout.deviceNames.some(name=>/^(pc|sw|r|srv)\d+$/.test(name)));
-        if(layout.viewportWidth>=901&&layout.viewportHeight>=760)assert(layout.terminalTop>=layout.viewportHeight-2,JSON.stringify(layout));
+        if(layout.viewportWidth>=901&&layout.viewportHeight>=760)assert(layout.terminalTop>=layout.heroBottom-2,JSON.stringify(layout));
         report.editorialMatrix.push({width,zoom,lang,theme,...layout});
         await shot(`editorial-${theme}-${lang.toLowerCase()}-${zoom===1?'100':'120'}`,theme,width);
       }
@@ -408,7 +457,7 @@ export async function runJourneyReview({ page, url, root, report }) {
       await home('slides'); assert(await page.evaluate('return !!document.querySelector(".journey-scenes");')); assert(!await page.evaluate('return !!document.querySelector(".journey-stations");'));
       const hrefs = await page.evaluate('return [...document.querySelectorAll("a")].map(a=>a.getAttribute("href"));');
       for (const action of ['new','load','exercises','labs']) assert(hrefs.includes('./app.html?home='+action));
-      await navigate('/'); await wait('document.querySelector(".home-topology")'); assert(!await page.evaluate('return !!document.querySelector(".journey-page");'));
+      await navigate('/?experience=classic'); await wait('document.querySelector(".home-topology")'); assert(!await page.evaluate('return !!document.querySelector(".journey-page");'));
       await home(); assert.equal(await progress('.journey-scenes'), 0);
     });
     await test('journey: editor link and browser Back recover the page without changing projects', async () => {
@@ -462,10 +511,8 @@ export async function runJourneyReview({ page, url, root, report }) {
     await page.evaluate(`const saved=${JSON.stringify(saved.storage)};for(const k of Object.keys(localStorage))if(!(k in saved))localStorage.removeItem(k);for(const[k,v]of Object.entries(saved))localStorage.setItem(k,v);`);
   }
   if(process.env.NETLAB_JOURNEY_REVIEW_FILTER)return; // Focused checks never publish an incomplete review.
-  // Baselines are optional local artifacts, never a dependency of tests on a fresh clone.
-  const baselines = ['hero','terminals','stations'].map(part=>({source:`.playwright-mcp/journey-1793234485724/polish-${part}-before-1440.png`,scene:`polish-${part}-before`,variant:'graphite-dark',state:'before',width:1440,height:950}));
-  captures.push(...baselines.filter(c=>existsSync(path.join(root,c.source))));
   const manifest = path.join(directory, 'manifest.json');
-  await writeFile(manifest, JSON.stringify({ id: 'packet-journey-final-polish', title: 'NetLab-FiSI — Packet Journey', variants: [{ id: 'graphite-dark', label: 'Graphite Dark' }, { id: 'classic-light', label: 'Classic Light' }], states: ['before','normal'], captures, share: ['hero','terminals','stations'].flatMap(part=>['before','after'].flatMap(state=>{const c=captures.find(c=>c.scene===`polish-${part}-${state}`);return c?[{...c,name:`${part}-${state}`}]:[];})), shareContactSheet: false }, null, 2));
+  const main=[['official-en',1440,'homepage-en'],['official-de',1440,'homepage-de'],['official-pt-br',1440,'homepage-pt-br'],['official-pt-br',390,'homepage-mobile'],['official-terminals',1440,'terminals'],['official-stations',1440,'stations']];
+  await writeFile(manifest, JSON.stringify({ id: 'packet-journey-official', title: 'NetLab-FiSI — Official Homepage', variants: [{ id: 'graphite-dark', label: 'Graphite Dark' }, { id: 'classic-light', label: 'Classic Light' }], states: ['normal'], captures, share: main.flatMap(([scene,width,name])=>{const c=captures.find(c=>c.scene===scene&&c.width===width);return c?[{...c,name}]:[];}), shareContactSheet: false }, null, 2));
   report.journeyReview = await generateReview(manifest);
 }

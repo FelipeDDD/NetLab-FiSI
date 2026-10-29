@@ -1,4 +1,5 @@
 const en = {
+  eyebrow: 'PACKET JOURNEY',
   startProject: 'Start a new project', continueLearning: 'Continue learning', browseProjects: 'Browse projects', exploreExercises: 'Explore exercises',
   inside: 'INSIDE NETLAB', terminalLabel: 'CONNECTION', switchLabel: 'SWITCH PORTS', routingLabel: 'ROUTING', captureLabel: 'PACKET CAPTURE', exerciseLabel: 'QUICK CHECK',
   title: 'Build. Connect. Understand.', titleAlternative: 'Build. Connect. Break. Fix.', intro: 'Create networks. Explore what happens. Learn by doing.',
@@ -28,6 +29,7 @@ const en = {
 } as const;
 type Messages = Record<keyof typeof en, string>;
 const de: Messages = {
+  eyebrow: 'PAKETREISE',
   startProject: 'Neues Projekt starten', continueLearning: 'Weiterlernen', browseProjects: 'Projekte ansehen', exploreExercises: 'Übungen entdecken',
   inside: 'NETLAB ENTDECKEN', terminalLabel: 'VERBINDUNG', switchLabel: 'SWITCH-PORTS', routingLabel: 'ROUTING', captureLabel: 'PAKETMITSCHNITT', exerciseLabel: 'KURZCHECK',
   title: 'Bauen. Verbinden. Verstehen.', titleAlternative: 'Bauen. Verbinden. Kaputtmachen. Reparieren.', intro: 'Baue Netzwerke. Entdecke, was passiert. Lerne durch Ausprobieren.',
@@ -56,6 +58,7 @@ const de: Messages = {
   finalTitle: 'Dein nächstes Netzwerk beginnt hier.', finalBody: 'Öffne den Simulator oder erkunde ein Lab. Deine gespeicherten Pläne bleiben erhalten.',
 };
 const ptBR: Messages = {
+  eyebrow: 'JORNADA DO PACOTE',
   startProject: 'Criar novo projeto', continueLearning: 'Continuar aprendendo', browseProjects: 'Ver projetos', exploreExercises: 'Explorar exercícios',
   inside: 'CONHEÇA O NETLAB', terminalLabel: 'CONEXÃO', switchLabel: 'PORTAS DO SWITCH', routingLabel: 'ROTEAMENTO', captureLabel: 'CAPTURA DE PACOTES', exerciseLabel: 'TESTE RÁPIDO',
   title: 'Construa. Conecte. Entenda.', titleAlternative: 'Construa. Conecte. Quebre. Corrija.', intro: 'Monte redes. Descubra o que acontece. Aprenda na prática.',

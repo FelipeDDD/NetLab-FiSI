@@ -1,20 +1,22 @@
-# Homepage experimental: Packet Journey
+# Homepage principal: Packet Journey
 
-## Como experimentar
+## Acesso atual
 
 Com `npm run dev`:
 
-- Clássica, preservada: `http://localhost:5173/`
-- As duas experiências: `http://localhost:5173/?experience=journey`
+- Homepage principal: `http://localhost:5173/`
+- Clássica, preservada temporariamente: `http://localhost:5173/?experience=classic` (sem link na navegação pública).
+- URL antiga, ainda compatível: `http://localhost:5173/?experience=journey`
 - Apenas scroll: `http://localhost:5173/?experience=journey&demo=scroll`
 - Apenas cenas: `http://localhost:5173/?experience=journey&demo=slides`
-- Composição alternativa das estações: `http://localhost:5173/?experience=journey&stations=alternate`
-- Metáfora opcional de dados no hero: `http://localhost:5173/?experience=journey&dataPreview=1`
-- Os parâmetros `stations=alternate` e `dataPreview=1` podem ser combinados.
+- Composição alternada e animação DATA estão ativas por padrão. As URLs antigas com `stations=alternate` e `dataPreview=1` continuam válidas.
+- Comparações anteriores: `?stations=original` retorna à composição anterior; `?dataPreview=0` oculta DATA. São overrides temporários de URL, sem preferência nova.
 - Comparação com o movimento contínuo anterior: acrescente `&scrollMotion=continuous`.
 - Título alternativo, apenas para comparação editorial: acrescente `&headline=break-fix`.
 
-A experiência é opt-in por URL, sem preferência nova. O link “Homepage clássica” volta à versão anterior. Os CTAs usam o mesmo `editorHref` e o mesmo boot do editor; não criam uma simulação na homepage. O idioma reutiliza o seletor existente. A apresentação experimental usa Graphite Dark sem persistir essa escolha; a homepage clássica e o editor continuam lendo o tema salvo pelo usuário. As demonstrações não importam store, engine, React Flow, xterm, Labs ou verificadores de exercícios.
+`main.tsx` abre o Packet Journey por padrão e carrega a homepage clássica somente com `experience=classic`. `experience.ts` centraliza esses defaults e os overrides de preview. A navegação experimental e o acesso à clássica ficam restritos aos protótipos explícitos `demo=scroll` / `demo=slides`; não aparecem na homepage pública, incluindo a URL antiga `experience=journey`. O identificador público é apenas “PACKET JOURNEY” (traduzido), sem “EXPERIMENT”.
+
+Os CTAs usam o mesmo `editorHref` e o mesmo boot do editor; não criam uma simulação na homepage. O idioma reutiliza o seletor existente. A homepage usa Graphite Dark sem persistir essa escolha; a clássica e o editor continuam lendo o tema salvo pelo usuário. As demonstrações não importam store, engine, React Flow, xterm, Labs ou verificadores de exercícios. As seções seguintes também registram o histórico das versões experimentais, anterior à promoção; seus parâmetros opt-in não descrevem mais os defaults atuais.
 
 ## Escolha técnica
 
@@ -239,3 +241,13 @@ Os dois ajustes editoriais finais usam o catálogo existente: o subtítulo de IN
 Auditoria final: **323 testes relevantes em 28 arquivos**, TypeScript, build e `git diff --check` (incluindo arquivos novos preparados no índice) aprovados. A rodada combinada Chromium passou **138 verificações**, sem exceções JavaScript ou downloads, em perfil/origem descartáveis. Uma primeira execução foi interrompida quando uma limpeza de whitespace coincidiu com o recarregamento do Vite; a repetição completa ocorreu com os arquivos estáveis e terminou sem falhas. O aviso preexistente de chunk grande do editor permanece.
 
 Código, testes e documentação foram revisados para o checkpoint. Screenshots, vídeos, logs, caches, perfis de navegador, assets experimentais e `dist` permanecem fora dos commits pelas regras de ignore existentes. A homepage temática continua opt-in por `experience=journey`, os protótipos foram preservados e nenhuma promoção para `/` foi realizada. Não houve acesso a dados reais nem push.
+
+## Promoção à homepage principal — 29/10/2026
+
+`/` agora abre diretamente o Packet Journey com composição alternada, DATA, movimento por estações, autoplay/looping e Graphite Dark. Os tempos, os dois controladores, geometria, CSS, assets, terminais, efeitos e restauração do scroll foram comparados com o checkpoint e preservados. A retirada dos links de protótipos libera naturalmente o espaço que ocupavam, sem novas regras de layout. A homepage clássica continua disponível em `?experience=classic`; protótipos individuais e overrides permanecem documentados no início deste arquivo.
+
+`experience.ts` centraliza a seleção de homepage e os defaults visuais. Não escreve preferências nem acessa a engine ou IndexedDB. Graphite Dark continua sendo uma aplicação temporária ao documento da homepage; o editor recupera seu tema salvo. Os quatro CTAs preservam os destinos e os handlers existentes. A clássica é carregada sob demanda somente quando solicitada.
+
+Validação: **245 testes relevantes em 19 arquivos**, TypeScript, build e `git diff --check` aprovados. **139 verificações Chromium** passaram sem exceções JavaScript ou downloads, incluindo abertura de plano salvo pela lista pública, retomada de rascunhos, novo projeto, exercícios, retorno do editor, Share Links, fallback clássico, URLs anteriores, F5/idiomas, DATA, autoplay/loop, scroll reverso, reduced motion e teclado. A nova matriz de `/` cobre DE/EN/PT-BR em 390/700/1440 px; as matrizes anteriores também conferem 1024/1920 px e zoom equivalente a 120%. Nenhum dado do navegador real foi acessado. Permanece somente o aviso preexistente do build sobre o tamanho do chunk do editor.
+
+Revisão: **6 PNGs principais**, todos capturados em `/`, em `.playwright-mcp/reviews/`: `01-homepage-en.png`, `02-homepage-de.png`, `03-homepage-pt-br.png`, `04-homepage-mobile.png`, `05-terminals.png`, `06-stations.png`. Extras e galeria: `raw/2026-10-29--packet-journey-official/index.html` (167 registros / 162 imagens únicas). Revisões anteriores arquivadas e artefatos ignorados pelo Git. Arquivos desta rodada: `src/home/main.tsx`, `experience.ts`/teste, `journey/ThematicHome.tsx`, seletores de defaults em `PacketScenes.tsx`/`ScrollJourney.tsx`, catálogo `journey.ts`, os dois runners de revisão e os documentos de homepage. Sem commit ou push.

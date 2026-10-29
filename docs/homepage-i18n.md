@@ -1,5 +1,7 @@
 # Homepage React e idiomas
 
+Estado atual: `/` abre o Packet Journey com DATA e composição alternada. A homepage React clássica descrita neste documento continua disponível para testes em `/?experience=classic`, sem link na navegação principal. Consulte `homepage-packet-journey.md` para os defaults e URLs atuais; as seções abaixo registram a implementação inicial e sua arquitetura de i18n/navegação, que continua compartilhada.
+
 ## Auditoria antes da implementação
 
 - `/index.html` era uma landing page HTML/CSS herdada do NetSim. `/app.html` é uma entrada independente no build Vite; os URLs serão mantidos.

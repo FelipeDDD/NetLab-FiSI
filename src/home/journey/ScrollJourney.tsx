@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from '../../i18n';
+import { homeExperience } from '../experience';
 import { Packet, positionPacket } from './Packet';
 import { alternatingScrollSegments, clamp, follow, scrollProgress, scrollSegments, type Point } from './geometry';
 import { JourneyArtwork, type JourneyDevice } from './JourneyArtwork';
@@ -11,7 +12,7 @@ const sections = ['terminal', 'switch', 'routing', 'capture', 'exercise'] as con
 const devices: JourneyDevice[] = ['host', 'switch', 'router', 'server', 'host'];
 export function ScrollJourney() {
   const { t, language } = useTranslation();
-  const alternate = new URLSearchParams(location.search).get('stations') === 'alternate';
+  const alternate = homeExperience(location.search).alternateStations;
   const continuous = new URLSearchParams(location.search).get('scrollMotion') === 'continuous';
   const root = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), route = useRef<SVGPathElement>(null), light = useRef<SVGPathElement>(null), packet = useRef<SVGGElement>(null);
   const measureAgain = useRef(() => {});

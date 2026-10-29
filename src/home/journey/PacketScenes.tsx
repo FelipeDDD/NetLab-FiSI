@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../i18n';
+import { homeExperience } from '../experience';
 import { Packet, positionPacket } from './Packet';
 import { JourneyArtwork, artworkPlacement, type JourneyDevice } from './JourneyArtwork';
 import { paintArrival } from './arrival';
@@ -27,7 +28,7 @@ function ControlIcon({ kind }: { kind: 'previous' | 'next' | 'play' | 'pause' | 
 }
 export function PacketScenes() {
   const { t } = useTranslation();
-  const dataPreview = new URLSearchParams(location.search).get('dataPreview') === '1';
+  const dataPreview = homeExperience(location.search).dataPreview;
   const sourceData = useRef<SVGGElement>(null), destinationData = useRef<SVGGElement>(null);
   const root = useRef<HTMLElement>(null), path = useRef<SVGPathElement>(null), camera = useRef<SVGGElement>(null), packet = useRef<SVGGElement>(null);
   const command = useRef<(action: Command) => void>(() => {});
