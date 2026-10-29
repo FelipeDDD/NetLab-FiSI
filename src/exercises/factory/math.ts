@@ -1,5 +1,6 @@
 /** Internal authoring tools. Ordinary IPv4 broadcast subnets, not RFC 3021 links. */
 import { ipToString, parseIp } from '../../engine/ip';
+import { gradeCidr, solveCidr, type CidrProblem } from './cidr';
 
 export function address(text: string): number {
   if (typeof text !== 'string' || !/^\d{1,3}(\.\d{1,3}){3}$/.test(text.trim())) throw new Error('Ungültige IPv4-Adresse');
@@ -38,6 +39,7 @@ export function facts(cidr: string) {
 export type Demand = { id: string; label: string; hosts: number; growthPercent?: number; purpose?: 'future' };
 export type Allocation = { id: string; cidr: string };
 export type MathProblem =
+  | CidrProblem
   | ({ family: 'subnet'; ip: string } & ({ prefix: number; givenMask?: string } | { prefix?: never; givenMask: string }))
   | { family: 'capacity'; hosts: number }
   | { family: 'vlsm'; parent: string; demands: Demand[]; reserved: string[] }
@@ -87,6 +89,7 @@ export function allocate(p: VlsmProblem): Allocation[] {
 }
 export function solve(p: MathProblem): unknown {
   switch (p.family) {
+    case 'cidr': return solveCidr(p);
     case 'subnet': {
       if (p.prefix !== undefined && (!Number.isInteger(p.prefix) || p.prefix < 0 || p.prefix > 30)) throw new Error('Ungültiger Präfix');
       const prefix = p.prefix ?? prefixForMask(p.givenMask!);
@@ -117,9 +120,10 @@ export function solve(p: MathProblem): unknown {
     default: throw new Error('Unbekannte Aufgabenfamilie');
   }
 }
-export type Grade = { pass: boolean; issues: string[] };
+export type Grade = { pass: boolean; issues: string[]; feedback?: string[] };
 /** Constraints, not equality to one particular VLSM layout. No engine or browser state. */
 export function grade(p: MathProblem, answer: unknown): Grade {
+  if (p.family === 'cidr') return gradeCidr(p, answer);
   try {
     const expected = solve(p); // validates the authored problem, including feasibility
     if (p.family === 'vlsm') {

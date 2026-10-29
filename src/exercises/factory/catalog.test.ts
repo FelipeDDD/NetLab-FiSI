@@ -4,10 +4,10 @@ import { validateFactory } from './validate';
 import { BETA_EXERCISES } from '../beta';
 import { EXERCISE_DRAFTS } from '../drafts';
 
-it('keeps 20 new drafts JSON-roundtrippable and separate from the five old drafts and two published exercises', () => {
+it('keeps the original 20 and 12 CIDR drafts JSON-roundtrippable and separate from published exercises', () => {
   const before = JSON.stringify(catalog);
-  expect(catalog).toHaveLength(20);
-  expect(['A', 'B', 'C', 'D'].map(g => catalog.filter(d => d.group === g).length)).toEqual([6, 6, 4, 4]);
+  expect(catalog).toHaveLength(32);
+  expect(['A', 'B', 'C', 'D', 'E'].map(g => catalog.filter(d => d.group === g).length)).toEqual([6, 6, 4, 4, 12]);
   expect(validateFactory(JSON.parse(before))).toEqual([]);
   expect(JSON.stringify(catalog)).toBe(before);
   expect(BETA_EXERCISES).toHaveLength(2);

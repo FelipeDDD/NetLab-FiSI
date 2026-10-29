@@ -55,7 +55,7 @@ function independent(p: MathProblem, answer: unknown) {
     }
   }
 }
-const cases = FAMILIES.flatMap(family => (['beginner', 'intermediate', 'advanced'] as const).flatMap(difficulty =>
+const cases = FAMILIES.filter(f=>f!=='cidr').flatMap(family => (['beginner', 'intermediate', 'advanced'] as const).flatMap(difficulty =>
   Array.from({ length: 10 }, (_, i) => ({ family, difficulty, seed: `review-${i}`, version: 1 }))));
 describe('150 generated variants, independent oracle and rejection controls', () => {
   it.each(cases)('$family/$difficulty/$seed', recipe => {

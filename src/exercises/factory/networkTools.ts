@@ -40,16 +40,16 @@ export const pingPairs = (ids: string[]): Assessment[] => ids.flatMap(from => id
   check(`ping-${from}-${to}`, 'traffic', { type: 'ping', from, toDevice: to, expect: 'success' })));
 
 export function networkDraft(options: {
-  id: string; group: 'C' | 'D'; difficulty: NetworkDraft['difficulty']; title: string; situation: string; task: string;
+  id: string; group: 'C' | 'D' | 'E'; difficulty: NetworkDraft['difficulty']; title: string; situation: string; task: string;
   initial: SaveFile; solved: SaveFile; assessments: Assessment[]; explanation: string;
   alternatives: string[]; wrong: string[]; limits?: string[];
 }): NetworkDraft {
   const o = options;
   return { id: `factory-${o.id}`, contentVersion: 1, status: 'draft', format: 'network', group: o.group,
-    category: o.group === 'C' ? 'ipv4' : 'routing', difficulty: o.difficulty,
+    category: o.group === 'D' ? 'routing' : 'ipv4', difficulty: o.difficulty,
     student: { title: o.title, description: o.situation, initialTopology: o.initial,
       task: `${o.task} Prüfen Sie die geforderten Endgeräte gegenseitig per ICMP. Nutzen Sie Inspector oder unterstützte Terminalbefehle; kein bestimmter Befehl ist vorgeschrieben. Geräte, Kabel und nicht genannte Vorgaben bleiben erhalten.`,
-      learningObjectives: [{ id: 'configure', text: o.group === 'C' ? 'IPv4-Adressierung und Subnetzgrenzen korrekt anwenden.' : 'Hin- und Rückweg einschließlich Gateway und Weiterleitung herstellen.' },
+      learningObjectives: [{ id: 'configure', text: o.group === 'D' ? 'Hin- und Rückweg einschließlich Gateway und Weiterleitung herstellen.' : 'IPv4-Adressierung und Subnetzgrenzen korrekt anwenden.' },
         { id: 'verify', text: 'Konfiguration und tatsächliche Ende-zu-Ende-Kommunikation getrennt prüfen.' }],
       requirements: [{ id: 'config', objectiveIds: ['configure'], text: o.task, evidence: 'final' },
         { id: 'traffic', objectiveIds: ['verify'], text: 'Alle angegebenen Endgeräte erreichen sich gegenseitig; Erfolg eines einzelnen Pings genügt nicht.', evidence: 'final' }] },

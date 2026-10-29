@@ -1,23 +1,32 @@
 import { ipToString } from '../../engine/ip';
 import type { ExerciseDraft } from '../types';
 import { solve, type MathProblem } from './math';
+import { generateCidr, type CidrScenario } from './cidrGenerator';
+export { CIDR_SCENARIOS } from './cidrGenerator';
 
 export const GENERATOR_VERSION = 1;
-export const FAMILIES = ['subnet', 'capacity', 'vlsm', 'overlap', 'membership'] as const;
+export const FAMILIES = ['subnet', 'capacity', 'vlsm', 'overlap', 'membership', 'cidr'] as const;
 const INSTRUCTIONS: Record<MathProblem['family'], string> = {
+  cidr: 'Berechnen Sie für beide Hosts Netz, Broadcast, Maske, Hostbereich und Kapazität. Trennen Sie rechnerische Gültigkeit, lokale ARP-Entscheidungen und nachgewiesene Erreichbarkeit. Fehlende Layer-2-/Routingangaben erlauben nur „Nicht eindeutig bestimmbar“. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT und keine zusätzlichen Routen; working bezeichnet einen dokumentierten vollständigen Routerpfad inklusive Rückweg und freier Filter. gateway bezeichnet die Clientkonfiguration, router den tatsächlich vorhandenen lokalen Router.',
   subnet: 'Bestimmen Sie Netzadresse, Broadcast, Präfix, Dezimalmaske, ersten/letzten Host, Adressanzahl und nutzbare Hosts.',
   capacity: 'Wählen Sie das kleinste ausreichende Broadcast-Subnetz. Geben Sie Präfix, Dezimalmaske und nutzbare Hostanzahl an. Der Bedarf enthält bereits das Gateway.',
   vlsm: 'Planen Sie pro Bedarfs-ID das kleinste ausreichende Netz im Stammnetz. Hostzahlen enthalten Infrastruktur. Wachstum aufrunden; future-Bedarfe separat reservieren. Feste Reservierungen nicht belegen. Alle Zuordnungen müssen ausgerichtet und überlappungsfrei sein.',
   overlap: 'Geben Sie alle überlappenden Paare als 1-basierte Indexpaare i:j mit i<j an. Enthaltene und identische Netze überlappen; direkt benachbarte Netze nicht. Ohne Überschneidung ist pairs leer.',
   membership: 'Klassifizieren Sie jede Kandidaten-ID als host, network, broadcast oder outside. Zugehörigkeit allein bedeutet keine nutzbare Hostadresse.',
 };
-export type Recipe = { family: MathProblem['family']; difficulty: ExerciseDraft['difficulty']; seed?: string; version?: number };
+export type Recipe = { family: MathProblem['family']; difficulty: ExerciseDraft['difficulty']; seed?: string; version?: number; scenario?: CidrScenario };
 /** Frozen v1 recipe: default seed is explicit and reproducible, never the wall clock. */
 export function generate(recipe: Recipe) {
   const version = recipe.version ?? GENERATOR_VERSION, seed = recipe.seed ?? 'netlab-default';
   if (version !== 1 || typeof seed !== 'string' || !seed.length || seed.length > 256 || !FAMILIES.includes(recipe.family)) throw new Error('Ungültiges Generator-Rezept');
   const level = ['beginner', 'intermediate', 'advanced'].indexOf(recipe.difficulty);
   if (level < 0) throw new Error('Unbekannter Schwierigkeitsgrad');
+  if (recipe.family === 'cidr') {
+    const scenario=recipe.scenario??'same-network';
+    const problem=generateCidr(seed,level,scenario);
+    return {recipe:{...recipe,seed,version,scenario},instruction:INSTRUCTIONS.cidr,problem,reference:solve(problem)};
+  }
+  if (recipe.scenario !== undefined) throw Error('Szenariotyp nur für CIDR vorgesehen');
   let state = 2166136261;
   for (const c of `${version}|${recipe.family}|${recipe.difficulty}|${seed}`) state = Math.imul(state ^ c.charCodeAt(0), 16777619) >>> 0;
   const next = (n: number) => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return Math.floor(state / 2 ** 32 * n); };

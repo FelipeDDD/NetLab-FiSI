@@ -1,4 +1,4 @@
-# Interner Netzwerk-Katalog — 20 Entwürfe
+# Interner Netzwerk-Katalog — 32 Entwürfe
 
 Generiert mit `node scripts/validate-network-factory.mjs --catalog`. Quelle: `src/exercises/factory/`. Nicht veröffentlicht, keine offiziellen IHK-Aufgaben. Lösungen sind nur für Autoren/Review bestimmt.
 
@@ -1763,5 +1763,1943 @@ Behalten Sie sämtliche IPv4-Adressen und aktives Forwarding auf West/Ost bei. R
 **Grenzen**
 
 - Ein Ping benötigt Hin- und Rückweg. Sein Fehlschlag allein lokalisiert keinen Fehler; die Erklärung muss mit Routingtabelle und Paketbeobachtung erarbeitet werden.
+- Interner Entwurf, nicht im Menü veröffentlicht. Aktive Prüfungen senden echte ICMP-Pakete in der isolierten Simulation.
+- Die bestehenden Prüfer belegen Endzustand und Stichproben-Kommunikation, weder den Diagnoseweg noch die Unverändertheit aller Kabel, VLANs und zusätzlicher Konfigurationen. Vor Veröffentlichung ist dafür eine Topologie-Schutzregel oder manuelle Kontrolle erforderlich.
+
+## factory-e01-cidr — Unterschiedliche Oktette
+
+Gruppe E · beginner · subnetting · Version 1 · draft
+
+Zwei Arbeitsplätze hängen am selben Switch in VLAN 1. Ein Kollege vermutet einen Fehler, weil sich die dritten Oktette unterscheiden.
+
+**Auftrag**
+
+Berechnen Sie das gemeinsame Netz und den Hostbereich. Entscheiden Sie, ob für den direkten Austausch ein Router benötigt wird. Ändern Sie eine korrekte Konfiguration nicht. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "fall",
+      "a": "192.168.10.50/23",
+      "b": "192.168.11.60/23",
+      "layer2": "same",
+      "routedPath": "absent"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "fall",
+      "a": {
+        "network": "192.168.10.0",
+        "broadcast": "192.168.11.255",
+        "prefix": 23,
+        "mask": "255.255.254.0",
+        "first": "192.168.10.1",
+        "last": "192.168.11.254",
+        "addresses": 512,
+        "hosts": 510
+      },
+      "b": {
+        "network": "192.168.10.0",
+        "broadcast": "192.168.11.255",
+        "prefix": 23,
+        "mask": "255.255.254.0",
+        "first": "192.168.10.1",
+        "last": "192.168.11.254",
+        "addresses": 512,
+        "hosts": 510
+      },
+      "localA": true,
+      "localB": true,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "possible",
+      "diagnosis": "none"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Die beiden IP-Adressen gehören trotz unterschiedlicher dritter Oktette zum selben /23-Netz. Die Blockgröße im dritten Oktett beträgt 2; das Netz beginnt bei 10 und endet bei 11.
+
+fall: A: 192.168.10.0/23, Maske 255.255.254.0, Broadcast 192.168.11.255; B: 192.168.10.0/23, Maske 255.255.254.0, Broadcast 192.168.11.255. A behandelt B lokal (ARP für B), B behandelt A lokal (ARP für A). Unter den ausdrücklich genannten Bedingungen ist der Austausch möglich. Ein Ping allein beweist keine fehlerfreie Gesamtkonfiguration.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Dritte Oktette vergleichen statt die Maske anzuwenden.
+- Eine unnötige Umadressierung auf /24 verlangen.
+
+**Typische Fehler**
+
+- Dritte Oktette vergleichen statt die Maske anzuwenden.
+- Eine unnötige Umadressierung auf /24 verlangen.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Separate Praxisbeilage: echte Engine-Proben, zusätzliche manuelle Kriterien verpflichtend.
+
+**Optionale Hinweise**
+
+- 255.255.254.0: Welche beiden dritten Oktette umfasst der Block ab 10?
+
+**Ausführbare Praxisbeilage**
+
+ID: factory-e01-praxis. Nichts umkonfigurieren: beide Adressen und /23 erhalten. Kommunikation in beiden Richtungen nachweisen. Prüfen Sie die geforderten Endgeräte gegenseitig per ICMP. Nutzen Sie Inspector oder unterstützte Terminalbefehle; kein bestimmter Befehl ist vorgeschrieben. Geräte, Kabel und nicht genannte Vorgaben bleiben erhalten.
+
+**Praxis-Ausgangszustand**
+
+- a (PC A, host): eth0=192.168.10.50/23; VLANs: {}; Forwarding: false; Routen: []
+- b (PC B, host): eth0=192.168.11.60/23; VLANs: {}; Forwarding: false; Routen: []
+- sw (Zugang, switch): ohne IPv4; VLANs: {}; Forwarding: false; Routen: []
+
+**Kabel (bleiben erhalten)**
+
+- line-1: a/eth0 ↔ sw/eth0
+- line-2: b/eth0 ↔ sw/eth1
+
+**Praxis-Referenzzustand**
+
+- a (PC A, host): eth0=192.168.10.50/23; VLANs: {}; Forwarding: false; Routen: []
+- b (PC B, host): eth0=192.168.11.60/23; VLANs: {}; Forwarding: false; Routen: []
+- sw (Zugang, switch): ohne IPv4; VLANs: {}; Forwarding: false; Routen: []
+
+192.168.10.0/23 umfasst auch 192.168.11.x. Beide Switchports gehören standardmäßig VLAN 1 an.
+
+**Praxis-Prüfungen**
+
+- ip-a-eth0: ENGINE {"type":"iface-ip","device":"a","iface":"eth0","cidr":"192.168.10.50/23","resolveBy":"id"}
+- ip-b-eth0: ENGINE {"type":"iface-ip","device":"b","iface":"eth0","cidr":"192.168.11.60/23","resolveBy":"id"}
+- preservation: MANUELL: Vergleichen Sie Kabel, VLANs, nicht freigegebene Adressen und Routen mit Ausgangszustand und Auftrag. Lassen Sie die ARP-/Routingentscheidung erklären. Ping und IPv4-Prüfer beweisen weder VLAN-Vorgaben noch den Diagnoseweg.
+- ping-a-b: ENGINE {"type":"ping","from":"a","toDevice":"b","expect":"success","resolveBy":"id"}
+- ping-b-a: ENGINE {"type":"ping","from":"b","toDevice":"a","expect":"success","resolveBy":"id"}
+
+**Praxis-Alternativen und Grenzen**
+
+- Jeder Eingabeweg mit den geforderten Endwerten ist zulässig. Bei Routingaufgaben sind funktional gleichwertige Zielrouten statt Default-Routen erlaubt, sofern alle geforderten Ziele erreichbar bleiben.
+
+- Automatisch: vorgegebene IPv4-Werte, Router-Forwarding und bidirektionale ICMP-Proben. Manuell: Layer-2-Erhalt, Diagnose und ausschließlich erlaubte Änderungen. Kein neuer VLAN-Prüfer.
+- Interner Entwurf, nicht im Menü veröffentlicht. Aktive Prüfungen senden echte ICMP-Pakete in der isolierten Simulation.
+- Die bestehenden Prüfer belegen Endzustand und Stichproben-Kommunikation, weder den Diagnoseweg noch die Unverändertheit aller Kabel, VLANs und zusätzlicher Konfigurationen. Vor Veröffentlichung ist dafür eine Topologie-Schutzregel oder manuelle Kontrolle erforderlich.
+
+## factory-e02-cidr — Das Gateway sieht falsch aus
+
+Gruppe E · beginner · subnetting · Version 1 · draft
+
+Ein PC hat 192.168.99.60/16 und das Gateway 192.168.9.1. Ein Zielgerät ist mit 192.168.9.20/16 dokumentiert. Kabel, VLAN und Betriebszustand des Routers wurden nicht überprüft.
+
+**Auftrag**
+
+Prüfen Sie rechnerisch die Gateway-Zugehörigkeit. Trennen Sie diese Aussage von der tatsächlichen Erreichbarkeit des Zielgeräts oder externer Netze. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "fall",
+      "a": "192.168.99.60/16",
+      "b": "192.168.9.20/16",
+      "layer2": "unknown",
+      "routedPath": "unknown",
+      "gatewayA": "192.168.9.1"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "fall",
+      "a": {
+        "network": "192.168.0.0",
+        "broadcast": "192.168.255.255",
+        "prefix": 16,
+        "mask": "255.255.0.0",
+        "first": "192.168.0.1",
+        "last": "192.168.255.254",
+        "addresses": 65536,
+        "hosts": 65534
+      },
+      "b": {
+        "network": "192.168.0.0",
+        "broadcast": "192.168.255.255",
+        "prefix": 16,
+        "mask": "255.255.0.0",
+        "first": "192.168.0.1",
+        "last": "192.168.255.254",
+        "addresses": 65536,
+        "hosts": 65534
+      },
+      "localA": true,
+      "localB": true,
+      "gatewayA": "in-subnet",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "undetermined",
+      "diagnosis": "unknown"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+192.168.0.0/16 enthält sowohl 192.168.99.60 als auch 192.168.9.1. Das Gateway ist eine nutzbare lokale Adresse. Ob dort ein Router antwortet und externe Ziele erreichbar sind, ist nicht eindeutig bestimmbar.
+
+fall: A: 192.168.0.0/16, Maske 255.255.0.0, Broadcast 192.168.255.255; B: 192.168.0.0/16, Maske 255.255.0.0, Broadcast 192.168.255.255. A behandelt B lokal (ARP für B), B behandelt A lokal (ARP für A). Nicht eindeutig bestimmbar: IP-Zugehörigkeit und ein lokales Gateway beweisen weder Layer-2-Verbindung noch Routing, Forwarding, Filter und Rückweg.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Das Gateway allein wegen des dritten Oktetts als ungültig einstufen.
+- Aus der Gateway-Adresse eine vorhandene Internetverbindung ableiten.
+
+**Typische Fehler**
+
+- Das Gateway allein wegen des dritten Oktetts als ungültig einstufen.
+- Aus der Gateway-Adresse eine vorhandene Internetverbindung ableiten.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Rechen-/Konzeptaufgabe ohne ausführbare Praxisbeilage.
+
+**Optionale Hinweise**
+
+- Erst AND mit 255.255.0.0, danach die fehlenden Layer-2-/Routingangaben benennen.
+
+## factory-e03-cidr — Die versteckte Subnetzgrenze
+
+Gruppe E · intermediate · subnetting · Version 1 · draft
+
+Drei unabhängige Arbeitsplatzpaare sind jeweils direkt im selben VLAN verbunden. Gateways oder zusätzliche Routen existieren nicht. Die Adressen liegen scheinbar dicht beieinander.
+
+**Auftrag**
+
+Untersuchen Sie jeden Grenzfall einzeln. Nennen Sie beide Netzadressen und erklären Sie, warum räumliche oder numerische Nähe nicht genügt. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "grenze-23",
+      "a": "172.20.11.250/23",
+      "b": "172.20.12.5/23",
+      "layer2": "same",
+      "routedPath": "absent"
+    },
+    {
+      "id": "grenze-22",
+      "a": "172.20.7.250/22",
+      "b": "172.20.8.5/22",
+      "layer2": "same",
+      "routedPath": "absent"
+    },
+    {
+      "id": "grenze-20",
+      "a": "172.20.15.250/20",
+      "b": "172.20.16.5/20",
+      "layer2": "same",
+      "routedPath": "absent"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "grenze-23",
+      "a": {
+        "network": "172.20.10.0",
+        "broadcast": "172.20.11.255",
+        "prefix": 23,
+        "mask": "255.255.254.0",
+        "first": "172.20.10.1",
+        "last": "172.20.11.254",
+        "addresses": 512,
+        "hosts": 510
+      },
+      "b": {
+        "network": "172.20.12.0",
+        "broadcast": "172.20.13.255",
+        "prefix": 23,
+        "mask": "255.255.254.0",
+        "first": "172.20.12.1",
+        "last": "172.20.13.254",
+        "addresses": 512,
+        "hosts": 510
+      },
+      "localA": false,
+      "localB": false,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "subnet-boundary"
+    },
+    {
+      "id": "grenze-22",
+      "a": {
+        "network": "172.20.4.0",
+        "broadcast": "172.20.7.255",
+        "prefix": 22,
+        "mask": "255.255.252.0",
+        "first": "172.20.4.1",
+        "last": "172.20.7.254",
+        "addresses": 1024,
+        "hosts": 1022
+      },
+      "b": {
+        "network": "172.20.8.0",
+        "broadcast": "172.20.11.255",
+        "prefix": 22,
+        "mask": "255.255.252.0",
+        "first": "172.20.8.1",
+        "last": "172.20.11.254",
+        "addresses": 1024,
+        "hosts": 1022
+      },
+      "localA": false,
+      "localB": false,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "subnet-boundary"
+    },
+    {
+      "id": "grenze-20",
+      "a": {
+        "network": "172.20.0.0",
+        "broadcast": "172.20.15.255",
+        "prefix": 20,
+        "mask": "255.255.240.0",
+        "first": "172.20.0.1",
+        "last": "172.20.15.254",
+        "addresses": 4096,
+        "hosts": 4094
+      },
+      "b": {
+        "network": "172.20.16.0",
+        "broadcast": "172.20.31.255",
+        "prefix": 20,
+        "mask": "255.255.240.0",
+        "first": "172.20.16.1",
+        "last": "172.20.31.254",
+        "addresses": 4096,
+        "hosts": 4094
+      },
+      "localA": false,
+      "localB": false,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "subnet-boundary"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Die Blockgrößen im dritten Oktett betragen 2, 4 und 16. Jedes Paar überschreitet genau eine solche Grenze; die gemeinsame Layer-2-Verbindung ersetzt keine Route.
+
+grenze-23: A: 172.20.10.0/23, Maske 255.255.254.0, Broadcast 172.20.11.255; B: 172.20.12.0/23, Maske 255.255.254.0, Broadcast 172.20.13.255. A behandelt B als entfernt (Gateway nötig), B behandelt A als entfernt (Gateway nötig). Die Grenze des Subnetzes wird überschritten. Ohne nutzbaren gerouteten Hin- und Rückweg reicht das Kabel nicht aus.
+
+grenze-22: A: 172.20.4.0/22, Maske 255.255.252.0, Broadcast 172.20.7.255; B: 172.20.8.0/22, Maske 255.255.252.0, Broadcast 172.20.11.255. A behandelt B als entfernt (Gateway nötig), B behandelt A als entfernt (Gateway nötig). Die Grenze des Subnetzes wird überschritten. Ohne nutzbaren gerouteten Hin- und Rückweg reicht das Kabel nicht aus.
+
+grenze-20: A: 172.20.0.0/20, Maske 255.255.240.0, Broadcast 172.20.15.255; B: 172.20.16.0/20, Maske 255.255.240.0, Broadcast 172.20.31.255. A behandelt B als entfernt (Gateway nötig), B behandelt A als entfernt (Gateway nötig). Die Grenze des Subnetzes wird überschritten. Ohne nutzbaren gerouteten Hin- und Rückweg reicht das Kabel nicht aus.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Jedes benachbarte dritte Oktett als gemeinsam interpretieren.
+- Die Broadcastadresse des ersten Netzes zum zweiten Netz rechnen.
+
+**Typische Fehler**
+
+- Jedes benachbarte dritte Oktett als gemeinsam interpretieren.
+- Die Broadcastadresse des ersten Netzes zum zweiten Netz rechnen.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Rechen-/Konzeptaufgabe ohne ausführbare Praxisbeilage.
+
+**Optionale Hinweise**
+
+- Ermitteln Sie zuerst den ganzzahligen Blockanfang, dann den letzten Wert des Blocks.
+
+## factory-e04-cidr — Gleiches drittes Oktett, anderes Netz
+
+Gruppe E · beginner · subnetting · Version 1 · draft
+
+Drei unabhängige Testpaare verwenden 192.168.5.x. Jedes Paar hängt im selben VLAN, ohne Router und ohne Zusatzrouten.
+
+**Auftrag**
+
+Bestimmen Sie bei /25, /26 und /27 die Grenze im vierten Oktett. Erklären Sie den Unterschied zwischen demselben dritten Oktett und demselben Subnetz. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "grenze-25",
+      "a": "192.168.5.126/25",
+      "b": "192.168.5.129/25",
+      "layer2": "same",
+      "routedPath": "absent"
+    },
+    {
+      "id": "grenze-26",
+      "a": "192.168.5.62/26",
+      "b": "192.168.5.65/26",
+      "layer2": "same",
+      "routedPath": "absent"
+    },
+    {
+      "id": "grenze-27",
+      "a": "192.168.5.30/27",
+      "b": "192.168.5.33/27",
+      "layer2": "same",
+      "routedPath": "absent"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "grenze-25",
+      "a": {
+        "network": "192.168.5.0",
+        "broadcast": "192.168.5.127",
+        "prefix": 25,
+        "mask": "255.255.255.128",
+        "first": "192.168.5.1",
+        "last": "192.168.5.126",
+        "addresses": 128,
+        "hosts": 126
+      },
+      "b": {
+        "network": "192.168.5.128",
+        "broadcast": "192.168.5.255",
+        "prefix": 25,
+        "mask": "255.255.255.128",
+        "first": "192.168.5.129",
+        "last": "192.168.5.254",
+        "addresses": 128,
+        "hosts": 126
+      },
+      "localA": false,
+      "localB": false,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "subnet-boundary"
+    },
+    {
+      "id": "grenze-26",
+      "a": {
+        "network": "192.168.5.0",
+        "broadcast": "192.168.5.63",
+        "prefix": 26,
+        "mask": "255.255.255.192",
+        "first": "192.168.5.1",
+        "last": "192.168.5.62",
+        "addresses": 64,
+        "hosts": 62
+      },
+      "b": {
+        "network": "192.168.5.64",
+        "broadcast": "192.168.5.127",
+        "prefix": 26,
+        "mask": "255.255.255.192",
+        "first": "192.168.5.65",
+        "last": "192.168.5.126",
+        "addresses": 64,
+        "hosts": 62
+      },
+      "localA": false,
+      "localB": false,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "subnet-boundary"
+    },
+    {
+      "id": "grenze-27",
+      "a": {
+        "network": "192.168.5.0",
+        "broadcast": "192.168.5.31",
+        "prefix": 27,
+        "mask": "255.255.255.224",
+        "first": "192.168.5.1",
+        "last": "192.168.5.30",
+        "addresses": 32,
+        "hosts": 30
+      },
+      "b": {
+        "network": "192.168.5.32",
+        "broadcast": "192.168.5.63",
+        "prefix": 27,
+        "mask": "255.255.255.224",
+        "first": "192.168.5.33",
+        "last": "192.168.5.62",
+        "addresses": 32,
+        "hosts": 30
+      },
+      "localA": false,
+      "localB": false,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "subnet-boundary"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Die Grenzen liegen bei Vielfachen von 128, 64 und 32 im vierten Oktett. Alle Hostadressen sind einzeln nutzbar, liegen pro Paar jedoch in verschiedenen Netzen.
+
+grenze-25: A: 192.168.5.0/25, Maske 255.255.255.128, Broadcast 192.168.5.127; B: 192.168.5.128/25, Maske 255.255.255.128, Broadcast 192.168.5.255. A behandelt B als entfernt (Gateway nötig), B behandelt A als entfernt (Gateway nötig). Die Grenze des Subnetzes wird überschritten. Ohne nutzbaren gerouteten Hin- und Rückweg reicht das Kabel nicht aus.
+
+grenze-26: A: 192.168.5.0/26, Maske 255.255.255.192, Broadcast 192.168.5.63; B: 192.168.5.64/26, Maske 255.255.255.192, Broadcast 192.168.5.127. A behandelt B als entfernt (Gateway nötig), B behandelt A als entfernt (Gateway nötig). Die Grenze des Subnetzes wird überschritten. Ohne nutzbaren gerouteten Hin- und Rückweg reicht das Kabel nicht aus.
+
+grenze-27: A: 192.168.5.0/27, Maske 255.255.255.224, Broadcast 192.168.5.31; B: 192.168.5.32/27, Maske 255.255.255.224, Broadcast 192.168.5.63. A behandelt B als entfernt (Gateway nötig), B behandelt A als entfernt (Gateway nötig). Die Grenze des Subnetzes wird überschritten. Ohne nutzbaren gerouteten Hin- und Rückweg reicht das Kabel nicht aus.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- 192.168.5.x ungeprüft mit /24 gleichsetzen.
+- Eine gültige Hostadresse mit einem erreichbaren Ziel verwechseln.
+
+**Typische Fehler**
+
+- 192.168.5.x ungeprüft mit /24 gleichsetzen.
+- Eine gültige Hostadresse mit einem erreichbaren Ziel verwechseln.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Rechen-/Konzeptaufgabe ohne ausführbare Praxisbeilage.
+
+**Optionale Hinweise**
+
+- Berechnen Sie 256 minus den letzten Maskenwert.
+
+## factory-e05-cidr — Die falsche Reparatur
+
+Gruppe E · intermediate · subnetting · Version 1 · draft
+
+A und B haben /23. Am Switch gehört A zu VLAN 10 und B zu VLAN 20. Es gibt keine Verbindung oder Weiterleitung zwischen den VLANs. Der Auftrag erlaubt B in das gemeinsame VLAN 10 aufzunehmen.
+
+**Auftrag**
+
+Bewerten Sie den Vorschlag, beide Masken auf /16 zu ändern. Benennen Sie die tatsächlich notwendige Änderung, ohne die gültigen Hostadressen zu verwerfen. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "fall",
+      "a": "192.168.10.50/23",
+      "b": "192.168.11.60/23",
+      "layer2": "separate",
+      "routedPath": "absent"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "fall",
+      "a": {
+        "network": "192.168.10.0",
+        "broadcast": "192.168.11.255",
+        "prefix": 23,
+        "mask": "255.255.254.0",
+        "first": "192.168.10.1",
+        "last": "192.168.11.254",
+        "addresses": 512,
+        "hosts": 510
+      },
+      "b": {
+        "network": "192.168.10.0",
+        "broadcast": "192.168.11.255",
+        "prefix": 23,
+        "mask": "255.255.254.0",
+        "first": "192.168.10.1",
+        "last": "192.168.11.254",
+        "addresses": 512,
+        "hosts": 510
+      },
+      "localA": true,
+      "localB": true,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "vlan"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Beide Hosts senden bereits lokale ARP-Anfragen. Diese bleiben in ihrem VLAN. In dieser Aufgabe ist ausschließlich der Access-Port von B auf VLAN 10 umzustellen; größere Masken sind keine VLAN-Reparatur.
+
+fall: A: 192.168.10.0/23, Maske 255.255.254.0, Broadcast 192.168.11.255; B: 192.168.10.0/23, Maske 255.255.254.0, Broadcast 192.168.11.255. A behandelt B lokal (ARP für B), B behandelt A lokal (ARP für A). Die IP-Zugehörigkeit überbrückt keine getrennten Layer-2-Segmente. Eine größere Maske repariert keine VLAN-Trennung.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- /16 als Ersatz für Layer-2-Verbindung verwenden.
+- Den Switch durch einen Hub ersetzen oder die gesamte VLAN-Konfiguration löschen.
+
+**Typische Fehler**
+
+- /16 als Ersatz für Layer-2-Verbindung verwenden.
+- Den Switch durch einen Hub ersetzen oder die gesamte VLAN-Konfiguration löschen.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Separate Praxisbeilage: echte Engine-Proben, zusätzliche manuelle Kriterien verpflichtend.
+
+**Optionale Hinweise**
+
+- Welcher Broadcast-Bereich transportiert die ARP-Anfrage?
+
+**Ausführbare Praxisbeilage**
+
+ID: factory-e05-praxis. IPv4 und Kabel beibehalten. Ausschließlich sw/eth1 von VLAN 20 in das vorgegebene VLAN 10 ändern. Prüfen Sie die geforderten Endgeräte gegenseitig per ICMP. Nutzen Sie Inspector oder unterstützte Terminalbefehle; kein bestimmter Befehl ist vorgeschrieben. Geräte, Kabel und nicht genannte Vorgaben bleiben erhalten.
+
+**Praxis-Ausgangszustand**
+
+- a (PC A, host): eth0=192.168.10.50/23; VLANs: {}; Forwarding: false; Routen: []
+- b (PC B, host): eth0=192.168.11.60/23; VLANs: {}; Forwarding: false; Routen: []
+- sw (Zugang, switch): ohne IPv4; VLANs: {"eth0":10,"eth1":20}; Forwarding: false; Routen: []
+
+**Kabel (bleiben erhalten)**
+
+- line-1: a/eth0 ↔ sw/eth0
+- line-2: b/eth0 ↔ sw/eth1
+
+**Praxis-Referenzzustand**
+
+- a (PC A, host): eth0=192.168.10.50/23; VLANs: {}; Forwarding: false; Routen: []
+- b (PC B, host): eth0=192.168.11.60/23; VLANs: {}; Forwarding: false; Routen: []
+- sw (Zugang, switch): ohne IPv4; VLANs: {"eth0":10,"eth1":10}; Forwarding: false; Routen: []
+
+A hängt an sw/eth0 in VLAN 10, B an sw/eth1 in VLAN 20. Ohne Router zwischen diesen VLANs wird ARP nicht übermittelt. Eine breitere Maske kann das nicht ändern.
+
+**Praxis-Prüfungen**
+
+- ip-a-eth0: ENGINE {"type":"iface-ip","device":"a","iface":"eth0","cidr":"192.168.10.50/23","resolveBy":"id"}
+- ip-b-eth0: ENGINE {"type":"iface-ip","device":"b","iface":"eth0","cidr":"192.168.11.60/23","resolveBy":"id"}
+- preservation: MANUELL: Vergleichen Sie Kabel, VLANs, nicht freigegebene Adressen und Routen mit Ausgangszustand und Auftrag. Lassen Sie die ARP-/Routingentscheidung erklären. Ping und IPv4-Prüfer beweisen weder VLAN-Vorgaben noch den Diagnoseweg.
+- ping-a-b: ENGINE {"type":"ping","from":"a","toDevice":"b","expect":"success","resolveBy":"id"}
+- ping-b-a: ENGINE {"type":"ping","from":"b","toDevice":"a","expect":"success","resolveBy":"id"}
+
+**Praxis-Alternativen und Grenzen**
+
+- Jeder Eingabeweg mit den geforderten Endwerten ist zulässig. Bei Routingaufgaben sind funktional gleichwertige Zielrouten statt Default-Routen erlaubt, sofern alle geforderten Ziele erreichbar bleiben.
+
+- Automatisch: vorgegebene IPv4-Werte, Router-Forwarding und bidirektionale ICMP-Proben. Manuell: Layer-2-Erhalt, Diagnose und ausschließlich erlaubte Änderungen. Kein neuer VLAN-Prüfer.
+- Interner Entwurf, nicht im Menü veröffentlicht. Aktive Prüfungen senden echte ICMP-Pakete in der isolierten Simulation.
+- Die bestehenden Prüfer belegen Endzustand und Stichproben-Kommunikation, weder den Diagnoseweg noch die Unverändertheit aller Kabel, VLANs und zusätzlicher Konfigurationen. Vor Veröffentlichung ist dafür eine Topologie-Schutzregel oder manuelle Kontrolle erforderlich.
+
+## factory-e06-cidr — Es funktioniert trotzdem!
+
+Gruppe E · beginner · subnetting · Version 1 · draft
+
+192.168.10.50/16 und 192.168.11.60/16 hängen in VLAN 1 am selben Switch. Beide Interfaces sind UP. Ein Mitarbeiter möchte die vermeintlich falschen Adressen korrigieren.
+
+**Auftrag**
+
+Weisen Sie nach, dass für diesen direkten Austausch keine Reparatur notwendig ist. Beschreiben Sie ARP und die Grenzen eines erfolgreichen Ping-Nachweises. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "fall",
+      "a": "192.168.10.50/16",
+      "b": "192.168.11.60/16",
+      "layer2": "same",
+      "routedPath": "absent"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "fall",
+      "a": {
+        "network": "192.168.0.0",
+        "broadcast": "192.168.255.255",
+        "prefix": 16,
+        "mask": "255.255.0.0",
+        "first": "192.168.0.1",
+        "last": "192.168.255.254",
+        "addresses": 65536,
+        "hosts": 65534
+      },
+      "b": {
+        "network": "192.168.0.0",
+        "broadcast": "192.168.255.255",
+        "prefix": 16,
+        "mask": "255.255.0.0",
+        "first": "192.168.0.1",
+        "last": "192.168.255.254",
+        "addresses": 65536,
+        "hosts": 65534
+      },
+      "localA": true,
+      "localB": true,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "possible",
+      "diagnosis": "none"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Das gemeinsame Netz ist 192.168.0.0/16. ARP ermittelt die MAC des anderen Endgeräts direkt. Dies sagt nichts über DNS, externe Netze oder die Zweckmäßigkeit eines großen Broadcast-Bereichs aus.
+
+fall: A: 192.168.0.0/16, Maske 255.255.0.0, Broadcast 192.168.255.255; B: 192.168.0.0/16, Maske 255.255.0.0, Broadcast 192.168.255.255. A behandelt B lokal (ARP für B), B behandelt A lokal (ARP für A). Unter den ausdrücklich genannten Bedingungen ist der Austausch möglich. Ein Ping allein beweist keine fehlerfreie Gesamtkonfiguration.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Eine Änderung erzwingen, nur weil die Konfiguration ungewöhnlich aussieht.
+- Mit einem Ping alle Dienste als korrekt abhaken.
+
+**Typische Fehler**
+
+- Eine Änderung erzwingen, nur weil die Konfiguration ungewöhnlich aussieht.
+- Mit einem Ping alle Dienste als korrekt abhaken.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Separate Praxisbeilage: echte Engine-Proben, zusätzliche manuelle Kriterien verpflichtend.
+
+**Optionale Hinweise**
+
+- Nicht jeder Diagnoseauftrag enthält einen Defekt.
+
+**Ausführbare Praxisbeilage**
+
+ID: factory-e06-praxis. Keine Änderung erforderlich. /16-Adressen und VLAN 1 erhalten und beide Richtungen prüfen. Prüfen Sie die geforderten Endgeräte gegenseitig per ICMP. Nutzen Sie Inspector oder unterstützte Terminalbefehle; kein bestimmter Befehl ist vorgeschrieben. Geräte, Kabel und nicht genannte Vorgaben bleiben erhalten.
+
+**Praxis-Ausgangszustand**
+
+- a (PC A, host): eth0=192.168.10.50/16; VLANs: {}; Forwarding: false; Routen: []
+- b (PC B, host): eth0=192.168.11.60/16; VLANs: {}; Forwarding: false; Routen: []
+- sw (Zugang, switch): ohne IPv4; VLANs: {}; Forwarding: false; Routen: []
+
+**Kabel (bleiben erhalten)**
+
+- line-1: a/eth0 ↔ sw/eth0
+- line-2: b/eth0 ↔ sw/eth1
+
+**Praxis-Referenzzustand**
+
+- a (PC A, host): eth0=192.168.10.50/16; VLANs: {}; Forwarding: false; Routen: []
+- b (PC B, host): eth0=192.168.11.60/16; VLANs: {}; Forwarding: false; Routen: []
+- sw (Zugang, switch): ohne IPv4; VLANs: {}; Forwarding: false; Routen: []
+
+Beide Adressen sind gültige Hosts in 192.168.0.0/16; im gemeinsamen VLAN antwortet der Nachbar direkt auf ARP.
+
+**Praxis-Prüfungen**
+
+- ip-a-eth0: ENGINE {"type":"iface-ip","device":"a","iface":"eth0","cidr":"192.168.10.50/16","resolveBy":"id"}
+- ip-b-eth0: ENGINE {"type":"iface-ip","device":"b","iface":"eth0","cidr":"192.168.11.60/16","resolveBy":"id"}
+- preservation: MANUELL: Vergleichen Sie Kabel, VLANs, nicht freigegebene Adressen und Routen mit Ausgangszustand und Auftrag. Lassen Sie die ARP-/Routingentscheidung erklären. Ping und IPv4-Prüfer beweisen weder VLAN-Vorgaben noch den Diagnoseweg.
+- ping-a-b: ENGINE {"type":"ping","from":"a","toDevice":"b","expect":"success","resolveBy":"id"}
+- ping-b-a: ENGINE {"type":"ping","from":"b","toDevice":"a","expect":"success","resolveBy":"id"}
+
+**Praxis-Alternativen und Grenzen**
+
+- Jeder Eingabeweg mit den geforderten Endwerten ist zulässig. Bei Routingaufgaben sind funktional gleichwertige Zielrouten statt Default-Routen erlaubt, sofern alle geforderten Ziele erreichbar bleiben.
+
+- Automatisch: vorgegebene IPv4-Werte, Router-Forwarding und bidirektionale ICMP-Proben. Manuell: Layer-2-Erhalt, Diagnose und ausschließlich erlaubte Änderungen. Kein neuer VLAN-Prüfer.
+- Interner Entwurf, nicht im Menü veröffentlicht. Aktive Prüfungen senden echte ICMP-Pakete in der isolierten Simulation.
+- Die bestehenden Prüfer belegen Endzustand und Stichproben-Kommunikation, weder den Diagnoseweg noch die Unverändertheit aller Kabel, VLANs und zusätzlicher Konfigurationen. Vor Veröffentlichung ist dafür eine Topologie-Schutzregel oder manuelle Kontrolle erforderlich.
+
+## factory-e07-cidr — Unterschiedliche Subnetzmasken
+
+Gruppe E · intermediate · subnetting · Version 1 · draft
+
+A nutzt 192.168.10.50/23, B 192.168.11.60/24. Beide hängen im selben VLAN. Es gibt weder Gateway noch Zusatzrouten; vorgesehen ist das gemeinsame /23.
+
+**Auftrag**
+
+Analysieren Sie die lokale Entscheidung aus beiden Blickrichtungen. Unterscheiden Sie die Zustellung einer Anfrage vom nötigen Rückweg. Korrigieren Sie nur Bs Maske. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "fall",
+      "a": "192.168.10.50/23",
+      "b": "192.168.11.60/24",
+      "layer2": "same",
+      "routedPath": "absent"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "fall",
+      "a": {
+        "network": "192.168.10.0",
+        "broadcast": "192.168.11.255",
+        "prefix": 23,
+        "mask": "255.255.254.0",
+        "first": "192.168.10.1",
+        "last": "192.168.11.254",
+        "addresses": 512,
+        "hosts": 510
+      },
+      "b": {
+        "network": "192.168.11.0",
+        "broadcast": "192.168.11.255",
+        "prefix": 24,
+        "mask": "255.255.255.0",
+        "first": "192.168.11.1",
+        "last": "192.168.11.254",
+        "addresses": 256,
+        "hosts": 254
+      },
+      "localA": true,
+      "localB": false,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "asymmetric"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+A fragt per ARP nach B. B hält A für entfernt und hat keinen Next Hop. Unterschiedliche Masken sind nicht grundsätzlich verboten; hier fehlt jedoch der Rückweg. B mit /23 stellt den vorgesehenen gemeinsamen Bereich her.
+
+fall: A: 192.168.10.0/23, Maske 255.255.254.0, Broadcast 192.168.11.255; B: 192.168.11.0/24, Maske 255.255.255.0, Broadcast 192.168.11.255. A behandelt B lokal (ARP für B), B behandelt A als entfernt (Gateway nötig). Die Endgeräte entscheiden unterschiedlich über lokale Zustellung. Ein fehlender Next Hop oder Rückweg verhindert den vollständigen Austausch.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Nur As Sicht prüfen.
+- Behaupten, unterschiedliche Masken verhinderten ausnahmslos jeden Verkehr.
+
+**Typische Fehler**
+
+- Nur As Sicht prüfen.
+- Behaupten, unterschiedliche Masken verhinderten ausnahmslos jeden Verkehr.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Separate Praxisbeilage: echte Engine-Proben, zusätzliche manuelle Kriterien verpflichtend.
+
+**Optionale Hinweise**
+
+- Wenden Sie die Maske des sendenden Hosts an, nicht die Maske des Ziels.
+
+**Ausführbare Praxisbeilage**
+
+ID: factory-e07-praxis. A und beide Hostadressen beibehalten. B auf das vorgegebene gemeinsame /23 korrigieren. Kein Router ist vorhanden. Prüfen Sie die geforderten Endgeräte gegenseitig per ICMP. Nutzen Sie Inspector oder unterstützte Terminalbefehle; kein bestimmter Befehl ist vorgeschrieben. Geräte, Kabel und nicht genannte Vorgaben bleiben erhalten.
+
+**Praxis-Ausgangszustand**
+
+- a (PC A, host): eth0=192.168.10.50/23; VLANs: {}; Forwarding: false; Routen: []
+- b (PC B, host): eth0=192.168.11.60/24; VLANs: {}; Forwarding: false; Routen: []
+- sw (Zugang, switch): ohne IPv4; VLANs: {}; Forwarding: false; Routen: []
+
+**Kabel (bleiben erhalten)**
+
+- line-1: a/eth0 ↔ sw/eth0
+- line-2: b/eth0 ↔ sw/eth1
+
+**Praxis-Referenzzustand**
+
+- a (PC A, host): eth0=192.168.10.50/23; VLANs: {}; Forwarding: false; Routen: []
+- b (PC B, host): eth0=192.168.11.60/23; VLANs: {}; Forwarding: false; Routen: []
+- sw (Zugang, switch): ohne IPv4; VLANs: {}; Forwarding: false; Routen: []
+
+A hält B für lokal, B hält A für entfernt. Ohne Gateway scheitert der Rückweg. Die Referenz vereinheitlicht die Maske auf /23.
+
+**Praxis-Prüfungen**
+
+- ip-a-eth0: ENGINE {"type":"iface-ip","device":"a","iface":"eth0","cidr":"192.168.10.50/23","resolveBy":"id"}
+- ip-b-eth0: ENGINE {"type":"iface-ip","device":"b","iface":"eth0","cidr":"192.168.11.60/23","resolveBy":"id"}
+- preservation: MANUELL: Vergleichen Sie Kabel, VLANs, nicht freigegebene Adressen und Routen mit Ausgangszustand und Auftrag. Lassen Sie die ARP-/Routingentscheidung erklären. Ping und IPv4-Prüfer beweisen weder VLAN-Vorgaben noch den Diagnoseweg.
+- ping-a-b: ENGINE {"type":"ping","from":"a","toDevice":"b","expect":"success","resolveBy":"id"}
+- ping-b-a: ENGINE {"type":"ping","from":"b","toDevice":"a","expect":"success","resolveBy":"id"}
+
+**Praxis-Alternativen und Grenzen**
+
+- Jeder Eingabeweg mit den geforderten Endwerten ist zulässig. Bei Routingaufgaben sind funktional gleichwertige Zielrouten statt Default-Routen erlaubt, sofern alle geforderten Ziele erreichbar bleiben.
+
+- Automatisch: vorgegebene IPv4-Werte, Router-Forwarding und bidirektionale ICMP-Proben. Manuell: Layer-2-Erhalt, Diagnose und ausschließlich erlaubte Änderungen. Kein neuer VLAN-Prüfer.
+- Interner Entwurf, nicht im Menü veröffentlicht. Aktive Prüfungen senden echte ICMP-Pakete in der isolierten Simulation.
+- Die bestehenden Prüfer belegen Endzustand und Stichproben-Kommunikation, weder den Diagnoseweg noch die Unverändertheit aller Kabel, VLANs und zusätzlicher Konfigurationen. Vor Veröffentlichung ist dafür eine Topologie-Schutzregel oder manuelle Kontrolle erforderlich.
+
+## factory-e08-cidr — Der Gateway-Irrtum
+
+Gruppe E · intermediate · subnetting · Version 1 · draft
+
+Büro und Archiv sind über einen Router verbunden. Der Router hat 192.168.10.1/24 und 192.168.11.1/24, Forwarding und Rückweg funktionieren. Büro verwendet fälschlich .254 als Gateway; dort gibt es kein Gerät.
+
+**Auftrag**
+
+Unterscheiden Sie gültige Host-/Maskenwerte vom falschen Next Hop. Reparieren Sie den Gateway-Eintrag, ohne die beiden getrennten /24-Netze umzubauen. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "fall",
+      "a": "192.168.10.50/24",
+      "b": "192.168.11.60/24",
+      "layer2": "separate",
+      "routedPath": "working",
+      "gatewayA": "192.168.10.254",
+      "routerA": "192.168.10.1",
+      "gatewayB": "192.168.11.1",
+      "routerB": "192.168.11.1"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "fall",
+      "a": {
+        "network": "192.168.10.0",
+        "broadcast": "192.168.10.255",
+        "prefix": 24,
+        "mask": "255.255.255.0",
+        "first": "192.168.10.1",
+        "last": "192.168.10.254",
+        "addresses": 256,
+        "hosts": 254
+      },
+      "b": {
+        "network": "192.168.11.0",
+        "broadcast": "192.168.11.255",
+        "prefix": 24,
+        "mask": "255.255.255.0",
+        "first": "192.168.11.1",
+        "last": "192.168.11.254",
+        "addresses": 256,
+        "hosts": 254
+      },
+      "localA": false,
+      "localB": false,
+      "gatewayA": "in-subnet",
+      "gatewayB": "in-subnet",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "gateway"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Die .254 ist rechnerisch lokal und nutzbar, aber kein vorhandener Router. Die mathematische Konfiguration ist gültig; ihre betriebliche Zuordnung ist falsch. .1 ist der dokumentierte Next Hop.
+
+fall: A: 192.168.10.0/24, Maske 255.255.255.0, Broadcast 192.168.10.255; B: 192.168.11.0/24, Maske 255.255.255.0, Broadcast 192.168.11.255. A behandelt B als entfernt (Gateway nötig), B behandelt A als entfernt (Gateway nötig). Der konfigurierte Next Hop liegt außerhalb des lokalen Hostbereichs oder entspricht nicht dem dokumentierten Router.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Eine lokale Adresse automatisch als funktionierendes Gateway akzeptieren.
+- PC und Archiv in ein gemeinsames /16 ummaskieren.
+
+**Typische Fehler**
+
+- Eine lokale Adresse automatisch als funktionierendes Gateway akzeptieren.
+- PC und Archiv in ein gemeinsames /16 ummaskieren.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Separate Praxisbeilage: echte Engine-Proben, zusätzliche manuelle Kriterien verpflichtend.
+
+**Optionale Hinweise**
+
+- Vergleichen Sie die konfigurierte Gateway-Adresse mit dem tatsächlichen Routerinterface.
+
+**Ausführbare Praxisbeilage**
+
+ID: factory-e08-praxis. Alle IPv4-Werte erhalten. Nur den Next Hop von A auf den dokumentierten Router 192.168.10.1 korrigieren. Prüfen Sie die geforderten Endgeräte gegenseitig per ICMP. Nutzen Sie Inspector oder unterstützte Terminalbefehle; kein bestimmter Befehl ist vorgeschrieben. Geräte, Kabel und nicht genannte Vorgaben bleiben erhalten.
+
+**Praxis-Ausgangszustand**
+
+- a (Büro, host): eth0=192.168.10.50/24; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"192.168.10.254","dev":"eth0"}]
+- b (Archiv, server): eth0=192.168.11.60/24; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"192.168.11.1","dev":"eth0"}]
+- r (Router, router): eth0=192.168.10.1/24, eth1=192.168.11.1/24; VLANs: {}; Forwarding: true; Routen: []
+
+**Kabel (bleiben erhalten)**
+
+- line-1: a/eth0 ↔ r/eth0
+- line-2: b/eth0 ↔ r/eth1
+
+**Praxis-Referenzzustand**
+
+- a (Büro, host): eth0=192.168.10.50/24; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"192.168.10.1","dev":"eth0"}]
+- b (Archiv, server): eth0=192.168.11.60/24; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"192.168.11.1","dev":"eth0"}]
+- r (Router, router): eth0=192.168.10.1/24, eth1=192.168.11.1/24; VLANs: {}; Forwarding: true; Routen: []
+
+Die Adresse .254 ist ein nutzbarer Host des lokalen /24, aber dort existiert kein Router. Mathematisch lokal ist nicht gleich funktionsfähig.
+
+**Praxis-Prüfungen**
+
+- ip-a-eth0: ENGINE {"type":"iface-ip","device":"a","iface":"eth0","cidr":"192.168.10.50/24","resolveBy":"id"}
+- ip-b-eth0: ENGINE {"type":"iface-ip","device":"b","iface":"eth0","cidr":"192.168.11.60/24","resolveBy":"id"}
+- ip-r-eth0: ENGINE {"type":"iface-ip","device":"r","iface":"eth0","cidr":"192.168.10.1/24","resolveBy":"id"}
+- ip-r-eth1: ENGINE {"type":"iface-ip","device":"r","iface":"eth1","cidr":"192.168.11.1/24","resolveBy":"id"}
+- forward-r: ENGINE {"type":"forwarding","device":"r","expect":true,"resolveBy":"id"}
+- preservation: MANUELL: Vergleichen Sie Kabel, VLANs, nicht freigegebene Adressen und Routen mit Ausgangszustand und Auftrag. Lassen Sie die ARP-/Routingentscheidung erklären. Ping und IPv4-Prüfer beweisen weder VLAN-Vorgaben noch den Diagnoseweg.
+- ping-a-b: ENGINE {"type":"ping","from":"a","toDevice":"b","expect":"success","resolveBy":"id"}
+- ping-b-a: ENGINE {"type":"ping","from":"b","toDevice":"a","expect":"success","resolveBy":"id"}
+
+**Praxis-Alternativen und Grenzen**
+
+- Jeder Eingabeweg mit den geforderten Endwerten ist zulässig. Bei Routingaufgaben sind funktional gleichwertige Zielrouten statt Default-Routen erlaubt, sofern alle geforderten Ziele erreichbar bleiben.
+
+- Automatisch: vorgegebene IPv4-Werte, Router-Forwarding und bidirektionale ICMP-Proben. Manuell: Layer-2-Erhalt, Diagnose und ausschließlich erlaubte Änderungen. Kein neuer VLAN-Prüfer.
+- Interner Entwurf, nicht im Menü veröffentlicht. Aktive Prüfungen senden echte ICMP-Pakete in der isolierten Simulation.
+- Die bestehenden Prüfer belegen Endzustand und Stichproben-Kommunikation, weder den Diagnoseweg noch die Unverändertheit aller Kabel, VLANs und zusätzlicher Konfigurationen. Vor Veröffentlichung ist dafür eine Topologie-Schutzregel oder manuelle Kontrolle erforderlich.
+
+## factory-e09-cidr — Zu großes Netzwerk
+
+Gruppe E · advanced · subnetting · Version 1 · draft
+
+Der Router verbindet 192.168.10.0/24 und 192.168.11.0/24. Beide Gateways, Forwarding, Filter und Rückweg sind korrekt. Büro verwendet versehentlich /16; Proxy-ARP ist nicht vorhanden.
+
+**Auftrag**
+
+Erklären Sie, warum das korrekte Gateway von Büro für dieses Ziel trotzdem nicht verwendet wird. Stellen Sie nur das vorgesehene Büro-/24 wieder her. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "fall",
+      "a": "192.168.10.50/16",
+      "b": "192.168.11.60/24",
+      "layer2": "separate",
+      "routedPath": "working",
+      "gatewayA": "192.168.10.1",
+      "routerA": "192.168.10.1",
+      "gatewayB": "192.168.11.1",
+      "routerB": "192.168.11.1"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "fall",
+      "a": {
+        "network": "192.168.0.0",
+        "broadcast": "192.168.255.255",
+        "prefix": 16,
+        "mask": "255.255.0.0",
+        "first": "192.168.0.1",
+        "last": "192.168.255.254",
+        "addresses": 65536,
+        "hosts": 65534
+      },
+      "b": {
+        "network": "192.168.11.0",
+        "broadcast": "192.168.11.255",
+        "prefix": 24,
+        "mask": "255.255.255.0",
+        "first": "192.168.11.1",
+        "last": "192.168.11.254",
+        "addresses": 256,
+        "hosts": 254
+      },
+      "localA": true,
+      "localB": false,
+      "gatewayA": "in-subnet",
+      "gatewayB": "in-subnet",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "remote-arp"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Die Connected-Route des Clients umfasst mit /16 das Archiv. Deshalb wird dessen MAC auf dem Bürosegment gesucht statt die MAC des Routers. Die Maske ändert eine lokale Routingentscheidung, nicht die Routerkonfiguration.
+
+fall: A: 192.168.0.0/16, Maske 255.255.0.0, Broadcast 192.168.255.255; B: 192.168.11.0/24, Maske 255.255.255.0, Broadcast 192.168.11.255. A behandelt B lokal (ARP für B), B behandelt A als entfernt (Gateway nötig). Mindestens ein Client hält das entfernte Ziel für lokal und sendet ARP im falschen Segment. Der Router wird für dieses Ziel umgangen.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Das Gateway erneut setzen, obwohl es schon korrekt ist.
+- Router-Forwarding ändern, ohne die lokale ARP-Entscheidung zu prüfen.
+
+**Typische Fehler**
+
+- Das Gateway erneut setzen, obwohl es schon korrekt ist.
+- Router-Forwarding ändern, ohne die lokale ARP-Entscheidung zu prüfen.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Separate Praxisbeilage: echte Engine-Proben, zusätzliche manuelle Kriterien verpflichtend.
+
+**Optionale Hinweise**
+
+- Welche Route gewinnt für 192.168.11.60: Connected /16 oder Default /0?
+
+**Ausführbare Praxisbeilage**
+
+ID: factory-e09-praxis. Nur A von /16 auf das dokumentierte Büro-Präfix /24 korrigieren. Hostadresse, Gateway, Router und Archiv unverändert lassen. Prüfen Sie die geforderten Endgeräte gegenseitig per ICMP. Nutzen Sie Inspector oder unterstützte Terminalbefehle; kein bestimmter Befehl ist vorgeschrieben. Geräte, Kabel und nicht genannte Vorgaben bleiben erhalten.
+
+**Praxis-Ausgangszustand**
+
+- a (Büro, host): eth0=192.168.10.50/16; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"192.168.10.1","dev":"eth0"}]
+- b (Archiv, server): eth0=192.168.11.60/24; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"192.168.11.1","dev":"eth0"}]
+- r (Router, router): eth0=192.168.10.1/24, eth1=192.168.11.1/24; VLANs: {}; Forwarding: true; Routen: []
+
+**Kabel (bleiben erhalten)**
+
+- line-1: a/eth0 ↔ r/eth0
+- line-2: b/eth0 ↔ r/eth1
+
+**Praxis-Referenzzustand**
+
+- a (Büro, host): eth0=192.168.10.50/24; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"192.168.10.1","dev":"eth0"}]
+- b (Archiv, server): eth0=192.168.11.60/24; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"192.168.11.1","dev":"eth0"}]
+- r (Router, router): eth0=192.168.10.1/24, eth1=192.168.11.1/24; VLANs: {}; Forwarding: true; Routen: []
+
+Der Router trennt 192.168.10.0/24 und 192.168.11.0/24. A verwendet zunächst /16 und fragt nach dem entfernten Archiv per ARP auf dem Bürosegment. Es gibt kein Proxy-ARP.
+
+**Praxis-Prüfungen**
+
+- ip-a-eth0: ENGINE {"type":"iface-ip","device":"a","iface":"eth0","cidr":"192.168.10.50/24","resolveBy":"id"}
+- ip-b-eth0: ENGINE {"type":"iface-ip","device":"b","iface":"eth0","cidr":"192.168.11.60/24","resolveBy":"id"}
+- ip-r-eth0: ENGINE {"type":"iface-ip","device":"r","iface":"eth0","cidr":"192.168.10.1/24","resolveBy":"id"}
+- ip-r-eth1: ENGINE {"type":"iface-ip","device":"r","iface":"eth1","cidr":"192.168.11.1/24","resolveBy":"id"}
+- forward-r: ENGINE {"type":"forwarding","device":"r","expect":true,"resolveBy":"id"}
+- preservation: MANUELL: Vergleichen Sie Kabel, VLANs, nicht freigegebene Adressen und Routen mit Ausgangszustand und Auftrag. Lassen Sie die ARP-/Routingentscheidung erklären. Ping und IPv4-Prüfer beweisen weder VLAN-Vorgaben noch den Diagnoseweg.
+- ping-a-b: ENGINE {"type":"ping","from":"a","toDevice":"b","expect":"success","resolveBy":"id"}
+- ping-b-a: ENGINE {"type":"ping","from":"b","toDevice":"a","expect":"success","resolveBy":"id"}
+
+**Praxis-Alternativen und Grenzen**
+
+- Jeder Eingabeweg mit den geforderten Endwerten ist zulässig. Bei Routingaufgaben sind funktional gleichwertige Zielrouten statt Default-Routen erlaubt, sofern alle geforderten Ziele erreichbar bleiben.
+
+- Automatisch: vorgegebene IPv4-Werte, Router-Forwarding und bidirektionale ICMP-Proben. Manuell: Layer-2-Erhalt, Diagnose und ausschließlich erlaubte Änderungen. Kein neuer VLAN-Prüfer.
+- Interner Entwurf, nicht im Menü veröffentlicht. Aktive Prüfungen senden echte ICMP-Pakete in der isolierten Simulation.
+- Die bestehenden Prüfer belegen Endzustand und Stichproben-Kommunikation, weder den Diagnoseweg noch die Unverändertheit aller Kabel, VLANs und zusätzlicher Konfigurationen. Vor Veröffentlichung ist dafür eine Topologie-Schutzregel oder manuelle Kontrolle erforderlich.
+
+## factory-e10-cidr — Korrekt oder Fehler?
+
+Gruppe E · advanced · subnetting · Version 1 · draft
+
+Vier unabhängige Tickets müssen getrennt bewertet werden. Alle ausdrücklich angegebenen Layer-2- und Routinginformationen gelten nur für das jeweilige Ticket.
+
+**Auftrag**
+
+Klassifizieren Sie rechnerische Konfiguration und Erreichbarkeit getrennt: gültig/ungültig sowie möglich/nicht möglich/nicht eindeutig bestimmbar. Eine fehlerhafte Default-Route muss lokalen Verkehr nicht verhindern. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "korrekt",
+      "a": "10.40.0.2/28",
+      "b": "10.40.0.3/28",
+      "layer2": "same",
+      "routedPath": "absent"
+    },
+    {
+      "id": "broadcast",
+      "a": "10.40.0.15/28",
+      "b": "10.40.0.3/28",
+      "layer2": "same",
+      "routedPath": "absent"
+    },
+    {
+      "id": "unbekannt",
+      "a": "10.40.1.2/26",
+      "b": "10.40.1.3/26",
+      "layer2": "unknown",
+      "routedPath": "unknown",
+      "gatewayA": "10.40.1.1"
+    },
+    {
+      "id": "lokal-trotz-gateway",
+      "a": "10.40.2.2/27",
+      "b": "10.40.2.3/27",
+      "layer2": "same",
+      "routedPath": "absent",
+      "gatewayA": "10.40.3.1"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "korrekt",
+      "a": {
+        "network": "10.40.0.0",
+        "broadcast": "10.40.0.15",
+        "prefix": 28,
+        "mask": "255.255.255.240",
+        "first": "10.40.0.1",
+        "last": "10.40.0.14",
+        "addresses": 16,
+        "hosts": 14
+      },
+      "b": {
+        "network": "10.40.0.0",
+        "broadcast": "10.40.0.15",
+        "prefix": 28,
+        "mask": "255.255.255.240",
+        "first": "10.40.0.1",
+        "last": "10.40.0.14",
+        "addresses": 16,
+        "hosts": 14
+      },
+      "localA": true,
+      "localB": true,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "possible",
+      "diagnosis": "none"
+    },
+    {
+      "id": "broadcast",
+      "a": {
+        "network": "10.40.0.0",
+        "broadcast": "10.40.0.15",
+        "prefix": 28,
+        "mask": "255.255.255.240",
+        "first": "10.40.0.1",
+        "last": "10.40.0.14",
+        "addresses": 16,
+        "hosts": 14
+      },
+      "b": {
+        "network": "10.40.0.0",
+        "broadcast": "10.40.0.15",
+        "prefix": 28,
+        "mask": "255.255.255.240",
+        "first": "10.40.0.1",
+        "last": "10.40.0.14",
+        "addresses": 16,
+        "hosts": 14
+      },
+      "localA": true,
+      "localB": true,
+      "gatewayA": "absent",
+      "gatewayB": "absent",
+      "configuration": "invalid",
+      "connectivity": "blocked",
+      "diagnosis": "invalid-host"
+    },
+    {
+      "id": "unbekannt",
+      "a": {
+        "network": "10.40.1.0",
+        "broadcast": "10.40.1.63",
+        "prefix": 26,
+        "mask": "255.255.255.192",
+        "first": "10.40.1.1",
+        "last": "10.40.1.62",
+        "addresses": 64,
+        "hosts": 62
+      },
+      "b": {
+        "network": "10.40.1.0",
+        "broadcast": "10.40.1.63",
+        "prefix": 26,
+        "mask": "255.255.255.192",
+        "first": "10.40.1.1",
+        "last": "10.40.1.62",
+        "addresses": 64,
+        "hosts": 62
+      },
+      "localA": true,
+      "localB": true,
+      "gatewayA": "in-subnet",
+      "gatewayB": "absent",
+      "configuration": "valid",
+      "connectivity": "undetermined",
+      "diagnosis": "unknown"
+    },
+    {
+      "id": "lokal-trotz-gateway",
+      "a": {
+        "network": "10.40.2.0",
+        "broadcast": "10.40.2.31",
+        "prefix": 27,
+        "mask": "255.255.255.224",
+        "first": "10.40.2.1",
+        "last": "10.40.2.30",
+        "addresses": 32,
+        "hosts": 30
+      },
+      "b": {
+        "network": "10.40.2.0",
+        "broadcast": "10.40.2.31",
+        "prefix": 27,
+        "mask": "255.255.255.224",
+        "first": "10.40.2.1",
+        "last": "10.40.2.30",
+        "addresses": 32,
+        "hosts": 30
+      },
+      "localA": true,
+      "localB": true,
+      "gatewayA": "outside",
+      "gatewayB": "absent",
+      "configuration": "invalid",
+      "connectivity": "possible",
+      "diagnosis": "none"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Ticket korrekt: gültig und lokal möglich. Ticket broadcast: .15 ist kein Host. Ticket unbekannt: numerisch gültig, Verbindung nicht belegt. Ticket lokal-trotz-gateway: Gateway ungültig, der direkte lokale Austausch bleibt unter den angegebenen Bedingungen möglich.
+
+korrekt: A: 10.40.0.0/28, Maske 255.255.255.240, Broadcast 10.40.0.15; B: 10.40.0.0/28, Maske 255.255.255.240, Broadcast 10.40.0.15. A behandelt B lokal (ARP für B), B behandelt A lokal (ARP für A). Unter den ausdrücklich genannten Bedingungen ist der Austausch möglich. Ein Ping allein beweist keine fehlerfreie Gesamtkonfiguration.
+
+broadcast: A: 10.40.0.0/28, Maske 255.255.255.240, Broadcast 10.40.0.15; B: 10.40.0.0/28, Maske 255.255.255.240, Broadcast 10.40.0.15. A behandelt B lokal (ARP für B), B behandelt A lokal (ARP für A). Netz-/Broadcastadresse oder doppelte Hostadresse: zunächst die Adressvergabe korrigieren.
+
+unbekannt: A: 10.40.1.0/26, Maske 255.255.255.192, Broadcast 10.40.1.63; B: 10.40.1.0/26, Maske 255.255.255.192, Broadcast 10.40.1.63. A behandelt B lokal (ARP für B), B behandelt A lokal (ARP für A). Nicht eindeutig bestimmbar: IP-Zugehörigkeit und ein lokales Gateway beweisen weder Layer-2-Verbindung noch Routing, Forwarding, Filter und Rückweg.
+
+lokal-trotz-gateway: A: 10.40.2.0/27, Maske 255.255.255.224, Broadcast 10.40.2.31; B: 10.40.2.0/27, Maske 255.255.255.224, Broadcast 10.40.2.31. A behandelt B lokal (ARP für B), B behandelt A lokal (ARP für A). Unter den ausdrücklich genannten Bedingungen ist der Austausch möglich. Ein Ping allein beweist keine fehlerfreie Gesamtkonfiguration.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- „Nicht eindeutig bestimmbar“ mit „ungültig“ gleichsetzen.
+- Aus erfolgreichem lokalem Ping auf ein korrektes Gateway schließen.
+
+**Typische Fehler**
+
+- „Nicht eindeutig bestimmbar“ mit „ungültig“ gleichsetzen.
+- Aus erfolgreichem lokalem Ping auf ein korrektes Gateway schließen.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Rechen-/Konzeptaufgabe ohne ausführbare Praxisbeilage.
+
+**Optionale Hinweise**
+
+- Führen Sie zwei getrennte Urteilsspalten statt einer einzigen Ampel.
+
+## factory-e11-cidr — Mehrere gültige Lösungen
+
+Gruppe E · intermediate · subnetting · Version 1 · draft
+
+Für einen isolierten Schulungsbereich sind mindestens 30 nutzbare IPv4-Adressen innerhalb 10.80.4.0/24 erforderlich. Der Auftrag erlaubt /25 oder /26 und verlangt ausdrücklich keine minimale Netzgröße.
+
+**Auftrag**
+
+Wählen Sie ein ausgerichtetes Subnetz und geben Sie zwei unterschiedliche nutzbare Hostadressen darin an. Reservierte Adressen oder weitere Bereiche existieren in diesem Auftrag nicht. Eine Aussage über externe Erreichbarkeit ist nicht verlangt.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Mehrere gültige Adresspläne anhand expliziter Bedingungen statt einer Musterlösung bewerten.
+
+**Pflichtanforderungen**
+
+- calculation: Alle Planungsbedingungen erfüllen, nicht eine feste Musteradresse kopieren.
+- diagnosis: Zwei gültige eindeutige Hosts wählen; numerische Planung nicht mit Konnektivität verwechseln.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "plan",
+  "parent": "10.80.4.0/24",
+  "hosts": 30,
+  "allowedPrefixes": [
+    25,
+    26
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "cidr": "10.80.4.0/26",
+  "addresses": [
+    "10.80.4.1",
+    "10.80.4.2"
+  ]
+}
+```
+
+**Erklärung**
+
+Sowohl /25 mit 126 Hosts als auch /26 mit 62 Hosts erfüllt den Auftrag. Jeder passende ausgerichtete Block innerhalb des Stammnetzes ist zulässig. Die zwei Beispielhosts müssen unterschiedlich sein und dürfen weder Netz noch Broadcast sein.
+
+**Zulässige Alternativen**
+
+- Andere erlaubte Präfixe, Blöcke und Hostadressen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Nur die Referenzadresse akzeptieren.
+- /27 wählen, obwohl die Auswahl hier ausdrücklich /25 oder /26 lautet.
+- Eine außerhalb des Stammnetzes liegende Alternative akzeptieren.
+
+**Typische Fehler**
+
+- Nur die Referenzadresse akzeptieren.
+- /27 wählen, obwohl die Auswahl hier ausdrücklich /25 oder /26 lautet.
+- Eine außerhalb des Stammnetzes liegende Alternative akzeptieren.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Rechen-/Konzeptaufgabe ohne ausführbare Praxisbeilage.
+
+**Optionale Hinweise**
+
+- Prüfen Sie Anforderungen, nicht die Ähnlichkeit zu einer Musterlösung.
+
+## factory-e12-cidr — Diagnose einer Firmennetzstruktur
+
+Gruppe E · advanced · subnetting · Version 1 · draft
+
+Büro, Lager und Archiv hängen an drei getrennten Interfaces der Zentrale. Soll: Büro 10.60.0.0/22, Lager 10.60.4.0/25, Archiv 10.60.4.128/26. Routeradressen sind .0.1, .4.1 und .4.129. Forwarding ist aktiv, Filter erlauben den Verkehr. Nur Büro-Präfix und Lager-Gateway sind zur Änderung freigegeben.
+
+**Auftrag**
+
+Prüfen Sie Büro→Archiv, Lager→Archiv und die irreführende Behauptung, Lager und Archiv seien wegen 10.60.4.x lokal. Beheben Sie beide unabhängigen Fehler, erhalten Sie die korrekten Teile und prüfen Sie alle drei Endgeräte gegenseitig. Annahmen: Interfaces UP, keine Hostfilter, kein Proxy-ARP/NAT, keine zusätzlichen Routen. „working“ bezeichnet ausschließlich einen dokumentierten vollständigen Routerpfad inklusive Rückweg; er repariert keine falsche Cliententscheidung. „configuration“ bewertet numerische Host-/Gateway-Gültigkeit, nicht deren betriebliche Zuordnung. Dokumentieren Sie Netz, Broadcast, Maske, Hostbereich und Kapazität sowie lokale Entscheidungen beider Seiten.
+
+**Lernziele**
+
+- IPv4-Grenzen anhand der tatsächlichen Maske statt des Adressbildes bestimmen.
+- Rechnerische Gültigkeit, lokale Zustellung und belegte Erreichbarkeit getrennt begründen; fehlende Informationen benennen.
+
+**Pflichtanforderungen**
+
+- calculation: Subnetzdaten beider Seiten exakt berechnen.
+- diagnosis: Lokale Entscheidungen, Gateway-Status, numerische Gültigkeit und Erreichbarkeitsnachweis getrennt klassifizieren.
+
+**Ausgangsdaten**
+
+```json
+{
+  "family": "cidr",
+  "mode": "diagnosis",
+  "cases": [
+    {
+      "id": "buero-archiv",
+      "a": "10.60.0.10/16",
+      "b": "10.60.4.130/26",
+      "layer2": "separate",
+      "routedPath": "working",
+      "gatewayA": "10.60.0.1",
+      "routerA": "10.60.0.1",
+      "gatewayB": "10.60.4.129",
+      "routerB": "10.60.4.129"
+    },
+    {
+      "id": "lager-archiv",
+      "a": "10.60.4.10/25",
+      "b": "10.60.4.130/26",
+      "layer2": "separate",
+      "routedPath": "working",
+      "gatewayA": "10.60.4.126",
+      "routerA": "10.60.4.1",
+      "gatewayB": "10.60.4.129",
+      "routerB": "10.60.4.129"
+    }
+  ]
+}
+```
+
+**Referenzantwort**
+
+```json
+{
+  "rows": [
+    {
+      "id": "buero-archiv",
+      "a": {
+        "network": "10.60.0.0",
+        "broadcast": "10.60.255.255",
+        "prefix": 16,
+        "mask": "255.255.0.0",
+        "first": "10.60.0.1",
+        "last": "10.60.255.254",
+        "addresses": 65536,
+        "hosts": 65534
+      },
+      "b": {
+        "network": "10.60.4.128",
+        "broadcast": "10.60.4.191",
+        "prefix": 26,
+        "mask": "255.255.255.192",
+        "first": "10.60.4.129",
+        "last": "10.60.4.190",
+        "addresses": 64,
+        "hosts": 62
+      },
+      "localA": true,
+      "localB": false,
+      "gatewayA": "in-subnet",
+      "gatewayB": "in-subnet",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "remote-arp"
+    },
+    {
+      "id": "lager-archiv",
+      "a": {
+        "network": "10.60.4.0",
+        "broadcast": "10.60.4.127",
+        "prefix": 25,
+        "mask": "255.255.255.128",
+        "first": "10.60.4.1",
+        "last": "10.60.4.126",
+        "addresses": 128,
+        "hosts": 126
+      },
+      "b": {
+        "network": "10.60.4.128",
+        "broadcast": "10.60.4.191",
+        "prefix": 26,
+        "mask": "255.255.255.192",
+        "first": "10.60.4.129",
+        "last": "10.60.4.190",
+        "addresses": 64,
+        "hosts": 62
+      },
+      "localA": false,
+      "localB": false,
+      "gatewayA": "in-subnet",
+      "gatewayB": "in-subnet",
+      "configuration": "valid",
+      "connectivity": "blocked",
+      "diagnosis": "gateway"
+    }
+  ]
+}
+```
+
+**Erklärung**
+
+Büro-/16 verursacht falsches lokales ARP; das vorgesehene /22 endet bei 10.60.3.255. Lager-/25 endet bei 10.60.4.127, Archiv-/26 beginnt bei .128. Lagers .126 ist zwar lokal, aber unbesetzt. Büro auf /22 und Lager-Gateway auf .4.1 korrigieren; Archiv bleibt unverändert.
+
+buero-archiv: A: 10.60.0.0/16, Maske 255.255.0.0, Broadcast 10.60.255.255; B: 10.60.4.128/26, Maske 255.255.255.192, Broadcast 10.60.4.191. A behandelt B lokal (ARP für B), B behandelt A als entfernt (Gateway nötig). Mindestens ein Client hält das entfernte Ziel für lokal und sendet ARP im falschen Segment. Der Router wird für dieses Ziel umgangen.
+
+lager-archiv: A: 10.60.4.0/25, Maske 255.255.255.128, Broadcast 10.60.4.127; B: 10.60.4.128/26, Maske 255.255.255.192, Broadcast 10.60.4.191. A behandelt B als entfernt (Gateway nötig), B behandelt A als entfernt (Gateway nötig). Der konfigurierte Next Hop liegt außerhalb des lokalen Hostbereichs oder entspricht nicht dem dokumentierten Router.
+
+**Zulässige Alternativen**
+
+- Äquivalente strukturierte Antworten: Zeilenreihenfolge beliebig, Präfix als Zahl oder /Notation, Maske als Dezimalmaske oder /Präfix; deutsche Klassifikationen. Die mathematischen Aussagen und ausdrücklich dokumentierten Bedingungen müssen unverändert bleiben.
+
+**Falsche Antworten / Ablehnung**
+
+- Alle Netze auf /16 erweitern.
+- Nur einen Fehler beheben und einen einzigen Ping als Abnahme verwenden.
+- Archiv ändern, obwohl es korrekt konfiguriert ist.
+
+**Typische Fehler**
+
+- Alle Netze auf /16 erweitern.
+- Nur einen Fehler beheben und einen einzigen Ping als Abnahme verwenden.
+- Archiv ändern, obwohl es korrekt konfiguriert ist.
+
+**Korrekturzuordnung**
+
+- numeric → calculation: Automatisch: vollständige strukturierte Netz-/Hostdaten bzw. erfüllte Planungsbedingungen.
+- reasoning → diagnosis: Automatisch: strukturierte Klassifikation bzw. gültige Hostwahl. Die Qualität einer frei formulierten Begründung muss manuell geprüft werden.
+
+**Grenzen**
+
+- Interner Entwurf; nicht in Übungen veröffentlicht. Keine automatische Bewertung freier Texte oder des Diagnosewegs.
+- Das Rechenmodell ist auf statische Broadcast-IPv4-Netze /0 bis /30 begrenzt. Kein Proxy-ARP, NAT, Policy-Routing, Hostfilter oder zusätzliche Hostrouten. Bei unbekannter Layer 2 oder unbewiesenem Routerpfad wird keine Erreichbarkeit erfunden.
+- Separate Praxisbeilage: echte Engine-Proben, zusätzliche manuelle Kriterien verpflichtend.
+
+**Optionale Hinweise**
+
+- Erstellen Sie pro Quellgerät eine Tabelle aus Connected-Netz, Next Hop und Rückweg.
+
+**Ausführbare Praxisbeilage**
+
+ID: factory-e12-praxis. A auf das dokumentierte Büro-/22 korrigieren. Lagers Next Hop auf 10.60.4.1 korrigieren. Archiv, Router, Kabel und Hostadressen erhalten. Alle drei Endgeräte müssen sich gegenseitig erreichen. Prüfen Sie die geforderten Endgeräte gegenseitig per ICMP. Nutzen Sie Inspector oder unterstützte Terminalbefehle; kein bestimmter Befehl ist vorgeschrieben. Geräte, Kabel und nicht genannte Vorgaben bleiben erhalten.
+
+**Praxis-Ausgangszustand**
+
+- a (Büro, host): eth0=10.60.0.10/16; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"10.60.0.1","dev":"eth0"}]
+- b (Lager, host): eth0=10.60.4.10/25; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"10.60.4.126","dev":"eth0"}]
+- c (Archiv, server): eth0=10.60.4.130/26; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"10.60.4.129","dev":"eth0"}]
+- r (Zentrale, router): eth0=10.60.0.1/22, eth1=10.60.4.1/25, eth2=10.60.4.129/26; VLANs: {}; Forwarding: true; Routen: []
+
+**Kabel (bleiben erhalten)**
+
+- line-1: a/eth0 ↔ r/eth0
+- line-2: b/eth0 ↔ r/eth1
+- line-3: c/eth0 ↔ r/eth2
+
+**Praxis-Referenzzustand**
+
+- a (Büro, host): eth0=10.60.0.10/22; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"10.60.0.1","dev":"eth0"}]
+- b (Lager, host): eth0=10.60.4.10/25; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"10.60.4.1","dev":"eth0"}]
+- c (Archiv, server): eth0=10.60.4.130/26; VLANs: {}; Forwarding: false; Routen: [{"dest":"0.0.0.0/0","via":"10.60.4.129","dev":"eth0"}]
+- r (Zentrale, router): eth0=10.60.0.1/22, eth1=10.60.4.1/25, eth2=10.60.4.129/26; VLANs: {}; Forwarding: true; Routen: []
+
+Büro: 10.60.0.0/22, Lager: 10.60.4.0/25, Archiv: 10.60.4.128/26. A umgeht durch /16 den Router; Lager verwendet einen unbesetzten lokalen Next Hop .126. Archiv ist korrekt. Kein Umbau der drei Connected-Netze ist notwendig.
+
+**Praxis-Prüfungen**
+
+- ip-a-eth0: ENGINE {"type":"iface-ip","device":"a","iface":"eth0","cidr":"10.60.0.10/22","resolveBy":"id"}
+- ip-b-eth0: ENGINE {"type":"iface-ip","device":"b","iface":"eth0","cidr":"10.60.4.10/25","resolveBy":"id"}
+- ip-c-eth0: ENGINE {"type":"iface-ip","device":"c","iface":"eth0","cidr":"10.60.4.130/26","resolveBy":"id"}
+- ip-r-eth0: ENGINE {"type":"iface-ip","device":"r","iface":"eth0","cidr":"10.60.0.1/22","resolveBy":"id"}
+- ip-r-eth1: ENGINE {"type":"iface-ip","device":"r","iface":"eth1","cidr":"10.60.4.1/25","resolveBy":"id"}
+- ip-r-eth2: ENGINE {"type":"iface-ip","device":"r","iface":"eth2","cidr":"10.60.4.129/26","resolveBy":"id"}
+- forward-r: ENGINE {"type":"forwarding","device":"r","expect":true,"resolveBy":"id"}
+- preservation: MANUELL: Vergleichen Sie Kabel, VLANs, nicht freigegebene Adressen und Routen mit Ausgangszustand und Auftrag. Lassen Sie die ARP-/Routingentscheidung erklären. Ping und IPv4-Prüfer beweisen weder VLAN-Vorgaben noch den Diagnoseweg.
+- ping-a-b: ENGINE {"type":"ping","from":"a","toDevice":"b","expect":"success","resolveBy":"id"}
+- ping-a-c: ENGINE {"type":"ping","from":"a","toDevice":"c","expect":"success","resolveBy":"id"}
+- ping-b-a: ENGINE {"type":"ping","from":"b","toDevice":"a","expect":"success","resolveBy":"id"}
+- ping-b-c: ENGINE {"type":"ping","from":"b","toDevice":"c","expect":"success","resolveBy":"id"}
+- ping-c-a: ENGINE {"type":"ping","from":"c","toDevice":"a","expect":"success","resolveBy":"id"}
+- ping-c-b: ENGINE {"type":"ping","from":"c","toDevice":"b","expect":"success","resolveBy":"id"}
+
+**Praxis-Alternativen und Grenzen**
+
+- Jeder Eingabeweg mit den geforderten Endwerten ist zulässig. Bei Routingaufgaben sind funktional gleichwertige Zielrouten statt Default-Routen erlaubt, sofern alle geforderten Ziele erreichbar bleiben.
+
+- Automatisch: vorgegebene IPv4-Werte, Router-Forwarding und bidirektionale ICMP-Proben. Manuell: Layer-2-Erhalt, Diagnose und ausschließlich erlaubte Änderungen. Kein neuer VLAN-Prüfer.
 - Interner Entwurf, nicht im Menü veröffentlicht. Aktive Prüfungen senden echte ICMP-Pakete in der isolierten Simulation.
 - Die bestehenden Prüfer belegen Endzustand und Stichproben-Kommunikation, weder den Diagnoseweg noch die Unverändertheit aller Kabel, VLANs und zusätzlicher Konfigurationen. Vor Veröffentlichung ist dafür eine Topologie-Schutzregel oder manuelle Kontrolle erforderlich.

@@ -1,6 +1,10 @@
 # Fábrica interna de exercícios de Netzwerk
 
-Estado: protótipo de autoria, versão 1. **20 novos drafts; nenhum publicado.** Material original para revisão pedagógica de FiSI, sem pretensão de ser conteúdo oficial ou validado pela IHK.
+Estado: protótipo de autoria, versão 1. **32 drafts: os 20 originais A–D e 12 novos E; o catálogo integral permanece interno.** Material original para revisão pedagógica de FiSI, sem pretensão de ser conteúdo oficial ou validado pela IHK.
+
+Integração seletiva posterior: [Rechenpraxis Beta — etapa 1](calculation-practice.md) usa os resolvedores/geradores de subnetting e VLSM e uma pergunta reduzida de E02. Isso não publica os 32 drafts nem seus complementos práticos; o catálogo autoral permanece fora do bundle. A prática tem estado temporário independente do progresso de topologias.
+
+A [etapa 2 — piloto prático](practical-exercises-beta.md) publica somente projeções de aluno de E06/E08/E09/D02, com critérios adicionais de estrutura/rota efetiva e associação ao draft existente. Os enunciados/soluções autorais não são enviados ao runtime. Os outros onze cenários executáveis continuam internos; a auditoria e os limites estão no documento do piloto.
 
 O catálogo legível completo, com enunciados alemães, dados, soluções, alternativas, erros e critérios, está em [network-exercise-catalog.md](network-exercise-catalog.md). Sua fonte é `src/exercises/factory/`; o Markdown pode ser regenerado, não editado separadamente.
 
@@ -14,9 +18,9 @@ O catálogo legível completo, com enunciados alemães, dados, soluções, alter
 - `src/exercises/exerciseController.ts` executa tentativas do Beta; `beta.ts` importa apenas `betaStudents.json` e `betaChecks.json`. A publicação atual seleciona explicitamente dois exercícios antigos em `scripts/generate-exercise-beta.mjs`. Nada novo foi adicionado a essa seleção.
 - Não existe formulário de respostas numéricas, máscara, intervalos ou plano VLSM no Übungen. O quiz de Labs é de múltipla escolha e não é reutilizado como um segundo sistema de exercícios.
 - `engine/factory.ts` cria equipamentos e interfaces reais; `serializeNetwork`/`restoreNetwork` representam configurações e links. As referências usam instâncias isoladas de `Network`, sempre descartadas, sem store, navegador, IndexedDB ou sessão do usuário.
-- Não foram alterados protocolos, Scheduler, DHCP, DNS, WLAN, Markierungen, UI ou persistência. As tarefas de cálculo nem sequer criam uma rede.
+- Não foram alterados protocolos, Scheduler, DHCP, DNS, WLAN, Markierungen, UI ou persistência. Os resolvedores e corretores matemáticos não criam redes; a construção do catálogo pode construir referências práticas isoladas.
 
-## Os 20 exercícios
+## Os 20 exercícios A–D preservados
 
 IDs completos começam com `factory-`. B = beginner, I = intermediate, A = advanced.
 
@@ -51,12 +55,18 @@ A/B são 12 exercícios sem topologia: as respostas estruturadas podem ser corri
 |---|---|
 | `types.ts` | Extensão de autoria, reutilizando contratos existentes |
 | `math.ts` | IPv4, capacidade, VLSM, overlap, membership e correção pura |
-| `generator.ts` | Cinco famílias determinísticas, receitas versionadas e instruções alemãs |
+| `generator.ts` | Seis famílias determinísticas, receitas versionadas e instruções alemãs |
+| `cidr.ts` | Modelo conceitual delimitado, diagnóstico, equivalências e planos por restrições |
+| `cidrGenerator.ts` | Seis arquétipos CIDR, seed e namespace independentes das receitas A/B |
+| `cidrDrafts.ts` | 12 enunciados alemães E, referências, dicas e limites de correção |
+| `cidrNetworks.ts` | Sete complementos práticos E usando factory e checker existentes |
+| `cidr.test.ts` | 540 variantes E, oráculo BigInt e avaliação independente das condições de rede |
+| `cidrNetworks.test.ts` | Probes reais E, redes sem defeito, negativos, alternativas e round-trip |
 | `calculations.ts` | Seis fundamentais + seis cenários VLSM |
 | `networkTools.ts` | Factory/serialização reais, helpers de autoria, auditor de referências |
 | `practical.ts` | Quatro LANs com defeitos de endereçamento |
 | `routing.ts` | Quatro diagnósticos de roteamento/forwarding |
-| `catalog.ts` | Agregação interna dos 20 drafts |
+| `catalog.ts` | Agregação interna dos 32 drafts; complementos práticos não duplicam entradas |
 | `validate.ts` | Estrutura e compatibilidade, sem alegar aprovação pedagógica |
 | `math.test.ts` | Oráculo independente BigInt, 150 variantes e casos negativos |
 | `network.test.ts` | Referências reais, falhas iniciais, alternativas, negativos e round-trip |
@@ -71,13 +81,13 @@ import { generate } from './src/exercises/factory/generator';
 import { grade } from './src/exercises/factory/math';
 
 const variant = generate({
-  family: 'vlsm', // subnet | capacity | vlsm | overlap | membership
+  family: 'vlsm', // subnet | capacity | vlsm | overlap | membership | cidr
   difficulty: 'advanced', // beginner | intermediate | advanced
   seed: 'notebook-demo',  // opcional: default estável "netlab-default"
   version: 1,
 });
 const result = grade(variant.problem, submittedAnswer);
-// { pass: boolean, issues: string[] }; correção global, sem notas parciais
+// { pass: boolean, issues: string[], feedback?: string[] }; sem notas parciais
 ```
 
 `generate` é uma API **de autoria**: retorna receita, instrução, problema e referência. Não enviar esse objeto completo a uma futura tela de aluno. Os drafts matemáticos usam `student` e `review` separados; uma publicação futura deve projetar somente a parte do aluno.
@@ -89,10 +99,12 @@ const result = grade(variant.problem, submittedAnswer);
 | vlsm | `[{id, cidr}]`, uma rede alinhada por ID de demanda |
 | overlap | `{pairs: ['1:3', ...]}`; índices começam em 1, menor primeiro, sem duplicados; `[]` se nenhum par |
 | membership | `{candidateId: 'host' \| 'network' \| 'broadcast' \| 'outside', ...}` |
+| cidr / diagnosis | `{rows: [{id, a: SubnetFacts, b: SubnetFacts, localA, localB, gatewayA, gatewayB, configuration, connectivity, diagnosis}]}` |
+| cidr / plan | `{cidr, addresses: [hostA, hostB]}`; condições explícitas, sem exigir o bloco de referência |
 
 Números são números JSON; IPv4 usa escrita decimal canônica. Ordem das chaves, dos pares e das alocações não importa. Espaços externos em respostas escalares de texto são tolerados. Não há parser de texto livre ou respostas numéricas localizadas. O futuro formulário deve produzir esses tipos explicitamente.
 
-A versão 1 usa hash FNV-1a da receita e PRNG LCG local, sem relógio, `Math.random` ou IA. Família/dificuldade/seed/versão determinam a variante. Seeds diferentes podem gerar o mesmo problema; não se promete unicidade. Três exemplos congelados nos testes protegem contra alterações acidentais da receita; mudanças de geração precisam de nova versão, mantendo a antiga legível.
+A versão 1 usa hash FNV-1a da receita e PRNG LCG local, sem relógio, `Math.random` ou IA. Família/dificuldade/seed/versão e, em CIDR, cenário determinam a variante. Seeds diferentes podem gerar o mesmo problema; não se promete unicidade. Exemplos congelados nos testes protegem as cinco receitas antigas e a nova receita CIDR; mudanças de geração precisam de nova versão, mantendo a antiga legível.
 
 As dificuldades mudam prefixos/capacidades e complexidade: VLSM avançado inclui reserva fixa; intermediário inclui crescimento; overlap inclui contenção em níveis superiores. São variações matemáticas, não um gerador de narrativas ou de topologias arbitrárias.
 
@@ -111,8 +123,80 @@ Todos com seed `notebook-demo`, versão 1:
 - VLSM exige **o menor bloco suficiente por demanda**, não igualdade à solução de referência. Não há objetivo implícito de minimizar a quantidade de intervalos livres.
 - Reservas fixas são intervalos proibidos; demandas `future` precisam de uma alocação separada, mesmo sem dispositivos instalados.
 - Alocador de referência: maiores demandas primeiro, desempate por ID, primeiro bloco alinhado livre. Não percorre cada IP; salta intervalos ocupados. Não é um solucionador geral de restrições arbitrárias.
-- Auditor de endereços das referências assume um espaço de endereçamento único para estas oito topologias. Reutilização legítima de IPs entre VLANs/VRFs isoladas exigiria política por segmento; esse helper não deve virar validador global do produto.
+- Auditor de endereços das referências assume um espaço de endereçamento único para estas topologias. Reutilização legítima de IPs entre VLANs/VRFs isoladas exigiria política por segmento; esse helper não deve virar validador global do produto.
 - Referências práticas têm configuração estática e nenhuma sequência de comandos obrigatória. DHCP/DNS/HTTP não foram acrescentados artificialmente ao escopo: os drafts antigos já os cobrem.
+
+## Família E — CIDR und Subnetzfallen
+
+Os IDs são `factory-e01-cidr` até `factory-e12-cidr`. Todos têm dados estruturados, enunciado/objetivos/requisitos em alemão, referência comentada, critérios, erros comuns e dica opcional. Sete incluem `practice`, um `NetworkDraft` separado que reutiliza o contrato e os verificadores C/D. Isso mantém cálculo, inferência conceitual e observação real separados.
+
+| ID | Dificuldade | Tema | Prática real |
+|---|---|---|---|
+| E01 | beginner | Unterschiedliche Oktette: /23 correto | Sim; não exige reparo |
+| E02 | beginner | Das Gateway sieht falsch aus: 192.168.99.60/16 e 192.168.9.1 | Não; informações insuficientes são intencionais |
+| E03 | intermediate | Die versteckte Subnetzgrenze: /23, /22 e /20 | Cálculo de três fronteiras |
+| E04 | beginner | Gleiches drittes Oktett, anderes Netz: /25, /26 e /27 | Cálculo de três fronteiras |
+| E05 | intermediate | Die falsche Reparatur: VLAN não se corrige com máscara | Sim; isolamento VLAN 10/20 e correção somente do access port |
+| E06 | beginner | Es funktioniert trotzdem!: /16 válido | Sim; estado inicial e referência idênticos |
+| E07 | intermediate | Unterschiedliche Subnetzmasken: decisão assimétrica | Sim; retorno ausente sem gateway |
+| E08 | intermediate | Der Gateway-Irrtum: gateway local porém inexistente | Sim; aceita rota específica equivalente |
+| E09 | advanced | Zu großes Netzwerk: ARP local para destino remoto | Sim; restauração da máscara prevista |
+| E10 | advanced | Korrekt oder Fehler?: quatro tickets, dois eixos de classificação | Conceitual; inclui ping local possível com gateway inválido |
+| E11 | intermediate | Mehrere gültige Lösungen: /25 ou /26 | Planejamento por restrições |
+| E12 | advanced | Diagnose einer Firmennetzstruktur: /22, /25 e /26 | Sim; dois erros, três segmentos e todas as direções |
+
+### Modelo e respostas
+
+`configuration` significa **validade numérica** dos hosts e gateways configurados. Um gateway local não existente pode ser numericamente válido e operacionalmente errado. A falta de gateway não invalida um host isolado. Um gateway inválido não impede necessariamente tráfego direto local. `connectivity` expressa a troca completa entre o par, não Internet, DNS ou todos os serviços.
+
+- `layer2`: `same`, `separate` ou `unknown` para o domínio de broadcast dos dois hosts.
+- `gatewayA/B`: Next Hop configurado. Ausência indica que nenhum gateway foi configurado.
+- `routerA/B`: endereço do router local realmente documentado; ausência significa informação não disponível, não ausência de router.
+- `routedPath`: `working` comprova o caminho de router, forwarding, filtros permissivos e retorno; `absent` documenta que não há esse caminho; `unknown` não permite presumir sucesso. Um caminho de router funcional não muda a decisão ARP do cliente nem faz o gateway configurado se tornar correto.
+- `localA/B`: decisão individual conforme a máscara do emissor.
+- `gatewayA/B` **na resposta**: `absent`, `in-subnet`, `outside` ou `unusable`.
+- `configuration`: `valid`/`invalid`; `connectivity`: `possible`/`blocked`/`undetermined`.
+- `diagnosis`: `none`, `invalid-host`, `gateway`, `vlan`, `subnet-boundary`, `asymmetric`, `remote-arp` ou `unknown`.
+- `SubnetFacts`: os mesmos oito campos da família `subnet`; todos são obrigatórios na resposta interna.
+
+Premissas explícitas: IPv4 estático de broadcast, interfaces UP, espaço de endereçamento único, sem filtros nos hosts, proxy ARP, NAT ou rotas extras. O modelo não é um segundo simulador nem um verificador geral de redes arbitrárias. O caso de router reenviando pelo mesmo segmento fica fora do contrato (`working` com `layer2: same` é rejeitado); a engine não é alterada. /31 e /32 não são gerados nem aceitos como sub-redes desta família.
+
+Ordem das linhas e chaves não importa. Prefixo pode ser número ou `/23`; máscara pode ser decimal ou `/23`. Classificações alemãs `gültig`, `ungültig`, `möglich`, `nicht möglich` e `Nicht eindeutig bestimmbar` são equivalentes aos identificadores correspondentes. Não há comparação aproximada de frases. `grade` retorna explicações de rede/broadcast, decisões locais e condições de conectividade também para respostas corretas. Uma futura UI deve oferecer controles tipados traduzidos, não pedir que o aluno escreva JSON ou memorize esses códigos.
+
+E11 aceita qualquer bloco alinhado /25 ou /26 dentro de 10.80.4.0/24, com capacidade de pelo menos 30 hosts e dois endereços distintos utilizáveis. Exemplos: 10.80.4.128/25 com .130/.254, ou 10.80.4.192/26 com .194/.200. Não há uma exigência implícita de prefixo mínimo; /27 não está na escolha permitida desse enunciado.
+
+### Gerador E reproduzível
+
+```ts
+const v = generate({ family: 'cidr', scenario: 'real-fault',
+  difficulty: 'advanced', seed: 'notebook-demo', version: 1 });
+// 10.30.8.10/22 e 10.30.11.254/22; Layer 2 separada, sem caminho roteado.
+// Rede 10.30.8.0, broadcast 10.30.11.255; válidos, mas bloqueados por separação L2.
+```
+
+```powershell
+node scripts/validate-network-factory.mjs --family=cidr --scenario=real-fault --difficulty=advanced --seed=notebook-demo
+node scripts/validate-network-factory.mjs --family=cidr --scenario=mixed-masks --difficulty=intermediate --seed=ihk-demo
+```
+
+| `scenario` | Variação |
+|---|---|
+| `same-network` (default) | Terceiros octetos distintos em /23, /22 ou /20 |
+| `boundary` | Hosts próximos dos dois lados de uma fronteira, sem gateway |
+| `gateway` | Gateway local, externo ou broadcast, com Layer 2 não comprovada |
+| `mixed-masks` | Prefixos adjacentes e decisões locais assimétricas, sem retorno |
+| `healthy` | Rede direta correta; nos níveis superiores também caminho roteado comprovado |
+| `real-fault` | VLAN separada, gateway externo ou máscara ampla causando ARP remoto |
+
+Prefixos básicos incluem /23, /25 e /26; intermediários acrescentam /22 e /27; avançados incluem /20 e /28, com /29 no lado mais restrito de alguns pares assimétricos. Endereços, offsets, blocos e diagnósticos derivam da receita, não de uma lista fixa. O cenário faz parte da receita retornada. As cinco famílias antigas conservam exatamente seu algoritmo e namespace v1. As variantes são problemas conceituais; o gerador não promete produzir topologias arbitrárias. As sete topologias E são referências autoradas separadamente.
+
+### Validação e limites específicos de E
+
+**540 variantes = 6 cenários × 3 dificuldades × 30 seeds**, além dos 12 exemplos de referência. O oráculo usa operações BigInt para rede/broadcast e enumera possibilidades de Layer 2, router e caminho disponíveis para distinguir conectividade certa, impossível e indeterminada. Não chama o resolvedor de produção. Os testes verificam também o diagnóstico prometido por cada arquétipo, equivalências, respostas erradas, entradas inválidas, alternativas de planejamento e receita congelada.
+
+Os testes reais executam os sete complementos no motor, com máscaras e VLANs preservadas após serialização, alterações de nomes, dois casos sem defeito, reparo VLAN versus máscara, alternativa de rota, falta de retorno e forwarding desligado. No caso empresarial, corrigir só um dos dois defeitos ainda deixa falhas. Nenhum teste usa store, IndexedDB, navegador ou dados reais.
+
+Limites antes de publicação: explicações livres e preservação de cabos/VLANs/configurações continuam exigindo revisão manual. E05 não ganha aprovação integral apenas porque seus pings passam. Os verificadores não provam que nenhuma outra configuração foi destruída. Para a futura interface, manter rubricas matemáticas e de rede separadas e não converter os critérios manuais em aprovação automática.
 
 ## Validação reproduzível
 
@@ -127,7 +211,7 @@ node scripts/validate-network-factory.mjs --check-bundle
 git diff --check
 ```
 
-150 variantes = 5 famílias × 3 dificuldades × 10 seeds. Cada uma tem repetibilidade, resposta conferida por oráculo independente, aprovação correta e rejeição de resposta errada/nula. O teste exige pelo menos 100 problemas distintos nesse conjunto. O oráculo usa máscaras/deslocamentos **BigInt**, independente dos cálculos por divisão/logaritmos do resolvedor. VLSM verifica alinhamento, capacidade mínima, crescimento, contenção e intervalos; não se limita a comparar a referência consigo mesma.
+150 variantes A/B = 5 famílias × 3 dificuldades × 10 seeds, mais 540 variantes E = **690 receitas verificadas**. Cada uma tem repetibilidade, resposta conferida por oráculo independente e rejeição de resposta errada. Os testes exigem pelo menos 100 problemas antigos distintos e mais de 500 problemas E distintos. O oráculo usa máscaras/deslocamentos **BigInt**, independente dos cálculos por divisão/logaritmos do resolvedor. VLSM verifica alinhamento, capacidade mínima, crescimento, contenção e intervalos; não se limita a comparar a referência consigo mesma. A verificação rápida do CLI é apenas consistência resolvedor/corretor; a independência está nos testes.
 
 Casos de fronteira incluem 0.0.0.0/0, extremo 255.255.255.255/30, /1, saltos de octeto, capacidades exatas e um host além. Negativos incluem máscaras inválidas, /31–/32 fora da convenção, redes desalinhadas, sobreposição, reservas inválidas, duplicação/ausência de IDs, planos impossíveis e respostas malformadas.
 
@@ -135,7 +219,7 @@ As oito referências são restauradas e executadas isoladamente; os testes tamb�
 
 `--check-bundle` procura IDs/títulos internos nos JS emitidos; complementa a inspeção de imports, não é uma garantia criptográfica contra qualquer vazamento futuro. O entrypoint público continua utilizando somente as projeções Beta existentes.
 
-Validação em 28/10/2026: **367 testes aprovados em 11 arquivos**, dos quais 265 são novos testes da fábrica. Incluem as 150 variantes e regressões dos drafts anteriores, controller, Labs, identidade e Markierungen. TypeScript, build e checks de whitespace passaram. O build mantém o aviso existente de chunk maior que 500 kB; não foram adicionadas dependências nem imports da fábrica ao runtime.
+Validação original em 28/10/2026: **367 testes aprovados em 11 arquivos**, dos quais 265 eram testes da fábrica. Validação após E em 29/10/2026: **964 testes aprovados em 13 arquivos**, incluindo 540 variantes E, 150 variantes anteriores, sete práticas E e regressões de drafts, controller, Labs, identidade e Markierungen. TypeScript, build e checks de whitespace passaram. O build mantém o aviso existente de chunk maior que 500 kB; não foram adicionadas dependências nem imports da fábrica ao runtime.
 
 ## Evolução segura para Übungen
 
@@ -147,4 +231,4 @@ Validação em 28/10/2026: **367 testes aprovados em 11 arquivos**, dos quais 26
 6. Um exercício misto pode mapear requisitos `math`, `engine` e `manual` por IDs; a conclusão deve respeitar todos, sem converter verificações manuais em sucesso implícito.
 7. Progresso futuro deve registrar ID/versão do exercício, receita, respostas e resultados por critério, separados da topologia do usuário. Planejar migração e restauração pelo repositório existente, sem backend, moedas ou autenticação nesta etapa.
 
-Nenhuma dessas etapas de UI/publicação/progresso foi implementada aqui.
+O adaptador inicial de respostas matemáticas está descrito em `calculation-practice.md`; os quatro pilotos práticos estão em `practical-exercises-beta.md`. Publicação dos demais drafts e persistência das tentativas matemáticas continuam pendentes.
