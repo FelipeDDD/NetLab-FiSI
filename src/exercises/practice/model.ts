@@ -2,19 +2,21 @@
 import { generate, type Recipe } from '../factory/generator';
 import { facts, grade, prefixForMask, requiredHosts, solve, type MathProblem } from '../factory/math';
 import { diagnose } from '../factory/cidr';
+import { createGatewayV2, gatewayV2Result, type GatewayV2Problem } from './gatewayV2';
 
 export const PRACTICE_KINDS = ['gateway', 'subnet', 'vlsm'] as const;
 export type PracticeKind = typeof PRACTICE_KINDS[number];
 export interface Field { id:string; label:string; type:'ipv4'|'prefix'|'mask'|'integer'|'cidr'|'choice'; options?:{value:string;label:'yes'|'no'|'unknown'}[] }
 export interface Question {
-  id:string; kind:PracticeKind; contentVersion:1; recipe:Recipe;
-  title:string; task:string; data:string[]; fields:Field[]; problem:MathProblem;
+  id:string; kind:PracticeKind; contentVersion:1|2; recipe:Recipe;
+  title:string; task:string; data:string[]; fields:Field[]; problem:MathProblem|GatewayV2Problem;
 }
 export type Answers = Record<string,string>;
 export interface FieldResult { state:'correct'|'incorrect'|'missing'; explanation:string }
 export interface Evaluation { pass:boolean; fields:Record<string,FieldResult> }
 const choices:Field['options']=[{value:'yes',label:'yes'},{value:'no',label:'no'},{value:'unknown',label:'unknown'}];
 export function createQuestion(kind:PracticeKind, seed='reference', difficulty:Recipe['difficulty']='beginner', version=1):Question {
+  if(kind==='gateway'&&version===2)return createGatewayV2(seed,difficulty);
   if(!PRACTICE_KINDS.includes(kind)) throw Error('Unbekannte Kategorie');
   const recipe:Recipe={family:kind==='gateway'?'cidr':kind,difficulty,seed,version,...(kind==='gateway'?{scenario:'gateway' as const}:{})};
   const generated=generate(recipe); // validates recipe and keeps the generator contract authoritative.
@@ -38,6 +40,7 @@ export function createQuestion(kind:PracticeKind, seed='reference', difficulty:R
     fields:problem.demands.map(d=>({id:d.id,label:`${d.label} · Netz/CIDR`,type:'cidr'}))};
 }
 export function solution(q:Question):Answers {
+  if(q.problem.family==='gateway-v2')return {local:gatewayV2Result(q.problem).answer};
   if(q.problem.family==='cidr'&&q.problem.mode==='diagnosis') {
     const r=diagnose(q.problem.cases[0]);
     return {local:['in-subnet','unusable'].includes(r.gatewayA)?'yes':'no'};
@@ -67,7 +70,9 @@ export function evaluate(q:Question,answers:Answers):Evaluation {
         explanation=pass?`Die Zuordnung erfüllt den Bedarf von ${requiredHosts(demand)} Hosts und die Grenzen des Stammnetzes.`:checked.issues.join(' ');
       } else {
         pass=normalized(f,raw)===expected[f.id];
-        if(q.problem.family==='cidr'&&q.problem.mode==='diagnosis') {
+        if(q.problem.family==='gateway-v2') {
+          explanation=gatewayV2Result(q.problem).explanation;
+        } else if(q.problem.family==='cidr'&&q.problem.mode==='diagnosis') {
           const c=q.problem.cases[0], r=diagnose(c);
           explanation=`PC-Netz: ${r.a.network}/${r.a.prefix}, Maske ${r.a.mask}, Broadcast ${r.a.broadcast}. ${expected.local==='yes'?'Das Gateway gehört rechnerisch zu diesem Netz.':'Das Gateway liegt außerhalb dieses Netzes.'} ${r.gatewayA==='unusable'?'Es ist jedoch keine nutzbare Gateway-Hostadresse. ':''}Die tatsächliche Erreichbarkeit ist ohne Layer-2- und Routinginformationen nicht eindeutig bestimmbar.`;
         } else if(q.problem.family==='subnet') {

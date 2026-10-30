@@ -4,6 +4,8 @@ import { usePractice } from './session';
 import { useLanguage } from '../../i18n';
 import { grade, subnet } from '../factory/math';
 import { ipToString } from '../../engine/ip';
+import { nextQuestion } from './progression';
+import { randomPracticeSeed } from './seeds';
 
 afterEach(()=>{vi.unstubAllGlobals();usePractice.setState({open:false,question:undefined,recent:{},attempts:{}});useLanguage.setState({language:'de'});});
 it('E02 asks only the requested question and distinguishes subnet membership from connectivity',()=>{
@@ -67,4 +69,49 @@ it('keeps answers, feedback and assistance across navigation/close/language chan
   expect(usePractice.getState().attempts[first.id]).toEqual(saved);expect(setItem).not.toHaveBeenCalled();
   usePractice.getState().answer('local','no');expect(usePractice.getState().attempts[first.id].result).toBeUndefined();
   expect(usePractice.getState().attempts[first.id].revealed).toBe(true);
+});
+it.each(PRACTICE_KINDS)('advances %s after an incorrect correction, clearing only its previous attempt and preserving reproducibility',kind=>{
+  const other=createQuestion(kind==='subnet'?'vlsm':'subnet','keep-this');
+  usePractice.getState().select(other);usePractice.getState().answer(other.fields[0].id,'stored answer');
+  let current=createQuestion(kind,'reference','intermediate');usePractice.getState().select(current);
+  // Cannot bypass the correction step.
+  usePractice.getState().advance(nextQuestion(current,'before-check'));
+  expect(usePractice.getState().question).toEqual(current);
+  const seen=new Set<string>();
+  for(let i=0;i<5;i++) {
+    usePractice.getState().answer(current.fields[0].id,'wrong');usePractice.getState().reveal();
+    usePractice.getState().check(evaluate(current,{[current.fields[0].id]:'wrong'}));
+    const next=nextQuestion(current,`sequence-${i}`),previous=current;
+    expect(JSON.stringify(next.problem)).not.toBe(JSON.stringify(previous.problem));
+    expect(nextQuestion(current,`sequence-${i}`)).toEqual(next);
+    expect(next.kind).toBe(kind);expect(next.recipe.difficulty).toBe('intermediate');
+    expect(createQuestion(kind,next.recipe.seed,next.recipe.difficulty,next.recipe.version)).toEqual(next);
+    usePractice.getState().advance(next);const s=usePractice.getState();
+    expect(s.attempts[previous.id]).toBeUndefined();expect(s.attempts[next.id]).toEqual({answers:{},revealed:false});
+    expect(s.attempts[other.id].answers[other.fields[0].id]).toBe('stored answer');
+    expect(s.recent[kind]).toEqual(next);expect(seen.has(next.id)).toBe(false);seen.add(next.id);current=next;
+  }
+});
+it('advances after a correct answer, then requires another correction before advancing again',()=>{
+  const first=createQuestion('gateway');usePractice.getState().select(first);
+  usePractice.getState().answer('local','yes');usePractice.getState().check(evaluate(first,{local:'yes'}));
+  const next=nextQuestion(first,'correct-answer');usePractice.getState().advance(next);
+  expect(usePractice.getState().question).toEqual(next);
+  usePractice.getState().advance(nextQuestion(next,'no-correction-yet'));
+  expect(usePractice.getState().question).toEqual(next);
+});
+it('uses eight-character seeds for new variants and deterministic retries while leaving manual and old UUID recipes opaque',()=>{
+  vi.spyOn(crypto,'getRandomValues').mockImplementation(array=>{(array as Uint8Array).set([0,15,160,255]);return array;});
+  try {
+    expect(randomPracticeSeed()).toBe('000fa0ff');
+    for(const kind of PRACTICE_KINDS) {
+      const first=createQuestion(kind,'reference'),next=nextQuestion(first);
+      expect(next.recipe.seed).toBe('000fa0ff');
+      expect(createQuestion(kind,next.recipe.seed,next.recipe.difficulty,next.recipe.version)).toEqual(next);
+      // Force a repeated seed/content, exercising the bounded deterministic retry.
+      const retry=nextQuestion(next);expect(retry.recipe.seed).toMatch(/^[a-f0-9]{8}$/);expect(retry.problem).not.toEqual(next.problem);
+      expect(nextQuestion(next)).toEqual(retry);
+      for(const seed of ['reference','37b3c848-b226-44c2-93eb-0337af1ce011-0','eigene Seed 東京'])expect(createQuestion(kind,seed).recipe.seed).toBe(seed);
+    }
+  }finally {vi.restoreAllMocks();}
 });

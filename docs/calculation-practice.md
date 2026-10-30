@@ -12,7 +12,13 @@ As 32 definições completas A–E continuam internas. Não são publicadas auto
 
 ## Uso
 
-`Antwort prüfen` mostra resultados por campo e explicações. Campos vazios são identificados individualmente e não interrompem a avaliação dos demais. Alterar uma resposta invalida o feedback anterior. `Lösung anzeigen` fica separado, não preenche respostas nem concede conclusão: a tentativa passa a indicar que houve consulta à solução.
+As configurações começam recolhidas. O resumo mostra categoria, dificuldade, idioma e seed; `Konfigurieren` exibe/recolhe os mesmos controles, mantendo respostas e feedback. O botão de posição no cabeçalho alterna a janela entre lateral e centro da região do canvas; isso não altera pan, zoom ou documentos. Posição e expansão são estados locais da janela, sem persistência após fechá-la/F5.
+
+`Antwort prüfen` mostra resultados por campo e explicações. Campos vazios são identificados individualmente e não interrompem a avaliação dos demais. Alterar uma resposta invalida o feedback anterior. Nas questões de escolha única Sim/Não, a explicação da correção é suficiente e não existe bloco redundante de solução. `Lösung anzeigen` continua disponível em subnetting/VLSM, não preenche respostas nem concede conclusão: a tentativa passa a indicar que houve consulta à solução.
+
+Após corrigir, `Nächste Aufgabe` aparece no rodapé, inclusive com respostas incorretas ou incompletas. Mantém categoria e dificuldade e usa `createQuestion` com uma seed nova. A UI compara os problemas e tenta até 32 seeds derivadas para impedir repetição consecutiva; a seed final aparece no resumo e reproduz a variante pelos controles normais. Novas seeds automáticas têm oito caracteres hexadecimais; seeds manuais, `reference` e UUIDs antigos conservam seu significado. Se não conseguir outra questão, conserva a resposta atual e apresenta erro. Ao avançar, limpa somente a tentativa anterior da categoria atual (respostas, feedback e solução consultada); tentativas de outras categorias continuam em memória. A questão nova exige uma nova correção antes de avançar novamente.
+
+A escolha Ja/Nein/Nicht eindeutig bestimmbar usa três radios com aparência de botões horizontais, com seleção exclusiva e navegação nativa por teclado. Dados da questão usam colunas CSS Grid para rótulos e valores. A [auditoria de variedade](practice-variety-audit.md) documenta referências, arquétipos expostos, amostra de 900 seeds, dificuldades e limites estruturais do VLSM.
 
 `Andere Variante` cria uma seed nova, mantendo categoria e dificuldade. É possível informar uma seed e usar `Diese Seed öffnen` para reproduzir. A receita exibida contém família, versão, dificuldade, cenário e seed. Trocar de categoria retoma sua variante mais recente; reabrir uma receita já visitada retoma as respostas em memória.
 
@@ -23,6 +29,7 @@ Controles estão traduzidos em DE/EN/PT-BR. Enunciados e explicações permanece
 | Arquivo | Responsabilidade |
 |---|---|
 | `src/exercises/practice/model.ts` | Allowlist de três categorias; receita, campos, solução e avaliação seletiva |
+| `src/exercises/practice/progression.ts` | Próxima variante reproduzível usando o gerador existente, com proteção contra repetição consecutiva |
 | `src/exercises/practice/session.ts` | Estado temporário de tentativas, respostas, feedback, solução consultada e última variante por categoria |
 | `src/exercises/practice/PracticeSurface.tsx` | Entrada no menu e carregamento lazy do painel |
 | `src/exercises/practice/PracticePanel.tsx` | Formulário genérico pelos descritores; não calcula máscaras ou sub-redes |
@@ -62,4 +69,10 @@ git diff --check
 
 O harness Chromium reutiliza perfil temporário, banco `netlab-idb-test-*`, porta aleatória e política de downloads isolada. Testa os dois exercícios práticos antigos, novos formulários, respostas incompletas, solução separada, reprodução de seed, idioma, memória durante navegação, F5 sem persistência matemática, teclas internacionais e proteção de campos/xterm. Capturas: Graphite Dark 1440 px, Classic Light 700 px e mobile 390 px.
 
+O refinamento de UX acrescenta verificação de configurações inicialmente recolhidas, expansão por teclado sem perda de respostas, próxima questão após erro, limpeza restrita à tentativa anterior, reprodução da seed nova e posição lateral/central sem alteração do viewport/documento. Validação: 81 testes direcionados (prática, traduções e atalhos), 118 verificações Chromium, TypeScript, build e `git diff --check` aprovados. A comparação visual reúne sete capturas, com cinco PNGs principais selecionados para compartilhar. Permanecem os avisos existentes de SSR `useLayoutEffect` nos testes da homepage e de chunk maior que 500 kB no build.
+
 Artefatos ficam em `.playwright-mcp/reviews/`, ignorados pelo Git; capturas anteriores são arquivadas pelo gerador existente. Nenhum dado do perfil real é usado.
+
+## E02 v2
+
+A Rechenpraxis oferece agora E02 v2 com pertencimento matemático e conectividade baseada em evidências. A v1 permanece selecionável e reproduzível, sem mudanças na fábrica. Consulte [practical E02 v2](practice-e02-v2.md) para compatibilidade, exemplos, distribuição de 3.000 seeds, apresentação IPv4 por octetos e o atalho físico Espaço após correção.
