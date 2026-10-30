@@ -88,13 +88,17 @@ export default function PracticePanel() {
         <form className="practice-answer-form" aria-label={t('practice.answers')} onSubmit={e=>{e.preventDefault();s.check(evaluate(q,attempt.answers));heading.current?.focus({preventScroll:true});}} noValidate>
           {q.fields.map(f=>{
             const r=attempt.result?.fields[f.id],inputId=`practice-${f.id}`;
+            const correctChoice=f.type==='choice'&&r?.state==='incorrect'?solution(q)[f.id]:undefined;
             return <div className="practice-field" key={f.id} data-result={r?.state}>
               {f.type==='choice'?<fieldset id={inputId} className="practice-choice" aria-describedby={r?inputId+'-feedback':undefined} aria-invalid={r&&r.state!=='correct'}>
                 <legend lang="de">{f.label}</legend><div className="practice-choice-options">
-                {f.options?.map(o=><label className="btn" key={o.value}>
+                {f.options?.map(o=>{
+                  const choiceResult=correctChoice===undefined?undefined:o.value===correctChoice?'correct':attempt.answers[f.id]===o.value?'incorrect':undefined;
+                  return <label className="btn" key={o.value} data-choice-result={choiceResult}>
                   <input type="radio" name={inputId} value={o.value} checked={attempt.answers[f.id]===o.value} onChange={()=>s.answer(f.id,o.value)} />
                   <span>{labels[o.label]}</span>
-                </label>)}</div>
+                  {choiceResult&&<span className="practice-choice-verdict"><span aria-hidden="true">{choiceResult==='correct'?'✓':'✕'}</span> {states[choiceResult]}</span>}
+                </label>;})}</div>
               </fieldset>:<><label htmlFor={inputId} lang="de">{f.label}</label><input id={inputId} value={attempt.answers[f.id]??''} inputMode={f.type==='integer'?'numeric':'text'} autoComplete="off" spellCheck={false} maxLength={80}
                 onChange={e=>s.answer(f.id,e.target.value)} aria-describedby={r?inputId+'-feedback':undefined} aria-invalid={r&&r.state!=='correct'} /></>}
               {r&&<div id={inputId+'-feedback'} className="practice-feedback"><strong>{states[r.state]}</strong>{r.explanation&&<p lang="de">{r.explanation}</p>}</div>}

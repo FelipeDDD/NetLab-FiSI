@@ -3,6 +3,8 @@
 .practice-panel header { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--ui-border); }
 .practice-panel h2, .practice-panel h3 { font-size: 15px; margin: 8px 0; }
 .practice-panel h2 { min-width: 0; }
+/* Programmatic reading target; interactive controls keep their focus indicators. */
+.practice-panel #practice-heading:focus { outline: none; }
 .practice-header-actions { display: flex; flex-shrink: 0; gap: 6px; }
 .practice-configuration { padding: 12px 0; border-bottom: 1px solid var(--ui-border); }
 .practice-config-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -43,6 +45,10 @@
 .practice-choice-options label { position: relative; display: grid; place-items: center; text-align: center; min-height: 38px; padding: 6px; box-sizing: border-box; overflow-wrap: anywhere; }
 .practice-choice-options input { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; border: 0; }
 .practice-choice-options label:has(input:checked) { color: var(--button-selected-text); background: var(--button-selected-surface); border-color: var(--button-primary-border); box-shadow: inset 0 -2px 0 var(--button-accent); font-weight: 600; }
+.practice-choice-options label[data-choice-result="correct"] { --practice-choice-feedback: var(--ui-success); }
+.practice-choice-options label[data-choice-result="incorrect"] { --practice-choice-feedback: var(--ui-danger); }
+.practice-choice .practice-choice-options label[data-choice-result] { color: var(--ui-text); background: color-mix(in srgb, var(--practice-choice-feedback) 10%, var(--ui-surface-card)); border-color: var(--practice-choice-feedback); box-shadow: inset 0 -2px 0 var(--practice-choice-feedback); }
+.practice-choice-verdict { color: var(--practice-choice-feedback); font-size: 12px; font-weight: 600; }
 .practice-choice-options label:has(input:focus-visible) { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 .practice-choice[aria-invalid="true"] .practice-choice-options { border-radius: 7px; outline: 1px solid var(--ui-danger); outline-offset: 3px; }
 .practice-field { margin: 12px 0; }

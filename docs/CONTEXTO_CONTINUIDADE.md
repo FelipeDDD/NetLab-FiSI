@@ -1,9 +1,16 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **28/10/2026**, para continuar no notebook usando VS Code/Codex.
-Branch: **`main`**, remoto `origin` (`FelipeDDD/NetLab-FiSI`). Base desta retomada:
-**`7abb278`**, enviado ao remoto junto com **`adee445`** (Übungen Beta).
+Atualizado em **30/10/2026**, para continuar entre notebook e desktop.
+Branch: **`main`**, remoto `origin` (`FelipeDDD/NetLab-FiSI`). Base anterior à consolidação desta rodada: **`a276ddb`**.
 Este documento descreve o estado encontrado; o código e os testes continuam sendo a fonte de verdade.
+
+## Atualização de 30/10/2026 — Rechenpraxis e Netzwerkdiagnose
+
+- Rechenpraxis publicada: A Subnetting, B VLSM e E02 v1/v2. O feedback de alternativa incorreta destaca também a correta, preservando a escolha do aluno. O título mantém foco programático sem outline; controles interativos conservam seus indicadores. Ver [practice-e02-v2.md](practice-e02-v2.md).
+- [Auditoria atual](educational-archetypes-audit.md): 32 drafts internos, seis exercícios de simulação publicados no Beta e cinco Labs legados. Para disponibilidade dos exercícios, esta auditoria substitui as contagens e descrições históricas abaixo.
+- Netzwerkdiagnose continua **interno, sem interface ou novos menus**: [etapa 1](network-diagnosis-pilot.md), oito casos fixos; [etapa 2](network-diagnosis-generation.md), 12 receitas determinísticas ND02/ND05, dificuldades e 12 exemplos completos para revisão humana. Fontes/testes em src/exercises/diagnosis; auditoria offline em scripts/audit-diagnosis-generation.mjs.
+- Validação do piloto: 917 testes direcionados, TypeScript, build e amostragem de 1.200 seeds. Testes de comparação documental aceitam LF/CRLF para continuidade entre computadores.
+- Próxima decisão: revisar a qualidade dos 12 exemplos e dos níveis antes de ampliar receitas ou publicar conteúdo. E02 v1/v2, oito referências fixas, engine e dados salvos foram preservados.
 
 ## Leia primeiro — estado atual e decisões pendentes
 

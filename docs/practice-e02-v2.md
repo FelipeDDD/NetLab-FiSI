@@ -44,6 +44,10 @@ Há três repetições visíveis não necessariamente consecutivas em 1.000 seed
 
 ## Apresentação e teclado
 
+Refinamento de 30/10/2026: após verificar uma alternativa incorreta, a escolha do aluno recebe marca vermelha e “Nicht richtig”; a alternativa correta recebe marca verde e “Richtig”, sem ser selecionada automaticamente. Ícones e texto complementam as cores nos dois temas. Respostas vazias não revelam o gabarito, uma nova escolha limpa o feedback e respostas corretas conservam a apresentação positiva existente. Campos de A/B continuam com correção individual.
+
+O título que recebe foco programático mantém o foco de leitura, mas não exibe outline. A regra CSS é restrita a esse título; botões, radios e demais controles mantêm indicadores de teclado. A revisão em scripts/e02-review.mjs cobre correção, nova tentativa, Espaço, botão de avanço e navegação por Tab/Shift+Tab/Enter.
+
 `Ipv4Value.tsx` apresenta cada octeto em 3ch, com separadores de 1ch e CIDR preservado. Nenhum espaço é inserido no texto; os spans são inline/inline-block para manter a seleção/cópia nativa contínua. Valores não IPv4 continuam como texto. Em telas menores que 420px, rótulos ficam acima dos valores para evitar compressão, mantendo os pontos dos endereços alinhados. Fonte monoespaçada e nomes acessíveis preservam o endereço original.
 
 Espaço físico (`code=Space`) usa a mesma operação do botão após correção, inclusive resposta errada. O handler está na região da prática; não existe listener global novo. A correção devolve foco ao título, permitindo avançar imediatamente. Ignora campos, radios, botões, selects, links, conteúdo editável, diálogos, composição, modificadores, eventos já consumidos e repetição. Outros painéis/xterm ficam fora do escopo. Só chama `preventDefault` quando a nova questão é criada. O comportamento global de Espaço/pan do React Flow não foi alterado.
