@@ -24,7 +24,11 @@ export function readLanguage(): Language {
 export function translate(language: Language, key: TranslationKey, values: Record<string, string | number> = {}): string {
   const [domain, name] = key.split('.') as [Domain, string];
   const table = catalogs[domain] as Record<Language, Record<string, string>>;
-  const message = table[language]?.[name] || table.en[name];
+  return translateMessages(table,language,name,values);
+}
+/** Same interpolation/fallback for lazily loaded or development-only catalogs. */
+export function translateMessages<K extends string>(table:Record<Language,Record<K,string>>,language:Language,key:K,values:Record<string,string|number>={}):string {
+  const message = table[language]?.[key] || table.en[key];
   return message.replace(/\{(\w+)\}/g, (token, field: string) => Object.hasOwn(values, field) ? String(values[field]) : token);
 }
 export const useLanguage = create<{ language: Language; setLanguage(value: Language): void }>(set => ({

@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { generateReview } from './visual-review.mjs';
 import { runE02Review } from './e02-review.mjs';
+import { runND02PracticeReview } from './nd02-practice-review.mjs';
 
 export async function runPracticeReview({page,url,root,report}) {
   const database='netlab-idb-test-'+randomUUID(), directory=path.join(root,'.playwright-mcp/reviews/raw/practice-e02-v2-staging');
@@ -17,8 +18,8 @@ export async function runPracticeReview({page,url,root,report}) {
   };
   const choose=async(selector,value)=>{if(selector==='#practice-local')return click(`#practice-local label:has(input[value="${value}"])`);await page.evaluate(`const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));`);await delay(80);};
   const type=async(selector,text)=>{await click(selector);await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65});await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65});await page.send('Input.insertText',{text});await delay(60);};
-  const shot=async(name,variant,width)=>{
-    await page.evaluate("document.querySelector('.practice-body').scrollTop=0;");await delay(100);
+  const shot=async(name,variant,width,scroll='top')=>{
+    await page.evaluate(`const body=document.querySelector('.practice-body');body.scrollTop=${scroll==='bottom'?'body.scrollHeight':'0'};`);await delay(100);
     const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
     await writeFile(path.join(directory,name+'.png'),Buffer.from(png.data,'base64'));
     screenshots.push({source:path.relative(root,path.join(directory,name+'.png')).split(path.sep).join('/'),scene:name,variant,state:'normal',width,height:960});
@@ -38,6 +39,19 @@ export async function runPracticeReview({page,url,root,report}) {
   try {
     await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});await mount();
     await page.evaluate("theme.getState().setTheme('graphite-dark');window.beforeTopology=JSON.stringify(store.getState().captureWorkspaceDocument());window.beforeProgress=JSON.stringify(await ws.repository.getMeta('exercises:beta:v1'));");
+    await test('toolbar: shared language selector follows Help and preserves topology at 700/1440',async()=>{
+      for(const width of [1440,700]) {
+        await page.send('Emulation.setDeviceMetricsOverride',{width,height:960,deviceScaleFactor:1,mobile:false});await delay(120);
+        for(const language of ['de','pt-BR','en','de']) {
+          await choose('#toolbar-language',language);
+          assert.equal(await page.evaluate('return lang.getState().language;'),language);
+          assert.equal(await page.evaluate("return JSON.stringify(store.getState().captureWorkspaceDocument());"),await page.evaluate('return beforeTopology;'));
+          assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth+1;'));
+          assert(await page.evaluate("const e=document.querySelector('#toolbar-language'),r=e.getBoundingClientRect();return r.width>30&&r.x>=0&&r.right<=innerWidth;"));
+        }
+      }
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});await delay(150);
+    });
     await test('practice: selective menu and E02 single-field correction',async()=>{
       await open();assert.equal(await page.evaluate("return document.querySelectorAll('.practice-field').length;"),1);
       assert.equal(await page.evaluate("return (await import('/src/exercises/practice/session.ts')).usePractice.getState().question.recipe.version;"),2);
@@ -141,8 +155,8 @@ export async function runPracticeReview({page,url,root,report}) {
     });
     await runE02Review({page,test,click,choose,type,shot,delay});
     await test('shortcut: physical DE/EN/PT-BR key, repeat/composition/modifier and editable focus guards',async()=>{
-      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});
-      await click('.practice-config-toggle');
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});await delay(150);
+      if(await page.evaluate("return document.querySelector('.practice-config-toggle').getAttribute('aria-expanded')==='false';"))await click('.practice-config-toggle');
       // Test-only fixture; all changes stay in this disposable document/database.
       await page.evaluate("const {createDevice}=await import('/src/engine/factory.ts');createDevice(sim.net,'host',{id:'shortcut-pc',name:'PC'});store.getState().refresh();store.getState().openTerminal('shortcut-pc');");await wait("document.querySelector('.xterm-helper-textarea')");
       const send=async(key,extra={})=>page.evaluate(`const e=new KeyboardEvent('keydown',{key:${JSON.stringify(key)},code:'Backquote',bubbles:true,cancelable:true,...${JSON.stringify(extra)}});document.activeElement.dispatchEvent(e);return e.defaultPrevented;`);
@@ -156,7 +170,7 @@ export async function runPracticeReview({page,url,root,report}) {
         await page.evaluate("document.querySelector('.canvas').focus();");assert.equal(await send('Dead',extra),false);assert.equal(await page.evaluate('return store.getState().terminalDockCollapsed;'),false);
       }
       for(const selector of ['.practice-seed input','.xterm-helper-textarea']) {
-        await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus();`);assert.equal(await send('Dead'),false);assert.equal(await page.evaluate('return store.getState().terminalDockCollapsed;'),false);
+        assert(await page.evaluate(`const e=document.querySelector(${JSON.stringify(selector)});e.focus();return document.activeElement===e;`),'Editable test target must have focus: '+selector);assert.equal(await send('Dead'),false);assert.equal(await page.evaluate('return store.getState().terminalDockCollapsed;'),false);
         await page.send('Input.insertText',{text:"'^`"});
         const question=await page.evaluate("return (await import('/src/exercises/practice/session.ts')).usePractice.getState().question.id;");
         await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:' ',code:'Space',windowsVirtualKeyCode:32,text:' '});
@@ -171,13 +185,14 @@ export async function runPracticeReview({page,url,root,report}) {
       assert.equal(await page.evaluate("return (document.querySelector('#practice-local input:checked')?.value??'');"),'');
       assert.equal(await page.evaluate("const r=await ws.repository.getMeta('exercises:beta:v1');return r.value;"),null);
     });
+    await runND02PracticeReview({page,test,click,choose,type,shot,delay});
   } finally {
     await page.evaluate('window.ws?.dispose();');
     await page.evaluate(`await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase(${JSON.stringify(database)});r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error('Practice cleanup blocked'));});`);
     Object.assign(report.results,results);await writeFile(path.join(directory,'results.json'),JSON.stringify(results,null,2));
     if(screenshots.length&&Object.values(results).every(r=>r.passed)) {
       const manifest=path.join(directory,'manifest.json');
-      await writeFile(manifest,JSON.stringify({id:'practice-e02-v2',title:'Rechenpraxis · E02 v2, IPv4 und Leertaste',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['normal'],captures:screenshots,share:screenshots.filter(c=>c.scene.startsWith('v2-')).map(c=>({...c,name:c.scene})),shareContactSheet:false}));
+      await writeFile(manifest,JSON.stringify({id:'practice-nd02-v3',title:'Rechenpraxis · Subnetzgrenzen ND02 v3',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['normal'],captures:screenshots,share:screenshots.filter(c=>c.scene.startsWith('nd02-')&&!c.scene.endsWith('-calculation')&&!c.scene.endsWith('-mixed')).map(c=>({...c,name:c.scene})),shareContactSheet:false}));
       report.practiceReview=await generateReview(manifest);
     }
   }

@@ -52,6 +52,7 @@ body,
 }
 
 .toolbar-navigation, .toolbar-navigation [role="menubar"] { display: flex; align-items: center; min-width: 0; gap: 2px; }
+.language-selector--compact select { width: 76px; min-width: 0; height: 30px; padding: 3px 5px; font-size: 12px; }
 @media (min-width: 1101px) {
   .toolbar .brand { width: calc(var(--catalog-width) - 24px); text-align: center; }
   .toolbar-navigation [role="menubar"] { gap: 6px; }

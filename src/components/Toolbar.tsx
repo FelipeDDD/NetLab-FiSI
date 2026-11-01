@@ -10,6 +10,7 @@ import { useWorkspaceUI } from '../workspace/WorkspaceUI';
 import { ExerciseMenu } from '../exercises/ExerciseUI';
 import { MarkingsButton } from './AreaMarkings';
 import { useTranslation } from '../i18n';
+import { LanguageSelector } from '../i18n/LanguageSelector';
 import { consumeHomeIntent } from '../home/navigation';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
@@ -201,6 +202,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
             }}>{t(item.label)}</button>)}
         </div>}
     </nav>
+    <LanguageSelector compact id="toolbar-language" />
 
     <div className="toolbar-group toolbar-quick-actions" aria-label="Schnellaktionen">
       <MarkingsButton onOpen={() => { closeMenu(); setDialog(null); }} />

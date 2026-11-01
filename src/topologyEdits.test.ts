@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { Network } from './engine/network';
 import { createDevice } from './engine/factory';
 import { IpDevice } from './engine/ipdevice';
+import { ApDevice } from './engine/switch';
 import { parseCidr, parseIp } from './engine/ip';
 import { restoreNetwork, serializeNetwork } from './engine/serialize';
 import { Shell } from './commands/shell';
@@ -43,7 +44,7 @@ it.each(['set-nameserver', 'tcp', 'udp', 'set-ssid', 'set-port-vlan'] as const)(
   const net = new Network(), device = createDevice(net, type === 'set-ssid' ? 'ap' : type === 'set-port-vlan' ? 'switch' : 'host');
   const operation: InspectorOperation = type === 'set-nameserver'
     ? { type, label: 'DNS', deviceId: device.id, before: null, after: parseIp('192.0.2.53') }
-    : type === 'set-ssid' ? { type, label: 'SSID', deviceId: device.id, before: 'netsim-wifi', after: 'Lab 🌐' }
+    : type === 'set-ssid' ? { type, label: 'SSID', deviceId: device.id, before: (device as ApDevice).ssid, after: 'Lab 🌐' }
       : type === 'set-port-vlan' ? { type, label: 'VLAN', deviceId: device.id, port: 'eth7', before: 1, after: 20 }
         : { type: 'set-services', label: 'Ports', deviceId: device.id, proto: type, before: [], after: [22, 443] };
   expect(applyInspectorEdit(net, operation, 'redo')).toBe(true);

@@ -54,6 +54,9 @@
 .practice-field { margin: 12px 0; }
 .practice-feedback { margin-top: 8px; padding: 8px 10px; background: var(--ui-surface-card); border-radius: 5px; font-size: 13px; }
 .practice-result-summary { font-weight: 600; }
+.practice-calculation { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--ui-border); overflow-wrap: anywhere; }
+.practice-calculation h4 { margin: 4px 0; }
+.practice-choice:has(.practice-choice-options > :last-child:nth-child(2)) .practice-choice-options { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .practice-field[data-result="correct"] .practice-feedback strong { color: var(--ui-success); }
 .practice-field[data-result="incorrect"] .practice-feedback strong { color: var(--ui-danger); }
 .practice-solution { border-top: 1px solid var(--ui-border); margin-top: 12px; padding-top: 8px; }

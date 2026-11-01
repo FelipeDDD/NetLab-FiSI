@@ -40,6 +40,7 @@ export type IcmpEvent =
   | { type: 'send-error'; seq: number | null; message: string };
 
 export type SocketResult = 'open' | 'refused' | 'timeout' | 'unreachable';
+export interface SocketControl { cancel?: () => void }
 
 export type TcpSessionEvent =
   | { type: 'open' }
@@ -531,12 +532,14 @@ export abstract class IpDevice extends Device {
     return { srcPort, close, error: null };
   }
 
-  connectTcp(dst: U32, port: number, timeoutMs: number, cb: (r: SocketResult) => void): string | null {
+  connectTcp(dst: U32, port: number, timeoutMs: number, cb: (r: SocketResult) => void, control?: SocketControl): string | null {
     let finished = false;
+    let timeout: ScheduledEvent | undefined;
     const finish = (r: SocketResult) => {
       if (finished) return;
       finished = true;
       conn.close();
+      if (timeout) this.network.scheduler.cancel(timeout);
       cb(r);
     };
     const conn = this.openTcp(dst, port, (ev) => {
@@ -545,7 +548,8 @@ export abstract class IpDevice extends Device {
       else if (ev.type === 'unreachable') finish('unreachable');
     });
     if (conn.error) return conn.error;
-    this.schedule(timeoutMs, () => finish('timeout'));
+    timeout = this.schedule(timeoutMs, () => finish('timeout'));
+    if (control) control.cancel = () => { finished = true; conn.close(); if (timeout) this.network.scheduler.cancel(timeout); };
     return null;
   }
 
@@ -582,13 +586,16 @@ export abstract class IpDevice extends Device {
         | { ok: false; error: 'refused' | 'timeout' | 'unreachable' | 'empty' | string },
     ) => void,
     onConnect?: () => void,
+    control?: SocketControl,
   ): string | null {
     let finished = false;
     let connected = false;
+    let timeout: ScheduledEvent | undefined;
     const finish = (res: Parameters<typeof cb>[0]) => {
       if (finished) return;
       finished = true;
       conn.close();
+      if (timeout) this.network.scheduler.cancel(timeout);
       cb(res);
     };
     const conn = this.openTcp(dst, port, (ev) => {
@@ -614,9 +621,10 @@ export abstract class IpDevice extends Device {
       }
     });
     if (conn.error) return conn.error;
-    this.schedule(timeoutMs, () =>
+    timeout = this.schedule(timeoutMs, () =>
       finish({ ok: false, error: connected ? 'empty' : 'timeout' }),
     );
+    if (control) control.cancel = () => { finished = true; conn.close(); if (timeout) this.network.scheduler.cancel(timeout); };
     return null;
   }
 
@@ -1169,6 +1177,9 @@ export abstract class IpDevice extends Device {
   private handleServerTcpData(pkt: Ipv4Packet, seg: TcpSegment): void {
     const app = seg.app!;
     if (app.kind === 'http-request' && this.httpServer?.enabled && seg.dstPort === this.httpServer.port) {
+      // The existing one-page service has no filesystem: root and index are aliases.
+      const path = app.path.split('?')[0];
+      const found = path === '/' || path === '/index.html';
       this.sendL4(
         pkt.src,
         {
@@ -1179,7 +1190,8 @@ export abstract class IpDevice extends Device {
           ack: true,
           rst: false,
           fin: false,
-          app: { kind: 'http-response', status: 200, reason: 'OK', body: this.httpServer.body },
+          app: { kind: 'http-response', status: found ? 200 : 404, reason: found ? 'OK' : 'Not Found',
+            body: found ? this.httpServer.body : '<h1>404 Not Found</h1><p>This simulated server provides / and /index.html.</p>' },
         },
         { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined },
       );

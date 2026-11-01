@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { newInspectorDraft, syncInspectorDraft } from './inspectorDraft';
+import { acceptedInspectorDraft, inspectorDraftDirty, newInspectorDraft, syncInspectorDraft } from './inspectorDraft';
 
 it('updates confirmed values without resetting drafts on unchanged simulation refreshes', () => {
   const clean = newInspectorDraft('pc1:eth0', '192.0.2.1/24');
@@ -42,4 +42,16 @@ it.each(['dns:records', 'http:body'])('preserves multiline %s drafts and detects
   expect(changed.text).toBe(dirty.text); expect(changed.stale).toBe(true);
   expect(syncInspectorDraft(newInspectorDraft(identity, source), identity, '')).toEqual(newInspectorDraft(identity, ''));
   expect(syncInspectorDraft(dirty, `other-server:${field}`, 'other body')).toEqual(newInspectorDraft(`other-server:${field}`, 'other body'));
+});
+
+it('keeps accepted DNS formatting on refresh without a pending form and reconciles Undo/Redo', () => {
+  const text = '10.0.0.2 z.lan\n\n10.0.0.1 a.lan\n', source = '10.0.0.1 a.lan\n10.0.0.2 z.lan';
+  const draft = acceptedInspectorDraft('server:dns:records', source, text);
+  expect(inspectorDraftDirty(draft)).toBe(false);
+  expect(syncInspectorDraft(draft, draft.identity, source)).toBe(draft);
+  const typing = { ...draft, text: text + '10.0.0.' };
+  expect(inspectorDraftDirty(typing)).toBe(true);
+  expect(syncInspectorDraft(typing, draft.identity, source).text).toBe(typing.text);
+  expect(syncInspectorDraft(draft, draft.identity, '')).toEqual(newInspectorDraft(draft.identity, ''));
+  expect(syncInspectorDraft(draft, 'other:dns:records', source).text).toBe(source);
 });

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createQuestion, evaluate, solution, PRACTICE_KINDS } from './model';
-import { usePractice } from './session';
+import { usePractice, initialAnswers } from './session';
 import { useLanguage } from '../../i18n';
 import { grade, subnet } from '../factory/math';
 import { ipToString } from '../../engine/ip';
@@ -80,14 +80,14 @@ it.each(PRACTICE_KINDS)('advances %s after an incorrect correction, clearing onl
   const seen=new Set<string>();
   for(let i=0;i<5;i++) {
     usePractice.getState().answer(current.fields[0].id,'wrong');usePractice.getState().reveal();
-    usePractice.getState().check(evaluate(current,{[current.fields[0].id]:'wrong'}));
+    usePractice.getState().check(evaluate(current,{...solution(current),[current.fields[0].id]:current.kind==='boundaries'?(solution(current)[current.fields[0].id]==='yes'?'no':'yes'):'wrong'}));
     const next=nextQuestion(current,`sequence-${i}`),previous=current;
     expect(JSON.stringify(next.problem)).not.toBe(JSON.stringify(previous.problem));
     expect(nextQuestion(current,`sequence-${i}`)).toEqual(next);
     expect(next.kind).toBe(kind);expect(next.recipe.difficulty).toBe('intermediate');
     expect(createQuestion(kind,next.recipe.seed,next.recipe.difficulty,next.recipe.version)).toEqual(next);
     usePractice.getState().advance(next);const s=usePractice.getState();
-    expect(s.attempts[previous.id]).toBeUndefined();expect(s.attempts[next.id]).toEqual({answers:{},revealed:false});
+    expect(s.attempts[previous.id]).toBeUndefined();expect(s.attempts[next.id]).toEqual({answers:initialAnswers(next),revealed:false});
     expect(s.attempts[other.id].answers[other.fields[0].id]).toBe('stored answer');
     expect(s.recent[kind]).toEqual(next);expect(seen.has(next.id)).toBe(false);seen.add(next.id);current=next;
   }

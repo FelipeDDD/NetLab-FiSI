@@ -1,0 +1,8 @@
+.diagnosis-preview-page { position: relative; height: 100dvh; min-width: 0; background: var(--ui-surface-panel); color: var(--ui-text); padding: 0; }
+.diagnosis-preview-panel { width: min(760px,calc(100% - 24px)); left: 50%; transform: translateX(-50%); }
+.diagnosis-evidence { background: var(--ui-surface-card); border-radius: 6px; padding: 6px 12px; margin-top: 12px; overflow-wrap: anywhere; }
+.diagnosis-preview-panel .practice-choice-options { grid-template-columns: repeat(auto-fit,minmax(95px,1fr)); }
+.diagnosis-recipe { padding: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
+.diagnosis-preview-panel .practice-feedback li { margin: 6px 0; }
+.diagnosis-mask { display:block; width:min(100%,240px); box-sizing:border-box; margin-top:8px; font-family:Consolas,monospace; }
+@media(max-width:700px) { .diagnosis-preview-panel.practice-panel { left: 6px; transform: none; width: calc(100% - 12px); } }

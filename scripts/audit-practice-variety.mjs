@@ -30,7 +30,9 @@ function oracle(q,a) {
   }
 }
 try {
-  const {createQuestion,solution,evaluate,PRACTICE_KINDS}=await vite.ssrLoadModule('/src/exercises/practice/model.ts');
+  const {createQuestion,solution,evaluate,PRACTICE_KINDS:allKinds}=await vite.ssrLoadModule('/src/exercises/practice/model.ts');
+  // This is the frozen A/B/E v1 audit; ND02 v3 has its own independent audit.
+  const PRACTICE_KINDS=allKinds.filter(kind=>kind!=='boundaries');
   const {NETWORK_FACTORY_DRAFTS:catalog}=await vite.ssrLoadModule('/src/exercises/factory/catalog.ts');
   const report={seedPattern:'audit-variety-000 … audit-variety-099',perFamilyPerDifficulty:100,total:0,referenceCounts:Object.fromEntries(['A','B','E'].map(g=>[g,catalog.filter(d=>d.group===g).length])),samples:[],legacyRecipeSha256:''};
   for(const kind of PRACTICE_KINDS)for(const difficulty of ['beginner','intermediate','advanced']) {

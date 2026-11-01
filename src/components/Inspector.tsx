@@ -14,7 +14,7 @@ import { ArpTable, MacTable, RoutingTable } from './DiagnosticTables';
 import { formatConntrack } from '../commands/shell';
 import { listRuleset } from '../engine/firewall-fmt';
 import { InterfaceIpv4Panel } from './InterfaceIpv4Panel';
-import { newInspectorDraft, syncInspectorDraft } from '../inspectorDraft';
+import { acceptedInspectorDraft, inspectorDraftDirty, newInspectorDraft, syncInspectorDraft } from '../inspectorDraft';
 import { sortedDnsRecords } from '../topologyEdits';
 import { sortedServicePorts } from '../topologyHistory';
 import { InspectorTabs } from './InspectorTabs';
@@ -25,30 +25,47 @@ import type { NetInterface } from '../engine/device';
 import { InterfaceSummary, interfaceConnection } from './InterfaceConnection';
 import { InfoTooltip } from './InfoTooltip';
 import { usePendingForm } from '../persistence/usePendingForm';
+import {OpenDesktopButton} from '../browser/DesktopSurface';
 
 function useInspectorDraft(identity: string, value: string, readCurrent: () => string | undefined,
-  onCommit: (text: string) => string | null | void) {
+  onCommit: (text: string) => string | null | void, preserveFormatting = false) {
   const setNotice = useStore((s) => s.setNotice);
   const [draft, setDraft] = useState(() => newInspectorDraft(identity, value));
   const current = syncInspectorDraft(draft, identity, value);
+  const [error, setError] = useState<string | null>(null);
   const pending = useRef(current); pending.current = current;
-  usePendingForm(() => pending.current.text !== pending.current.source);
+  usePendingForm(() => inspectorDraftDirty(pending.current));
   if (current !== draft) setDraft(current);
   return {
     value: current.text,
-    onChange: (text: string) => { pending.current = { ...newInspectorDraft(identity, readCurrent() ?? value), text }; setDraft(pending.current); },
+    error,
+    onChange: (text: string) => {
+      const latest = readCurrent() ?? value;
+      pending.current = { ...(latest === current.source && !current.stale ? current : newInspectorDraft(identity, latest)), text };
+      setDraft(pending.current); setError(null);
+    },
     commit: () => {
       // Read the engine too: a store edit can precede React's next render.
       const latest = readCurrent(), checked = syncInspectorDraft(current, identity, latest ?? value);
       if (latest === undefined || checked.stale) {
+        if (latest !== undefined && checked.stale && preserveFormatting) {
+          const message = 'DNS-Einträge wurden zwischenzeitlich geändert. Der Entwurf bleibt erhalten; bitte prüfen und erneut bearbeiten.';
+          pending.current = checked; setDraft(checked); setError(message); setNotice(message); return;
+        }
         setDraft(newInspectorDraft(identity, latest ?? value));
         pending.current = newInspectorDraft(identity, latest ?? value);
         if (checked.stale) setNotice('Value changed elsewhere; the outdated draft was not applied.');
         return;
       }
-      const err = checked.text === checked.source ? null : onCommit(checked.text);
-      setDraft(newInspectorDraft(identity, readCurrent() ?? value));
-      pending.current = newInspectorDraft(identity, readCurrent() ?? value);
+      const err = !inspectorDraftDirty(checked) ? null : onCommit(checked.text);
+      if (err && preserveFormatting) {
+        // Validation must never erase the user's input or mark it as saved.
+        pending.current = checked; setDraft(checked); setError(err); setNotice(err); return;
+      }
+      pending.current = preserveFormatting
+        ? acceptedInspectorDraft(identity, readCurrent() ?? value, checked.text)
+        : newInspectorDraft(identity, readCurrent() ?? value);
+      setDraft(pending.current); setError(null);
       if (err) setNotice(err);
     },
   };
@@ -79,13 +96,16 @@ function servicePortsValue(deviceId: string, proto: 'tcp' | 'udp'): string | und
   return device instanceof IpDevice ? sortedServicePorts(device.services[proto]).join(', ') : undefined;
 }
 
-function InspectorSettingTextarea({ identity, value, readCurrent, onCommit, label, placeholder }: {
+function InspectorSettingTextarea({ identity, value, readCurrent, onCommit, label, placeholder, preserveFormatting = false }: {
   identity: string; value: string; readCurrent: () => string | undefined;
-  onCommit: (text: string) => string | null | void; label: string; placeholder?: string;
+  onCommit: (text: string) => string | null | void; label: string; placeholder?: string; preserveFormatting?: boolean;
 }) {
-  const draft = useInspectorDraft(identity, value, readCurrent, onCommit);
-  return <textarea className="svc-textarea" aria-label={label} placeholder={placeholder}
-    value={draft.value} onChange={(e) => draft.onChange(e.target.value)} onBlur={draft.commit} />;
+  const draft = useInspectorDraft(identity, value, readCurrent, onCommit, preserveFormatting);
+  const errorId = identity + ':error';
+  return <><textarea className="svc-textarea" aria-label={label} placeholder={placeholder}
+    aria-invalid={!!draft.error} aria-describedby={draft.error ? errorId : undefined}
+    value={draft.value} onChange={(e) => draft.onChange(e.target.value)} onBlur={draft.commit} />
+    {draft.error && <p id={errorId} className="ap-note" role="alert">{draft.error}</p>}</>;
 }
 
 function dnsRecordsValue(id: string): string | undefined {
@@ -104,7 +124,7 @@ function DnsPanel({ device }: { device: IpDevice }) {
         answer A-record queries on udp/53
       </label>
       {cfg && <>
-        <InspectorSettingTextarea identity={device.id + ':dns:records'} label="DNS A records"
+        <InspectorSettingTextarea identity={device.id + ':dns:records'} label="DNS A records" preserveFormatting
           placeholder={'records, /etc/hosts style:\n10.0.0.20 web.lan'}
           value={dnsRecordsValue(device.id) ?? ''} readCurrent={() => dnsRecordsValue(device.id)}
           onCommit={(text) => setRecords(device.id, text)} />
@@ -171,6 +191,7 @@ export function HostOverview({ device, editing = null, onEdit, editorSlot }: {
       </select>
     </label>
     <button type="button" className="mini-btn" onClick={() => useStore.getState().openTerminal(device.id)}>Terminal</button>
+    <OpenDesktopButton device={device}/>
     </div>
     <h3>Schnittstellen</h3>
     {device.interfaces.map((iface) => {

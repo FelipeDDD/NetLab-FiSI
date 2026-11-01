@@ -2589,7 +2589,7 @@ describe('additional Inspector history', () => {
     const history = store().topologyHistory;
     expect(store().setNameserver(a.id, ' 192.000.002.053 ')).toBeNull();
     expect(store().setServices(a.id, 'tcp', '22, 80,22')).toBeNull();
-    expect(store().setSsid(ap.id, ' netsim-wifi ')).toBeNull();
+    expect(store().setSsid(ap.id, ' NetLab-WiFi ')).toBeNull();
     const key = '20|sample'; ap.macTable.set(key, ap.interfaces[0]);
     expect(store().setPortVlan(ap.id, 'eth0', '020')).toBeNull(); expect(ap.macTable.has(key)).toBe(true);
     for (const text of ['bad', '256.0.0.1']) expect(store().setNameserver(a.id, text)).not.toBeNull();
@@ -2628,7 +2628,7 @@ describe('additional Inspector history', () => {
     store().onEdgesChange([{ type: 'remove', id: cable }]);
     for (let i = 0; i < 7; i++) store().undoTopology();
     expect(a.name).toBe(original); expect(a.nameserver).toBeNull(); expect(a.services.udp.size).toBe(0);
-    expect(ap.ssid).toBe('netsim-wifi'); expect(ap.vlanOf('eth7')).toBe(1); expect(net.links.has(cable)).toBe(true);
+    expect(ap.ssid).toBe('NetLab-WiFi'); expect(ap.vlanOf('eth7')).toBe(1); expect(net.links.has(cable)).toBe(true);
     for (let i = 0; i < 7; i++) store().redoTopology();
     expect(sim.net).toBe(net); expect(getSession(a)).toBe(session);
     vi.advanceTimersByTime(500); store().boot();
@@ -2709,6 +2709,23 @@ describe('Inspector server configuration history', () => {
     store().setDnsRecords(b.id, '# empty'); expect(b.dnsServer!.records.size).toBe(0); store().undoTopology(); expect(b.dnsServer!.records.size).toBe(2);
     b.dnsServer!.records = new Map([...b.dnsServer!.records].reverse()); store().undoTopology();
     expect(b.dnsServer!.records.has('old.lan')).toBe(true);
+  });
+
+  it('rejects malformed or conflicting DNS drafts atomically without autosave/history writes', () => {
+    const { b } = setup(); store().toggleDnsServer(b.id); store().setDnsRecords(b.id, '10.0.0.1 old.lan');
+    store().setDnsRecords(b.id, '10.0.0.2 other.lan'); store().undoTopology();
+    vi.advanceTimersByTime(500); setItem.mockClear();
+    const records = b.dnsServer!.records, history = store().topologyHistory;
+    for (const text of ['10.0.0.3 valid.lan\n10.0.0.10 pc1.lan10.0.0.20 pc2.lan',
+      '10.0.0.3 valid.lan\r\ninvalid name', '10.0.0.3 valid.lan\n10.0.0.4 valid.lan']) {
+      expect(store().setDnsRecords(b.id, text)).not.toBeNull();
+      expect(b.dnsServer!.records).toBe(records); expect(store().topologyHistory).toBe(history);
+    }
+    vi.advanceTimersByTime(500); expect(setItem).not.toHaveBeenCalled();
+    store().redoTopology(); expect(b.dnsServer!.records.has('other.lan')).toBe(true);
+    expect(store().setDnsRecords(b.id, '10.0.0.5 pc1.lan\r\n10.0.0.6 pc2.lan\r\n')).toBeNull();
+    expect(b.dnsServer!.records.size).toBe(2); store().undoTopology(); expect(b.dnsServer!.records.has('other.lan')).toBe(true);
+    store().redoTopology(); expect(b.dnsServer!.records.has('pc2.lan')).toBe(true);
   });
 
   it('confirms multiline HTTP bodies and ports independently, without creating history for no-ops or invalid values', () => {

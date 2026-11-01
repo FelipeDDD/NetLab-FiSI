@@ -32,6 +32,7 @@ import { useSmartAlignment } from './useSmartAlignment';
 import { AreaMarkingsLayer } from './AreaMarkings';
 import { MarkingFreeDraw } from './MarkingFreeDraw';
 import { MarkingGeometryEditor, markingsAtPoint, type MarkingMenuPoint } from './MarkingGeometryEditor';
+import {DeviceContextMenu,type DeviceMenuPoint} from './DeviceContextMenu';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { floating: FloatingEdge };
@@ -52,6 +53,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const alignment = useSmartAlignment(!!reconnecting || !!quickPing);
   const [cableMenu, setCableMenu] = useState<CableMenuPoint | null>(null);
   const [markingMenu, setMarkingMenu] = useState<MarkingMenuPoint | null>(null);
+  const [deviceMenu,setDeviceMenu]=useState<DeviceMenuPoint|null>(null);
   const [cableMessage, setCableMessage] = useState<string | null>(null);
   const openCableMenu = (id: string, element: Element, click?: { x: number; y: number }) => {
     const path = element.closest('.react-flow__edge')?.querySelector<SVGPathElement>('.react-flow__edge-path');
@@ -71,7 +73,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   useEffect(() => {
     if (hovered && !edges.some(e => e.id === hovered)) useStore.getState().hoverLink(null);
   }, [edges, hovered]);
-  useEffect(() => { if (quickPing) { setCableMenu(null); alignment.reset(); } }, [quickPing?.sourceId]);
+  useEffect(() => { if (quickPing) { setCableMenu(null); setDeviceMenu(null); alignment.reset(); } }, [quickPing?.sourceId]);
   const onEdgesChange = useStore((s) => s.onEdgesChange);
   const onConnect = useStore((s) => s.onConnect);
   const select = useStore((s) => s.select);
@@ -100,6 +102,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
     alignment.reset();
     setCableMenu(null); setCableMessage(null); setPointer(null);
     setMarkingMenu(null);
+    setDeviceMenu(null);
   }, [generation]);
   useEffect(() => {
     // Node action buttons stop bubbling keyboard events to protect dragging.
@@ -254,6 +257,13 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
           return;
         }
         const edge = target.closest<HTMLElement>('.react-flow__edge');
+        if (!reconnecting&&!quickPing&&reconnectNode&&!target.closest('button,input,select,textarea')&&(event.key==='ContextMenu'||(event.key==='F10'&&event.shiftKey))) {
+          const device=sim.net.devices.get(reconnectNode.dataset.id!);
+          if(device&&(device.kind==='host'||device.kind==='notebook')) {
+            event.preventDefault();event.stopPropagation();const r=reconnectNode.getBoundingClientRect();
+            setCableMenu(null);setMarkingMenu(null);select(device.id);setDeviceMenu({id:device.id,x:r.x+r.width/2,y:r.y+r.height/2});return;
+          }
+        }
         if (edge && (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) {
           event.preventDefault(); event.stopPropagation();
           openCableMenu(edge.dataset.id!, edge);
@@ -278,12 +288,18 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         if (reconnecting) { setCableMessage(useStore.getState().reconnectCable(n.id)); return; }
         select(n.id);
       }}
+      onNodeContextMenu={(event,node)=>{
+        if(reconnecting||quickPing||(node.data.kind!=='host'&&node.data.kind!=='notebook'))return;
+        event.preventDefault();event.stopPropagation();setCableMenu(null);setMarkingMenu(null);select(node.id);
+        setDeviceMenu({id:node.id,x:Math.max(8,Math.min(window.innerWidth-9,event.clientX)),y:Math.max(8,Math.min(window.innerHeight-9,event.clientY))});
+      }}
       onEdgeMouseEnter={(event, edge) => { setPointer({ x: event.clientX, y: event.clientY }); useStore.getState().hoverLink(edge.id); }}
       onEdgeMouseMove={(event) => setPointer({ x: event.clientX, y: event.clientY })}
       onEdgeMouseLeave={() => { setPointer(null); useStore.getState().hoverLink(null); }}
       onEdgeClick={(_, edge) => { if (!reconnecting && !quickPing) useStore.getState().onEdgesChange(edges.map(e => ({ type: 'select' as const, id: e.id, selected: e.id === edge.id }))); }}
       onEdgeContextMenu={(event, edge) => {
         event.preventDefault();
+        setDeviceMenu(null);
         if (reconnecting || quickPing) return;
         setPointer(null); useStore.getState().hoverLink(null);
         setMarkingMenu(null);
@@ -291,6 +307,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         openCableMenu(edge.id, event.target as Element, { x: event.clientX, y: event.clientY });
       }}
       onPaneContextMenu={event => {
+        setDeviceMenu(null);
         if (reconnecting || quickPing || useStore.getState().markingGeometry) return;
         const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
         const ids = markingsAtPoint(point, getViewport().zoom);
@@ -298,7 +315,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         event.preventDefault(); setCableMenu(null);
         setMarkingMenu({ ids, x: event.clientX, y: event.clientY });
       }}
-      onPaneClick={() => { setCableMenu(null); setMarkingMenu(null); if (!reconnecting && !quickPing) { select(null); useStore.getState().clearLinkSelection(); } }}
+      onPaneClick={() => { setCableMenu(null); setMarkingMenu(null); setDeviceMenu(null); if (!reconnecting && !quickPing) { select(null); useStore.getState().clearLinkSelection(); } }}
       onNodeDoubleClick={(_, n: DevNode) => {
         if (pingClick.current?.id === n.id && performance.now() - pingClick.current.time < 500) return;
         if (!reconnecting && !quickPing && hasTerminalKind(n.data.kind)) openTerminal(n.id);
@@ -358,6 +375,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       </Panel>}
       {!reconnecting && <LinkDetails pointer={pointer} />}
       <CableManager menu={cableMenu} onMenuChange={setCableMenu} message={cableMessage} onMessageChange={setCableMessage} />
+      <DeviceContextMenu menu={deviceMenu} onClose={()=>setDeviceMenu(null)}/>
     </ReactFlow>
   );
 }

@@ -1,3 +1,4 @@
+import { parseDnsRecords } from './dnsRecords';
 import { dhcpConfiguration, applyDhcpConfiguration, legacyPoolInterface, validateDhcpPool, type PoolSettings } from './engine/dhcpPools';
 import { hasTerminalKind } from './engine/device';
 import { normalizeWifiRange } from './engine/wirelessRange';
@@ -1423,13 +1424,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     setDnsRecords(deviceId, text) {
       const d = sim.net.devices.get(deviceId);
       if (!(d instanceof IpDevice) || d.disposed || !d.dnsServer) return 'DNS server not enabled';
-      const records = new Map<string, number>();
-      for (const line of text.split('\n')) {
-        const trimmed = line.trim(); if (!trimmed || trimmed.startsWith('#')) continue;
-        const [addr, name] = trimmed.split(/\s+/), ip = parseIp(addr ?? '');
-        if (ip === null || !name) return 'invalid hosts line: "' + trimmed + '" (use: <ip> <name>)';
-        records.set(name.toLowerCase(), ip);
-      }
+      const parsed = parseDnsRecords(text);
+      if (parsed.error !== undefined) return parsed.error;
+      const records = parsed.records;
       const before = sortedDnsRecords(d.dnsServer.records), after = sortedDnsRecords(records);
       if (JSON.stringify(before) === JSON.stringify(after)) return null;
       prepareEdit(); d.dnsServer.records = new Map(after);

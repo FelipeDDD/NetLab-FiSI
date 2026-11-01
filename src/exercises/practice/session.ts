@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { Answers, Evaluation, PracticeKind, Question } from './model';
+// Keep the visit-local store lightweight: generators remain in the lazy panel.
+export function initialAnswers(q:Question):Answers { return q.kind==='boundaries'?{mask:'255.255.'}:{}; }
 export interface PracticeAttempt { answers:Answers; result?:Evaluation; revealed:boolean }
 /** Visit-local only: no topology document, IndexedDB, legacy progress or localStorage writes. */
 export const usePractice = create<{
@@ -11,12 +13,12 @@ export const usePractice = create<{
     const id=s.question.id;set({attempts:{...s.attempts,[id]:change(s.attempts[id])}});
   };
   return {open:false,recent:{},attempts:{},show:()=>set({open:true}),close:()=>set({open:false}),
-    select:q=>set(s=>({question:q,recent:{...s.recent,[q.kind]:q},attempts:{...s.attempts,[q.id]:s.attempts[q.id]??{answers:{},revealed:false}}})),
+    select:q=>set(s=>({question:q,recent:{...s.recent,[q.kind]:q},attempts:{...s.attempts,[q.id]:s.attempts[q.id]??{answers:initialAnswers(q),revealed:false}}})),
     advance:q=>set(s=>{
       const current=s.question;
-      if(!current||!s.attempts[current.id]?.result||q.id===current.id||q.kind!==current.kind||q.recipe.difficulty!==current.recipe.difficulty)return s;
+      if(!current||!s.attempts[current.id]?.result||s.attempts[current.id].result?.complete===false||q.id===current.id||q.kind!==current.kind||q.recipe.difficulty!==current.recipe.difficulty)return s;
       const attempts={...s.attempts};delete attempts[current.id];
-      return {question:q,recent:{...s.recent,[q.kind]:q},attempts:{...attempts,[q.id]:{answers:{},revealed:false}}};
+      return {question:q,recent:{...s.recent,[q.kind]:q},attempts:{...attempts,[q.id]:{answers:initialAnswers(q),revealed:false}}};
     }),
     answer:(id,value)=>update(a=>({...a,answers:{...a.answers,[id]:value},result:undefined})),
     check:result=>update(a=>({...a,result})),reveal:()=>update(a=>({...a,revealed:true})),

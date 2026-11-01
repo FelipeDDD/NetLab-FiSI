@@ -348,6 +348,21 @@ try {
     await runPracticeReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_DNS_WIFI_REVIEW) {
+    const {runDnsWifiReview}=await import('./dns-wifi-review.mjs');
+    await runDnsWifiReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_BROWSER_REVIEW === '1') {
+    const {runBrowserReview}=await import('./browser-review.mjs');
+    await runBrowserReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_DIAGNOSIS_PREVIEW_REVIEW === '1') {
+    const { runDiagnosisPreviewReview } = await import('./diagnosis-preview-review.mjs');
+    await runDiagnosisPreviewReview({page:pageOne,url:new URL('/__diagnosis_preview__',url).href,root,report});
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_PRACTICAL_REVIEW === '1') {
     const {runPracticalReview}=await import('./practical-exercises-review.mjs');
     await runPracticalReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});

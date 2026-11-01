@@ -118,7 +118,7 @@ export class SwitchDevice extends Device {
 // Ethernet uplinks and virtual wireless client ports share this L2 bridge.
 // Wireless ports are created by Network.associate, independently of RJ45 capacity.
 export class ApDevice extends SwitchDevice {
-  ssid = 'netsim-wifi';
+  ssid = 'NetLab-WiFi';
   rangeMeters: number = WIFI_RANGE.default;
 
   constructor(network: Network, id: string, name: string, ports = 8) {

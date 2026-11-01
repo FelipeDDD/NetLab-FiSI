@@ -3,19 +3,27 @@ import { generate, type Recipe } from '../factory/generator';
 import { facts, grade, prefixForMask, requiredHosts, solve, type MathProblem } from '../factory/math';
 import { diagnose } from '../factory/cidr';
 import { createGatewayV2, gatewayV2Result, type GatewayV2Problem } from './gatewayV2';
+import { generateBoundariesV3, isCompleteMaskInput, type BoundaryDiagnosisV3, type V3Recipe } from '../diagnosis/boundariesV3';
 
-export const PRACTICE_KINDS = ['gateway', 'subnet', 'vlsm'] as const;
+export const PRACTICE_KINDS = ['gateway', 'subnet', 'vlsm', 'boundaries'] as const;
 export type PracticeKind = typeof PRACTICE_KINDS[number];
 export interface Field { id:string; label:string; type:'ipv4'|'prefix'|'mask'|'integer'|'cidr'|'choice'; options?:{value:string;label:'yes'|'no'|'unknown'}[] }
 export interface Question {
-  id:string; kind:PracticeKind; contentVersion:1|2; recipe:Recipe;
-  title:string; task:string; data:string[]; fields:Field[]; problem:MathProblem|GatewayV2Problem;
+  id:string; kind:PracticeKind; contentVersion:1|2|3; recipe:Recipe | (V3Recipe & {family:'diagnosis'});
+  title:string; task:string; data:string[]; fields:Field[]; problem:MathProblem|GatewayV2Problem|{family:'nd02-v3';generated:BoundaryDiagnosisV3};
 }
 export type Answers = Record<string,string>;
 export interface FieldResult { state:'correct'|'incorrect'|'missing'; explanation:string }
-export interface Evaluation { pass:boolean; fields:Record<string,FieldResult> }
-const choices:Field['options']=[{value:'yes',label:'yes'},{value:'no',label:'no'},{value:'unknown',label:'unknown'}];
-export function createQuestion(kind:PracticeKind, seed='reference', difficulty:Recipe['difficulty']='beginner', version=1):Question {
+export interface Evaluation { pass:boolean; fields:Record<string,FieldResult>; complete?:boolean }
+const choices:NonNullable<Field['options']>=[{value:'yes',label:'yes'},{value:'no',label:'no'},{value:'unknown',label:'unknown'}];
+export function createQuestion(kind:PracticeKind, seed='reference', difficulty:Recipe['difficulty']='beginner', version=kind==='boundaries'?3:1):Question {
+  if(kind==='boundaries') {
+    if(version!==3)throw Error('ND02 v3 required');
+    const generated=generateBoundariesV3({version:3,archetype:'ND02',difficulty,seed});
+    return {id:generated.case.id,kind,contentVersion:3,recipe:{...generated.recipe,family:'diagnosis'},
+      title:generated.case.title,task:'',data:[`PC: ${generated.data.pc}/${generated.data.prefix}`,`Gateway: ${generated.data.candidate}`],
+      fields:generated.case.questions.map(q=>({id:q.id,label:q.prompt,type:q.concept==='mask'?'mask':'choice',...(q.concept==='mask'?{}:{options:choices.slice(0,2)})})),problem:{family:'nd02-v3',generated}};
+  }
   if(kind==='gateway'&&version===2)return createGatewayV2(seed,difficulty);
   if(!PRACTICE_KINDS.includes(kind)) throw Error('Unbekannte Kategorie');
   const recipe:Recipe={family:kind==='gateway'?'cidr':kind,difficulty,seed,version,...(kind==='gateway'?{scenario:'gateway' as const}:{})};
@@ -40,6 +48,7 @@ export function createQuestion(kind:PracticeKind, seed='reference', difficulty:R
     fields:problem.demands.map(d=>({id:d.id,label:`${d.label} · Netz/CIDR`,type:'cidr'}))};
 }
 export function solution(q:Question):Answers {
+  if(q.problem.family==='nd02-v3')return Object.fromEntries(q.problem.generated.case.questions.map(f=>[f.id,f.answer]));
   if(q.problem.family==='gateway-v2')return {local:gatewayV2Result(q.problem).answer};
   if(q.problem.family==='cidr'&&q.problem.mode==='diagnosis') {
     const r=diagnose(q.problem.cases[0]);
@@ -57,6 +66,14 @@ function normalized(field:Field,value:string):string {
   return v;
 }
 export function evaluate(q:Question,answers:Answers):Evaluation {
+  if(q.problem.family==='nd02-v3') {
+    const questions=q.problem.generated.case.questions;
+    const missing=questions.filter(f=>f.concept==='mask'?!isCompleteMaskInput(answers[f.id]):!['yes','no'].includes(answers[f.id]));
+    // Never disclose any answer or explanation until every field is complete.
+    if(missing.length)return {complete:false,pass:false,fields:Object.fromEntries(missing.map(f=>[f.id,{state:'missing',explanation:''}]))};
+    const fields=Object.fromEntries(questions.map(f=>[f.id,{state:(answers[f.id].trim()===f.answer?'correct':'incorrect') as FieldResult['state'],explanation:f.explanation.reasoning}]));
+    return {complete:true,pass:Object.values(fields).every(f=>f.state==='correct'),fields};
+  }
   const expected=solution(q), fields:Evaluation['fields']={};
   for(const f of q.fields) {
     const raw=answers[f.id]??'';

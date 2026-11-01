@@ -20,6 +20,7 @@ import { WorkspaceViewport } from './workspace/WorkspaceViewport';
 import { PacketAnimationControl } from './components/PacketAnimationControl';
 import { terminalDockShortcut } from './terminalShortcuts';
 import { PracticeSurface } from './exercises/practice/PracticeSurface';
+import {DesktopSurface} from './browser/DesktopSurface';
 
 export default function App() {
   const workspace = useWorkspaceUI();
@@ -89,6 +90,7 @@ export default function App() {
             onResize={(width, persist) => changePacketLayout({ ...packetLayout, widths: { ...packetLayout.widths, [packetLayout.mode]: width } }, persist)}>
             <PacketInspector layout={packetLayout} onLayoutChange={changePacketLayout} />
           </ResizablePacketPanel>
+          <DesktopSurface />
         </div>
         <TerminalDock key={generation} onFocusEditor={() => editor.current?.focus({ preventScroll: true })}
           onOverlapHeightChange={setTerminalOverlapHeight} />

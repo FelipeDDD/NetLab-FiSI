@@ -3,10 +3,11 @@ import { parseIp, type U32 } from '../engine/ip';
 
 // Shared hostname resolution for ping/traceroute/nc/curl: literal addresses
 // pass straight through, names go to the device's configured nameserver.
+export type ResolveFailure='not-configured'|'not-found'|'timeout'|'refused';
 export function resolveHost(
   device: IpDevice,
   target: string,
-  cb: (res: { ip: U32 } | { error: string }) => void,
+  cb: (res: { ip: U32 } | { error: string;reason:ResolveFailure }) => void,
 ): { cancel(): void } {
   const literal = parseIp(target);
   if (literal !== null) {
@@ -14,15 +15,15 @@ export function resolveHost(
     return { cancel: () => {} };
   }
   if (device.nameserver === null) {
-    cb({ error: `${target}: Temporary failure in name resolution` });
+    cb({ error: `${target}: Temporary failure in name resolution`,reason:'not-configured' });
     return { cancel: () => {} };
   }
   let cancelled = false;
   device.resolveDns(target, device.nameserver, (r) => {
     if (cancelled) return;
     if (typeof r === 'number') cb({ ip: r });
-    else if (r === null) cb({ error: `${target}: Name or service not known` });
-    else cb({ error: `${target}: Temporary failure in name resolution` });
+    else if (r === null) cb({ error: `${target}: Name or service not known`,reason:'not-found' });
+    else cb({ error: `${target}: Temporary failure in name resolution`,reason:r });
   });
   return {
     cancel: () => {

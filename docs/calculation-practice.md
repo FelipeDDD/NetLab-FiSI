@@ -4,6 +4,32 @@ Entrada: **Übungen (Beta) → Subnetting & CIDR üben**. A prática é uma regi
 
 ## Seleção inicial
 
+### Publicação ND02 v3 — Subnetzgrenzen
+
+Em **Konfigurieren → Kategorie**, selecionar **Subnetzgrenzen · ND02 v3** (nome traduzido em PT-BR/EN). Usa a janela e o estado em memória existentes. A categoria E02 permanece independente, com versões v1/v2 e seeds anteriores; ND02 não é uma E02 v3.
+
+O adaptador em `practice/model.ts` chama diretamente `generateBoundariesV3`, conserva o objeto gerado e expõe as três perguntas aprovadas: pertencimento matemático, host utilizável e máscara. O campo começa com `255.255.`. Respostas incompletas bloqueiam toda a correção e a próxima questão; quatro octetos válidos mas incorretos recebem feedback normal. Não há botão para revelar antecipadamente. A correção apresenta justificativas específicas e um único Rechenweg completo.
+
+Os templates revisados em `diagnosis/nd02Messages.ts` e `presentationV3.ts` são compartilhados com o preview. O idioma global muda somente a apresentação, inclusive após correção ou com máscara parcial. A/B/E02 continuam com o conteúdo autoral anterior. Retornar à categoria/fechar/reabrir conserva a tentativa nesta visita; F5 continua limpando as respostas. Próxima questão/Espaço e Enter reutilizam os mecanismos da Rechenpraxis. Novas variantes comparam os dados visíveis, sem tratar uma seed diferente como conteúdo novo por si só.
+
+O gerador v3 e a dependência v2 imutável não foram modificados; a estratégia de fronteiras e os fingerprints permanecem. O build permite apenas esses dois módulos e a apresentação ND02, excluindo preview, ND05, pilot e gerador interno. O preview de desenvolvimento continua funcional em `/__diagnosis_preview__`.
+
+Validação da integração: 1.016 testes em 16 arquivos; TypeScript; build com 488 módulos inspecionados; auditorias `audit-nd02-v3`, `audit-nd02-v2`, `audit-diagnosis-generation` com `--check-review` e `audit-practice-variety` aprovadas. O hash histórico A/B/E continua `b9a7bf5fc1c1dca9ac0a8d408becb221da3c50c26145349526b38f06fd0be2b9`. O estado de tentativas importa apenas tipos do modelo; os geradores continuam no chunk carregado sob demanda pela Rechenpraxis.
+
+Chromium descartável: `node scripts/test-practice.mjs` e `node scripts/test-diagnosis-preview.mjs`, ambos com 139 verificações aprovadas e zero erros de navegador. Inclui seleção, reprodução, correção conjunta, máscara incompleta/incorreta, edição posterior, DE/PT-BR/EN, Enter/Espaço e proteções de foco, retorno entre categorias, fechamento/reabertura, F5 e ausência de alteração do documento do workspace. As modalidades A/B/E02 e o preview anterior possuem regressões próprias no mesmo fluxo. Desktop Graphite Dark 1440×960 e mobile Classic Light 390×960, com rolagem interna e Rechenweg completo acessível.
+
+Capturas principais ignoradas pelo Git em `.playwright-mcp/reviews/`: `01-nd02-desktop-before.png`, `02-nd02-desktop-after.png`, `03-nd02-mobile-before.png`, `04-nd02-mobile-after.png`. Capturas adicionais do cálculo completo e regressões estão em `raw/2026-10-30--practice-nd02-v3/`; a galeria estática também fica nessa subpasta. O gerador existente arquiva as revisões anteriores.
+
+Arquivos desta integração:
+
+- `src/exercises/practice/PracticePanel.tsx`, `model.ts`, `session.ts`, `progression.ts`, `practice.css`: modalidade e estado/fluxo existente.
+- `src/exercises/diagnosis/nd02Messages.ts`, `presentationV3.ts`, `previewMessages.ts`: templates revisados compartilhados e apresentação; nenhuma alteração nos geradores.
+- `src/exercises/practice/boundaries.test.ts`, `practice.test.ts`, `gatewayV2.test.ts`: integração e preservação do escopo do fingerprint histórico.
+- `scripts/nd02-practice-review.mjs`, `practice-review.mjs`, `check-diagnosis-preview-build.mjs`, `audit-practice-variety.mjs`: Chromium, isolamento de produção e escopo da auditoria histórica.
+- `docs/calculation-practice.md`, `docs/network-diagnosis-preview.md`: publicação e limites documentados. Alterações locais anteriores de preview/i18n permanecem preservadas.
+
+### Modalidades anteriores
+
 - **E02 · Gateway und Subnetz**: PC `192.168.99.60/16`, gateway `192.168.9.1`; uma única escolha entre Ja / Nein / Nicht eindeutig bestimmbar. A pergunta é pertencimento, portanto a resposta é Ja. O feedback distingue isso da conectividade não comprovada. `reference` é a seed reservada para esse exemplo fixo.
 - **A · Netz und Broadcast**: variantes do gerador `subnet`; somente rede, broadcast e quantidade de hosts utilizáveis. Não exige preencher todos os oito atributos internos.
 - **B · VLSM planen**: variantes `vlsm`; uma rede/CIDR por demanda, respeitando capacidade mínima, crescimento, reserva fixa, alinhamento, contenção e ausência de sobreposição. Alternativas válidas são aceitas.

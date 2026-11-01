@@ -174,7 +174,7 @@ describe('wireless AP', () => {
     setIp(a, 'eth0', '10.1.0.1/24');
     setIp(b, 'eth0', '10.1.0.2/24');
     expect(ap.kind).toBe('ap');
-    expect(ap.ssid).toBe('netsim-wifi');
+    expect(ap.ssid).toBe('NetLab-WiFi');
     expect(pingWorks(net, a, '10.1.0.2')).toBe(true);
   });
 });

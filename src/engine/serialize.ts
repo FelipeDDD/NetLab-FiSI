@@ -262,7 +262,12 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
   }
   if (d instanceof SwitchDevice) {
     if (sd.vlans) for (const [port, vlan] of Object.entries(sd.vlans)) d.vlans.set(port, vlan);
-    if (d instanceof ApDevice) { if (typeof sd.ssid === 'string') d.ssid = sd.ssid; d.rangeMeters = normalizeWifiRange(sd.rangeMeters); }
+    if (d instanceof ApDevice) {
+      // APs in early saves omitted the then-default SSID. Changing the factory
+      // default must not rename those networks (or break their saved clients).
+      d.ssid = typeof sd.ssid === 'string' ? sd.ssid : 'netsim-wifi';
+      d.rangeMeters = normalizeWifiRange(sd.rangeMeters);
+    }
   }
   return d;
 }

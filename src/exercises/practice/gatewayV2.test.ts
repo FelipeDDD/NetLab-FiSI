@@ -8,7 +8,7 @@ import { practiceNextShortcut } from './shortcuts';
 const ip=(s:string)=>s.split('.').reduce((n,o)=>(n<<8n)|BigInt(o),0n);
 it('keeps the complete frozen v1 legacy recipe fingerprint, including reference and UUID seeds',()=>{
   const legacy=[];
-  for(const kind of PRACTICE_KINDS)for(const difficulty of ['beginner','intermediate','advanced'] as const)
+  for(const kind of PRACTICE_KINDS.filter(kind=>kind!=='boundaries'))for(const difficulty of ['beginner','intermediate','advanced'] as const)
     for(const seed of ['reference','37b3c848-b226-44c2-93eb-0337af1ce011-0','manuell-büro'])legacy.push(createQuestion(kind,seed,difficulty));
   expect(createHash('sha256').update(JSON.stringify(legacy)).digest('hex')).toBe('b9a7bf5fc1c1dca9ac0a8d408becb221da3c50c26145349526b38f06fd0be2b9');
 });
