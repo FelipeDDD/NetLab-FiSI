@@ -40,7 +40,7 @@
             "id": "r1",
             "kind": "router",
             "name": "r1",
-            "x": 340,
+            "x": 383.2,
             "y": 100,
             "forwarding": false,
             "ifaces": [
@@ -87,7 +87,7 @@
             "id": "lager",
             "kind": "host",
             "name": "lager",
-            "x": 580,
+            "x": 666.4,
             "y": 100,
             "forwarding": false,
             "ifaces": [
@@ -203,7 +203,7 @@
             "id": "dns1",
             "kind": "server",
             "name": "dns1",
-            "x": 340,
+            "x": 383.2,
             "y": 100,
             "forwarding": false,
             "ifaces": [
@@ -232,7 +232,7 @@
             "id": "portal",
             "kind": "server",
             "name": "portal",
-            "x": 580,
+            "x": 666.4,
             "y": 100,
             "forwarding": false,
             "ifaces": [
@@ -258,7 +258,7 @@
             "kind": "switch",
             "name": "sw1",
             "x": 100,
-            "y": 330,
+            "y": 371.4,
             "forwarding": false,
             "ifaces": [
               {

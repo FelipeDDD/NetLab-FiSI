@@ -12,7 +12,7 @@ export async function runExerciseReview({ page, url, root, report, restart }) {
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const wait = async expression => { for (let i = 0; i < 160; i++) { if (await page.evaluate('return !!(' + expression + ');')) return; await delay(50); } throw Error('Timed out: ' + expression); };
   const clickText = async (selector, text) => {
-    const p = await page.evaluate(`const clean=s=>s.replace(/[›▾]/g,'').trim();const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>clean(e.textContent)===clean(${JSON.stringify(text)}));if(!e)throw Error('Missing button: '+${JSON.stringify(text)});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};`);
+    const p = await page.evaluate(`const clean=s=>s.replace(/[›▾]/g,'').trim();const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>clean(e.textContent)===clean(${JSON.stringify(text)}));if(!e)throw Error('Missing button: '+${JSON.stringify(text)});e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};`);
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...p, button: 'left', clickCount: 1 });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...p, button: 'left', clickCount: 1 }); await delay(60);
   };

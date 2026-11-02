@@ -1,5 +1,7 @@
 # Übungen (Beta) — etapa 2: piloto prático
 
+Veja também [os refinamentos de UX e o layout inicial experimental](exercise-usability.md).
+
 ## Publicação gradual
 
 **Übungen (Beta)** contém os dois exercícios anteriores e **quatro novas projeções de aluno**, identificadas como *Praxis-Pilot · Beta*. Não publica integralmente a fábrica de 32 drafts. A prática matemática A/B/E02 da etapa 1 continua independente, em memória.
@@ -11,7 +13,7 @@
 | E09 · `pilot-e09-v1` | 4 endereços/máscaras, forwarding, 2 decisões de next hop, 2 pings, estrutura | Máscara de Büro conforme os segmentos do enunciado; endereço de host e demais valores permanecem. Ping que funciona através de uma hostroute com máscara errada não basta. |
 | D02 · `pilot-d02-v1` | 6 endereços/máscaras, forwarding em West/Ost, 2 decisões de next hop, 2 pings, estrutura | Rotas estáticas em West/Ost. Rotas específicas e defaults funcionais são aceitos para a comunicação exigida entre Büro e Lager. Falta de retorno reprova. |
 
-O resultado é **Technische Anforderungen erfüllt**. Não certifica domínio pedagógico ou todas as aplicações da rede. A explicação de ARP, decisão local/remota e diagnóstico do caminho é **discussão manual não pontuada**, explicitamente indicada no painel. Não existe botão que finja validar essa explicação.
+O resultado é **Technische Anforderungen erfüllt**. Não certifica domínio pedagógico ou todas as aplicações da rede. A explicação de ARP, decisão local/remota e diagnóstico do caminho é **reflexão opcional não pontuada**, disponível no painel sem status de avaliação pendente. Não existe botão que finja validar essa explicação.
 
 ## Uso
 
@@ -39,7 +41,7 @@ Os números abaixo são os critérios **engine de origem**, antes da proteção 
 | D04 retorno /32 | 15 | Interno; candidatos/alternativas existem, mas escopo de edição e caminho efetivo exigem revisão própria. |
 | E01 prática /23 funcional | 4 | Interno; E06 é a amostra saudável escolhida. |
 | E05 prática VLANs | 4 | Interno; critério manual inclui preservação e justificativa; não publicar apenas com ping. |
-| E06 prática /16 funcional | 4 | Publicado. Proteção estrutural automatizada; justificativa explicitamente manual. |
+| E06 prática /16 funcional | 4 | Publicado. Proteção estrutural automatizada; explicação de aprendizagem após a verificação, sem avaliação conceitual. |
 | E07 prática máscaras divergentes | 4 | Interno; exige revisão de soluções alternativas e escopo permitido. |
 | E08 prática gateway incorreto | 7 | Publicado com rotas efetivas e estrutura. |
 | E09 prática máscara ampla | 7 | Publicado com rotas efetivas e estrutura. |

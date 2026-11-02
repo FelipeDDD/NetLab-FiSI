@@ -1,8 +1,41 @@
 import type { NetInterface } from './engine/device';
-import type { IpDevice } from './engine/ipdevice';
+import type { IpDevice, Route } from './engine/ipdevice';
 
 export interface NetworkValueSource { value: number; source: string }
 const ownSource = (iface: NetInterface) => iface.ipv4Mode === 'dhcp' ? 'DHCP' : 'Statisch · Schnittstelle';
+
+const sameRoute = (a: Route, b: Route) => a.dest === b.dest && a.prefix === b.prefix && a.via === b.via && a.ifaceName === b.ifaceName && a.kind === b.kind;
+
+/** Ask the engine at route boundaries, rather than assuming an arbitrary
+ * public IP uses a default (it might have a more-specific route). */
+export function defaultRouteSummary(device: IpDevice, iface: NetInterface) {
+  const routes = device.routes();
+  const boundaries = [0, ...routes.filter(r => r.prefix > 0).map(r => r.dest + 2 ** (32 - r.prefix)).filter(end => end < 2 ** 32)];
+  let selected: Route | null = null;
+  for (const destination of boundaries) {
+    const candidate = device.lookupRoute(destination);
+    if (candidate?.prefix === 0) { selected = candidate; break; }
+  }
+  const explicit = device.staticRoutes.filter(r => r.prefix === 0 && r.ifaceName === iface.name);
+  const learned = routes.filter(r => r.prefix === 0 && r.kind === 'rip' && r.ifaceName === iface.name);
+  const selectedSource = selected && (selected.kind === 'rip' ? 'RIP' : device.staticRoutes.some(r => sameRoute(r, selected!)) ? 'Explizite Route' : 'Schnittstellen-Gateway');
+  const usableDefaults = routes.filter(route => {
+    if (route.prefix !== 0) return false;
+    const outgoing = device.getInterface(route.ifaceName);
+    return !!outgoing?.up && !!outgoing.link &&
+      (device.kind !== 'notebook' && device.kind !== 'smartphone' || outgoing.link.operational);
+  });
+  return { explicit, learned, selected, selectedSource,
+    competing: new Set(usableDefaults.map(r => `${r.ifaceName}:${r.via}`)).size > 1,
+    multiple: new Set(routes.filter(r => r.prefix === 0).map(r => `${r.ifaceName}:${r.via}`)).size > 1 };
+}
+
+/** Compact overview: competing next hops are explained in Netzwerk instead of
+ * presenting the simulator's order-based tie-break as a unique gateway. */
+export function selectedDefaultGateway(device: IpDevice, iface: NetInterface): number | null {
+  const { selected, competing } = defaultRouteSummary(device, iface);
+  return selected?.ifaceName === iface.name && !competing ? selected.via : null;
+}
 
 export function hostGatewaySummary(device: IpDevice, iface: NetInterface): NetworkValueSource[] {
   const values: NetworkValueSource[] = [];

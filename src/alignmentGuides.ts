@@ -1,6 +1,6 @@
 import type { Point } from './topologyHistory';
 import type { DeviceKind } from './engine/device';
-import { cableAttachmentBox, DEVICE_ARTWORK, hasDeviceArtwork } from './deviceArtwork';
+import { cableAttachmentBox, DEVICE_ARTWORK, deviceArtworkOffsetY, hasDeviceArtwork } from './deviceArtwork';
 
 export const ALIGNMENT_TOLERANCE_PX = 8;
 export interface AlignmentNode {
@@ -32,11 +32,13 @@ export function getVisualAlignmentPoint(node: AlignmentNode, position = node.pos
   // Switch sockets depend on each link. Keep its existing center-based snapping.
   if (!point || !kind || kind === 'switch' || !hasDeviceArtwork(kind)) return point;
   if (kind === 'host' || kind === 'server') {
-    return { x: point.x, y: position.y + 6 + DEVICE_ARTWORK[kind].height * OPTICAL_ARTWORK_Y[kind] };
+    // The server's entry moves with its artwork; the host stays the reference.
+    const adjustment = kind === 'server' ? deviceArtworkOffsetY('server') : 0;
+    return { x: point.x, y: position.y + 6 + DEVICE_ARTWORK[kind].height * OPTICAL_ARTWORK_Y[kind] + adjustment };
   }
   // Reuse the established chassis anchors, without changing cable geometry.
   const box = cableAttachmentBox({ ...position, width: node.measured?.width ?? node.width!, height: node.measured?.height ?? node.height! }, kind);
-  return { x: point.x, y: box.y + box.height / 2 };
+  return { x: point.x, y: box.y + box.height / 2 + (kind === 'router' ? deviceArtworkOffsetY(kind) : 0) };
 }
 
 // Optical horizontal alignment; vertical alignment still uses geometric centers.

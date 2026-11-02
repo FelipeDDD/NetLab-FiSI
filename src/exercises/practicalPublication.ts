@@ -5,6 +5,7 @@ import { restoreNetwork, serializeNetwork } from '../engine/serialize';
 import { disposeNetwork } from '../engine/networkLifecycle';
 import type { PracticalCriterion, PracticalExercise, StructurePolicy } from './practicalTypes';
 import type { NetworkDraft } from './factory/types';
+import { publishedExerciseLayout } from './publicationLayout';
 
 const sources=[CIDR_PRACTICE.e06,CIDR_PRACTICE.e08,CIDR_PRACTICE.e09,ROUTING_DRAFTS.find(d=>d.id==='factory-d02-statische-routen')!];
 const copy:{code:string;title:string;description:string;task:string;addressing:string;routingText:string;editable:StructurePolicy['editable'];routes:[string,string,string|null,string][]}[]=[
@@ -36,7 +37,8 @@ export const PRACTICAL_STUDENTS:PracticalExercise[]=sources.map((source,index)=>
   const c=copy[index];
   return {id:`pilot-${c.code.toLowerCase()}-v1`,contentVersion:1,pilot:true,difficulty:source.difficulty,
     manualReview:['Erklären Sie die lokale ARP-Entscheidung und gegebenenfalls den Hin- und Rückweg. Diese Begründung wird nicht automatisch bewertet. Technisch bestanden bedeutet keinen Nachweis des Diagnosewegs oder aller denkbaren Netzwerkdienste.'],
-    student:{title:`${c.code} · ${c.title} (Beta)`,description:c.description,task:c.task,initialTopology:canonicalInitial(source),
+    student:{title:`${c.code} · ${c.title} (Beta)`,description:c.description,task:c.task,initialTopology:publishedExerciseLayout(canonicalInitial(source),
+      c.code === 'E06' ? ['a','sw','b'] : c.code === 'D02' ? ['office','west','east','warehouse'] : ['a','r','b']),
       learningObjectives:[{id:'diagnose',text:'Adressierung, Zustellentscheidung und Erreichbarkeit getrennt untersuchen.'},{id:'preserve',text:'Nur freigegebene Änderungen vornehmen und die Netzstruktur erhalten.'}],
       requirements:[
         {id:'addressing',objectiveIds:['diagnose'],evidence:'final',text:c.addressing},

@@ -11,12 +11,39 @@ import { Network } from '../engine/network';
 import { sim } from '../sim';
 import { parseStaticIpv4, emptyIpv4 } from '../engine/ipv4Config';
 import { parseCidr, parseIp } from '../engine/ip';
+import { InterfaceIpv4Panel } from './InterfaceIpv4Panel';
 
 const view = vi.hoisted(() => ({ selected: null as string | null, nodes: [], edges: [], cableColors: {}, uiPulse: 0,
   toggleDhcpServer: vi.fn(), toggleDnsServer: vi.fn(), toggleHttpServer: vi.fn() }));
 vi.mock('../store', () => ({ useStore: Object.assign((select: (s: typeof view) => unknown) => select(view), { getState: () => view }) }));
 beforeEach(() => { sim.net = new Network(); view.selected = null; vi.clearAllMocks(); });
 const render = () => renderToStaticMarkup(createElement(Inspector));
+
+it('keeps the interface gateway input empty while explaining an independently configured default route', () => {
+  const host = createDevice(sim.net, 'host') as Host, peer = createDevice(sim.net, 'router');
+  sim.net.connect(host.id, peer.id);
+  host.interfaces[0].configureIpv4(parseStaticIpv4('192.168.10.50', '24', '', '')!);
+  host.addRoute(0, 0, parseIp('192.168.10.254')!, 'eth0');
+  const html = renderToStaticMarkup(createElement(InterfaceIpv4Panel, { deviceId: host.id, ifaceName: 'eth0' }));
+  expect(html).toMatch(/aria-label="Standardgateway eth0"[^>]*value=""/);
+  expect(html).toContain('Schnittstellen-Gateway: nicht gesetzt');
+  expect(html).toContain('Explizite Route'); expect(html).toContain('192.168.10.254');
+  expect(html).toContain('Vollständige Routing-Tabelle'); expect(host.interfaces[0].gateway).toBeNull();
+});
+
+it('keeps Allgemein concise while Netzwerk retains gateway origins, including competing defaults', () => {
+  const host = createDevice(sim.net, 'host') as Host, peer = createDevice(sim.net, 'router');
+  sim.net.connect(host.id, peer.id); host.interfaces[0].configureIpv4(parseStaticIpv4('192.168.10.50', '24', '', '')!);
+  host.addRoute(0, 0, parseIp('192.168.10.254')!, 'eth0');
+  const overview = () => renderToStaticMarkup(createElement(HostOverview, { device: host, onEdit: vi.fn() }));
+  expect(overview()).toContain('<dt>Gateway</dt><dd>192.168.10.254</dd>');
+  expect(overview()).not.toContain('Explizite Route');
+  host.interfaces[0].gateway = parseIp('192.168.10.1');
+  expect(overview()).toContain('<dt>Gateway</dt><dd>—</dd>');
+  const network = renderToStaticMarkup(createElement(InterfaceIpv4Panel, { deviceId: host.id, ifaceName: 'eth0' }));
+  expect(network).toContain('192.168.10.254'); expect(network).toContain('192.168.10.1');
+  expect(network).toContain('Explizite Route'); expect(network).toContain('Mehrere Standardwege');
+});
 
 it('shows switch capacity and explains why the last port cannot be removed', () => {
   const sw = createDevice(sim.net, 'switch') as SwitchDevice;

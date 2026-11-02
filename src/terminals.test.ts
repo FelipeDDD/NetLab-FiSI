@@ -2896,7 +2896,7 @@ describe('independent packet animation', () => {
     expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('0.5');
     store().flushAutosave();
     expect(JSON.parse(storage.get('netsim:autosave:v1')!)).not.toHaveProperty('packetAnimationSpeed');
-    store().boot(); expect(store().packetAnimationSpeed).toBe(1);
+    store().boot(); expect(store().packetAnimationSpeed).toBe(.25);
     expect(storage.get(PACKET_ANIMATION_SPEED_KEY)).toBe('0.5'); // Retain the old preference without applying a hidden speed.
   });
 });
@@ -3233,7 +3233,7 @@ describe('Quick Ping uses the existing terminal and engine', () => {
     expect(store().guidedPacket.playback.progress).toBeCloseTo(.7);expect(net.now).toBe(120);
     expect(store().packets.every(p=>p.visualDuration===200)).toBe(true);
   });
-  it.each((['live', 'guided'] as const).flatMap(mode => [0.5, 1, 2, 4].map(speed => ({mode, speed}))))(
+    it.each((['live', 'guided'] as const).flatMap(mode => [0.25, 0.5, 1, 2, 4].map(speed => ({mode, speed}))))(
     'keeps four requests and virtual timestamps at $speed× in $mode', ({mode, speed}) => {
       const {a,b,net}=pair(); store().setPaused(false); store().setPacketVisualizationMode(mode); store().setPacketAnimationSpeed(speed);
       const attempts:number[]=[], progress=net.onPingProgress;

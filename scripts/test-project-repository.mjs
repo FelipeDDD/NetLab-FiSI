@@ -107,7 +107,7 @@ try {
   await new Promise(resolve => probe.close(resolve));
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
     cacheDir: path.join(scratch, 'vite-cache'),
-    plugins: [...(process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
+    plugins: [...(process.env.NETLAB_ARTWORK_OFFSET_REVIEW === '1' || process.env.NETLAB_PRACTICAL_REVIEW === '1' || process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
       name: 'isolated-viewport-probe', enforce: 'pre',
       transform(code, id) {
         if (!id.replaceAll('\\', '/').endsWith('/src/App.tsx')) return;
@@ -258,6 +258,11 @@ try {
   if (process.env.NETLAB_DEVICE_ACTION_REVIEW === '1') {
     const { runDeviceActionReview } = await import('./device-action-review.mjs');
     await runDeviceActionReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_ARTWORK_OFFSET_REVIEW === '1') {
+    const { runArtworkOffsetReview } = await import('./artwork-offset-review.mjs');
+    await runArtworkOffsetReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
   if (process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1') {

@@ -13,6 +13,7 @@ import { pingAddresses } from '../quickPing';
 import { DeviceArtwork, hasDeviceArtwork } from './DeviceArtwork';
 import { sim } from '../sim';
 import { firstReconnectInterface } from '../cableInteraction';
+import { deviceArtworkOffsetY } from '../deviceArtwork';
 
 export const NODE_W = 96;
 export const NODE_H = 78;
@@ -92,7 +93,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
   const hasShell = hasTerminalKind(data.kind);
   const artwork = hasDeviceArtwork(data.kind);
   return (
-    <div style={{ '--device-color': DEVICE_COLORS[data.kind] } as CSSProperties}
+    <div style={{ '--device-color': DEVICE_COLORS[data.kind], '--device-artwork-offset-y': `${deviceArtworkOffsetY(data.kind)}px` } as CSSProperties}
       onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected || inspected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}${compatible ? ' cable-compatible' : ''}${pingSource ? ' quick-ping-source' : ''}${pingTarget ? ' quick-ping-target' : ''}`}>
       <Handle type="source" position={Position.Top} id="t" />
       <Handle type="source" position={Position.Right} id="r" />

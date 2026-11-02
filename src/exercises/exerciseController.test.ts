@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ExerciseController, EXERCISE_PROGRESS_KEY, readExerciseProgress } from './exerciseController';
 import { BETA_EXERCISES, betaChecks, PRACTICAL_EXERCISES } from './beta';
 import { PRACTICAL_SOURCES } from './practicalPublication';
 import { EXERCISE_DRAFTS } from './drafts';
 import { restoreNetwork, serializeNetwork } from '../engine/serialize';
 import { disposeNetwork } from '../engine/networkLifecycle';
+import { publishedExerciseLayout } from './publicationLayout';
 import { IpDevice } from '../engine/ipdevice';
 import type { MetaRecord, MetaMutation, ProjectDocument, RepositoryResult, WriteOptions } from '../projects/types';
 import type { DraftControllerState, SessionControllerState } from '../persistence/sessionTypes';
@@ -40,7 +41,7 @@ function fixture() {
       return { ok: true, value: structuredClone(meta) };
     },
   };
-  const runtime = { network: () => net, signature: () => JSON.stringify(serializeNetwork(net, {})), pendingForms: () => forms, run: () => {},
+  const runtime = { network: () => net, signature: () => JSON.stringify(serializeNetwork(net, {})), pendingForms: () => forms, run: () => {}, started: vi.fn(),
     subscribe: (fn: () => void) => { runtimeListeners.add(fn); return () => { runtimeListeners.delete(fn); }; } };
   const controller = new ExerciseController(sessions, repository, runtime);
   const mutate = () => { state.drafts.find(d => d.id === state.activeDraftId)!.editSequence++; publish(); };
@@ -60,9 +61,23 @@ function fixture() {
 
 it('ships exactly the two student/check projections, synchronized with drafts and without solutions', () => {
   const selected = EXERCISE_DRAFTS.filter(d => ['routing', 'dns-http'].includes(d.category));
-  expect(BETA_EXERCISES).toEqual(selected.map(({ id, contentVersion, student }) => ({ id, contentVersion, student })));
+  expect(BETA_EXERCISES).toEqual(selected.map(({ id, contentVersion, student }) => ({ id, contentVersion, student: {...student, initialTopology: publishedExerciseLayout(student.initialTopology)} })));
   expect(betaChecks).toEqual(Object.fromEntries(selected.map(d => [d.id, d.review.assessments])));
   expect(JSON.stringify(BETA_EXERCISES)).not.toMatch(/"review"|"reference"|"commands"|"alternatives"/);
+});
+
+it('requests exercise framing only after opening a new attempt, never when resuming or encountering pending forms', async () => {
+  const f = fixture();
+  try {
+    await f.controller.initialize(); f.forms(true);
+    await f.controller.start('pilot-e08-v1'); expect(f.runtime.started).not.toHaveBeenCalled();
+    f.forms(false); await f.controller.start('pilot-e08-v1');
+    const draft = f.controller.activeAttempt()!.draftId;
+    expect(f.runtime.started).toHaveBeenCalledTimes(1); expect(f.runtime.started).toHaveBeenCalledWith(draft);
+    const positions = f.net().devices.size;
+    await f.controller.resume(draft);
+    expect(f.runtime.started).toHaveBeenCalledTimes(1); expect(f.net().devices.size).toBe(positions);
+  } finally { f.dispose(); }
 });
 
 describe.each(PRACTICAL_EXERCISES)('practical attempt $id',exercise=>{

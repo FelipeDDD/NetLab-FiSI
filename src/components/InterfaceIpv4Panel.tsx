@@ -6,6 +6,8 @@ import { emptyIpv4, gatewayOutsideSubnet, sameIpv4 } from '../engine/ipv4Config'
 import { editIpv4Draft, newIpv4Draft, normalizeIpv4Shortcut, parseIpv4Draft, syncIpv4Draft, type Ipv4Fields } from '../ipv4Draft';
 import { CopyIpButton } from './CopyIpButton';
 import { usePendingForm } from '../persistence/usePendingForm';
+import { IpDevice } from '../engine/ipdevice';
+import { InterfaceGatewayRoutes } from './InterfaceGatewayRoutes';
 
 const labels = { ip: 'IP-Adresse', mask: 'Subnetzmaske', gateway: 'Standardgateway', dns: 'DNS-Server' };
 type Field = keyof Ipv4Fields;
@@ -93,7 +95,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
       onFocus={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) group.current = {}; }}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) group.current = undefined; }}
       onSubmit={(e) => { e.preventDefault(); commit(true); }}>
-      {(Object.keys(labels) as Field[]).map((field) => <label key={field}>{labels[field]}
+      {(Object.keys(labels) as Field[]).map((field) => <Fragment key={field}><label>{labels[field]}
         <input name={field} className="iface-ip" aria-label={`${labels[field]} ${ifaceName}`} value={draft.fields[field]}
           aria-invalid={!!error || undefined}
           placeholder={field === 'mask' ? '255.255.255.0 oder /24' : field === 'gateway' || field === 'dns' ? 'Optional' : '192.168.1.10'}
@@ -101,7 +103,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
           onBlur={() => commit(true)}
           onCompositionStart={() => { composing.current = true; clearPending(); }}
           onCompositionEnd={() => { composing.current = false; schedule(); }} />
-      </label>)}
+      </label>{field === 'gateway' && device instanceof IpDevice && <InterfaceGatewayRoutes device={device} iface={iface} />}</Fragment>)}
     </form>}
     {warning && <span className="hint" role="status">Hinweis: Das Standardgateway liegt nicht im selben Subnetz.</span>}
     {error && <span className="hint" role="status">{error}</span>}
@@ -109,6 +111,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
       <dl className="ipv4-assigned">{(Object.keys(labels) as Field[]).map((field) => <Fragment key={field}>
         <dt>{labels[field]}</dt><dd>{displayed[field] || '—'}</dd>
       </Fragment>)}</dl>
+      {device instanceof IpDevice && <InterfaceGatewayRoutes device={device} iface={iface} />}
       <span className="hint" role="status">{iface.cancelDhcp ? 'DHCP-Anfrage läuft…' : iface.dhcpLease ? 'Lease aktiv' : 'Kein aktives Lease'}{iface.ip && !iface.dhcpLease ? ' (gespeicherte Werte)' : ''}</span>
       <button className="btn" disabled={!!iface.cancelDhcp} onClick={() => useStore.getState().renewInterfaceDhcp(deviceId, ifaceName)}>DHCP erneuern</button>
     </>}

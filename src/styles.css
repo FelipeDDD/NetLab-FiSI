@@ -378,7 +378,8 @@ body,
 .device-node.has-device-artwork.kind-firewall { width: 146px; }
 .device-node.has-device-artwork.kind-ap { width: 124px; }
 .has-device-artwork .dev-icon { display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.device-artwork { display: block; overflow: visible; pointer-events: none; filter: drop-shadow(0 2px 3px #0008); }
+.device-artwork { display: block; overflow: visible; pointer-events: none; filter: drop-shadow(0 2px 3px #0008); transform: translateY(var(--device-artwork-offset-y, 0px)); }
+.has-device-artwork .device-label-content { top: var(--device-artwork-offset-y, 0px); }
 .has-device-artwork .dev-label, .has-device-artwork .dev-ip { text-shadow: 0 1px 3px var(--bg), 0 0 5px var(--bg); }
 .device-actions { display: contents; }
 .device-action { z-index: 1; }
@@ -1758,6 +1759,10 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
 .ipv4-mode input { flex: none; margin: 1px 0 0; }
 .ipv4-form label { display: grid; gap: 4px; font-size: var(--inspector-font-size); margin: 7px 0; }
 .ipv4-form .iface-ip { width: 100%; min-width: 0; box-sizing: border-box; }
+.interface-default-routes { color: var(--ui-text-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; margin-block: 4px 10px; }
+.interface-default-routes p { margin-block: 5px; }
+.interface-default-routes small { font-size: inherit; }
+.interface-default-routes summary { cursor: pointer; }
 .ipv4-assigned { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; font-size: var(--inspector-font-size); }
 .ipv4-assigned dd { margin: 0; overflow-wrap: anywhere; font-family: var(--font-mono); }
 .ipv4-interface > .hint { display: block; margin: 6px 0; }
@@ -2049,7 +2054,7 @@ body.packet-panel-resizing, body.packet-panel-resizing * { cursor: col-resize !i
 .device-node.has-device-artwork.selected { box-shadow: none; }
 .device-node.has-device-artwork:is(:hover, .selected)::after {
   content: ''; position: absolute;
-  inset: 0 calc(-1 * var(--device-selection-right, 6px)) calc(-1 * var(--device-selection-bottom, 6px)) calc(-1 * var(--device-selection-left, 6px));
+  inset: min(0px, var(--device-artwork-offset-y, 0px)) calc(-1 * var(--device-selection-right, 6px)) calc(-1 * var(--device-selection-bottom, 6px)) calc(-1 * var(--device-selection-left, 6px));
   border: 1px solid var(--device-color); border-radius: inherit;
   pointer-events: none;
 }

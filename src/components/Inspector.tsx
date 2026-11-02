@@ -19,7 +19,7 @@ import { sortedDnsRecords } from '../topologyEdits';
 import { sortedServicePorts } from '../topologyHistory';
 import { InspectorTabs } from './InspectorTabs';
 import { PersistentInspectorContent } from './PersistentInspectorContent';
-import { hostDnsSummary, hostGatewaySummary } from '../hostNetworkSummary';
+import { hostDnsSummary, selectedDefaultGateway } from '../hostNetworkSummary';
 import { FirewallInfo } from './FirewallInfo';
 import type { NetInterface } from '../engine/device';
 import { InterfaceSummary, interfaceConnection } from './InterfaceConnection';
@@ -195,14 +195,13 @@ export function HostOverview({ device, editing = null, onEdit, editorSlot }: {
     </div>
     <h3>Schnittstellen</h3>
     {device.interfaces.map((iface) => {
-      const gateways = hostGatewaySummary(device, iface), dns = hostDnsSummary(device, iface);
+      const gateway = selectedDefaultGateway(device, iface), dns = hostDnsSummary(device, iface);
       return <div key={iface.name} className="host-interface-summary">
         <InterfaceSummary iface={iface} showMode />
         <div className="host-summary-edit-row"><dl className="host-ipv4-summary">
           <dt>IPv4</dt><dd>{iface.ip ? `${ipToString(iface.ip.addr)}/${iface.ip.prefix}` : '—'}</dd>
           <dt>Subnetzmaske</dt><dd>{iface.ip ? ipToString(maskOf(iface.ip.prefix)) : '—'}</dd>
-          <dt>Gateway</dt><dd>{gateways.length ? gateways.map((gateway, index) => <span className="host-network-value" key={index}>
-            {ipToString(gateway.value)}<small>{gateway.source}</small></span>) : '—'}</dd>
+          <dt>Gateway</dt><dd>{gateway === null ? '—' : ipToString(gateway)}</dd>
           <dt>DNS (effektiv)</dt><dd>{dns ? <span className="host-network-value">{ipToString(dns.value)}<small>{dns.source}</small></span> : '—'}</dd>
         </dl>
         <button type="button" className="host-edit-network" aria-expanded={editing === iface.name}

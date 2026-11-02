@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { SessionController } from '../persistence/sessionController';
 import type { ProjectRepository } from '../projects/repository';
 import { hasPendingForms } from '../persistence/pendingForms';
@@ -11,6 +11,8 @@ import { useTranslation } from '../i18n';
 import { PracticeLauncher } from './practice/PracticeSurface';
 import { usePractice } from './practice/session';
 import type { PracticalCriterion } from './practicalTypes';
+import { EXERCISE_MENU_GROUPS } from './menuGroups';
+import { ExerciseViewportContext, requestExerciseViewport } from './initialViewport';
 
 function criterionLabel(c:PracticalCriterion) {
   const name=(id:string)=>sim.net.devices.get(id)?.name??id;
@@ -31,8 +33,14 @@ export function ExerciseProvider({ sessions, repository, children }: { sessions:
     signature: () => JSON.stringify(useStore.getState().captureWorkspaceDocument()),
     subscribe: listener => useStore.subscribe(listener), pendingForms: hasPendingForms,
     run: () => useStore.getState().setPaused(false),
+    started: draftId => requestExerciseViewport(draftId),
   }));
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
+  const viewport = useMemo(() => ({ loading: !state.ready && !state.error,
+    draftIds: new Set(Object.values(state.progress.attempts)
+      .filter(attempt => AVAILABLE_EXERCISES.some(exercise => exercise.id === attempt.exerciseId))
+      .map(attempt => attempt.draftId)),
+  }), [state.ready, state.error, state.progress.attempts]);
   const [, redraw] = useState(0);
   useEffect(() => {
     void controller.initialize();
@@ -42,7 +50,7 @@ export function ExerciseProvider({ sessions, repository, children }: { sessions:
     window.addEventListener('focus', focus); window.addEventListener('beforeunload', before);
     return () => { release(); window.removeEventListener('focus', focus); window.removeEventListener('beforeunload', before); controller.dispose(); };
   }, [controller, sessions]);
-  return <Context.Provider value={{ controller, state }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ controller, state }}><ExerciseViewportContext.Provider value={viewport}>{children}</ExerciseViewportContext.Provider></Context.Provider>;
 }
 
 export function ExerciseMenu({ close }: { close(): void }) {
@@ -55,7 +63,9 @@ export function ExerciseMenu({ close }: { close(): void }) {
     <PracticeLauncher close={close} />
     <p className="exercise-note">{t('exercises.note')} {t('exercises.contentLanguage')}</p>
     {state.error && <p role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>{t('common.retry')}</button></p>}
-    {AVAILABLE_EXERCISES.map(e => {
+    {EXERCISE_MENU_GROUPS.map(group => <details className="exercise-menu-group" key={group.id} open>
+      <summary>{t(group.label)}</summary>
+      {group.exercises.flatMap(id => AVAILABLE_EXERCISES.filter(e => e.id === id)).map(e => {
       const pilot=practicalExercise(e.id);
       const completion = state.progress.completed[e.id], resume = controller.resumable(e.id);
       const started = Object.values(state.progress.attempts).some(a => a.exerciseId === e.id);
@@ -69,7 +79,7 @@ export function ExerciseMenu({ close }: { close(): void }) {
           <button role="menuitem" className="btn" disabled={!state.ready || state.busy} onClick={() => { usePractice.getState().close(); void controller.start(e.id); close(); }}>{t(completion ? 'exercises.restart' : resume ? 'exercises.attempt' : 'exercises.start')}</button>
         </div>
       </section>;
-    })}
+    })}</details>)}
   </>;
 }
 
@@ -88,12 +98,12 @@ export function ExercisePanel() {
     <header><div className="exercise-heading"><strong>{exercise.student.title}</strong>
       {pilot && <div className="exercise-summary" role="status" aria-live="polite" data-outcome={currentVersion ? state.outcome : 'unverified'}>
         <span>{state.checking ? t('exercises.checking') : currentVersion && state.outcome === 'passed' ? '✓ ' + t('exercises.technical') : currentVersion && state.outcome === 'incomplete' ? t('exercises.incomplete') : t('exercises.pending')}</span>
-        {pilot.manualReview.length > 0 && <span>{t('exercises.manualOpen')}</span>}
       </div>}
     </div><button className="btn btn--icon" aria-label={t(collapsed?'exercises.expand':'exercises.collapse')} aria-expanded={!collapsed} onClick={() => setCollapsed(v => !v)}>{collapsed ? '+' : '−'}</button></header>
     {!collapsed && <>
       <div className="exercise-body">
-        <p lang="de">{exercise.student.description}</p><p lang="de">{exercise.student.task}</p>
+        <p lang="de">{exercise.id === 'pilot-e06-v1' ? 'PC A und PC B verwenden unterschiedliche dritte Oktette. Prüfen Sie die Kommunikation anhand ihrer /16-Masken.' : exercise.student.description}</p>
+        <p lang="de">{exercise.id === 'pilot-e06-v1' ? 'Testen Sie beide Richtungen. Wenn die Konfiguration bereits stimmt, ist keine Änderung erforderlich. Erhalten Sie die Netzkonfiguration.' : exercise.student.task}</p>
         <ul>{exercise.student.requirements.map(r => {
           const required = checks.filter(a => a.requirementId === r.id);
           const done = required.length > 0 && required.every(a => state.results[a.id]);
@@ -109,7 +119,12 @@ export function ExercisePanel() {
             })}</ul></details>:failed && <small>Nicht erfüllt – Konfiguration und Erreichbarkeit prüfen.</small>}
           </li>;
         })}</ul>
-        {pilot&&<><details className="exercise-manual"><summary>{t('exercises.manual')}</summary>{pilot.manualReview.map(text=><p lang="de" key={text}>{text}</p>)}</details><small>{t('exercises.persistence')}</small></>}
+        {pilot&&<>
+          {exercise.id === 'pilot-e06-v1' ? Object.keys(state.results).length > 0 && !state.checking && <section className="exercise-learning" lang="de">
+            <strong>Was bedeutet /16?</strong><p>192.168.10.50/16 und 192.168.11.60/16 gehören beide zu 192.168.0.0/16 (Maske 255.255.0.0). Das dritte Oktett unterscheidet hier keine Subnetze. Im vorgesehenen gemeinsamen LAN ermitteln die Hosts die Ziel-MAC per ARP und können direkt über den Switch kommunizieren, ohne Gateway.</p>
+            <small>Die technischen Tests prüfen die Konfiguration und ICMP, nicht Ihr Verständnis dieser Erklärung.</small>
+          </section> : <details className="exercise-manual"><summary>{t('exercises.manual')}</summary>{pilot.manualReview.map(text=><p lang="de" key={text}>{text}</p>)}</details>}
+          <small>{t('exercises.persistence')}</small></>}
       </div>
       <footer>
         <button className="btn btn--primary" disabled={!state.ready || state.busy || state.checking || !currentVersion} onClick={() => void controller.verify()}>{state.checking ? t('exercises.checking') : pilot?t('exercises.check'):'Überprüfen'}</button>

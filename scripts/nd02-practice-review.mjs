@@ -14,13 +14,13 @@ export async function runND02PracticeReview({page,test,click,choose,type,shot,de
   };
   const languageCycle=async()=>{
     const before=await state();
-    for(const [language,term,title] of [['de','rechnerisch','Gateway und Subnetz'],['pt-BR','matematicamente','Gateway e sub-rede'],['en','mathematically','Gateway and subnet'],['de','rechnerisch','Gateway und Subnetz']]) {
+    for(const [language,term,title,category] of [['de','rechnerisch','Gateway und Subnetz','Subnetzgrenzen'],['pt-BR','matematicamente','Gateway e sub-rede','Limites das sub-redes'],['en','mathematically','Gateway and subnet','Subnet boundaries'],['de','rechnerisch','Gateway und Subnetz','Subnetzgrenzen']]) {
       await choose('#toolbar-language',language);assert.equal(await state(),before);
       assert.equal(await page.evaluate("return document.querySelector('#practice-membership u').textContent;"),term);
       assert.equal(await page.evaluate("return document.querySelector('.practice-question h3').textContent;"),title);
       assert(await page.evaluate(`const s=practice.getState(),q=s.question,r=s.attempts[q.id].result,summary=document.querySelector('.practice-summary-values');
         if(document.querySelector('.practice-summary-seed,.practice-recipe')||summary.textContent.includes(q.recipe.seed))return false;
-        if(summary.children.length!==2||!summary.querySelector('strong').textContent.includes('ND02 v3'))return false;
+        if(summary.children.length!==2||summary.querySelector('strong').textContent!==${JSON.stringify(category)})return false;
         if(r?.complete){
           if(document.querySelector('.practice-result-summary'))return false;
           for(const id of ['membership','host']){

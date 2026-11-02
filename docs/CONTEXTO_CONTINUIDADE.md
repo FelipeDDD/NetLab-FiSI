@@ -1,8 +1,191 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **30/10/2026**, para continuar entre notebook e desktop.
-Branch: **`main`**, remoto `origin` (`FelipeDDD/NetLab-FiSI`). Base anterior à consolidação desta rodada: **`a276ddb`**.
-Este documento descreve o estado encontrado; o código e os testes continuam sendo a fonte de verdade.
+Atualizado em **03/11/2026**, para continuar entre notebook e desktop.
+Este é o **arquivo único de continuidade**: atualizar este resumo nas próximas
+rodadas, sem criar cópias TXT ou documentos de contexto concorrentes.
+O código, os testes e o Git continuam sendo a fonte de verdade. As seções
+históricas abaixo registram decisões antigas e podem ter sido superadas.
+
+## Leia primeiro — estado atual em 03/11/2026
+
+### Git e sincronização
+
+- Branch `main`, remoto `https://github.com/FelipeDDD/NetLab-FiSI.git`.
+- Base anterior à consolidação desta rodada: **`ac758f9`**, sincronizada com
+  `origin/main` antes da revisão. Conferir o commit posterior com `git log -1`.
+- Commits anteriores relevantes:
+  - `316264d` — atraso inicial do autoplay da homepage e limpeza do rodapé.
+  - `867e178` — branding NetLab-FiSI, textos e auditoria editorial.
+  - `cb4af20` — defaults visuais, fontes locais/web, testes e documentação.
+  - `ac758f9` — ferramentas de rede e interações do workspace.
+- Esta consolidação reúne os refinamentos de exercícios, gateway, alinhamento
+  e defaults descritos abaixo. No notebook, conferir `git status` e atualizar
+  a branch antes de continuar; não presumir que uma cópia anterior já os contém.
+- Não descartar mudanças locais, não usar reset/clean/force e não mexer em stashes.
+
+### Defaults e nomes aprovados
+
+- UI Theme padrão de primeiro acesso: **Graphite Dark**, ID `graphite-dark`.
+  Ausência da chave `netlab:ui-theme:v1` usa esse default sem gravá-la.
+- O tema de ID interno `original` agora aparece como **Midnight Blue**.
+  Foi uma mudança exclusivamente de nome; sua paleta ficou intacta. O usuário
+  não quer "Original" como nome de tema/opção. **Não renomear o ID persistido.**
+- Valores salvos válidos continuam prioritários. O valor legado `midnight-blue`
+  continua resolvendo para `original` (nome visível Midnight Blue), sem regravar
+  localStorage nem restaurar uma paleta antiga que já havia sido removida.
+- Canvas independente do UI Theme: **Blue Circuit**, `choice: 'bg2'`,
+  `intensity: 100`, `dots: false`, `animation: 'shooting'` (Shooting Star). Não alterar esses defaults
+  nem sobrescrever escolhas existentes por interpretar preferências como bugs.
+- Terminal novo/Reset: `style: 'fx-signal-pulse'`, `intensity: 100`,
+  `fontSize: 14`, `fontFamily: 'consolas'`. O preset Pulse deve aparecer
+  selecionado mesmo com "Show experimental styles" desmarcado.
+- Novos planos gravam a aparência completa explicitamente. Campos ausentes em
+  documentos antigos preservam seus valores históricos: Diagonal, 80%, System,
+  13 px. Preferências explicitamente salvas nunca são substituídas por defaults.
+- Idioma padrão: **alemão**, sem detecção do navegador. DE/EN/PT-BR podem ser
+  escolhidos; a escolha fica em `netlab:language:v1` e é reutilizada.
+
+### Refinamentos locais dos exercícios Beta
+
+- Menu Übungen agrupado por assunto, sem novos drafts publicados. Categorias
+  da Rechenpraxis usam nomes pedagógicos, com navegação DE/EN/PT-BR.
+- Rechenpraxis inicia em **Subnetzgrenzen (ND02 v3)**, dificuldade iniciante,
+  quando não existe uma questão ativa. Fechar/reabrir preserva a questão atual.
+- Novas tentativas usam posições 18% mais espaçadas e enquadramento inicial
+  com `maxZoom: 0.65`. F5/reabertura de uma tentativa associada ao draft usa o
+  mesmo limite de 0.65×. Durante a sessão, abas visitadas recuperam zoom/pan de um cache em
+  memória, sem novo fit. Não reposicionar tentativas existentes.
+- Ping oferece 0.25× por padrão (800 ms/link no cursor atual); Live permanece
+  em 200 ms/link e preferências antigas de velocidade não são reativadas.
+- O Inspector explica rotas default explícitas/RIP separadamente do gateway
+  da interface. Não sincronizar esses dados automaticamente.
+  Allgemein mostra só o endereço selecionado, ou `—` se ausente/concorrente;
+  Netzwerk mantém a origem e a escolha por ordem do simulador.
+- E06 recebe explicação da máscara /16 após verificação; discussões dos demais
+  pilotos são opcionais, sem status de avaliação pendente. Critérios v1 intactos.
+- Detalhes e validações: [exercise-usability.md](exercise-usability.md).
+  Conferir o Git para identificar o checkpoint que consolida esta rodada.
+
+### Fontes dos terminais
+
+- Fontes adicionais: JetBrains Mono, Fira Code, IBM Plex Mono e Source Code Pro.
+  WOFF2 Regular/Bold estão em `public/assets/fonts/`, com versões fixadas,
+  licenças OFL e fontes de origem no README desse diretório.
+- Consolas é somente local. Não copiar, converter ou distribuir fonte Microsoft.
+  Na ausência dela, carregar JetBrains Mono dos assets do próprio NetLab sem
+  mudar o valor salvo `consolas`.
+- `src/terminalFonts.ts` carrega somente a família de um terminal visível,
+  compartilha pedidos entre painéis e usa cache HTTP/URLs versionadas.
+  Nenhuma fonte web deve baixar só por abrir a homepage ou o editor vazio.
+- `TerminalPanelView.tsx` aplica a fonte após carregar e usa a infraestrutura
+  `observeTerminalSize`/FitAddon/refresh. Cancelar callbacks de uma preferência
+  anterior ao trocar/ocultar painéis; preservar buffers, entrada e sessões xterm.
+- Ligaduras ficam desativadas por CSS (`font-variant-ligatures`, `liga`, `calt`).
+  Não adicionar addon de ligaduras nem recriar terminais para trocar fonte.
+- Referências: [terminal-fonts.md](terminal-fonts.md), [defaults.md](defaults.md),
+  [ui-themes.md](ui-themes.md).
+
+### Homepage e branding
+
+- `/` é a homepage Packet Journey; editor em `/app.html`.
+- O primeiro autoplay espera **725 ms** para permitir ver o DATA inicial.
+  Comandos manuais não esperam; não adicionar esse atraso a cada loop/replay.
+  Implementação em `src/home/journey/PacketScenes.tsx`.
+- O rodapé não deve exibir "Simuliertes Verhalten ersetzt keine echte Hardware."
+  nem equivalentes EN/PT-BR. A frase foi removida de `home.about` nos três idiomas.
+- Marca oficial **NetLab-FiSI**, nome curto NetLab. Terminal, ajuda e artefatos
+  gerados já foram atualizados. Não repetir uma substituição global de `netsim`.
+- Permanecem intencionais: `app: 'netsim'`, versões de schema, chaves antigas,
+  `application/netsim`, nomes de downloads, package name, SSIDs de compatibilidade,
+  URLs antigas ainda não verificadas, copyright e referências a terceiros.
+- A auditoria em [branding-audit.md](branding-audit.md) é um levantamento anterior
+  à limpeza: serve como classificação de riscos, não lista atual de pendências.
+
+### Funcionalidades recentes que já estão implementadas
+
+- **Rechenpraxis:** Subnetting A, VLSM B, Gateway E02 v1/v2 e **Subnetzgrenzen
+  ND02 v3** publicados no painel principal. Não implementar essa integração de novo.
+- ND02 v3 tem três perguntas: pertencimento matemático, host utilizável e máscara;
+  começa com `255.255.`, corrige em conjunto, oferece justificativas e Rechenweg.
+  DE/PT-BR/EN podem mudar sem perder seed, respostas ou máscara parcial.
+  Espaço avança após correção, respeitando controles/foco. Seeds/fingerprints
+  versionados precisam ser preservados.
+- O preview `http://localhost:5173/__diagnosis_preview__` continua exclusivo de
+  desenvolvimento; versões históricas e ND05 internos não devem ser publicados
+  por acidente. Ver [network-diagnosis-preview.md](network-diagnosis-preview.md).
+- PC/Notebook têm Desktop e Web Browser simulado, janela compacta móvel e
+  redimensionável, menu de contexto e erros DE/PT-BR/EN educativos. Usam a rede
+  simulada; não navegam na internet real. Ver [pc-browser.md](pc-browser.md).
+- DNS: editor preserva quebras de linha, valida cada registro e não salva um lote
+  parcialmente inválido. Wi-Fi mostra APs reais elegíveis; APs novos usam
+  `NetLab-WiFi`, preservando SSIDs anteriores. Ver `src/dnsRecords.ts`,
+  `src/components/HostWireless.tsx` e respectivos testes.
+- Save/Load, rascunhos, IndexedDB, associação Wi-Fi, cabos, Markierungen,
+  clipboard e guias ópticas já existem. Ler implementação antes de ampliar.
+  Restrições e histórico arquitetural estão nas seções seguintes.
+
+### Arquivos para começar a investigar
+
+- `src/uiTheme.ts`, `src/themes.css`, `src/buttons.css`: aparência da UI.
+- `src/canvasBackground.ts`: imagem, intensidade, pontos e animação do Canvas.
+- `src/terminalAppearance.ts`, `src/terminalFonts.ts`,
+  `src/components/TerminalPanelView.tsx`, `src/components/terminalDockLayout.ts`:
+  preferências e apresentação do terminal; `src/terminals.ts` mantém as sessões.
+- `src/projects/projectDocument.ts`: criação de plano com aparência explícita;
+  `src/workspace/WorkspaceUI.tsx` e `src/persistence/sessionController.ts`: abas,
+  criação, fechamento e restauração. Não misturar UI Theme/background com documento.
+- `src/exercises/practice/PracticePanel.tsx` e `model.ts`: prática publicada;
+  `src/exercises/diagnosis/boundariesV3.ts`: gerador matemático preservado.
+- `src/main.tsx` inicia o workspace assíncrono; `src/home/main.tsx` é a entrada
+  separada da homepage. Engine em `src/engine/`, comandos em `src/commands/`,
+  React Flow em `src/components/Flow.tsx` e estado central em `src/store.ts`.
+
+### Como retomar o desenvolvimento no notebook
+
+1. Entregar/abrir este documento. Conferir `git status`, `git log -3 --oneline`
+   e `git remote -v`. Com a árvore limpa, `git pull --ff-only` deve trazer a base
+   sincronizada; não sobrescrever trabalho local para forçar a atualização.
+2. Confirmar que a base contém `ac758f9` e a consolidação posterior descrita
+   no resumo acima. Consultar `git log -3` e atualizar a branch pelo remoto.
+3. Usar as dependências do lockfile. No Windows, preferir `npm.cmd` se a política
+   do PowerShell bloquear `npm.ps1`. Iniciar com `npm.cmd run dev`.
+4. Abrir `http://localhost:5173/` ou `http://localhost:5173/app.html`. Vite mantém
+   localhost:5173 com strictPort. Se houver EACCES/reserva do Windows, investigar
+   processo/faixa excluída; não alterar WinNAT/WSL/Hyper-V sem autorização.
+5. Git não transfere localStorage, IndexedDB ou projetos pessoais. Para trabalhar
+   na mesma topologia, exportar/importar JSON separadamente. Localhost e Vercel,
+   portas e perfis diferentes têm armazenamentos independentes.
+6. Perguntar qual será a próxima tarefa. **Não há nova implementação pendente
+   autorizada neste documento.** Não refazer tarefas antigas listadas abaixo.
+7. Atualizar este mesmo arquivo ao registrar outra continuidade. Evitar copiar
+   segredos, dados pessoais, projetos reais, dumps de browser ou logs extensos.
+
+### Validação e cuidados
+
+- Última validação completa antes dos commits: **2.608 testes, 134 arquivos**,
+  TypeScript, build e `git diff --check` aprovados.
+- Rechenpraxis: **140 verificações Chromium** aprovadas no perfil descartável;
+  default Subnetzgrenzen, outras categorias, idiomas, respostas e F5 cobertos.
+  As quatro projeções JSON estão sincronizadas; o catálogo interno continua
+  ausente dos bundles públicos.
+- Comando em série: `npm.cmd test -- --maxWorkers=1 --minWorkers=1`.
+  Alguns testes abrem Chromium com perfil/banco/porta descartáveis e podem levar
+  alguns minutos. Não usar o perfil real para testar migração ou recuperação.
+- `npm.cmd run build` inclui `tsc --noEmit`; `npm.cmd run preview` serve o build.
+  Resta apenas o aviso já conhecido de chunks acima de 500 kB.
+- `node scripts/test-terminal-fonts.mjs`, após build, validou **109 cenários**:
+  fontes, fallback, primeiro acesso, UI Theme, Canvas, F5, Save/Load e Reset.
+  O harness precisa de Chromium instalado (ou `NETLAB_CHROMIUM_PATH`); não
+  instalar browsers/dependências automaticamente.
+- A revisão final excluiu capturas, vídeos, caches, perfis, dist, assets-tests,
+  backups e dados locais dos commits. As oito fontes WOFF2 e quatro licenças
+  são assets necessários e foram incluídos. Licença/copyright principal intactos.
+- A codificação UTF-8 do relatório de branding foi corrigida. Ao editar textos
+  com PowerShell antigo, evitar round-trips ANSI que corrompam acentos.
+
+---
+
+## Histórico — atualização de 30/10/2026 (superada pelo resumo acima)
 
 ## Atualização de 30/10/2026 — Rechenpraxis e Netzwerkdiagnose
 
@@ -12,7 +195,7 @@ Este documento descreve o estado encontrado; o código e os testes continuam sen
 - Validação do piloto: 917 testes direcionados, TypeScript, build e amostragem de 1.200 seeds. Testes de comparação documental aceitam LF/CRLF para continuidade entre computadores.
 - Próxima decisão: revisar a qualidade dos 12 exemplos e dos níveis antes de ampliar receitas ou publicar conteúdo. E02 v1/v2, oito referências fixas, engine e dados salvos foram preservados.
 
-## Leia primeiro — estado atual e decisões pendentes
+## Histórico de implementação — decisões e entregas anteriores
 
 - **Homepage oficial (29/10/2026):** `/` abre Packet Journey com DATA, cinco
   estações alternadas, movimento por estações e hero de 21,24 segundos.

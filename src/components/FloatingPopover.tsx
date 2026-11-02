@@ -3,7 +3,16 @@ import type { KeyboardEventHandler, MutableRefObject, PointerEventHandler, React
 import { createPortal } from 'react-dom';
 import { floatingPosition } from './floatingPosition';
 
-const FOCUSABLE = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]:not(:disabled)';
+const FOCUSABLE = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex="0"]:not(:disabled)';
+const focusableItems = (popup: HTMLElement | null) => [...(popup?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])].filter(item => {
+  if (!item.getClientRects().length) return false;
+  // Closed <details> content can retain layout boxes in Chromium. Its summary
+  // is accessible, but hidden exercise buttons must not enter arrow navigation.
+  for (let parent = item.parentElement; parent && parent !== popup; parent = parent.parentElement) {
+    if (parent instanceof HTMLDetailsElement && !parent.open && !parent.querySelector(':scope > summary')?.contains(item)) return false;
+  }
+  return true;
+});
 
 export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', preferredSide = 'auto', className = '', onPointerEnter, onPointerLeave, onKeyDown, popupRef, relatedRefs = [], followAnchor = false, dismissOnOutside = true }: {
   anchor: RefObject<HTMLElement>;
@@ -83,7 +92,7 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
   useLayoutEffect(() => {
     if (!position || focused.current || initialFocus === 'none') return;
     focused.current = true;
-    const items = ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
+    const items = focusableItems(ref.current);
     ((initialFocus === 'last' ? items?.[items.length - 1] : items?.[0]) ?? ref.current)?.focus({ preventScroll: true });
   }, [position, initialFocus]);
 
@@ -101,7 +110,7 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
           anchor.current?.focus({ preventScroll: true });
           return;
         }
-        const items = [...(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
+        const items = focusableItems(ref.current);
         const index = items.indexOf(document.activeElement as HTMLElement);
         if (event.key === 'Tab' && (role === 'menu' || (event.shiftKey ? index === 0 : index === items.length - 1))) {
           // Let native Tab proceed from the trigger's position in document order.

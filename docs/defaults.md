@@ -66,7 +66,8 @@ não são reescritos; esta consolidação não inclui push.
 ## Verificação final de 02/11/2026
 
 Os valores já estavam corretos: terminal Pulse/100%/Consolas/14 px e Canvas
-Blue Circuit/100%/pontos ligados/animação Off. Esta rodada reforçou testes sem
+Blue Circuit/100%/pontos ligados/animação Off à época. O padrão atual para novos
+usuários é Shooting Star com pontos desativados; preferências salvas continuam respeitadas. Esta rodada reforçou testes sem
 alterar as constantes ou o comportamento funcional da aplicação.
 
 - 466 testes direcionados aprovados: normalização, documentos antigos e

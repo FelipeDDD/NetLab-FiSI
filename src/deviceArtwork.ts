@@ -17,6 +17,13 @@ export function hasDeviceArtwork(kind: DeviceKind): kind is keyof typeof DEVICE_
   return EXPERIMENTAL_DEVICE_ARTWORK && kind in DEVICE_ARTWORK;
 }
 
+// Canvas-space presentation experiment; never changes node measurements or
+// stored positions. Cable endpoints and the server alignment account for it.
+const ARTWORK_OFFSET_Y: Partial<Record<DeviceKind, number>> = { router: 10, server: -8 };
+export function deviceArtworkOffsetY(kind: DeviceKind): number {
+  return hasDeviceArtwork(kind) ? ARTWORK_OFFSET_Y[kind] ?? 0 : 0;
+}
+
 // Visual landing regions only, unrelated to Handles or simulated interfaces.
 // Switch: near the RJ45 bank. Router: inside the chassis below the antennas.
 export function cableAttachmentBox(box: CableBox, kind: DeviceKind): CableBox {
@@ -45,7 +52,10 @@ export type VisualNode = { id: string; position: { x: number; y: number }; measu
 export type VisualEdge = { id: string; source: string; target: string };
 export function linkAttachment(node: VisualNode, linkId: string, nodes: VisualNode[], edges: VisualEdge[]): CableBox & { visualSlot?: number } {
   const box = { ...node.position, width: node.measured?.width ?? 96, height: node.measured?.height ?? 78 };
-  if (!hasDeviceArtwork(node.data.kind) || node.data.kind !== 'switch') return cableAttachmentBox(box, node.data.kind);
+  if (!hasDeviceArtwork(node.data.kind) || node.data.kind !== 'switch') {
+    const attachment = cableAttachmentBox(box, node.data.kind), offset = deviceArtworkOffsetY(node.data.kind);
+    return offset ? { ...attachment, y: attachment.y + offset } : attachment;
+  }
   const occupied = new Set<number>();
   const links = edges.filter(e => e.source === node.id || e.target === node.id)
     .sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));

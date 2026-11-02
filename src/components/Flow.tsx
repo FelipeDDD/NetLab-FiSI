@@ -40,6 +40,10 @@ const edgeTypes = { floating: FloatingEdge };
 
 const DROPPABLE_KINDS = new Set(['host', 'notebook', 'smartphone', 'switch', 'router', 'firewall', 'server', 'ap']);
 
+// Keep the prop identity stable: React Flow queues imperative fitView calls.
+// A fresh default-options object on every render can overwrite their limits.
+const INITIAL_FIT_VIEW_OPTIONS = { padding: 0.25, maxZoom: 1.25 };
+
 export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const [minimapOpen, setMinimapOpen] = useState(false);
   const background = useCanvasBackground(s => s.preference);
@@ -335,7 +339,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       minZoom={0.25}
       maxZoom={2.5}
       fitView={fitOnInit}
-      fitViewOptions={{ padding: 0.25, maxZoom: 1.25 }}
+      fitViewOptions={INITIAL_FIT_VIEW_OPTIONS}
     >
       {background.dots && <Background gap={26} size={1.6} bgColor={experimentalBackground ? 'transparent' : undefined}
         style={experimentalBackground ? { opacity: 0.4, pointerEvents: 'none' } : undefined} />}

@@ -5,7 +5,10 @@ export const PACKET_ANIMATION_KEY = 'netlab:packet-animation-duration:v1';
 export const PACKET_ANIMATION_SPEED_KEY = 'netlab:packet-animation-speed:v1';
 export const PACKET_ANIMATION_SPEEDS = [0.5, 1, 2, 4] as const;
 export const DEFAULT_PACKET_ANIMATION_SPEED = 1;
-export const PING_ANIMATION_SPEEDS = [0.5, 1, 2] as const;
+export const PING_ANIMATION_SPEEDS = [0.25, 0.5, 1, 2] as const;
+export const DEFAULT_PING_ANIMATION_SPEED = 0.25;
+/** Ping-only control. Keep legacy Live speed normalization/keys unchanged. */
+export const normalizePingAnimationSpeed = (value: unknown) => value === 0.25 ? 0.25 : normalizePacketAnimationSpeed(value);
 export const PING_ANIMATION_HIDE_DELAY_MS = 3_000;
 // Experimental presentation timings, independent of Link.latency/Scheduler.
 export const PACKET_ANIMATION_BASE_MS = { live: 200, guided: 1_000 } as const;

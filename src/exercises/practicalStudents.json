@@ -40,7 +40,7 @@
             "id": "b",
             "kind": "host",
             "name": "PC B",
-            "x": 370,
+            "x": 737.1999999999999,
             "y": 100,
             "forwarding": false,
             "ifaces": [
@@ -61,7 +61,7 @@
             "id": "sw",
             "kind": "switch",
             "name": "Zugang",
-            "x": 640,
+            "x": 418.59999999999997,
             "y": 100,
             "forwarding": false,
             "ifaces": [
@@ -237,7 +237,7 @@
             "id": "b",
             "kind": "server",
             "name": "Archiv",
-            "x": 370,
+            "x": 737.1999999999999,
             "y": 100,
             "forwarding": false,
             "ifaces": [
@@ -263,7 +263,7 @@
             "id": "r",
             "kind": "router",
             "name": "Router",
-            "x": 640,
+            "x": 418.59999999999997,
             "y": 100,
             "forwarding": true,
             "ifaces": [
@@ -427,7 +427,7 @@
             "id": "b",
             "kind": "server",
             "name": "Archiv",
-            "x": 370,
+            "x": 737.1999999999999,
             "y": 100,
             "forwarding": false,
             "ifaces": [
@@ -453,7 +453,7 @@
             "id": "r",
             "kind": "router",
             "name": "Router",
-            "x": 640,
+            "x": 418.59999999999997,
             "y": 100,
             "forwarding": true,
             "ifaces": [
@@ -617,7 +617,7 @@
             "id": "west",
             "kind": "router",
             "name": "West",
-            "x": 370,
+            "x": 418.59999999999997,
             "y": 100,
             "forwarding": true,
             "ifaces": [
@@ -664,7 +664,7 @@
             "id": "east",
             "kind": "router",
             "name": "Ost",
-            "x": 640,
+            "x": 737.1999999999999,
             "y": 100,
             "forwarding": true,
             "ifaces": [
@@ -711,8 +711,8 @@
             "id": "warehouse",
             "kind": "server",
             "name": "Lager",
-            "x": 100,
-            "y": 330,
+            "x": 1055.8,
+            "y": 100,
             "forwarding": false,
             "ifaces": [
               {

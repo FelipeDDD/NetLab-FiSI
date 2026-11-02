@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { alignNodeAnchors, getVisualAlignmentPoint, type AlignmentNode } from './alignmentGuides';
-import { cableAttachmentBox } from './deviceArtwork';
+import { linkAttachment } from './deviceArtwork';
 import { cableGeometry } from './cableGeometry';
 
 const moving: AlignmentNode = { id: 'moving', position: { x: 10, y: 20 }, measured: { width: 100, height: 60 } };
@@ -62,8 +62,8 @@ it('uses a common group translation and excludes every moving node as a target',
 });
 
 const artworkCases = [
-  ['host', 124, 111, 55.5], ['server', 100, 145, 72.5],
-  ['router', 132, 127, 69.14], ['firewall', 146, 119, 63.72],
+  ['host', 124, 111, 55.5], ['server', 100, 145, 64.5],
+  ['router', 132, 127, 79.14], ['firewall', 146, 119, 63.72],
   ['notebook', 128, 125, 46], ['smartphone', 80, 131, 49],
   ['ap', 124, 115, 48], ['switch', 152, 89, 44.5],
 ] as const;
@@ -89,13 +89,62 @@ it('aligns a notebook to a PC by the cable band, rather than their coincident bo
 it.each(['straight', 'hybrid'] as const)('keeps %s cables level after optical alignment, without changing their geometry', style => {
   const router = { id: 'router', data: { kind: 'router' }, position: { x: 180, y: 126.5 }, measured: { width: 132, height: 127 } } satisfies AlignmentNode;
   const server = { id: 'server', data: { kind: 'server' }, position: { x: 650, y: 117.5 }, measured: { width: 100, height: 145 } } satisfies AlignmentNode;
-  for (const [target, moving, y] of [[router, server, 125], [pc, notebook, 358]] as const) {
+  for (const [target, moving, y] of [[router, server, 141], [pc, notebook, 358]] as const) {
     const position = { x: moving.position.x, y };
     const result = alignNodeAnchors([target, moving], [{ id: moving.id, position }], 1);
-    const a = cableAttachmentBox({ ...target.position, ...target.measured }, target.data.kind);
-    const b = cableAttachmentBox({ ...position, y: position.y + result.offset.y, ...moving.measured }, moving.data.kind);
+    const a = linkAttachment(target, 'link', [], []);
+    const b = linkAttachment({ ...moving, position: { ...position, y: position.y + result.offset.y } }, 'link', [], []);
     const path = cableGeometry(a, b, style);
     expect(path.pointAt(0).y).toBeCloseTo(path.pointAt(1).y, 8);
+  }
+});
+
+it.each([.25, .5, 1, 2])('snaps server and router cable entries to the same height at zoom %s', zoom => {
+  const router = { id: 'router', data: { kind: 'router' as const }, position: { x: 150, y: 100 }, measured: { width: 132, height: 127 } };
+  const server = { id: 'server', data: { kind: 'server' as const }, position: { x: 600, y: 0 }, measured: { width: 100, height: 145 } };
+  const alignedY = getVisualAlignmentPoint(router)!.y - getVisualAlignmentPoint(server)!.y;
+  for (const [fixed, moving] of [[router, { ...server, position: { ...server.position, y: alignedY + 6 / zoom } }],
+    [{ ...server, position: { ...server.position, y: alignedY } }, { ...router, position: { ...router.position, y: router.position.y + 6 / zoom } }]] as const) {
+    const result = alignNodeAnchors([fixed, moving], [{ id: moving.id, position: moving.position }], zoom);
+    expect(result.guides.some(g => g.axis === 'horizontal')).toBe(true);
+    const snapped = { ...moving, position: { ...moving.position, y: moving.position.y + result.offset.y } };
+    const path = cableGeometry(linkAttachment(fixed, 'link', [], []), linkAttachment(snapped, 'link', [], []), 'straight');
+    expect(path.pointAt(0).y).toBeCloseTo(path.pointAt(1).y, 8);
+  }
+});
+
+it.each([.25, .5, 1, 2])('keeps both PC–router and router–server cable entries level at zoom %s', zoom => {
+  const router = { id: 'router', data: { kind: 'router' as const }, position: { x: 400, y: 100 }, measured: { width: 132, height: 127 } };
+  for (const peer of [
+    { id: 'pc', data: { kind: 'host' as const }, position: { x: 80, y: 0 }, measured: { width: 124, height: 111 } },
+    { id: 'server', data: { kind: 'server' as const }, position: { x: 720, y: 0 }, measured: { width: 100, height: 145 } },
+  ]) {
+    const y = getVisualAlignmentPoint(router)!.y - getVisualAlignmentPoint(peer)!.y + 6 / zoom;
+    const moving = { ...peer, position: { ...peer.position, y } };
+    const result = alignNodeAnchors([router, moving], [{ id: moving.id, position: moving.position }], zoom);
+    expect(result.guides.some(g => g.axis === 'horizontal')).toBe(true);
+    const snapped = { ...moving, position: { ...moving.position, y: y + result.offset.y } };
+    for (const style of ['straight', 'hybrid'] as const) {
+      const path = cableGeometry(linkAttachment(router, 'link', [], []), linkAttachment(snapped, 'link', [], []), style);
+      expect(path.pointAt(0).y).toBeCloseTo(path.pointAt(1).y, 8);
+    }
+  }
+});
+
+it.each([.25, .5, 1, 2])('aligns the cable entries for every non-switch artwork pair at zoom %s', zoom => {
+  const cases = artworkCases.filter(([kind]) => kind !== 'switch');
+  for (const [fixedKind, fixedWidth, fixedHeight] of cases) for (const [movingKind, movingWidth, movingHeight] of cases) {
+    if (fixedKind === movingKind) continue;
+    const fixed = { id: 'fixed', data: { kind: fixedKind }, position: { x: 100, y: 100 }, measured: { width: fixedWidth, height: fixedHeight } };
+    const moving = { id: 'moving', data: { kind: movingKind }, position: { x: 600, y: 0 }, measured: { width: movingWidth, height: movingHeight } };
+    moving.position.y = getVisualAlignmentPoint(fixed)!.y - getVisualAlignmentPoint(moving)!.y + 6 / zoom;
+    const result = alignNodeAnchors([fixed, moving], [{ id: moving.id, position: moving.position }], zoom);
+    expect(result.guides.some(guide => guide.axis === 'horizontal'), `${fixedKind} / ${movingKind}`).toBe(true);
+    const snapped = { ...moving, position: { ...moving.position, y: moving.position.y + result.offset.y } };
+    for (const style of ['straight', 'hybrid'] as const) {
+      const path = cableGeometry(linkAttachment(fixed, 'link', [], []), linkAttachment(snapped, 'link', [], []), style);
+      expect(path.pointAt(0).y, `${fixedKind} / ${movingKind} ${style}`).toBeCloseTo(path.pointAt(1).y, 8);
+    }
   }
 });
 

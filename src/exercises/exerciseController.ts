@@ -16,6 +16,7 @@ export interface ExerciseRuntime {
   subscribe(listener: () => void): () => void;
   pendingForms(): boolean;
   run(): void;
+  started?(draftId: string): void;
 }
 export interface ExerciseState {
   ready: boolean; busy: boolean; checking: boolean; saving: boolean;
@@ -95,6 +96,7 @@ export class ExerciseController {
     try {
       const result = await this.sessions.openDocument({ schemaVersion: 1, topology: structuredClone(exercise.student.initialTopology) });
       if (!result.ok) throw Error('Übung konnte nicht geöffnet werden: ' + result.error.code);
+      this.runtime.started?.(result.value);
       this.pendingAttempt = { id: crypto.randomUUID(), draftId: result.value, exerciseId, contentVersion: exercise.contentVersion, startedAt: Date.now() };
       await this.persistAttempt();
     } catch (e) { this.update({ error: (e as Error).message }); }
@@ -176,7 +178,7 @@ export class ExerciseController {
         p.completed[t.attempt.exerciseId] ??= { attemptId: t.attempt.id, contentVersion: t.attempt.contentVersion, completedAt: Date.now() };
       }, t.abort.signal);
       if (this.valid(t)) { this.ticket = undefined; this.resultTicket = t; this.update({ message: practicalExercise(t.attempt.exerciseId)
-        ? 'Technische Anforderungen erfüllt – lokal gespeichert. Die Diagnosebegründung bleibt manuell zu besprechen.' : 'Abgeschlossen – lokal gespeichert.' }); }
+        ? 'Technische Anforderungen erfüllt – lokal gespeichert. Das konzeptuelle Verständnis wird nicht automatisch bewertet.' : 'Abgeschlossen – lokal gespeichert.' }); }
     } catch (e) {
       if (!t.abort.signal.aborted) { this.resultTicket = t; this.update({ error: (e as Error).message, message: 'Keine bestätigte Speicherung. Bitte erneut überprüfen.' }); }
     } finally { this.ticket = undefined; this.update({ checking: false, busy: false, saving: false }); }

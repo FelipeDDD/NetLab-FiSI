@@ -19,12 +19,14 @@ function isBackgroundChoice(value: unknown): value is BackgroundChoice {
 }
 export type CanvasBackground = { choice: BackgroundChoice; intensity: number; dots: boolean; animation: BackgroundAnimation };
 export const BACKGROUND_KEY = 'netlab:canvas-background:v1';
-export const DEFAULT_BACKGROUND: CanvasBackground = { choice: 'bg2', intensity: 100, dots: true, animation: 'off' };
+export const DEFAULT_BACKGROUND: CanvasBackground = { choice: 'bg2', intensity: 100, dots: false, animation: 'shooting' };
 export function normalizeBackground(value: Partial<CanvasBackground> | null): CanvasBackground {
+  if (value === null) return { ...DEFAULT_BACKGROUND };
   return {
     choice: isBackgroundChoice(value?.choice) ? value.choice : DEFAULT_BACKGROUND.choice,
     intensity: typeof value?.intensity === 'number' && Number.isFinite(value.intensity)
       ? Math.max(0, Math.min(100, Math.round(value.intensity))) : 100,
+    // Older saved preferences without this field used visible dots.
     dots: typeof value?.dots === 'boolean' ? value.dots : true,
     animation: normalizeAnimation(value?.animation),
   };

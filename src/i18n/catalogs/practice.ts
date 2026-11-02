@@ -1,4 +1,5 @@
 const en = {
+  categories:'Subnetting · VLSM · Gateway & CIDR · Subnet boundaries',gatewayCategory:'Gateway & CIDR',
   version:'E02 version',version1:'v1 · Subnet membership',version2:'v2 · Membership & connectivity',
   title:'Calculation practice (Beta)',open:'Practice subnetting & CIDR',close:'Close practice',loading:'Loading practice…',
   temporary:'Answers stay during this visit only. Reloading clears them. Existing network exercise progress is unchanged.',
@@ -11,6 +12,7 @@ const en = {
 } as const;
 type Messages=Record<keyof typeof en,string>;
 const de:Messages={
+  categories:'Subnetting · VLSM · Gateway & CIDR · Subnetzgrenzen',gatewayCategory:'Gateway & CIDR',
   version:'E02-Version',version1:'v1 · Subnetzzugehörigkeit',version2:'v2 · Zugehörigkeit & Erreichbarkeit',
   title:'Rechenpraxis (Beta)',open:'Subnetting & CIDR üben',close:'Rechenpraxis schließen',loading:'Rechenpraxis wird geladen…',
   temporary:'Antworten bleiben nur während dieses Besuchs erhalten. Neuladen löscht sie. Bestehender Netzwerk-Übungsfortschritt bleibt unverändert.',
@@ -22,6 +24,7 @@ const de:Messages={
   configuration:'Aufgabeneinstellungen',configure:'Konfigurieren',answers:'Ihre Antworten',next:'Nächste Aufgabe (Leertaste)',nextError:'Eine neue Variante konnte nicht erstellt werden. Ihre Antworten bleiben erhalten. Bitte erneut versuchen.',moveCenter:'Rechenpraxis zentrieren',moveSide:'Rechenpraxis seitlich anzeigen',
 };
 const ptBR:Messages={
+  categories:'Subnetting · VLSM · Gateway e CIDR · Limites de sub-redes',gatewayCategory:'Gateway e CIDR',
   version:'Versão E02',version1:'v1 · Pertencimento à sub-rede',version2:'v2 · Pertencimento e conectividade',
   title:'Prática de cálculo (Beta)',open:'Praticar subnetting e CIDR',close:'Fechar prática',loading:'Carregando prática…',
   temporary:'As respostas duram apenas nesta visita. Atualizar a página as apaga. O progresso dos exercícios de rede permanece intacto.',

@@ -1,10 +1,18 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { PACKET_ANIMATION_BASE_MS, PACKET_ANIMATION_KEY, PACKET_ANIMATION_SPEED_KEY, PACKET_ANIMATION_SPEEDS, normalizePacketAnimationSpeed, packetAnimationDuration, packetAnimationProgress, readPacketAnimationSpeed, retimePacketAnimations, savePacketAnimationSpeed, sequencePacketAnimation, type AnimatedTransfer } from './packetAnimation';
 import { clampPacketWidget, readPacketAnimationPlacement, savePacketAnimationPlacement } from './packetAnimationWidget';
-import { isPingAnimationActive } from './packetAnimation';
+import { isPingAnimationActive, DEFAULT_PING_ANIMATION_SPEED, normalizePingAnimationSpeed, PING_ANIMATION_SPEEDS } from './packetAnimation';
 import { emptyGuidedPacket } from './guidedPacket';
 
 afterEach(() => vi.unstubAllGlobals());
+it('offers quarter-speed for ping only and leaves the legacy/Live default independent', () => {
+  expect(PING_ANIMATION_SPEEDS).toEqual([.25,.5,1,2]);
+  expect(DEFAULT_PING_ANIMATION_SPEED).toBe(.25);
+  expect(normalizePingAnimationSpeed(.25)).toBe(.25);
+  expect(packetAnimationDuration(normalizePingAnimationSpeed(.25))).toBe(800);
+  expect(packetAnimationDuration(1)).toBe(200);
+  expect(normalizePacketAnimationSpeed(.25)).toBe(.5);
+});
 it('keeps a continuous ping active but finishes cancelled playback even if the paused network has old frames in flight', () => {
   const state = emptyGuidedPacket();
   state.observation.status = 'observing';

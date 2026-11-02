@@ -4,8 +4,8 @@ import { BACKGROUND_KEY, CANVAS_BACKGROUNDS, DEFAULT_BACKGROUND, normalizeBackgr
 afterEach(() => vi.unstubAllGlobals());
 it('defaults to Blue Circuit without saving over an existing user choice',()=>{
   const setItem=vi.fn();vi.stubGlobal('localStorage',{getItem:()=>null,setItem});
-  expect(DEFAULT_BACKGROUND).toEqual({choice:'bg2',intensity:100,dots:true,animation:'off'});
-  expect(readBackground()).toEqual({choice:'bg2',intensity:100,dots:true,animation:'off'});
+  expect(DEFAULT_BACKGROUND).toEqual({choice:'bg2',intensity:100,dots:false,animation:'shooting'});
+  expect(readBackground()).toEqual({choice:'bg2',intensity:100,dots:false,animation:'shooting'});
   expect(CANVAS_BACKGROUNDS[readBackground().choice].label).toBe('Blue Circuit');
   expect(setItem).not.toHaveBeenCalled();
 });
@@ -14,15 +14,31 @@ it.each(Object.keys(CANVAS_BACKGROUNDS))('preserves the saved %s choice ahead of
   vi.stubGlobal('localStorage',{getItem:()=>JSON.stringify(saved),setItem});
   expect(readBackground()).toEqual(saved);expect(setItem).not.toHaveBeenCalled();
 });
+it('preserves an explicitly disabled animation and legacy preferences without an animation', () => {
+  for (const saved of [{ choice: 'bg2', animation: 'off' }, { choice: 'bg2' }]) {
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify(saved), setItem: vi.fn() });
+    expect(readBackground().animation).toBe('off');
+  }
+});
+it.each([true, false])('preserves saved dots=%s across reloads', dots => {
+  const saved = { choice: 'bg2', intensity: 100, dots, animation: 'shooting' };
+  const setItem = vi.fn(); vi.stubGlobal('localStorage', { getItem: () => JSON.stringify(saved), setItem });
+  expect(readBackground().dots).toBe(dots); expect(readBackground().dots).toBe(dots);
+  expect(setItem).not.toHaveBeenCalled();
+});
+it('retains visible dots for an older saved preference without a dots field', () => {
+  vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ choice: 'verde2' }), setItem: vi.fn() });
+  expect(readBackground().dots).toBe(true);
+});
 it('restores the same Blue Circuit default through the existing settings update path',()=>{
   const values=new Map<string,string>();vi.stubGlobal('localStorage',{getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>values.set(key,value)});
-  useCanvasBackground.getState().update({choice:'verde1',intensity:37,dots:false});
+  useCanvasBackground.getState().update({choice:'verde1',intensity:37,dots:true});
   useCanvasBackground.getState().update(DEFAULT_BACKGROUND);
   expect(readBackground()).toEqual(DEFAULT_BACKGROUND);expect(readBackground('?background=original').choice).toBe('original');
 });
 it('normalizes invalid settings and clamps intensity', () => {
   expect(normalizeBackground(null)).toEqual(DEFAULT_BACKGROUND);
-  expect(normalizeBackground({ choice: 'bad' as never, intensity: NaN, dots: 'yes' as never })).toEqual(DEFAULT_BACKGROUND);
+  expect(normalizeBackground({ choice: 'bad' as never, intensity: NaN, dots: 'yes' as never })).toEqual({ ...DEFAULT_BACKGROUND, dots: true, animation: 'off' });
   expect(normalizeBackground({ intensity: -10 }).intensity).toBe(0);
   expect(normalizeBackground({ intensity: 130 }).intensity).toBe(100);
 });

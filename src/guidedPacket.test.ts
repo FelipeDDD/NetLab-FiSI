@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { packetAnimationDuration, PING_ANIMATION_SPEEDS } from './packetAnimation';
 import type { WireFrameContext, WireTransfer } from './engine/network';
 import { advanceGuidedPacket, emptyGuidedPacket, updateGuidedObservation, followGuidedPacket, guidedReplayHops,
   MAX_GUIDED_HOPS, MAX_GUIDED_QUEUE, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket,
@@ -95,6 +96,17 @@ it('replay/step/pause/speed operate on the cursor without changing observations'
   expect(finished.playback.status).toBe('finished'); expect(toggleGuidedPlayback(finished)).toBe(finished);
   expect(finished.observation).toBe(state.observation);
   expect(replayGuidedPacket(finished).playback).toMatchObject({ status: 'playing', index: 0 });
+});
+it.each(PING_ANIMATION_SPEEDS)('keeps multi-hop replay and pause coherent at %s× without changing observations', speed => {
+  const initial = replayGuidedPacket(path()), duration = packetAnimationDuration(speed);
+  const half = advanceGuidedPacket(initial, duration / 2, duration);
+  expect(half.playback).toMatchObject({ index: 0, progress: .5 });
+  const paused = toggleGuidedPlayback(half);
+  expect(advanceGuidedPacket(paused, duration * 20, duration)).toBe(paused);
+  const next = advanceGuidedPacket(toggleGuidedPlayback(paused), duration, duration);
+  expect(next.playback).toMatchObject({ index: 1, progress: .5 });
+  expect(next.observation).toBe(initial.observation);
+  expect(replayGuidedPacket(next).playback).toMatchObject({ index: 0, progress: 0 });
 });
 it('waits for further hops without permanently finishing a continuous session', () => {
   let state = advanceGuidedPacket(path(), 4000, 1000);

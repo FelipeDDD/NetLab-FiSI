@@ -10,7 +10,7 @@ import { sameIpv4, validIpv4, type InterfaceIpv4 } from './engine/ipv4Config';
 import { runDhclient } from './commands/dhclient';
 import { Network, type PingProgress } from './engine/network';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
-import { DEFAULT_PACKET_ANIMATION_SPEED, normalizePacketAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
+import { DEFAULT_PING_ANIMATION_SPEED, normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
 import { Host, IpDevice, RouterDevice } from './engine/ipdevice';
@@ -995,9 +995,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     packetAnimationClock: animationNow,
     // Public UI exposes fixed Live/Schrittmodus rhythms. Preserve technical
     // multiplier APIs and old keys, but never apply an invisible saved speed.
-    packetAnimationSpeed: DEFAULT_PACKET_ANIMATION_SPEED,
+    packetAnimationSpeed: DEFAULT_PING_ANIMATION_SPEED,
     setPacketAnimationSpeed(value) {
-      const speed = normalizePacketAnimationSpeed(value);
+      const speed = normalizePingAnimationSpeed(value);
       if (speed === get().packetAnimationSpeed) return;
       // Ping playback stores fractional progress, so changing its duration
       // affects only subsequent movement. Live traffic and protocol time stay put.
@@ -1958,7 +1958,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = null;
       set({ autosavePending: false, autosaveBlocked: false, autosaveError: null, protectedAutosave: null, pendingShare: null, rejectedDocument: null, shareLink: null });
-      set({ packetAnimationSpeed: DEFAULT_PACKET_ANIMATION_SPEED });
+      set({ packetAnimationSpeed: DEFAULT_PING_ANIMATION_SPEED });
       panelPreferences = readPanelPreferences();
       get().receiveShareLink();
       try {

@@ -29,7 +29,7 @@ export async function runPracticeReview({page,url,root,report}) {
     if(await page.evaluate('return innerWidth<1100;'))await click('.toolbar-menu-trigger','Menü ▾');
     await click('.toolbar-menu-trigger,.toolbar-menu-action','Übungen (Beta)');
     await click('#toolbar-exercises-menu button','Subnetting & CIDR üben');
-    await wait("document.querySelector('#practice-local')");
+    await wait("document.querySelector('.practice-field')");
   };
   const mount=async()=>{
     await page.send('Page.navigate',{url});await wait("document.readyState==='complete'&&location.pathname==='/__workspace_ui_test__'");
@@ -53,10 +53,15 @@ export async function runPracticeReview({page,url,root,report}) {
       await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});await delay(150);
     });
     await test('practice: selective menu and E02 single-field correction',async()=>{
-      await open();assert.equal(await page.evaluate("return document.querySelectorAll('.practice-field').length;"),1);
+      await open();assert.equal(await page.evaluate("return document.querySelectorAll('.practice-field').length;"),3);
+      assert(await page.evaluate("const q=(await import('/src/exercises/practice/session.ts')).usePractice.getState().question;return q.kind==='boundaries'&&q.recipe.version===3&&document.querySelector('#practice-mask').value==='255.255.';"));
+      await click('.practice-config-toggle');
+      assert.equal(await page.evaluate("return document.querySelector('.practice-controls select').value;"),'boundaries');
+      assert.equal(await page.evaluate("return document.querySelector('.practice-controls select').options.length;"),4);
+      await choose('.practice-controls select','gateway');
       assert.equal(await page.evaluate("return (await import('/src/exercises/practice/session.ts')).usePractice.getState().question.recipe.version;"),2);
       // Re-run the existing v1 UX regression flow through the explicit compatibility selector.
-      await click('.practice-config-toggle');await choose('.practice-version','1');
+      await choose('.practice-version','1');
       await type('.practice-seed input','reference');await click('.practice-seed button','Diese Seed öffnen');await click('.practice-config-toggle');
       assert.equal(await page.evaluate("return document.querySelector('.practice-config-toggle').getAttribute('aria-expanded');"),'false');
       assert.equal(await page.evaluate("return document.querySelector('.practice-config-fields').hidden;"),true);
@@ -182,7 +187,8 @@ export async function runPracticeReview({page,url,root,report}) {
     });
     await test('practice: F5 clears visit-only answers without writing mathematical progress',async()=>{
       await page.evaluate('ws.dispose();');await mount();await open();
-      assert.equal(await page.evaluate("return (document.querySelector('#practice-local input:checked')?.value??'');"),'');
+      assert.equal(await page.evaluate("return document.querySelectorAll('.practice-choice input:checked').length;"),0);
+      assert.equal(await page.evaluate("return document.querySelector('#practice-mask').value;"),'255.255.');
       assert.equal(await page.evaluate("const r=await ws.repository.getMeta('exercises:beta:v1');return r.value;"),null);
     });
     await runND02PracticeReview({page,test,click,choose,type,shot,delay});

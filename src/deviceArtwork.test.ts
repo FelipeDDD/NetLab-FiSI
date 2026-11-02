@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { cableAttachmentBox, DEVICE_ARTWORK } from './deviceArtwork';
+import { cableAttachmentBox, deviceArtworkOffsetY, DEVICE_ARTWORK } from './deviceArtwork';
 import { cableGeometry } from './cableGeometry';
 
 it('leaves legacy equipment and the deferred Server geometry unchanged', () => {
@@ -40,6 +40,17 @@ it.each(['straight', 'hybrid'] as const)('%s supports all four approach directio
 });
 
 import { linkAttachment } from './deviceArtwork';
+it('moves only the painted router/server connections, preserving logical boxes and alignment anchors', () => {
+  for (const kind of ['host','router','server','switch','firewall','ap','notebook','smartphone'] as const) {
+    const node = { id: kind, position: { x: 200, y: 300 }, measured: { width: 132, height: 127 }, data: { kind } };
+    const before = structuredClone(node), original = cableAttachmentBox({ ...node.position, ...node.measured }, kind);
+    const actual = linkAttachment(node, 'unused', [node], []);
+    const offset = kind === 'router' ? 10 : kind === 'server' ? -8 : 0;
+    expect(deviceArtworkOffsetY(kind)).toBe(offset);
+    expect(actual).toEqual({ ...original, y: original.y + offset });
+    expect(node).toEqual(before);
+  }
+});
 it('allocates 16 distinct visual slots, stable under array reorder, with fallback through 24 links', () => {
   const sw = { id: 'sw', position: { x: 300, y: 300 }, data: { kind: 'switch' as const }, measured: { width: 152, height: 89 } };
   const peers = Array.from({ length: 24 }, (_, i) => ({ id: `pc${i}`, position: { x: i % 2 ? 700 : 0, y: i * 30 }, data: { kind: 'host' as const } }));

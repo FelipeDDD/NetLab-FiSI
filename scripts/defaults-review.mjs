@@ -15,11 +15,15 @@ export async function runDefaultsReview({page,url,report}) {
     await mount();
     await test('defaults: new profile uses Blue Circuit, free panels and explicit Pulse terminal defaults',async()=>{
       const s=await page.evaluate('return {bg:bg.useCanvasBackground.getState().preference,image:getComputedStyle(document.querySelector(".react-flow")).backgroundImage,mode:store.getState().terminalLayoutMode,font:store.getState().terminalAppearance,defaults:fonts.DEFAULT_TERMINAL_APPEARANCE,legacy:fonts.LEGACY_TERMINAL_FONT_SIZE,theme:theme.getState().theme,sessions:store.getState().terminals};');
-      assert.deepEqual(s.bg,{choice:'bg2',intensity:100,dots:true,animation:'off'});assert.equal(s.mode,'free');assert(s.image.includes('background-blue-circuit.png'));
+      assert.deepEqual(s.bg,{choice:'bg2',intensity:100,dots:false,animation:'shooting'});assert.equal(s.mode,'free');assert(s.image.includes('background-blue-circuit.png'));
+      assert.equal(await page.evaluate('return !!document.querySelector(".react-flow__background");'),false);
       assert.equal(s.theme,'graphite-dark');assert.deepEqual(s.defaults,{style:'fx-signal-pulse',intensity:100,fontSize:14,fontFamily:'consolas'});assert.equal(s.legacy,13);assert.deepEqual(s.font,s.defaults);assert.deepEqual(s.sessions,[]);
       assert.equal(await page.evaluate('return localStorage.getItem(bg.BACKGROUND_KEY);'),null,'Reading a default must not write a preference');
     });
     await test('defaults: every background remains selectable; default restoration is consistent',async()=>{
+      await page.evaluate('bg.useCanvasBackground.getState().update({dots:true});');
+      await wait('document.querySelector(".react-flow__background")');
+      assert.equal(await page.evaluate('return bg.readBackground().dots;'),true);
       const available=await page.evaluate('return Object.keys(bg.CANVAS_BACKGROUNDS);');
       for(const choice of available){await page.evaluate(`bg.useCanvasBackground.getState().update({choice:${JSON.stringify(choice)}});`);assert.equal(await page.evaluate('return bg.readBackground().choice;'),choice);}
       await page.evaluate('bg.useCanvasBackground.getState().update(bg.DEFAULT_BACKGROUND);');assert.equal(await page.evaluate('return bg.readBackground().choice;'),'bg2');

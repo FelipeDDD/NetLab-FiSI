@@ -4,9 +4,10 @@ import { useTranslation } from '../../i18n';
 const Panel=lazy(()=>import('./PracticePanel'));
 export function PracticeLauncher({close}:{close():void}) {
   const {t}=useTranslation();
-  return <section className="practice-menu-entry"><strong>{t('practice.title')}</strong>
+  return <details className="exercise-menu-group" open><summary>{t('practice.title')}</summary><section className="practice-menu-entry">
+    <small>{t('practice.categories')}</small>
     <button type="button" role="menuitem" className="btn" onClick={()=>{usePractice.getState().show();close();}}>{t('practice.open')}</button>
-  </section>;
+  </section></details>;
 }
 export function PracticeSurface() {
   const open=usePractice(s=>s.open), {t}=useTranslation();

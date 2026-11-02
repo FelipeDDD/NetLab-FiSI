@@ -23,7 +23,7 @@ export function PacketAnimationControl() {
   }, [key, hasAnimation, active]);
 
   if (!key || !hasAnimation || visibleKey !== key || dismissedKey === key) return null;
-  const labels = ['Langsam', 'Normal', 'Schnell'];
+  const labels = PING_ANIMATION_SPEEDS.map(value => `${value}×`);
   return <section className="ping-animation-control nodrag nopan nowheel" aria-label="Ping-Animation">
     <header><strong>Ping-Animation</strong><output htmlFor="ping-animation-speed">{String(speed).replace('.', ',')}×</output>
       <button type="button" className="ping-animation-close" aria-label="Ping-Steuerung schließen"
@@ -33,8 +33,8 @@ export function PacketAnimationControl() {
         }}>×</button>
     </header>
     <label className="sr-only" htmlFor="ping-animation-speed">Geschwindigkeit der Ping-Animation</label>
-    <input id="ping-animation-speed" type="range" min={0} max={2} step={1}
-      value={speed <= 0.5 ? 0 : speed >= 2 ? 2 : 1}
+    <input id="ping-animation-speed" type="range" min={0} max={PING_ANIMATION_SPEEDS.length - 1} step={1}
+      value={Math.max(0, PING_ANIMATION_SPEEDS.findIndex(value => value >= speed))}
       aria-valuetext={`${speed}× · nur Ping-Darstellung`} title="Nur Ping-Darstellung · Netzwerkzeit unverändert"
       onChange={event => useStore.getState().setPacketAnimationSpeed(PING_ANIMATION_SPEEDS[Number(event.target.value)])} />
     <div className="ping-animation-labels" aria-hidden="true">{labels.map((label, index) =>

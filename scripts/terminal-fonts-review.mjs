@@ -58,7 +58,7 @@ export async function runTerminalFontsReview({ page, root, report }) {
     });
     await test('visual defaults preview: first access has exact canvas defaults without storing a canvas preference', async () => {
       await globalSettings();
-      assert.deepEqual(await canvasState(), {choice:'bg2',intensity:100,dots:true,animation:'off'});
+      assert.deepEqual(await canvasState(), {choice:'bg2',intensity:100,dots:false,animation:'shooting'});
       assert.equal(await page.evaluate('return document.documentElement.dataset.uiTheme;'), 'graphite-dark');
       assert.equal(await page.evaluate('return document.querySelector("#ui-theme-choice").value;'), 'graphite-dark');
       assert.equal(await page.evaluate('return localStorage.getItem("netlab:ui-theme:v1");'), null);

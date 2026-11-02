@@ -17,7 +17,7 @@ export default function PracticePanel() {
   const s=usePractice(), {t,language}=useTranslation(), heading=useRef<HTMLHeadingElement>(null), body=useRef<HTMLDivElement>(null);
   const configId=useId(), [configOpen,setConfigOpen]=useState(false), [centered,setCentered]=useState(false), [nextError,setNextError]=useState(false);
   const [seed,setSeed]=useState(s.question?.recipe.seed??'reference'),[error,setError]=useState(false);
-  useEffect(()=>{if(!usePractice.getState().question)usePractice.getState().select(createQuestion('gateway',randomPracticeSeed(),'beginner',2));heading.current?.focus({preventScroll:true});},[]);
+  useEffect(()=>{if(!usePractice.getState().question)usePractice.getState().select(createQuestion('boundaries',randomPracticeSeed(),'beginner',3));heading.current?.focus({preventScroll:true});},[]);
   const q=s.question, attempt=q?s.attempts[q.id]:undefined;
   const boundary=q?.problem.family==='nd02-v3'?q.problem.generated:undefined;
   const localized=boundary?presentationV3(boundary,language):undefined;
@@ -26,7 +26,7 @@ export default function PracticePanel() {
   const w=(key:Parameters<typeof nd02Text>[1])=>nd02Text(language,key);
   const labels={yes:t('practice.yes'),no:t('practice.no'),unknown:t('practice.unknown')};
   const states={correct:t('practice.correct'),incorrect:t('practice.incorrect'),missing:t('practice.missing')};
-  const category={gateway:'E02 · Gateway / CIDR',subnet:'A · Subnetting',vlsm:'B · VLSM',boundaries:w('category')+' · ND02 v3'};
+  const category={gateway:t('practice.gatewayCategory'),subnet:'Subnetting',vlsm:'VLSM',boundaries:w('category')};
   const simpleChoice=q?.fields.length===1&&q.fields[0].type==='choice';
   useEffect(()=>{setNextError(false);if(q)setSeed(q.recipe.seed!);},[q?.id]);
   function load(kind:PracticeKind, nextSeed:string, difficulty=q?.recipe.difficulty??'beginner',version=kind==='gateway'?(q?.kind==='gateway'?q.recipe.version:2):kind==='boundaries'?3:1) {
@@ -71,7 +71,7 @@ export default function PracticePanel() {
             const kind=e.target.value as PracticeKind, previous=s.recent[kind];
             if(previous) {s.select(previous);setSeed(previous.recipe.seed!);setError(false);} else load(kind,kind==='gateway'||kind==='boundaries'?randomPracticeSeed():'reference');
           }}>
-            <option value="gateway">E02 · Gateway / CIDR</option><option value="subnet">A · Subnetting</option><option value="vlsm">B · VLSM</option><option value="boundaries">{category.boundaries}</option>
+            <option value="gateway">{category.gateway}</option><option value="subnet">{category.subnet}</option><option value="vlsm">{category.vlsm}</option><option value="boundaries">{category.boundaries}</option>
           </select></label>
           <label>{t('practice.difficulty')}<select value={q.recipe.difficulty} onChange={e=>load(q.kind,seed,e.target.value as typeof q.recipe.difficulty)}>
             <option value="beginner">{t('practice.beginner')}</option><option value="intermediate">{t('practice.intermediate')}</option><option value="advanced">{t('practice.advanced')}</option>
