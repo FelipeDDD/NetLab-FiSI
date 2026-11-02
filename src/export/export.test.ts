@@ -167,7 +167,7 @@ describe('diagram and report', () => {
     const net = new Network();
     exportLab(net);
     const html = networkReport(net, POSITIONS, '2026-08-01');
-    expect(html).toContain('<title>NetSim network report</title>');
+    expect(html).toContain('<title>NetLab-FiSI network report</title>');
     expect(html).toContain('DHCP server');
     expect(html).toContain('web.lan');
     expect(html).toContain('policy drop');

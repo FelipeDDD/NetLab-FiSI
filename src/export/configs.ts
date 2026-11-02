@@ -9,7 +9,7 @@ import { listRuleset } from '../engine/firewall-fmt';
 export function setupScript(d: IpDevice): string {
   const lines: string[] = [
     '#!/bin/sh',
-    `# NetSim generated configuration for ${d.name} (${d.kind})`,
+    `# NetLab-FiSI generated configuration for ${d.name} (${d.kind})`,
     '# Apply on a Linux machine with iproute2, as root. Interface names on',
     '# real hardware will differ — adjust eth0/eth1/... accordingly.',
     '',
@@ -40,14 +40,14 @@ export function setupScript(d: IpDevice): string {
 
 export function nftablesConf(d: IpDevice): string | null {
   if (!d.fw.active()) return null;
-  return `#!/usr/sbin/nft -f\n# NetSim generated ruleset for ${d.name}\nflush ruleset\n\n${listRuleset(d.fw)}`;
+  return `#!/usr/sbin/nft -f\n# NetLab-FiSI generated ruleset for ${d.name}\nflush ruleset\n\n${listRuleset(d.fw)}`;
 }
 
 export function dnsmasqConf(d: IpDevice): string | null {
   const dhcp = d.dhcpServer?.enabled ? d.dhcpServer : null;
   const dns = d.dnsServer?.enabled ? d.dnsServer : null;
   if (!dhcp && !dns && !d.dhcpServiceEnabled) return null;
-  const lines: string[] = [`# NetSim generated dnsmasq.conf for ${d.name}`];
+  const lines: string[] = [`# NetLab-FiSI generated dnsmasq.conf for ${d.name}`];
   for (const i of d.interfaces) {
     if (i.ip) lines.push(`interface=${i.name}`);
   }
@@ -87,7 +87,7 @@ export function configBundle(net: Network): ConfigFile[] {
   const files: ConfigFile[] = [];
   const devices = [...net.devices.values()].filter((d): d is IpDevice => d instanceof IpDevice);
   const readme: string[] = [
-    '# NetSim configuration bundle',
+    '# NetLab-FiSI configuration bundle',
     '',
     'One directory per device, containing genuine Linux configuration derived',
     'from the simulated design. Interface names map 1:1 to the simulation;',

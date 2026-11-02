@@ -423,7 +423,7 @@ Os tipos reais estão em `DeviceKind` e são criados por `createDevice`.
 Documentos complementares: [cabos](cable-management.md),
 [alinhamento](alignment-guides.md), [terminais](terminal-layout.md),
 [temas](ui-themes.md), [Visual Review](visual-review.md).
-`README.md`/documentos antigos ainda usam NetSim e descrições históricas;
+A documentação de entrada usa NetLab-FiSI; ADRs e auditorias preservam referências históricas a NetSim;
 conferir sempre o código atual antes de tratá-los como inventário definitivo.
 
 ## 4. Histórico do Git e transferência entre computadores

@@ -1,5 +1,5 @@
 const en = {
-  version:'E02 version',version1:'v1 · Original membership',version2:'v2 · Membership & connectivity',
+  version:'E02 version',version1:'v1 · Subnet membership',version2:'v2 · Membership & connectivity',
   title:'Calculation practice (Beta)',open:'Practice subnetting & CIDR',close:'Close practice',loading:'Loading practice…',
   temporary:'Answers stay during this visit only. Reloading clears them. Existing network exercise progress is unchanged.',
   category:'Category',difficulty:'Difficulty',beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced',seed:'Seed',
@@ -11,7 +11,7 @@ const en = {
 } as const;
 type Messages=Record<keyof typeof en,string>;
 const de:Messages={
-  version:'E02-Version',version1:'v1 · Ursprüngliche Zugehörigkeit',version2:'v2 · Zugehörigkeit & Erreichbarkeit',
+  version:'E02-Version',version1:'v1 · Subnetzzugehörigkeit',version2:'v2 · Zugehörigkeit & Erreichbarkeit',
   title:'Rechenpraxis (Beta)',open:'Subnetting & CIDR üben',close:'Rechenpraxis schließen',loading:'Rechenpraxis wird geladen…',
   temporary:'Antworten bleiben nur während dieses Besuchs erhalten. Neuladen löscht sie. Bestehender Netzwerk-Übungsfortschritt bleibt unverändert.',
   category:'Kategorie',difficulty:'Schwierigkeit',beginner:'Einstieg',intermediate:'Mittel',advanced:'Fortgeschritten',seed:'Seed',
@@ -22,7 +22,7 @@ const de:Messages={
   configuration:'Aufgabeneinstellungen',configure:'Konfigurieren',answers:'Ihre Antworten',next:'Nächste Aufgabe (Leertaste)',nextError:'Eine neue Variante konnte nicht erstellt werden. Ihre Antworten bleiben erhalten. Bitte erneut versuchen.',moveCenter:'Rechenpraxis zentrieren',moveSide:'Rechenpraxis seitlich anzeigen',
 };
 const ptBR:Messages={
-  version:'Versão E02',version1:'v1 · Pertencimento original',version2:'v2 · Pertencimento e conectividade',
+  version:'Versão E02',version1:'v1 · Pertencimento à sub-rede',version2:'v2 · Pertencimento e conectividade',
   title:'Prática de cálculo (Beta)',open:'Praticar subnetting e CIDR',close:'Fechar prática',loading:'Carregando prática…',
   temporary:'As respostas duram apenas nesta visita. Atualizar a página as apaga. O progresso dos exercícios de rede permanece intacto.',
   category:'Categoria',difficulty:'Dificuldade',beginner:'Inicial',intermediate:'Intermediária',advanced:'Avançada',seed:'Seed',

@@ -25,7 +25,7 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function topologySvg(net: Network, positions: NodePos[], title = 'NetSim topology'): string {
+export function topologySvg(net: Network, positions: NodePos[], title = 'NetLab-FiSI topology'): string {
   const pos = new Map(positions.map((p) => [p.id, p]));
   interface Box {
     x: number;

@@ -1,6 +1,6 @@
-# Contributing to NetSim
+# Contributing to NetLab-FiSI
 
-Thanks for your interest! NetSim is a teaching tool, so clarity and
+Thanks for your interest! NetLab-FiSI is a teaching tool, so clarity and
 correctness matter more than feature count.
 
 ## Development

@@ -345,7 +345,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   // xterm marks both native paste events and term.paste() as a single payload,
   // so even a clipboard containing only CR cannot be mistaken for Enter.
   term.write('\x1b[?2004h');
-  term.writeln(`\x1b[90mNetSim — ${device.name} (${device.kind}). ${shell.os === 'windows' ? 'Windows CMD simulation. ' : ''}Type 'help' for commands.\x1b[0m`);
+  term.writeln(`\x1b[90mNetLab-FiSI — ${device.name} (${device.kind}). ${shell.os === 'windows' ? 'Windows CMD simulation. ' : ''}Type 'help' for commands.\x1b[0m`);
   term.write(promptStr());
 
   const session: Session = {

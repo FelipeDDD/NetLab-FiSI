@@ -7,7 +7,7 @@ const TIMEOUT_MS = 4000;
 
 function parseUrl(raw: string): { host: string; port: number; path: string } | { error: string } {
   let rest = raw;
-  if (rest.startsWith('https://')) return { error: 'netsim: https is not simulated — use http://' };
+  if (rest.startsWith('https://')) return { error: 'NetLab-FiSI: https is not simulated — use http://' };
   if (rest.startsWith('http://')) rest = rest.slice(7);
   if (!rest) return { error: 'curl: no URL specified!' };
   const slash = rest.indexOf('/');
@@ -32,7 +32,7 @@ export function runCurl(
   for (const a of args) {
     if (a === '-v' || a === '--verbose') verbose = true;
     else if (a.startsWith('-')) {
-      write(`curl: netsim supports only: curl [-v] <url>  (got "${a}")\n`);
+      write(`curl: NetLab-FiSI supports only: curl [-v] <url>  (got "${a}")\n`);
       done();
       return null;
     } else url = a;

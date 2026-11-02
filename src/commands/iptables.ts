@@ -89,7 +89,7 @@ export function runIptables(device: IpDevice, args: string[], out: Out): void {
         // optional rulenum: only position 1 is supported
         if (/^\d+$/.test(args[i + 1] ?? '')) {
           if (args[++i] !== '1') {
-            out('netsim: -I with a rule number other than 1 is not in the phase-2 subset.\n');
+            out('NetLab-FiSI: -I with a rule number other than 1 is not in the phase-2 subset.\n');
             return;
           }
         }
@@ -172,7 +172,7 @@ export function runIptables(device: IpDevice, args: string[], out: Out): void {
         }
         const t = ICMP_TYPES[next() ?? ''];
         if (!t) {
-          out('netsim: only echo-request (8) and echo-reply (0) icmp types are in the phase-2 subset.\n');
+          out('NetLab-FiSI: only echo-request (8) and echo-reply (0) icmp types are in the phase-2 subset.\n');
           return;
         }
         match.icmpType = t;
@@ -181,7 +181,7 @@ export function runIptables(device: IpDevice, args: string[], out: Out): void {
       case '-m': {
         const mod = next();
         if (mod !== 'conntrack' && mod !== 'state') {
-          out(`netsim: match extension "-m ${mod ?? ''}" is not in the phase-2 subset (conntrack, state).\n`);
+          out(`NetLab-FiSI: match extension "-m ${mod ?? ''}" is not in the phase-2 subset (conntrack, state).\n`);
           return;
         }
         break;
@@ -215,7 +215,7 @@ export function runIptables(device: IpDevice, args: string[], out: Out): void {
         next(); // accepted, ignored: we always reject with icmp-port-unreachable
         break;
       default:
-        out(`netsim: iptables option "${a}" is not supported.\n${SUBSET_HINT}`);
+        out(`NetLab-FiSI: iptables option "${a}" is not supported.\n${SUBSET_HINT}`);
         return;
     }
   }
@@ -264,7 +264,7 @@ export function runIptables(device: IpDevice, args: string[], out: Out): void {
   }
 
   if (!op) {
-    out(`netsim: nothing to do — give one of -A/-I/-D/-F/-P/-L/-S.\n${SUBSET_HINT}`);
+    out(`NetLab-FiSI: nothing to do — give one of -A/-I/-D/-F/-P/-L/-S.\n${SUBSET_HINT}`);
     return;
   }
 
@@ -311,7 +311,7 @@ export function runIptables(device: IpDevice, args: string[], out: Out): void {
   if (op.type === 'delete') {
     const rules = fw.nat[hook].rules;
     if (deleteNum === null || deleteNum < 1 || deleteNum > rules.length) {
-      out('netsim: delete nat rules by number: iptables -t nat -D <chain> <num>\n');
+      out('NetLab-FiSI: delete nat rules by number: iptables -t nat -D <chain> <num>\n');
       return;
     }
     rules.splice(deleteNum - 1, 1);

@@ -1,4 +1,4 @@
-# NetSim — Browser-Based Network Simulator & Firewall Teaching Tool
+# NetLab-FiSI — Browser-Based Network Simulator & Firewall Teaching Tool
 
 *Working design document — 2026-08-01. Distilled from the iNetwork Simulator material in this
 folder, competitor research, and technical feasibility research.*

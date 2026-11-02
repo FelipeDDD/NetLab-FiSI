@@ -25,7 +25,7 @@ export function runTraceroute(
         return null;
       }
     } else if (a.startsWith('-')) {
-      write(`traceroute: netsim supports only: traceroute [-m max_hops] <host>  (got "${a}")\n`);
+      write(`traceroute: NetLab-FiSI supports only: traceroute [-m max_hops] <host>  (got "${a}")\n`);
       done();
       return null;
     } else {

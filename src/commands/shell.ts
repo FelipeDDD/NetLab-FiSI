@@ -23,7 +23,7 @@ export interface Running {
   needsScheduler?: boolean;
 }
 
-const HELP = `NetSim commands (real Linux syntax, curated subset):
+const HELP = `NetLab-FiSI commands (real Linux syntax, curated subset):
   ip address [show | add <cidr> dev <if> | del <cidr> dev <if>]
   ip link    [show | set <if> up|down]
   ip route   [show | add <cidr>|default via <gw> [dev <if>] | del <cidr>|default]
@@ -60,7 +60,7 @@ function runSysctl(device: IpDevice, args: string[], write: (s: string) => void)
   if (writeMode || arg.includes('=')) {
     const [key, value] = arg.split('=');
     if (key !== KEY || (value !== '0' && value !== '1')) {
-      write(`sysctl: netsim supports only: sysctl -w ${KEY}=0|1\n`);
+      write(`sysctl: NetLab-FiSI supports only: sysctl -w ${KEY}=0|1\n`);
       return;
     }
     device.forwarding = value === '1';
@@ -152,7 +152,7 @@ export class Shell {
         break;
       case 'conntrack':
         if (args[0] === '-L' || args.length === 0) io.write(formatConntrack(this.device));
-        else io.write('conntrack: netsim supports only: conntrack -L\n');
+        else io.write('conntrack: NetLab-FiSI supports only: conntrack -L\n');
         break;
       case 'ss':
         io.write(formatSockets(this.device));

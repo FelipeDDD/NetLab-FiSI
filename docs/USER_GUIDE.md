@@ -1,6 +1,6 @@
-# NetSim user guide
+# NetLab-FiSI user guide
 
-NetSim is a network simulator that runs entirely in your browser. Build a
+NetLab-FiSI is a network simulator that runs entirely in your browser. Build a
 network by dragging devices onto the canvas and cabling them together, open a
 terminal with **Linux commands or a Windows CMD subset** on hosts, and
 watch packets travel between them. Nothing to install; nothing is sent to a
@@ -473,7 +473,7 @@ Choose an effect family in **Background style**, then a **Variation** when more
 than one is available: **Aurora** offers Soft/Balanced, **Aurora Lines** offers
 Subtle/Flow/Spectrum, and **Signal / Wireframe** uses Matrix. Single-variation
 styles hide the second selector. Diagonal, Dual Glow, Aurora Lines and Aurora
-Flow remain under **Original styles**; that group distinguishes the original
+Flow remain under **Standard styles**; that group distinguishes the established
 Aurora Lines from the newer family with the same name.
 
 **Show experimental styles** reveals Aurora Vivid, Signal Minimal/Pulse and the
@@ -691,7 +691,7 @@ remain snapshots of effective addresses/routes rather than a DHCP client manager
 
 ## Commands (the supported Linux subset)
 
-NetSim implements a **curated subset of genuine syntax** and errors clearly
+NetLab-FiSI implements a **curated subset of genuine syntax** and errors clearly
 on anything outside it — it never silently fakes a command. Highlights:
 
 - **Addressing / routing:** `ip addr`, `ip link`, `ip route`, `ip neigh`,
@@ -733,7 +733,7 @@ attempt for submission**.
   **docker-compose** files to run the design for real, **SVG/PNG** diagrams,
   and a printable **HTML report**.
 
-## What NetSim does and doesn't simulate
+## What NetLab-FiSI does and doesn't simulate
 
 It **does**: L2 switching with VLANs, ARP, IPv4 routing (static + RIP), ICMP,
 a TCP handshake, UDP, DHCP, DNS (A records), HTTP, stateful firewalling with
@@ -748,7 +748,7 @@ containerlab export and run the design on real kernels.
 ## Troubleshooting
 
 - **A command is rejected as unsupported.** That's deliberate — check `help`
-  for the supported form. NetSim won't pretend to run syntax it doesn't model.
+  for the supported form. NetLab-FiSI won't pretend to run syntax it doesn't model.
 - **A ping/curl hangs then times out.** Something is dropping it silently —
   check routes (`ip route`), the default gateway, and any firewall in the
   path (open its Inspector; the firewall log names the rule that dropped it).

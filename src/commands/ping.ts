@@ -33,7 +33,7 @@ export function runPing(
     } else if (windows && a === '-t') {
       count = null;
     } else if (a.startsWith('-') || (windows && a.startsWith('/'))) {
-      write(windows ? `Invalid option ${a}. Usage: ping [-n count | -t] <host>\n` : `ping: netsim supports only: ping [-c count] <host>  (got "${a}")\n`);
+      write(windows ? `Invalid option ${a}. Usage: ping [-n count | -t] <host>\n` : `ping: NetLab-FiSI supports only: ping [-c count] <host>  (got "${a}")\n`);
       done();
       return null;
     } else {

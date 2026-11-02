@@ -86,7 +86,7 @@ function validateFirewall(value: unknown, fail: (field: string) => never): void 
 /** Validate the v1 boundary before any live resources are touched. Known legacy
  * defaults are still interpreted by restoreDevice and the presentation readers. */
 export function validateSave(data: unknown): asserts data is SaveFile {
-  if (!object(data) || data.app !== 'netsim' || data.version !== 1) throw new Error('Not a supported NetSim v1 topology file');
+  if (!object(data) || data.app !== 'netsim' || data.version !== 1) throw new Error('Not a supported NetLab-FiSI topology file (expected netsim v1)');
   if (!Array.isArray(data.devices) || !Array.isArray(data.links)) throw new Error('Invalid topology: devices and links must be arrays');
   const ids = new Set<string>();
   for (const d of data.devices) {

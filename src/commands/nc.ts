@@ -31,7 +31,7 @@ export function runNc(
     } else if (a === '-p') {
       positional.push(args[++i] ?? '');
     } else if (a.startsWith('-')) {
-      write(`nc: netsim supports only: nc [-u] [-z] [-w secs] <ip> <port>  |  nc -l [-u] <port>  (got "${a}")\n`);
+      write(`nc: NetLab-FiSI supports only: nc [-u] [-z] [-w secs] <ip> <port>  |  nc -l [-u] <port>  (got "${a}")\n`);
       done();
       return null;
     } else {

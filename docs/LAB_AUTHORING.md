@@ -1,6 +1,6 @@
-# Authoring labs for NetSim
+# Authoring labs for NetLab-FiSI
 
-A NetSim lab is a single JSON file: a starting topology plus a set of guided
+A NetLab-FiSI lab is a single JSON file: a starting topology plus a set of guided
 steps whose objectives the app grades automatically by probing the live
 simulation with real packets. This guide shows how to write one — no code,
 no build step, and nothing to install for you or your students.
@@ -15,7 +15,7 @@ There are two ways to author, and most people use both:
 
 ## Quick start (recommended path)
 
-1. Open NetSim, build the *starting* state you want students to begin from
+1. Open NetLab-FiSI, build the *starting* state you want students to begin from
    (leave unconfigured whatever they must configure).
 2. **Export ▾ → Topology (.json)**. Open the downloaded file in any editor.
 3. Add a top-level `"lab"` object (schema below) alongside `devices` and
@@ -120,7 +120,7 @@ submitted topology.
 
 ## Contributing a lab to the bundled set
 
-To ship a lab with NetSim itself (so it appears in the Labs menu for
+To ship a lab with NetLab-FiSI itself (so it appears in the Labs menu for
 everyone), add it to `src/labs/library.ts` following the existing pattern and
 open a pull request. Please include a matching test in `src/labs/labs.test.ts`
 that grades the lab in both its unsolved and solved states — that is how we

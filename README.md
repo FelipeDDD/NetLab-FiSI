@@ -1,4 +1,4 @@
-# NetSim
+# NetLab-FiSI
 
 **A network simulator that runs entirely in your browser — real Linux syntax, drag-and-drop
 topologies, zero install, no backend.**
@@ -10,7 +10,7 @@ configure it with genuine `iproute2` commands (`ip addr`, `ip route`, `ping`, `t
 watch ARP and ICMP packets animate across the wire. Built as a teaching tool first, with network
 design and firewall-config testing as first-class goals.
 
-![NetSim running the "harden a vulnerable network" lab](docs/img/screenshot.jpg)
+![NetLab-FiSI running the "harden a vulnerable network" lab](docs/img/screenshot.jpg)
 
 ## Documentation
 
@@ -24,7 +24,7 @@ design and firewall-config testing as first-class goals.
 
 ## Inspiration
 
-NetSim is a modern, open successor to the **iNetwork Simulator**, a GUI-based teaching tool
+NetLab-FiSI is a modern, open successor to the **iNetwork Simulator**, a GUI-based teaching tool
 built at the University of Technology Sydney in the early 2000s (C#/.NET, Windows-only). Its
 firewall component is described in:
 
@@ -34,7 +34,7 @@ firewall component is described in:
 iNetwork let students drag workstations, switches, routers and servers onto a canvas, configure
 them through dialogs, and test connectivity from a simulated DOS prompt — with guided lab
 activities from IP addressing through DHCP, DNS, routing and firewalls. It was the right idea;
-NetSim reimagines it with today's constraints removed: it runs on anything with a browser, uses
+NetLab-FiSI reimagines it with today's constraints removed: it runs on anything with a browser, uses
 **real Linux command syntax instead of an invented CLI**, and is open source.
 
 ## The space this fills

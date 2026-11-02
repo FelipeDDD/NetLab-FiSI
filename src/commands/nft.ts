@@ -120,7 +120,7 @@ function parseExpressions(p: Parser): ParsedExpr {
       if (p.next() !== 'type') return { match, error: 'Error: syntax error after "icmp"' };
       const t = p.next();
       if (t !== 'echo-request' && t !== 'echo-reply')
-        return { match, error: `netsim: icmp type "${t ?? ''}" not in phase-2 subset (echo-request, echo-reply)` };
+        return { match, error: `NetLab-FiSI: icmp type "${t ?? ''}" not in phase-2 subset (echo-request, echo-reply)` };
       match.icmpType = t;
     } else if (tok === 'ct') {
       if (p.next() !== 'state') return { match, error: 'Error: syntax error after "ct"' };
@@ -200,7 +200,7 @@ export function runNft(device: IpDevice, raw: string, out: Out): void {
       out(listRuleset(fw, { handles }));
       return;
     }
-    out(`netsim: "nft ${raw.trim()}" is not supported — use "nft list ruleset".\n`);
+    out(`NetLab-FiSI: "nft ${raw.trim()}" is not supported — use "nft list ruleset".\n`);
     return;
   }
 
@@ -223,7 +223,7 @@ export function runNft(device: IpDevice, raw: string, out: Out): void {
     const obj = t[1];
     if (obj === 'table') {
       if (t[2] !== 'ip' || (t[3] !== 'filter' && t[3] !== 'nat')) {
-        out(`netsim: only "ip filter" and "ip nat" tables are in the phase-2 subset.\n`);
+        out(`NetLab-FiSI: only "ip filter" and "ip nat" tables are in the phase-2 subset.\n`);
         return;
       }
       fw.tables[t[3]] = true;
@@ -239,13 +239,13 @@ export function runNft(device: IpDevice, raw: string, out: Out): void {
     }
   }
 
-  out(`netsim: "nft ${raw.trim()}" is not supported.\n${SUBSET_HINT}`);
+  out(`NetLab-FiSI: "nft ${raw.trim()}" is not supported.\n${SUBSET_HINT}`);
 }
 
 function addChain(device: IpDevice, t: string[], out: Out): void {
   const fw = device.fw;
   if (t[0] !== 'ip') {
-    out('netsim: only the "ip" family is in the phase-2 subset.\n');
+    out('NetLab-FiSI: only the "ip" family is in the phase-2 subset.\n');
     return;
   }
   const table = t[1];
@@ -260,7 +260,7 @@ function addChain(device: IpDevice, t: string[], out: Out): void {
   }
   const p = new Parser(t.slice(3));
   if (!p.expect('{')) {
-    out('netsim: regular (non-base) chains are not in the phase-2 subset — declare a hook block: { type ... hook ... priority 0 ; }\n');
+    out('NetLab-FiSI: regular (non-base) chains are not in the phase-2 subset — declare a hook block: { type ... hook ... priority 0 ; }\n');
     return;
   }
   let hook: string | undefined;
@@ -297,7 +297,7 @@ function addChain(device: IpDevice, t: string[], out: Out): void {
       return;
     }
     if (policy === 'drop') {
-      out('netsim: drop policies on nat chains are not in the phase-2 subset.\n');
+      out('NetLab-FiSI: drop policies on nat chains are not in the phase-2 subset.\n');
       return;
     }
     fw.declareNat(hook as NatHook, name);
@@ -307,7 +307,7 @@ function addChain(device: IpDevice, t: string[], out: Out): void {
 function addRule(device: IpDevice, t: string[], atHead: boolean, out: Out): void {
   const fw = device.fw;
   if (t[0] !== 'ip') {
-    out('netsim: only the "ip" family is in the phase-2 subset.\n');
+    out('NetLab-FiSI: only the "ip" family is in the phase-2 subset.\n');
     return;
   }
   const table = t[1];

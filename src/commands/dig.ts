@@ -22,7 +22,7 @@ export function runDig(
     } else if (a === '+short') {
       short = true;
     } else if (a.startsWith('+') || a.startsWith('-')) {
-      write(`dig: netsim supports only: dig [@server] <name> [+short]  (got "${a}")\n`);
+      write(`dig: NetLab-FiSI supports only: dig [@server] <name> [+short]  (got "${a}")\n`);
       done();
       return null;
     } else {
@@ -51,7 +51,7 @@ export function runDig(
       if (short) {
         write(ipToString(r) + '\n');
       } else {
-        write(`; <<>> NetSim dig <<>> ${name}\n`);
+        write(`; <<>> NetLab-FiSI dig <<>> ${name}\n`);
         write(`;; ->>HEADER<<- opcode: QUERY, status: NOERROR\n\n`);
         write(`;; QUESTION SECTION:\n;${name}.\t\t\tIN\tA\n\n`);
         write(`;; ANSWER SECTION:\n${name}.\t\t0\tIN\tA\t${ipToString(r)}\n\n`);
@@ -61,7 +61,7 @@ export function runDig(
       if (short) {
         // dig +short prints nothing on NXDOMAIN, like the real tool.
       } else {
-        write(`; <<>> NetSim dig <<>> ${name}\n`);
+        write(`; <<>> NetLab-FiSI dig <<>> ${name}\n`);
         write(`;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN\n\n`);
         write(`;; QUESTION SECTION:\n;${name}.\t\t\tIN\tA\n\n`);
         write(`;; Query time: ${elapsed} msec\n;; SERVER: ${ipToString(ns)}#53\n`);

@@ -30,7 +30,7 @@ export function runIp(device: IpDevice, args: string[], out: Out): void {
       ipNeighbour(device, args.slice(1), out);
       return;
     default:
-      out(`netsim: "ip ${args.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
+      out(`NetLab-FiSI: "ip ${args.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
   }
 }
 
@@ -87,7 +87,7 @@ function ipAddress(device: IpDevice, a: string[], out: Out): void {
     if (err) out(err + '\n');
     return;
   }
-  out(`netsim: "ip address ${a.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
+  out(`NetLab-FiSI: "ip address ${a.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
 }
 
 function ipLink(device: IpDevice, a: string[], out: Out): void {
@@ -106,10 +106,10 @@ function ipLink(device: IpDevice, a: string[], out: Out): void {
     }
     if (rest[1] === 'up') iface.up = true;
     else if (rest[1] === 'down') iface.up = false;
-    else out(`netsim: "ip link set ${a.slice(1).join(' ')}" is not supported (use up|down).\n`);
+    else out(`NetLab-FiSI: "ip link set ${a.slice(1).join(' ')}" is not supported (use up|down).\n`);
     return;
   }
-  out(`netsim: "ip link ${a.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
+  out(`NetLab-FiSI: "ip link ${a.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
 }
 
 function parseRouteTarget(word: string): { addr: number; prefix: number } | null {
@@ -158,7 +158,7 @@ function ipRoute(device: IpDevice, a: string[], out: Out): void {
     if (err) out(err + '\n');
     return;
   }
-  out(`netsim: "ip route ${a.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
+  out(`NetLab-FiSI: "ip route ${a.join(' ')}" is not supported.\n${UNSUPPORTED_HINT}`);
 }
 
 export function formatAddresses(device: IpDevice, opts: { linkOnly?: boolean } = {}): string {
