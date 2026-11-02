@@ -131,7 +131,7 @@ function TerminalTab({ id, panel }: { id: string; panel: TerminalPanel }) {
   </div>;
 }
 
-export function TerminalPanelView({ panel, index, focused, width, suspended }: { panel: TerminalPanel; index: number; focused: boolean; width: number; suspended: boolean }) {
+export function TerminalPanelView({ panel, index, focused, width, suspended, onOpenReference }: { panel: TerminalPanel; index: number; focused: boolean; width: number; suspended: boolean; onOpenReference: (origin: HTMLButtonElement) => void }) {
   const ref = useRef<HTMLElement>(null);
   const style = useStore((s) => s.terminalAppearance.style);
   const custom = useStore((s) => s.terminalColors[panel.active]);
@@ -174,6 +174,12 @@ export function TerminalPanelView({ panel, index, focused, width, suspended }: {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
           <rect x="5" y="10" width="14" height="11" rx="2" />
           <path d={panel.lockedWidth === undefined ? 'M8 10V7a4 4 0 0 1 8 0' : 'M8 10V7a4 4 0 0 1 8 0v3'} />
+        </svg>
+      </button>
+      <button type="button" className="terminal-panel-info" title="Befehlsreferenz öffnen" aria-label="Befehlsreferenz öffnen"
+        aria-haspopup="dialog" onClick={event => onOpenReference(event.currentTarget)}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7v1" />
         </svg>
       </button>
     </div>

@@ -5,7 +5,7 @@ import { floatingPosition } from './floatingPosition';
 
 const FOCUSABLE = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]:not(:disabled)';
 
-export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', preferredSide = 'auto', className = '', onPointerEnter, onPointerLeave, onKeyDown, popupRef, relatedRefs = [] }: {
+export function FloatingPopover({ anchor, children, onClose, id, label, role = 'dialog', width = 300, initialFocus = 'first', preferredSide = 'auto', className = '', onPointerEnter, onPointerLeave, onKeyDown, popupRef, relatedRefs = [], followAnchor = false, dismissOnOutside = true }: {
   anchor: RefObject<HTMLElement>;
   children: ReactNode;
   onClose: () => void;
@@ -21,6 +21,8 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
   onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
   popupRef?: MutableRefObject<HTMLDivElement | null>;
   relatedRefs?: readonly RefObject<HTMLElement>[];
+  followAnchor?: boolean;
+  dismissOnOutside?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const related = useRef(relatedRefs);
@@ -51,24 +53,32 @@ export function FloatingPopover({ anchor, children, onClose, id, label, role = '
     };
     update();
     const outside = (event: Event) => {
+      if (!dismissOnOutside) return;
       const node = event.target as Node;
       if (!popup.contains(node) && !trigger.contains(node) && !related.current.some(other => other.current?.contains(node))) close.current();
     };
     const observer = new ResizeObserver(update);
     observer.observe(popup);
     observer.observe(trigger);
+    // Canvas transforms do not trigger ResizeObserver or a window scroll event.
+    let frame = 0;
+    if (followAnchor) {
+      const follow = () => { update(); frame = requestAnimationFrame(follow); };
+      frame = requestAnimationFrame(follow);
+    }
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
     document.addEventListener('pointerdown', outside, true);
     document.addEventListener('focusin', outside);
     return () => {
       observer.disconnect();
+      cancelAnimationFrame(frame);
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
       document.removeEventListener('pointerdown', outside, true);
       document.removeEventListener('focusin', outside);
     };
-  }, [anchor, width, initialFocus, preferredSide]);
+  }, [anchor, width, initialFocus, preferredSide, followAnchor, dismissOnOutside]);
 
   useLayoutEffect(() => {
     if (!position || focused.current || initialFocus === 'none') return;

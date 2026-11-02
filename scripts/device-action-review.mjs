@@ -14,7 +14,10 @@ export async function runDeviceActionReview({page,url,root,report}) {
   const database='netlab-idb-test-'+crypto.randomUUID(),captures=[],measurements=[],results={};
   const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const wait=async expression=>{for(let i=0;i<220;i++){if(await page.evaluate(`return !!(${expression});`))return;await delay(40);}throw Error('Device actions condition: '+expression);};
-  const test=async(name,run)=>{try{await run();results[name]={passed:true};}catch(e){results[name]={passed:false,error:e.stack};throw e;}};
+  const test=async(name,run)=>{
+    if(process.env.NETLAB_QUICK_PING_REVIEW==='1'&&!/^quick ping: (multiple IPs|address popover)/.test(name))return;
+    try{await run();results[name]={passed:true};}catch(e){results[name]={passed:false,error:e.stack};throw e;}
+  };
   const mouse=async(x,y)=>page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
   const point=selector=>page.evaluate(`const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2};`);
   const click=async selector=>{const p=await point(selector);await mouse(p.x,p.y);for(const type of ['mousePressed','mouseReleased'])await page.send('Input.dispatchMouseEvent',{type,...p,button:'left',clickCount:1});await delay(50);};
@@ -115,6 +118,72 @@ export async function runDeviceActionReview({page,url,root,report}) {
       assert.equal(await page.evaluate("return terminals.getSession(sim.net.devices.get('pc2'))===winSession;"),true);
       assert(await page.evaluate("return Array.from({length:winSession.term.buffer.active.length},(_,i)=>winSession.term.buffer.active.getLine(i)?.translateToString()).join('\\n').includes('ping -n 4 10.0.0.10');"));
     });
+    await test('quick ping: multiple IPs always prompt, preserve deduplication and repeat after completion or cancellation',async()=>{
+      await setup();
+      await page.evaluate("const i=sim.net.devices.get('r1').interfaces;i[2].ip={...i[0].ip};i[3].ip={addr:0x0a0000ff,prefix:24};store.getState().refresh();await flow.setViewport({x:15,y:210,zoom:.75});");
+      await delay(120);
+      await page.evaluate("store.getState().beginQuickPing('pc1');");await wait("store.getState().quickPing?.sourceId==='pc1'");
+      await click('.react-flow__node[data-id=r1] .device-artwork');
+      await wait("document.querySelectorAll('#quick-ping-addresses [role=menuitem]').length===3");
+      assert.deepEqual(await page.evaluate("return store.getState().quickPing.addresses;"),[
+        {address:'10.0.0.1',interfaces:['eth0','eth2']},{address:'10.1.0.1',interfaces:['eth1']}
+      ]);
+      assert.equal(await page.evaluate("return events.filter(e=>e.type==='started').length;"),0);
+      assert(await page.evaluate("return document.querySelector('#quick-ping-addresses button').textContent.includes('eth0, eth2');"));
+      await key('ArrowDown');assert(await page.evaluate("return document.activeElement===document.querySelectorAll('#quick-ping-addresses button')[1];"));
+      await key('Escape');await wait("!store.getState().quickPing");assert.equal(await page.evaluate("return events.length;"),0);
+      // No hidden selection after cancel; choose the second address by keyboard.
+      await page.evaluate("store.getState().beginQuickPing('pc1');store.getState().chooseQuickPingTarget('r1');");
+      await wait("document.querySelector('#quick-ping-addresses')");await key('ArrowDown');await key('Enter');
+      await wait("!store.getState().quickPing");await page.evaluate("store.getState().setPaused(true);sim.net.scheduler.advanceTo(sim.net.now+9000);");
+      await wait("events.some(e=>e.type==='finished')");
+      const started=await page.evaluate("return events.filter(e=>e.type==='started').length;");
+      await page.evaluate("store.getState().beginQuickPing('pc1');store.getState().chooseQuickPingTarget('r1');");
+      await wait("document.querySelectorAll('#quick-ping-addresses [role=menuitem]').length===3");
+      assert.deepEqual(await page.evaluate("return store.getState().quickPing.addresses.map(a=>a.address);"),['10.0.0.1','10.1.0.1']);
+      assert.equal(await page.evaluate("return events.filter(e=>e.type==='started').length;"),started);
+      await click('#quick-ping-addresses button:last-child');await wait("!store.getState().quickPing");
+      assert.equal(await page.evaluate("return events.filter(e=>e.type==='started').length;"),started);
+      // Both addresses outside the source subnet must offer exactly the same list.
+      await page.evaluate("sim.net.devices.get('pc1').interfaces[0].ip={addr:0xc000020a,prefix:24};store.getState().beginQuickPing('pc1');store.getState().chooseQuickPingTarget('r1');");
+      await wait("document.querySelectorAll('#quick-ping-addresses [role=menuitem]').length===3");
+      await key('Escape');
+      // Duplicate IPs alone represent a single destination; no address selector.
+      await page.evaluate("sim.net.devices.get('r1').interfaces[1].ip=null;store.getState().beginQuickPing('pc1');store.getState().chooseQuickPingTarget('r1');");
+      await wait("!store.getState().quickPing");assert.equal(await page.evaluate("return !!document.querySelector('#quick-ping-addresses');"),false);
+      // Restore the deliberately invalid/duplicate runtime-only fixture before
+      // the next workspace document switch validates and flushes the draft.
+      await page.evaluate("const i=sim.net.devices.get('r1').interfaces;i[2].ip=null;i[3].ip=null;store.getState().refresh();");
+    });
+    await test('quick ping: address popover follows pan/zoom, flips below and fits both themes at 700/1440',async()=>{
+      const boxes=()=>page.evaluate("const p=document.querySelector('#quick-ping-addresses').getBoundingClientRect(),n=document.querySelector('.react-flow__node[data-id=r1]').getBoundingClientRect();return {p:p.toJSON(),n:n.toJSON()};");
+      for(const [themeName,width] of [['graphite-dark',1440],['classic-light',700]]){
+        await page.send('Emulation.setDeviceMetricsOverride',{width,height:960,deviceScaleFactor:1,mobile:false});
+        await setup();await page.evaluate("store.getState().select(null);");await page.evaluate("theme.getState().setTheme("+JSON.stringify(themeName)+");await flow.setViewport({x:15,y:210,zoom:.75});store.getState().beginQuickPing('pc1');store.getState().chooseQuickPingTarget('r1');");
+        await wait("document.querySelector('#quick-ping-addresses')");await delay(80);
+        const above=await boxes();assert(above.p.bottom<=above.n.top-4);assert(above.p.left>=8&&above.p.right<=width-8);
+        assert(await page.evaluate("return document.activeElement===document.querySelector('#quick-ping-addresses button');"));
+        const old=await page.evaluate("return flow.getViewport();");
+        // Panning with the real canvas pointer must not dismiss the selector.
+        const pane=await point('.react-flow__pane');
+        for(const type of ['mousePressed','mouseMoved','mouseReleased'])await page.send('Input.dispatchMouseEvent',{type,x:pane.x+(type==='mousePressed'?0:25),y:pane.y+(type==='mousePressed'?0:18),button:type==='mouseMoved'?'none':'left',buttons:type==='mouseReleased'?0:1,clickCount:1});
+        await delay(100);assert(await page.evaluate("return !!document.querySelector('#quick-ping-addresses');"));
+        await page.evaluate("await flow.setViewport({x:45,y:235,zoom:.75});");await delay(80);
+        const moved=await boxes();assert(Math.abs((moved.p.top-above.p.top)-(moved.n.top-above.n.top))<2);
+        await page.evaluate("await flow.setViewport({x:20,y:180,zoom:.9});");await delay(80);
+        const zoomed=await boxes();assert(zoomed.p.bottom<=zoomed.n.top-4);assert(Math.abs(zoomed.p.width-above.p.width)<1);
+        assert.notDeepEqual(await page.evaluate("return flow.getViewport();"),old);
+        await shot('quick-ping-anchored-'+width+'.png',themeName,width,'address-choice-above');
+        await page.evaluate("await flow.setViewport({x:20,y:-45,zoom:.75});");await delay(80);
+        const below=await boxes();assert(below.p.top>=below.n.bottom+4);assert(below.p.right<=width-8);
+        await shot('quick-ping-flipped-'+width+'.png',themeName,width,'address-choice-below');
+        await page.evaluate("document.querySelector('#quick-ping-addresses button').focus({preventScroll:true});");
+        await key('End');assert(await page.evaluate("return document.activeElement.textContent==='Abbrechen';"));
+        await key('Home');await key('Escape');assert.equal(await page.evaluate("return store.getState().quickPing;"),null);
+      }
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});
+      await page.evaluate("theme.getState().setTheme('graphite-dark');");await setup();await page.evaluate("await flow.setViewport({x:15,y:20,zoom:.75});");
+    });
     await test('quick ping: missing address, explicit multiple-address selection, Esc and source toggle, plan change',async()=>{
       await page.evaluate("for(const id of [...store.getState().terminals])store.getState().closeTerminal(id);sim.net.devices.get('nb1').interfaces[0].ip=null;store.getState().refresh();");await delay(100);
       await click('.react-flow__node[data-id=pc1] .device-ping');await click('.react-flow__node[data-id=nb1] .device-artwork');
@@ -202,7 +271,7 @@ export async function runDeviceActionReview({page,url,root,report}) {
       await wait("!document.querySelector('.ping-animation-control')");
     });
     const manifest=path.join(directory,'manifest.json');const mapped=captures.map(c=>({source:path.relative(root,path.join(directory,c.filename)).split(path.sep).join('/'),scene:c.filename.replace('.png',''),variant:c.theme,state:c.state,width:c.width,height:c.height}));
-    await writeFile(manifest,JSON.stringify({id:'ping-animation-simple',title:'NetLab - Ping-Animation',description:'Chromium real em perfil e IndexedDB descartáveis; sem dados pessoais.',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['selected','selecting','terminal','address-choice','settings','ping-bar'],captures:mapped,share:mapped.filter(c=>c.state==='ping-bar'||c.scene==='quick-ping-result-1440').map(c=>({scene:c.scene,variant:c.variant,state:c.state,width:c.width,height:c.height,name:c.scene})),shareContactSheet:false},null,2));
+    await writeFile(manifest,JSON.stringify({id:'ping-animation-simple',title:'NetLab - Ping-Animation',description:'Chromium real em perfil e IndexedDB descartáveis; sem dados pessoais.',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['selected','selecting','terminal','address-choice','address-choice-above','address-choice-below','settings','ping-bar'],captures:mapped,share:mapped.filter(c=>c.state==='ping-bar'||c.state==='address-choice-above'||c.scene==='quick-ping-result-1440').map(c=>({scene:c.scene,variant:c.variant,state:c.state,width:c.width,height:c.height,name:c.scene})),shareContactSheet:false},null,2));
     const publication=await generateReview(manifest);report.deviceActionReview={captures:captures.length,measurements:measurements.length,...publication};
   } finally {
     try{await page.evaluate('window.stopPingSampling?.();workspace?.dispose();');}catch{}

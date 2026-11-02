@@ -139,6 +139,11 @@ instructions and screenshots are described in [workspace-ui.md](workspace-ui.md)
   Opening an existing session activates its tab and focuses its input.
   Switching tabs keeps history and running commands. Closing a tab ends only
   that session; an empty panel disappears and the other panels expand.
+  The **ⓘ** button beside each panel's width lock opens **Terminal — Befehlsreferenz**:
+  searchable German command documentation, separated into Linux and Windows CMD,
+  with expandable explanations and copyable examples. Copying never executes a
+  command. Escape, X or the backdrop closes it and returns focus to the button.
+  The traditional `help` command remains available.
 
 When terminals are expanded, the right Inspector keeps the full height below
 the header and can overlap the dock. Click or focus a control in either
@@ -641,14 +646,18 @@ Manual fields are **IP-Adresse**, **Subnetzmaske**, **Standardgateway** and
 **DNS-Server**. An address such as `192.168.1.10/24` fills the decimal mask
 automatically. The mask also accepts `/24`, a bare prefix or a contiguous dotted
 mask. All IPv4 prefixes `/0` through `/32` are supported. Editing the mask after
-entering CIDR makes the mask field authoritative. Gateway and DNS are optional;
-the gateway must be in that interface's subnet.
+entering CIDR makes the mask field authoritative. Gateway and DNS are optional.
+Syntactically valid gateway addresses outside the interface subnet are accepted
+for diagnosis exercises. The Inspector shows a non-blocking
+“Hinweis: Das Standardgateway liegt nicht im selben Subnetz.” until corrected.
+The warning does not establish whether a router or working path exists.
 
 The complete valid configuration is applied after 500 ms without typing, or on
 leaving a field. There is no Apply button. Incomplete/invalid forms remain as
 drafts without changing the network. Clearing gateway or DNS removes that option;
 an entirely empty manual form means Unconfigured. Saved text keeps its formatting
-while typing, preserving the cursor. External changes cannot be overwritten by
+while typing, preserving the cursor; a CIDR suffix is added on leaving the IP
+field rather than in the middle of typing. External changes cannot be overwritten by
 an obsolete draft: it remains visible while editing and is discarded with a
 message on blur. A clean form reflects Undo/Redo and terminal changes immediately.
 
@@ -666,7 +675,10 @@ leaves the interface in DHCP mode without inventing a new address. Renewing an
 existing configuration retains its previous address until a successful ACK or
 explicit release. Changing mode cancels pending DHCP callbacks.
 
-Each interface owns its gateway and DNS options. Renewing replaces those options,
+Each interface owns its gateway and DNS options. Explicit static routes remain
+independent: an empty interface gateway field does not mean the routing table
+has no default route, and editing IPv4 fields does not rewrite static routes.
+Renewing replaces those options,
 including clearing an option omitted by the server. These gateways participate in
 the existing route lookup; independent explicit static routes are preserved.
 The pre-existing device-wide **DNS client (global override)** remains an explicit

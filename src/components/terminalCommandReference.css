@@ -1,0 +1,66 @@
+.terminal-reference {
+  width: min(1060px, calc(100vw - 32px)); max-width: none;
+  height: min(780px, calc(100dvh - 40px)); max-height: calc(100dvh - 24px);
+  margin: auto; padding: 0; border: 1px solid var(--ui-border); border-radius: 12px;
+  background: var(--ui-surface-panel); color: var(--ui-text); box-shadow: var(--ui-shadow-popover);
+  font: 13px/1.5 system-ui, sans-serif; overflow: hidden;
+}
+.terminal-reference[open] { display: flex; flex-direction: column; }
+.terminal-reference::backdrop { background: rgb(0 0 0 / 55%); }
+.reference-heading { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 16px 20px 10px; }
+.reference-heading h2 { margin: 0; font-size: 20px; }
+.reference-heading p { margin: 5px 0 0; color: var(--ui-text-muted); font-size: 12px; }
+.reference-heading .reference-legend { font-size: 11px; }
+.reference-heading > button { flex: 0 0 30px; font-size: 20px; }
+.reference-filters { display: flex; gap: 12px; padding: 0 20px 14px; border-bottom: 1px solid var(--ui-border); }
+.reference-filters label { display: grid; gap: 4px; min-width: 0; }
+.reference-filters label:first-child { flex: 1; }
+.reference-filters input, .reference-filters select {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--ui-border); border-radius: 6px;
+  background: var(--ui-surface-base); color: var(--ui-text); font: inherit;
+}
+.reference-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 0; flex: 1; }
+.reference-navigation { padding: 12px; overflow: auto; border-right: 1px solid var(--ui-border); }
+.reference-categories, .reference-command-list { display: grid; gap: 4px; }
+.reference-navigation .btn { text-align: left; min-height: 30px; white-space: normal; }
+.reference-navigation [aria-pressed="true"], .reference-navigation [aria-current="true"] {
+  background: var(--button-selected-surface); color: var(--button-selected-text); border-color: var(--button-primary-border);
+}
+.reference-count { margin: 14px 0 6px; color: var(--ui-text-muted); font-size: 12px; }
+.reference-command-list .btn { font-family: var(--font-mono, monospace); }
+.reference-content { padding: 16px 24px; overflow: auto; min-width: 0; }
+.reference-content h3 { font-size: 22px; margin: 0 0 8px; }
+.reference-content h4 { font-size: 15px; margin: 0 0 6px; }
+.reference-content p { margin: 6px 0 12px; }
+.reference-operation { padding: 14px 0; border-bottom: 1px solid var(--ui-border); }
+.reference-syntax { display: grid; gap: 4px; margin: 6px 0 12px; padding: 9px; border-radius: 6px; background: var(--ui-surface-card); }
+.reference-syntax > span { color: var(--ui-text-muted); font-size: 11px; }
+.reference-syntax-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.syntax-value { color: var(--ui-warning); text-decoration: underline dotted; text-underline-offset: 2px; }
+.syntax-optional { color: var(--ui-text-muted); }
+.terminal-reference code { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; white-space: pre-wrap; }
+.terminal-reference summary { cursor: pointer; color: var(--ui-accent); padding: 4px 0; }
+.reference-example { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; margin: 8px 0; }
+.reference-example code { padding: 9px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface-card); user-select: text; }
+.reference-copy [role="status"] { display: block; max-width: 220px; font-size: 12px; color: var(--ui-text-muted); }
+.reference-copy [role="status"]:empty { display: none; }
+.reference-parameters { margin: 8px 0; padding-left: 20px; }
+.reference-parameters li { margin: 5px 0; }
+.reference-notes { margin: 16px 0; }
+.reference-notes ul { padding-left: 20px; }
+.reference-notes li { margin: 8px 0; }
+.terminal-reference :focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+@media (max-width: 760px) {
+  .terminal-reference { width: calc(100vw - 16px); height: calc(100dvh - 20px); }
+  .reference-heading { padding: 12px; gap: 8px; }
+  .reference-heading h2 { font-size: 17px; }
+  .reference-filters { padding: 0 12px 10px; gap: 8px; flex-wrap: wrap; }
+  .reference-filters label:first-child { flex-basis: 100%; }
+  .reference-layout { display: flex; flex-direction: column; }
+  .reference-navigation { flex-shrink: 0; max-height: 180px; border-right: 0; border-bottom: 1px solid var(--ui-border); padding: 8px 12px; }
+  .reference-categories, .reference-command-list { display: flex; gap: 5px; overflow-x: auto; }
+  .reference-navigation .btn { flex: 0 0 auto; white-space: nowrap; }
+  .reference-count { margin: 7px 0 4px; }
+  .reference-content { padding: 12px; }
+  .reference-example { grid-template-columns: minmax(0, 1fr); }
+}

@@ -24,9 +24,15 @@ Concluir/cancelar restaura o cursor normal. Os SVGs ficam em `public/assets/curs
 
 Somente dispositivos com terminal iniciam Quick Ping. Qualquer dispositivo IP
 com endereço unicast configurado elegível pode ser destino, inclusive smartphone.
-Endereços iguais são agrupados por interface. Um único endereço é automático;
-com vários, uma única opção na sub-rede da origem é preferida. Caso contrário,
-o painel oferece a lista simples de endereços. Isso não testa nem promete
+Endereços iguais são agrupados por interface. Um único IPv4 distinto utilizável é
+automático; dois ou mais sempre exigem escolha, mesmo se só um estiver na subnet
+da origem. Cada tentativa oferece novamente a lista inteira, sem preferência
+memorizada. O seletor compacto fica acima do próprio destino, acompanha pan/zoom
+e passa para baixo quando falta espaço acima; limita largura e permite scroll
+em janelas estreitas. Cada opção mostra o IP e suas interfaces. Setas,
+Home/End e Enter permitem escolher; Tab sai do menu. Escape ou Abbrechen cancelam sem enviar.
+O pan no canvas mantém o seletor aberto enquanto o destino está visível.
+Isso não testa nem promete
 conectividade: endereço configurado em interface desligada ainda pode falhar.
 IPs/gateways nunca são atribuídos ou corrigidos pela ferramenta.
 
@@ -70,6 +76,19 @@ aba). Os alvos das abas mantêm pelo menos 32 px; fechar, indicador, ordem,
 atalhos e drag continuam usando a infraestrutura existente.
 
 ## Validação
+
+Refinamento de 02/11/2026: 308 testes direcionados (seleção de endereço,
+posicionamento e terminais), TypeScript, build e diff-check aprovados.
+A revisão Chromium focada concluiu 105 verificações sem erros, usando perfil e
+bancos descartáveis. As duas novas regressões verificam seleção repetida após
+conclusão/cancelamento, um único IP local entre vários, todos os IPs em subnets
+remotas, duplicados e endereços inválidos; o popover cobre teclado, pan/zoom,
+reposicionamento e 700/1440 px nos dois temas.
+Para repetir esse recorte, definir NETLAB_DEVICE_ACTION_REVIEW=1 e
+NETLAB_QUICK_PING_REVIEW=1 ao executar scripts/test-project-repository.mjs.
+O recorte evita os testes históricos de layout/tempo que interromperam a
+revisão ampla antes da conclusão. Capturas acima/abaixo ficam na organização
+existente em .playwright-mcp/reviews/.
 
 ```powershell
 node scripts/test-device-actions.mjs

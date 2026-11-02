@@ -107,7 +107,7 @@ try {
   await new Promise(resolve => probe.close(resolve));
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
     cacheDir: path.join(scratch, 'vite-cache'),
-    plugins: [...(process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
+    plugins: [...(process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
       name: 'isolated-viewport-probe', enforce: 'pre',
       transform(code, id) {
         if (!id.replaceAll('\\', '/').endsWith('/src/App.tsx')) return;
@@ -260,6 +260,11 @@ try {
     await runDeviceActionReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1') {
+    const { runSelectionOutlineReview } = await import('./selection-outline-review.mjs');
+    await runSelectionOutlineReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_INTERFACE_AUDIT === '1') {
     const { runInterfaceAudit } = await import('./interface-audit.mjs');
     await runInterfaceAudit({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
@@ -268,6 +273,21 @@ try {
   if (process.env.NETLAB_TERMINAL_EDITING === '1') {
     const { runTerminalEditing } = await import('./terminal-editing.mjs');
     await runTerminalEditing({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_TERMINAL_FOCUS_REVIEW === '1') {
+    const { runTerminalFocusReview } = await import('./terminal-focus-review.mjs');
+    await runTerminalFocusReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_TERMINAL_REFERENCE_REVIEW === '1') {
+    const { runTerminalReferenceReview } = await import('./terminal-reference-review.mjs');
+    await runTerminalReferenceReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_IPV4_REVIEW === '1') {
+    const { runIpv4Review } = await import('./ipv4-review.mjs');
+    await runIpv4Review({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, report });
     await prepare(pageOne);
   }
   if (process.env.NETLAB_ARP_CACHE_REVIEW === '1') {

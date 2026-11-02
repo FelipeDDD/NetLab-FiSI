@@ -86,10 +86,18 @@ export async function runPracticalReview({page,url,root,report}) {
       assert.equal((await status()).attempts[await page.evaluate('return ws.controller.getState().activeDraftId;')],undefined);
     });
     await test('practical: D02 incomplete return path fails; equivalent defaults pass',async()=>{
-      await start('d02');await check();assert(!(await status()).completed['pilot-d02-v1']);
+      await start('d02');assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('Noch nicht geprüft');"));
+      await check();assert(!(await status()).completed['pilot-d02-v1']);
+      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('Anforderungen noch nicht erfüllt');"));
       await page.evaluate("sim.net.devices.get('west').addRoute(0,0,ip.parseIp('10.72.254.2'),'eth1');store.getState().refresh();await ws.controller.flush();");await check();assert(!(await status()).completed['pilot-d02-v1']);
       await page.evaluate("sim.net.devices.get('east').addRoute(0,0,ip.parseIp('10.72.254.1'),'eth0');store.getState().refresh();await ws.controller.flush();");await check();assert((await status()).completed['pilot-d02-v1']);
+      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('✓ Technisch bestanden')&&document.querySelector('.exercise-summary').textContent.includes('Manuelle Besprechung offen');"));
+      assert(await page.evaluate("const body=document.querySelector('.exercise-body'),heading=document.querySelector('.exercise-panel header'),before=heading.getBoundingClientRect().top;body.scrollTop=body.scrollHeight;return body.scrollTop>0&&heading.getBoundingClientRect().top===before&&heading.contains(document.querySelector('.exercise-summary'));"));
       await shot('routing-return-passed','graphite-dark',1440,'selected');
+      await page.evaluate("store.getState().renameDevice('west','West edited');");
+      await wait("document.querySelector('.exercise-summary').dataset.outcome==='unverified'");
+      assert((await status()).completed['pilot-d02-v1']);
+      await page.evaluate("store.getState().renameDevice('west','West');");await check();
     });
     await test('practical: DE/EN/PT-BR navigation, German pedagogy, 700px Classic Light scrolling; restart creates separate draft',async()=>{
       await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:960,deviceScaleFactor:1,mobile:false});await page.evaluate("theme.getState().setTheme('classic-light');store.getState().setTerminalDockCollapsed(true);");
@@ -100,6 +108,7 @@ export async function runPracticalReview({page,url,root,report}) {
       }
       assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth+1;'));
       assert(await page.evaluate("const p=document.querySelector('.exercise-panel');return p.scrollWidth<=p.clientWidth+1&&p.getBoundingClientRect().bottom<=innerHeight;"));
+      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('✓ Technisch bestanden');"));
       await shot('routing-light-700','classic-light',700,'normal');await menu();await shot('pilot-menu-light-700','classic-light',700,'normal');
       const n=await page.evaluate('return ws.controller.getState().drafts.length;');await start('d02','Erneut starten');assert.equal(await page.evaluate('return ws.controller.getState().drafts.length;'),n+1);
       assert.equal(await page.evaluate("return sim.net.devices.get('west').staticRoutes.length;"),0);

@@ -442,6 +442,10 @@ body,
 .quick-ping-panel small { color: var(--text-dim); display: block; margin-top: 4px; }
 .quick-ping-panel p { margin: 8px 0; }
 .quick-ping-panel button { margin: 6px 4px 0 0; }
+.quick-ping-address-popover { padding: 10px; }
+.quick-ping-address-popover > button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 0; text-align: left; }
+.quick-ping-address-popover > button > span { font-family: var(--font-mono, monospace); }
+.quick-ping-address-popover > button > small { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .device-node, .device-action, .device-action > svg { transition: none; }
   .device-action:active > svg { transform: none; }
@@ -1536,7 +1540,7 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
   overflow-x: auto;
 }
 
-.terminal-panel-header { display: grid; grid-template-columns: 24px minmax(0, 1fr) 32px; flex-shrink: 0; min-width: 0; background: var(--console-header); border-bottom: 1px solid var(--border); }
+.terminal-panel-header { display: grid; grid-template-columns: 24px minmax(0, 1fr) 32px 32px; flex-shrink: 0; min-width: 0; background: var(--console-header); border-bottom: 1px solid var(--border); }
 .terminal-panel-header {
   /* Tabs use terminal appearance/custom colors, never the light UI text. */
   --text: var(--canvas-text);
@@ -1573,6 +1577,9 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
 .terminal-panel-lock:hover { background: var(--bg-raised); color: var(--text); }
 .terminal-panel-lock[aria-pressed="true"] { color: var(--accent); border-color: var(--border); }
 .terminal-panel-lock:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.terminal-panel-info { align-self: center; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text-dim); cursor: pointer; }
+.terminal-panel-info:hover { background: var(--bg-raised); color: var(--text); }
+.terminal-panel-info:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .terminal-panels {
   position: relative;
   display: flex;
@@ -2034,6 +2041,24 @@ body.packet-panel-resizing, body.packet-panel-resizing * { cursor: col-resize !i
 .device-node.has-device-artwork.kind-smartphone { width: 80px; color: var(--host); }
 .device-node.kind-notebook:hover, .device-node.kind-notebook.selected, .device-node.kind-smartphone:hover, .device-node.kind-smartphone.selected { border-color: var(--host); }
 .palette-item.kind-notebook .palette-item-icon, .palette-item.kind-smartphone .palette-item-icon { color: var(--host); }
+
+/* The scaled caption can extend beyond the fixed node box. Paint hover and
+   selection outlines separately so their edges clear the caption without changing node
+   measurements, handles, labels or pointer targets. */
+.device-node.has-device-artwork:is(:hover, .selected) { border-color: transparent; }
+.device-node.has-device-artwork.selected { box-shadow: none; }
+.device-node.has-device-artwork:is(:hover, .selected)::after {
+  content: ''; position: absolute;
+  inset: 0 calc(-1 * var(--device-selection-right, 6px)) calc(-1 * var(--device-selection-bottom, 6px)) calc(-1 * var(--device-selection-left, 6px));
+  border: 1px solid var(--device-color); border-radius: inherit;
+  pointer-events: none;
+}
+.device-node.has-device-artwork.selected::after {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--device-color) 40%, transparent), 0 0 12px color-mix(in srgb, var(--device-color) 18%, transparent);
+}
+.device-node.has-device-artwork.selected.quick-ping-source::after {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--device-color) 60%, transparent);
+}
 
 .host-os-terminal { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 10px; }
 .host-os-terminal .host-os-setting { flex: 1; min-width: 0; margin: 0; }

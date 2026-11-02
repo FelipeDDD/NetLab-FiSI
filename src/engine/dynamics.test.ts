@@ -44,6 +44,18 @@ function ripChain(net: Network) {
 }
 
 describe('RIP', () => {
+  it('keeps a learned RIP route when a static route to the same network is replaced', () => {
+    const net = new Network(), { r1, r2 } = ripChain(net);
+    r1.enableRip(true); r2.enableRip(true);
+    net.scheduler.advanceTo(30_000);
+    const learned = r1.routes().find(r => r.kind === 'rip' && r.dest === ip('172.16.0.0'));
+    expect(learned).toBeDefined();
+    expect(r1.replaceRoute(ip('172.16.0.5'), 24, ip('10.0.12.2'), 'eth1')).toBeNull();
+    expect(r1.replaceRoute(ip('172.16.0.10'), 24, ip('10.0.12.2'), 'eth1')).toBeNull();
+    expect(r1.routes().find(r => r.kind === 'rip' && r.dest === ip('172.16.0.0'))).toEqual(learned);
+    expect(r1.routes().filter(r => r.kind === 'static' && r.dest === ip('172.16.0.0'))).toHaveLength(1);
+  });
+
   it('keeps one periodic timer and rejects stale callbacks across disable/re-enable cycles', () => {
     const net = new Network(), router = createDevice(net, 'router') as RouterDevice;
     const schedule = vi.spyOn(net.scheduler, 'schedule'), unrelated = vi.fn();

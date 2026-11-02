@@ -1,5 +1,10 @@
 # Terminal panel distribution
 
+Each panel's information button beside the width lock opens one shared,
+read-only [Terminal command reference](terminal-command-reference.md). Its modal
+is centered on the browser, independent of dock geometry. Closing restores the
+origin button; sessions, input, history, layout and viewport remain intact.
+
 `terminalPanels.ts` defines the visual limits: five columns and a 220px minimum
 width. In Free panels, opening another session adds a normal tab to the last
 column when all five columns exist. Group by type retains each session in its
@@ -41,6 +46,42 @@ weights. The existing `ResizeObserver` / animation-frame coalescing and FitAddon
 refit visible xterm hosts after their size changes. Hidden tabs refit when shown;
 sessions are not recreated by distribution or tab changes. Console appearance,
 network configuration and topology history are unchanged.
+
+## Returning to the browser page
+
+Since 2026-11-02, TerminalDock records whether an xterm input actually owned
+keyboard focus when the page lost window focus or became hidden. On return it
+waits until the document is both visible and focused, releases the existing
+terminal focus flag and focuses App's topology editor with preventScroll.
+Duplicate blur/visibility/focus events belong to one departure. Ordinary focus
+moves inside the page and another control deliberately focused during return
+keep their context.
+
+The policy in terminalPageFocus.ts is temporary and local to the mounted dock.
+It does not close or recreate xterm sessions, change the active terminal or
+panels, alter command input/history, cancel commands, change stacking dimensions
+or move the React Flow viewport. Clicking an xterm restores its normal focus.
+
+The existing Ctrl+Tab / Ctrl+Shift+Tab terminal shortcuts are unchanged. When
+Chromium delivers the key event to the page, the dock prevents its default and
+cycles terminal sessions. Browser-reserved shortcuts can instead be handled by
+Chromium itself; application code cannot guarantee interception of browser UI
+shortcuts or focus the page while the address bar/another application owns focus.
+
+Validation: 340 targeted tests (including nine focus-policy event-order cases),
+TypeScript and production build. The disposable Chromium runner passed 109
+checks without browser errors, including six focus-specific scenarios. It covers two
+terminals, partial input, editor/Inspector focus, click-to-refocus, a running
+ping and Ctrl+Tab delivered to the renderer. Browser tabs are switched through
+native target activation. In headless Chromium, separate windows can both
+report document.hasFocus() true, so the window-only blur/focus sequence is
+simulated and explicitly recorded in the report. OS Alt+Tab between visible
+applications remains a manual check. Input safety uses key events, rather than
+DevTools' direct IME text insertion.
+
+To repeat: set NETLAB_TERMINAL_FOCUS_REVIEW=1 and run
+node scripts/test-project-repository.mjs. It uses a disposable profile/database;
+reports stay under .playwright-mcp/.
 
 ## Inspector / terminal stacking
 

@@ -393,6 +393,14 @@ export abstract class IpDevice extends Device {
   }
 
   addRoute(dest: U32, prefix: number, via: U32 | null, dev?: string): string | null {
+    return this.writeStaticRoute(dest, prefix, via, dev, false);
+  }
+
+  replaceRoute(dest: U32, prefix: number, via: U32 | null, dev?: string): string | null {
+    return this.writeStaticRoute(dest, prefix, via, dev, true);
+  }
+
+  private writeStaticRoute(dest: U32, prefix: number, via: U32 | null, dev: string | undefined, replace: boolean): string | null {
     let ifaceName = dev ?? null;
     if (ifaceName && !this.getInterface(ifaceName)) return `Cannot find device "${ifaceName}"`;
     if (!ifaceName) {
@@ -401,9 +409,17 @@ export abstract class IpDevice extends Device {
       if (!r || r.kind !== 'connected') return 'Error: Nexthop has invalid gateway.';
       ifaceName = r.ifaceName;
     }
-    if (this.staticRoutes.some((r) => r.dest === dest && r.prefix === prefix))
-      return 'RTNETLINK answers: File exists';
-    this.staticRoutes.push({ dest: networkOf(dest, prefix), prefix, via, ifaceName, kind: 'static' });
+    const destination = networkOf(dest, prefix);
+    const matches = (r: Route) => r.dest === destination && r.prefix === prefix;
+    const index = this.staticRoutes.findIndex(matches);
+    if (index !== -1) {
+      if (!replace) return 'RTNETLINK answers: File exists';
+      if (this.staticRoutes.findIndex((r, i) => i > index && matches(r)) !== -1)
+        return 'Error: multiple static routes match this destination; remove duplicates before replace.';
+    }
+    const route: Route = { dest: destination, prefix, via, ifaceName, kind: 'static' };
+    if (index === -1) this.staticRoutes.push(route);
+    else this.staticRoutes[index] = route;
     return null;
   }
 

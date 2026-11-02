@@ -33,6 +33,7 @@ import { AreaMarkingsLayer } from './AreaMarkings';
 import { MarkingFreeDraw } from './MarkingFreeDraw';
 import { MarkingGeometryEditor, markingsAtPoint, type MarkingMenuPoint } from './MarkingGeometryEditor';
 import {DeviceContextMenu,type DeviceMenuPoint} from './DeviceContextMenu';
+import { QuickPingAddressPopover } from './QuickPingAddressPopover';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { floating: FloatingEdge };
@@ -365,12 +366,12 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       <WifiCoverage />
       <AlignmentGuides guides={alignment.guides} />
       <PacketLayer />
-      {quickPing && <Panel position="top-center" className="quick-ping-panel nodrag nopan nowheel">
+      {quickPing?.targetId && quickPing.addresses
+        ? <QuickPingAddressPopover key={quickPing.targetId} targetId={quickPing.targetId} addresses={quickPing.addresses} />
+        : quickPing && <Panel position="top-center" className="quick-ping-panel nodrag nopan nowheel">
         <div role="status">Ping-Ziel auswählen · Esc zum Abbrechen</div>
         <small>Quelle: {nodes.find(n => n.id === quickPing.sourceId)?.data.label}</small>
         {quickPing.message && <p role="status">{quickPing.message}</p>}
-        {quickPing.targetId && quickPing.addresses?.map(a => <button type="button" className="btn" key={a.address}
-          onClick={() => useStore.getState().chooseQuickPingTarget(quickPing.targetId!, a.address)}>{a.address} · {a.interfaces.join(', ')}</button>)}
         <button type="button" className="btn" onClick={() => useStore.getState().cancelQuickPing()}>Abbrechen</button>
       </Panel>}
       {!reconnecting && <LinkDetails pointer={pointer} />}

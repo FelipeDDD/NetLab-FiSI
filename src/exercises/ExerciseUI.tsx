@@ -85,7 +85,12 @@ export function ExercisePanel() {
   if (!exercise || !active) return state.error ? <aside className="exercise-error" role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>Erneut versuchen</button></aside> : null;
   const checks = exerciseChecks(exercise.id), currentVersion = active.contentVersion === exercise.contentVersion, pilot=practicalExercise(exercise.id);
   return <aside className={`exercise-panel${collapsed ? ' is-collapsed' : ''}`} aria-label="Übung" data-exercise={exercise.id}>
-    <header><strong>{exercise.student.title}</strong><button className="btn btn--icon" aria-label={t(collapsed?'exercises.expand':'exercises.collapse')} aria-expanded={!collapsed} onClick={() => setCollapsed(v => !v)}>{collapsed ? '+' : '−'}</button></header>
+    <header><div className="exercise-heading"><strong>{exercise.student.title}</strong>
+      {pilot && <div className="exercise-summary" role="status" aria-live="polite" data-outcome={currentVersion ? state.outcome : 'unverified'}>
+        <span>{state.checking ? t('exercises.checking') : currentVersion && state.outcome === 'passed' ? '✓ ' + t('exercises.technical') : currentVersion && state.outcome === 'incomplete' ? t('exercises.incomplete') : t('exercises.pending')}</span>
+        {pilot.manualReview.length > 0 && <span>{t('exercises.manualOpen')}</span>}
+      </div>}
+    </div><button className="btn btn--icon" aria-label={t(collapsed?'exercises.expand':'exercises.collapse')} aria-expanded={!collapsed} onClick={() => setCollapsed(v => !v)}>{collapsed ? '+' : '−'}</button></header>
     {!collapsed && <>
       <div className="exercise-body">
         <p lang="de">{exercise.student.description}</p><p lang="de">{exercise.student.task}</p>

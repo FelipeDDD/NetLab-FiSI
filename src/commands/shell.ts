@@ -26,7 +26,8 @@ export interface Running {
 const HELP = `NetLab-FiSI commands (real Linux syntax, curated subset):
   ip address [show | add <cidr> dev <if> | del <cidr> dev <if>]
   ip link    [show | set <if> up|down]
-  ip route   [show | add <cidr>|default via <gw> [dev <if>] | del <cidr>|default]
+  ip route   [show | add|replace <cidr>|default via <gw> [dev <if>] | del <cidr>|default]
+                          add: only new; replace: update or create a static route
   ip neigh show / arp [-a|-n]   ARP-Tabelle anzeigen (IPv4)
   ip neigh flush all      Dynamischen ARP-Cache dieses Geräts leeren
   ip neigh flush dev eth0 Nur dynamische Einträge von eth0 löschen

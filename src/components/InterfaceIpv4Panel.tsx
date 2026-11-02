@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { sim } from '../sim';
 import { ipToString } from '../engine/ip';
-import { emptyIpv4, sameIpv4 } from '../engine/ipv4Config';
+import { emptyIpv4, gatewayOutsideSubnet, sameIpv4 } from '../engine/ipv4Config';
 import { editIpv4Draft, newIpv4Draft, normalizeIpv4Shortcut, parseIpv4Draft, syncIpv4Draft, type Ipv4Fields } from '../ipv4Draft';
 import { CopyIpButton } from './CopyIpButton';
 import { usePendingForm } from '../persistence/usePendingForm';
@@ -23,6 +23,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
   const group = useRef<object>();
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const composing = useRef(false);
+  const form = useRef<HTMLFormElement>(null);
   const [error, setError] = useState('');
   const clearPending = () => { if (timer.current !== undefined) clearTimeout(timer.current); timer.current = undefined; };
   useEffect(() => {
@@ -51,11 +52,13 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
       } else update({ ...pending, stale: true });
       return;
     }
-    const fields = normalizeIpv4Shortcut(pending.fields, blur);
+    // Do not append a CIDR suffix while the user is still typing the address.
+    const editingIp = !blur && document.activeElement === form.current?.elements.namedItem('ip');
+    const fields = editingIp ? pending.fields : normalizeIpv4Shortcut(pending.fields, blur);
     if (fields !== pending.fields) { pending = { ...pending, fields }; update(pending); }
     const value = parseIpv4Draft(pending.fields);
     if (!value) {
-      if (blur) setError('Ungültige oder unvollständige IPv4-Konfiguration. Gateway muss im selben Subnetz liegen.');
+      if (blur) setError('Ungültige oder unvollständige IPv4-Konfiguration.');
       return;
     }
     const failure = useStore.getState().setInterfaceIpv4(deviceId, ifaceName, value, group.current);
@@ -66,6 +69,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
   };
   const schedule = () => { clearPending(); if (!composing.current) timer.current = setTimeout(() => commit(), 500); };
   const displayed = newIpv4Draft(iface.ipv4).fields;
+  const warning = gatewayOutsideSubnet(iface.ipv4Mode === 'dhcp' ? iface.ipv4 : parseIpv4Draft(draft.fields) ?? iface.ipv4);
   const toggleDhcp = (enabled: boolean) => {
     clearPending(); group.current = undefined;
     const failure = useStore.getState().setInterfaceIpv4(deviceId, ifaceName, emptyIpv4(enabled ? 'dhcp' : 'unconfigured'));
@@ -85,12 +89,12 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
         checked={iface.ipv4Mode === 'dhcp'} onChange={(e) => toggleDhcp(e.target.checked)} />
       IP-Adresse automatisch beziehen (DHCP)
     </label>
-    {iface.ipv4Mode !== 'dhcp' && <form className="ipv4-form"
+    {iface.ipv4Mode !== 'dhcp' && <form ref={form} className="ipv4-form"
       onFocus={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) group.current = {}; }}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) group.current = undefined; }}
       onSubmit={(e) => { e.preventDefault(); commit(true); }}>
       {(Object.keys(labels) as Field[]).map((field) => <label key={field}>{labels[field]}
-        <input className="iface-ip" aria-label={`${labels[field]} ${ifaceName}`} value={draft.fields[field]}
+        <input name={field} className="iface-ip" aria-label={`${labels[field]} ${ifaceName}`} value={draft.fields[field]}
           aria-invalid={!!error || undefined}
           placeholder={field === 'mask' ? '255.255.255.0 oder /24' : field === 'gateway' || field === 'dns' ? 'Optional' : '192.168.1.10'}
           onChange={(e) => { update(editIpv4Draft(current.current, field, e.target.value)); setError(''); schedule(); }}
@@ -99,6 +103,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
           onCompositionEnd={() => { composing.current = false; schedule(); }} />
       </label>)}
     </form>}
+    {warning && <span className="hint" role="status">Hinweis: Das Standardgateway liegt nicht im selben Subnetz.</span>}
     {error && <span className="hint" role="status">{error}</span>}
     {iface.ipv4Mode === 'dhcp' && <>
       <dl className="ipv4-assigned">{(Object.keys(labels) as Field[]).map((field) => <Fragment key={field}>

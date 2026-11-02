@@ -78,3 +78,18 @@ it('maps an entirely empty manual form to Unconfigured, but rejects incomplete f
   expect(parseIpv4Draft({ ...fields, ip: '192.168.1.10' })).toBeNull();
   expect(parseIpv4Draft({ ...fields, dns: '10.0.0.1' })).toBeNull();
 });
+
+it('allows changing IP and gateway separately without losing other fields', () => {
+  const original = parseStaticIpv4('10.72.1.10', '/26', '10.72.1.1', '10.72.1.53')!;
+  const first = editIpv4Draft(newIpv4Draft(original), 'ip', '10.72.2.10/26');
+  const intermediate = parseIpv4Draft(first.fields)!;
+  expect(intermediate.ip?.addr).toBe(parseStaticIpv4('10.72.2.10', '/26', '', '')!.ip!.addr);
+  expect(intermediate.gateway).toBe(original.gateway);
+  expect(intermediate.dns).toBe(original.dns);
+  const second = editIpv4Draft(newIpv4Draft(intermediate), 'gateway', '10.72.2.1');
+  expect(parseIpv4Draft(second.fields)).toEqual(parseStaticIpv4('10.72.2.10', '/26', '10.72.2.1', '10.72.1.53'));
+  const incomplete = editIpv4Draft(newIpv4Draft(intermediate), 'gateway', '10.72.2.');
+  expect(parseIpv4Draft(incomplete.fields)).toBeNull();
+  expect(incomplete.fields.gateway).toBe('10.72.2.');
+  expect(incomplete.source).toEqual(intermediate);
+});

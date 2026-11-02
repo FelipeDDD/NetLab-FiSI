@@ -4,7 +4,7 @@ import { cidrToString, ipToString, parseCidr, parseIp } from '../engine/ip';
 type Out = (s: string) => void;
 
 const UNSUPPORTED_HINT =
-  'Supported (phase 1): ip address [add|del], ip link [set], ip route [add|del], ip neigh\n';
+  'Supported (phase 1): ip address [add|del], ip link [set], ip route [add|replace|del], ip neigh\n';
 
 // iproute2 accepts any unique prefix of an object name ("ip a", "ip ro").
 function expandObject(word: string): string | null {
@@ -127,13 +127,13 @@ function ipRoute(device: IpDevice, a: string[], out: Out): void {
     out(formatRoutes(device));
     return;
   }
-  if (sub === 'add' || sub === 'del' || sub === 'delete') {
+  if (sub === 'add' || sub === 'replace' || sub === 'del' || sub === 'delete') {
     const target = parseRouteTarget(a[1] ?? '');
     if (!target) {
       out(`Error: inet prefix is expected rather than "${a[1] ?? ''}".\n`);
       return;
     }
-    if (sub !== 'add') {
+    if (sub === 'del' || sub === 'delete') {
       const err = device.delRoute(target.addr, target.prefix);
       if (err) out(err + '\n');
       return;
@@ -154,7 +154,9 @@ function ipRoute(device: IpDevice, a: string[], out: Out): void {
         return;
       }
     }
-    const err = device.addRoute(target.addr, target.prefix, via, dev);
+    const err = sub === 'replace'
+      ? device.replaceRoute(target.addr, target.prefix, via, dev)
+      : device.addRoute(target.addr, target.prefix, via, dev);
     if (err) out(err + '\n');
     return;
   }

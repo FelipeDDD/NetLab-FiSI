@@ -1,6 +1,6 @@
 import { hasTerminalKind } from './engine/device';
 import { Host, IpDevice } from './engine/ipdevice';
-import { broadcastOf, ipToString, networkOf, sameSubnet } from './engine/ip';
+import { broadcastOf, ipToString, networkOf } from './engine/ip';
 import type { Device } from './engine/device';
 
 export interface PingAddress { address: string; interfaces: string[] }
@@ -27,14 +27,10 @@ export function pingAddresses(device: Device | undefined): PingAddress[] {
   return [...addresses.values()];
 }
 
-export function preferredPingAddress(source: IpDevice, target: Device): string | null {
+export function preferredPingAddress(_source: IpDevice, target: Device): string | null {
   const addresses = pingAddresses(target);
-  if (addresses.length === 1) return addresses[0].address;
-  const local = target.interfaces.filter(iface => iface.ip && source.interfaces.some(from =>
-    from.up && from.ip && sameSubnet(from.ip.addr, iface.ip!.addr, from.ip.prefix)))
-    .map(iface => ipToString(iface.ip!.addr));
-  const unique = addresses.filter(a => local.includes(a.address));
-  return unique.length === 1 ? unique[0].address : null;
+  // Source subnet and previous selections never resolve multiple target addresses.
+  return addresses.length === 1 ? addresses[0].address : null;
 }
 
 export function quickPingCommand(source: IpDevice, address: string): string {

@@ -8,6 +8,8 @@ import { TerminalPanelSplitter } from './TerminalPanelSplitter';
 import { TerminalSettingsButton } from './TerminalAppearanceControls';
 import { terminalPanelWidths, TERMINAL_PANEL_SEPARATOR_WIDTH } from '../terminalPanels';
 import { TerminalNewPanelDrop, TerminalTabMovementProvider } from './TerminalTabMovement';
+import { attachTerminalPageFocus } from './terminalPageFocus';
+import { TerminalCommandReference } from './TerminalCommandReference';
 
 export function TerminalDock({ onFocusEditor, onOverlapHeightChange }: {
   onFocusEditor: () => void; onOverlapHeightChange?: (height: number) => void;
@@ -17,10 +19,20 @@ export function TerminalDock({ onFocusEditor, onOverlapHeightChange }: {
   const hasFocus = useStore((s) => s.terminalHasFocus);
   const collapsed = useStore((s) => s.terminalDockCollapsed);
   const count = useStore((s) => s.terminals.length);
+  const [referenceOrigin, setReferenceOrigin] = useState<HTMLButtonElement | null>(null);
   const [preferredHeight, setPreferredHeight] = useState(readDockHeight);
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
   const drag = useRef<{ pointerId: number; startY: number; startHeight: number; height: number } | null>(null);
   const columns = useRef<HTMLDivElement>(null);
+  const dock = useRef<HTMLDivElement>(null);
+  const focusEditor = useRef(onFocusEditor);
+  focusEditor.current = onFocusEditor;
+  const open = count > 0;
+  useEffect(() => {
+    if (!dock.current) return;
+    return attachTerminalPageFocus(dock.current, () => useStore.getState().releaseTerminalFocus(),
+      () => focusEditor.current());
+  }, [open]);
   const [availableWidth, setAvailableWidth] = useState(0);
   useLayoutEffect(() => {
     const element = columns.current;
@@ -74,7 +86,7 @@ export function TerminalDock({ onFocusEditor, onOverlapHeightChange }: {
   if (!panels.length) return null;
   return (
     <TerminalTabMovementProvider>
-    <div className={`terminal-dock${collapsed ? ' is-collapsed' : ''}`} style={{ height: collapsed ? COLLAPSED_DOCK_HEIGHT : height }}
+    <div ref={dock} className={`terminal-dock${collapsed ? ' is-collapsed' : ''}`} style={{ height: collapsed ? COLLAPSED_DOCK_HEIGHT : height }}
       onFocusCapture={(event) => {
         const target = event.target as HTMLElement;
         if (!target.closest('.xterm')) {
@@ -152,12 +164,14 @@ export function TerminalDock({ onFocusEditor, onOverlapHeightChange }: {
       <div className="terminal-body" id="terminal-body" hidden={collapsed}>
         <div className="terminal-panels" ref={columns}>
           {panels.map((panel, index) => <Fragment key={panel.id}>
-            <TerminalPanelView panel={panel} index={index} width={widths[index]} suspended={collapsed} focused={hasFocus && panel.tabs.includes(activeTerminal ?? '')} />
+            <TerminalPanelView panel={panel} index={index} width={widths[index]} suspended={collapsed} focused={hasFocus && panel.tabs.includes(activeTerminal ?? '')}
+              onOpenReference={setReferenceOrigin} />
             {panels[index + 1] && <TerminalPanelSplitter left={panel} right={panels[index + 1]} index={index} suspended={collapsed} />}
           </Fragment>)}
         </div>
       </div>
       <TerminalNewPanelDrop />
+      {referenceOrigin && <TerminalCommandReference origin={referenceOrigin} onClose={() => setReferenceOrigin(null)} />}
     </div>
     </TerminalTabMovementProvider>
   );

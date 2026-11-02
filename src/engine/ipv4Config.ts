@@ -16,7 +16,11 @@ export function validIpv4(c: InterfaceIpv4): boolean {
   return ['static', 'dhcp', 'unconfigured'].includes(c.mode) && address(c.gateway) && address(c.dns)
     && (!c.ip || (c.ip.addr !== null && address(c.ip.addr) && Number.isInteger(c.ip.prefix) && c.ip.prefix >= 0 && c.ip.prefix <= 32))
     && (c.mode !== 'unconfigured' || (!c.ip && c.gateway === null && c.dns === null))
-    && (c.mode !== 'static' || c.gateway === null || (!!c.ip && sameSubnet(c.gateway, c.ip.addr, c.ip.prefix)));
+    && (c.mode !== 'static' || c.gateway === null || !!c.ip);
+}
+/** Advisory only; syntactically valid configurations may intentionally be incorrect. */
+export function gatewayOutsideSubnet(c: InterfaceIpv4): boolean {
+  return !!c.ip && c.gateway !== null && !sameSubnet(c.gateway, c.ip.addr, c.ip.prefix);
 }
 export function parseStaticIpv4(ip: string, mask: string, gateway: string, dns: string): InterfaceIpv4 | null {
   const addr = parseIp(ip), decimalMask = parseIp(mask);

@@ -336,7 +336,7 @@ describe('host OS profiles', () => {
     store().undoTopology();
     const history = store().topologyHistory;
     expect(store().setInterfaceIpv4(a.id, 'eth0', a.interfaces[0].ipv4)).toBeNull();
-    expect(store().setInterfaceIpv4(a.id, 'eth0', { ...a.interfaces[0].ipv4, gateway: parseIp('192.0.2.1') })).not.toBeNull();
+    expect(store().setInterfaceIpv4(a.id, 'eth0', { ...a.interfaces[0].ipv4, gateway: 0x100000000 })).not.toBeNull();
     expect(store().topologyHistory).toBe(history);
     store().redoTopology(); expect(a.interfaces[0].ipv4).toEqual(emptyIpv4('dhcp'));
     expect(sim.net).toBe(net); expect(getSession(a)).toBe(first); expect(getSession(b)).toBe(other);

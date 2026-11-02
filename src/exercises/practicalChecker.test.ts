@@ -73,6 +73,19 @@ it('accepts D02 defaults or specific routes; missing return route cannot pass',(
   const results=check('d02',f);expect(results.find(r=>r.id==='route-1')?.pass).toBe(false);
   expect(results.filter(r=>r.id.startsWith('ping-')).some(r=>!r.pass)).toBe(true);
 });
+it('allows restoring a D02 host edit but still rejects the changed address in assessment',()=>{
+  const file=reference('d02'),office=file.devices.find(d=>d.id==='office')!;
+  expect(office.ifaces[0].gateway).toBeNull();
+  expect(office.routes.some(r=>r.dest==='0.0.0.0/0'&&r.via==='10.72.1.1')).toBe(true);
+  office.ifaces[0].ip='10.72.2.10/26';
+  office.ifaces[0].gateway='10.72.1.1';
+  const net=restoreNetwork(structuredClone(file));
+  expect((net.devices.get('office') as import('../engine/ipdevice').IpDevice).staticRoutes).toHaveLength(1);
+  disposeNetwork(net);
+  const result=check('d02',file);
+  expect(result.find(r=>r.id==='preserve-structure')?.pass).toBe(false);
+  expect(result.find(r=>r.id==='ip-office-eth0')?.pass).toBe(false);
+});
 it('requires the intended E09 mask even if a host route would make the ping succeed',()=>{
   const f=reference('e09'),a=f.devices.find(d=>d.id==='a')!;
   a.ifaces[0].ip='192.168.10.50/16';a.routes.unshift({dest:'192.168.11.60/32',via:'192.168.10.1',dev:'eth0'});

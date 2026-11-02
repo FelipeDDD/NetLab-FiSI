@@ -97,6 +97,26 @@ describe.each(PRACTICAL_EXERCISES)('practical attempt $id',exercise=>{
   });
 });
 
+it('tracks the current practical result independently of historical completion', async () => {
+  const f = fixture(), exercise = PRACTICAL_EXERCISES.find(e => e.id === 'pilot-d02-v1')!;
+  try {
+    await f.controller.initialize(); await f.controller.start(exercise.id);
+    expect(f.controller.getState().outcome).toBe('unverified');
+    await f.controller.verify(); f.net().scheduler.advanceTo(120_000); await settle();
+    expect(f.controller.getState().outcome).toBe('incomplete');
+    f.configure(PRACTICAL_SOURCES[exercise.id].review.reference.topology);
+    expect(f.controller.getState().outcome).toBe('unverified');
+    await f.controller.verify(); f.net().scheduler.advanceTo(120_000); await settle();
+    expect(f.controller.getState().outcome).toBe('passed');
+    expect(f.controller.getState().progress.completed[exercise.id]).toBeDefined();
+    f.mutate();
+    expect(f.controller.getState().outcome).toBe('unverified');
+    expect(f.controller.getState().progress.completed[exercise.id]).toBeDefined();
+    await f.controller.start(exercise.id);
+    expect(f.controller.getState().outcome).toBe('unverified');
+  } finally { f.dispose(); }
+});
+
 describe.each([0, 1])('Beta exercise %s', index => {
   it('opens a separate attempt, fails initially, passes solved, and persists completion independently of the draft', async () => {
     const f = fixture();
@@ -155,7 +175,8 @@ it('keeps completion unconfirmed on write failure, permits recheck, and clears s
     await f.controller.initialize(); await f.controller.start(BETA_EXERCISES[0].id); f.solve(0); f.fail(true);
     await f.controller.verify(); f.net().scheduler.advanceTo(120_000); await settle();
     expect(f.controller.getState().progress.completed).toEqual({}); expect(f.controller.getState().error).toContain('quota-exceeded');
-    f.mutate(); expect(f.controller.getState().results).toEqual({}); f.fail(false); f.conflict();
+    expect(f.controller.getState().outcome).toBe('passed'); // Technical result, not a claim that saving succeeded.
+    f.mutate(); expect(f.controller.getState().results).toEqual({}); expect(f.controller.getState().outcome).toBe('unverified'); f.fail(false); f.conflict();
     await f.controller.verify(); f.net().scheduler.advanceTo(240_000); await settle();
     expect(f.controller.getState().progress.completed[BETA_EXERCISES[0].id]).toBeDefined();
     (f.net().devices.get('r1') as IpDevice).forwarding = false; f.mutate();

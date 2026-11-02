@@ -19,6 +19,7 @@ export interface ExerciseRuntime {
 }
 export interface ExerciseState {
   ready: boolean; busy: boolean; checking: boolean; saving: boolean;
+  outcome: 'unverified' | 'incomplete' | 'passed';
   progress: ExerciseProgress; results: Record<string, CheckResult>; message: string; error: string;
 }
 const empty = (): ExerciseProgress => ({ schemaVersion: 1, attempts: {}, completed: {} });
@@ -40,7 +41,7 @@ interface Ticket { draftId: string; attempt: Attempt; net: Network; signature: s
 
 /** Small Beta coordinator; topology ownership stays entirely with SessionController. */
 export class ExerciseController {
-  private state: ExerciseState = { ready: false, busy: false, checking: false, saving: false, progress: empty(), results: {}, message: '', error: '' };
+  private state: ExerciseState = { ready: false, busy: false, checking: false, saving: false, outcome: 'unverified', progress: empty(), results: {}, message: '', error: '' };
   private listeners = new Set<() => void>();
   private releases: (() => void)[] = [];
   private ticket?: Ticket;
@@ -130,7 +131,7 @@ export class ExerciseController {
   };
   cancel(message = '') {
     this.ticket?.abort.abort(); this.ticket = undefined; this.resultTicket = undefined;
-    this.update({ checking: false, results: {}, message });
+    this.update({ checking: false, outcome: 'unverified', results: {}, message });
   }
   async verify() {
     if (!this.state.ready || this.state.busy || this.state.checking || this.sessions.hasPendingOperations()) return;
@@ -164,9 +165,9 @@ export class ExerciseController {
     const checks = exerciseChecks(t.attempt.exerciseId);
     if (!checks.every(a => this.state.results[a.id]?.pass)) {
       this.ticket = undefined; this.resultTicket = t;
-      this.update({ checking: false, message: 'Noch nicht alle Anforderungen erfüllt. Korrigieren und erneut überprüfen.' }); return;
+      this.update({ checking: false, outcome: 'incomplete', message: 'Noch nicht alle Anforderungen erfüllt. Korrigieren und erneut überprüfen.' }); return;
     }
-    this.update({ busy: true, saving: true, message: 'Anforderungen erfüllt. Abschluss wird gespeichert…' });
+    this.update({ busy: true, saving: true, outcome: 'passed', message: 'Anforderungen erfüllt. Abschluss wird gespeichert…' });
     try {
       await this.write(p => {
         if (!this.valid(t)) throw Error('Konfiguration geändert. Bitte erneut überprüfen.');
