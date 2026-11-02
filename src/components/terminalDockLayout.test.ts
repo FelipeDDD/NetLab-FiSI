@@ -82,7 +82,7 @@ describe('terminal dock height', () => {
 });
 
 describe('fitting the visible terminal', () => {
-  function observe(width = 800, height = 240) {
+  function observe(width = 800, height = 240, ready?: Promise<unknown>) {
     let notify!: () => void;
     const disconnect = vi.fn();
     const observed = vi.fn();
@@ -100,7 +100,7 @@ describe('fitting the visible terminal', () => {
     });
     const host = { clientWidth: width, clientHeight: height } as HTMLElement;
     const fit = vi.fn();
-    const stop = observeTerminalSize(host, fit);
+    const stop = observeTerminalSize(host, fit, ready);
     const paint = () => {
       const pending = [...frames.values()];
       frames.clear();
@@ -137,6 +137,28 @@ describe('fitting the visible terminal', () => {
     expect(o.frames.size).toBe(0);
     o.notify();
     o.paint();
+    expect(o.fit).not.toHaveBeenCalled();
+  });
+
+  it('refits once when a font loads without a host resize, sharing frame coalescing', async () => {
+    let loaded!: () => void;
+    const o = observe(800, 240, new Promise<void>(resolve => { loaded = resolve; }));
+    o.paint();
+    expect(o.fit).toHaveBeenCalledOnce();
+    loaded(); await Promise.resolve();
+    o.notify();
+    expect(o.frames.size).toBe(1);
+    o.paint();
+    expect(o.fit).toHaveBeenCalledTimes(2);
+    o.stop();
+  });
+
+  it('ignores asynchronous font completion after a pane is hidden or unmounted', async () => {
+    let loaded!: () => void;
+    const o = observe(800, 240, new Promise<void>(resolve => { loaded = resolve; }));
+    o.stop(); loaded(); await Promise.resolve();
+    o.paint();
+    expect(o.frames.size).toBe(0);
     expect(o.fit).not.toHaveBeenCalled();
   });
 });

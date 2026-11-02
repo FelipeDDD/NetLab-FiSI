@@ -74,7 +74,7 @@ export function TerminalSettingsControls({ initialDeviceId, includeLayout = fals
             {item.label}{item.variations.every((entry) => entry.experimental) ? ' (experimental)' : ''}
           </option>)}
           </optgroup>
-          <optgroup label="Original styles">
+          <optgroup label="Standard styles">
           {families.filter((item) => item.original).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </optgroup>
         </select>
@@ -105,11 +105,11 @@ export function TerminalSettingsControls({ initialDeviceId, includeLayout = fals
           {Object.entries(TERMINAL_FONTS).map(([key, font]) => <option key={key} value={key}>{font.label}</option>)}
         </select>
       </label>
-      <span className="hint">Local fonts only. Unavailable fonts use a monospace fallback.</span>
+      <span className="hint">Free web fonts load on demand. Consolas uses the local installation, with JetBrains Mono as fallback.</span>
       <label className="terminal-style-label">
         Terminal font size
         <select value={preference.fontSize} onChange={(e) => setPreference({ fontSize: Number(e.target.value) })}>
-          {[12, 13, 14, 15, 16, 17, 18].map((size) => <option key={size} value={size}>{size} px{size === 13 ? ' (original)' : ''}</option>)}
+          {[12, 13, 14, 15, 16, 17, 18].map((size) => <option key={size} value={size}>{size} px</option>)}
         </select>
       </label>
       <span className="hint">Background and font apply to all terminals. Colors remain individual.</span>

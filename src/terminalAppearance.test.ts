@@ -82,20 +82,29 @@ describe('terminal appearance', () => {
   });
 
   it('uses a static mostly-black gradient and sanitizes even direct callers', () => {
-    expect(terminalBackground('#ffffff')).toContain('linear-gradient(135deg, #06080c 0%, #06080c 12%');
+    expect(terminalBackground('#ffffff', { style: 'diagonal', intensity: 80 })).toContain('linear-gradient(135deg, #06080c 0%, #06080c 12%');
     expect(terminalBackground('url(bad)')).toBe(terminalBackground(DEFAULT_TERMINAL_COLORS.host));
-    expect(terminalBackground('#000000')).not.toContain('url(');
+    expect(terminalBackground('#000000', { style: 'diagonal', intensity: 80 })).not.toContain('url(');
   });
 
   it.each([null, {}, 'bad', { style: 'url(bad)', intensity: NaN }])('uses the new defaults for missing/invalid preferences: %j', (value) => {
     expect(normalizeTerminalAppearance(value)).toEqual(DEFAULT_TERMINAL_APPEARANCE);
   });
 
+  it('uses defaults only for missing fields and keeps explicit saved choices if defaults change again', () => {
+    expect(DEFAULT_TERMINAL_APPEARANCE).toEqual({ style: 'fx-signal-pulse', intensity: 100, fontFamily: 'consolas', fontSize: 14 });
+    const saved = { style: 'diagonal' as const, intensity: 0, fontFamily: 'system' as const, fontSize: 18 };
+    const futureDefaults = { style: 'aurora-flow' as const, intensity: 25, fontFamily: 'courier' as const, fontSize: 16 };
+    expect(normalizeTerminalAppearance(saved, futureDefaults)).toEqual(saved);
+    expect(normalizeTerminalAppearance({}, futureDefaults)).toEqual(futureDefaults);
+    expect(normalizeTerminalAppearance({ style: 'diagonal' }, futureDefaults)).toEqual({ ...futureDefaults, style: 'diagonal' });
+  });
+
   it('normalizes style/intensity without accepting CSS or out-of-range input', () => {
     expect(normalizeTerminalAppearance({ style: 'dual-glow', intensity: 55.7 })).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style: 'dual-glow', intensity: 56 });
     expect(normalizeTerminalAppearance({ intensity: -12 }).intensity).toBe(0);
     expect(normalizeTerminalAppearance({ intensity: 500 }).intensity).toBe(100);
-    expect(normalizeTerminalAppearance({ intensity: '90' }).intensity).toBe(80);
+    expect(normalizeTerminalAppearance({ intensity: '90' }).intensity).toBe(DEFAULT_TERMINAL_APPEARANCE.intensity);
   });
 
   it('uses two static light sources with a darker center for Dual Glow', () => {
@@ -112,7 +121,7 @@ describe('terminal appearance', () => {
     const preference = { ...DEFAULT_TERMINAL_APPEARANCE, style, intensity: 67 };
     expect(normalizeTerminalAppearance(preference)).toEqual(preference);
     expect(readTerminalAppearance({ ...file, ui: { terminalAppearance: preference } })).toEqual(preference);
-    expect(readTerminalAppearance(file)).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, fontSize: 13 });
+    expect(readTerminalAppearance(file)).toEqual({ style: 'diagonal', intensity: 80, fontFamily: 'system', fontSize: 13 });
     expect(terminalAuroraColors('url(bad)')).toEqual(terminalAuroraColors(DEFAULT_TERMINAL_COLORS.host));
     expect(terminalBackground('url(bad)', preference)).toBe(terminalBackground(DEFAULT_TERMINAL_COLORS.host, preference));
   });
@@ -172,7 +181,7 @@ describe('terminal appearance', () => {
     expect(normalizeTerminalAppearance(undefined).fontSize).toBe(14);
     expect(readTerminalAppearance(file).fontSize).toBe(13);
     expect(readTerminalAppearance({ ...file, ui: { terminalAppearance: { style: 'dual-glow', intensity: 72 } } }))
-      .toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, style: 'dual-glow', intensity: 72, fontSize: 13 });
+      .toEqual({ style: 'dual-glow', intensity: 72, fontSize: 13, fontFamily: 'system' });
     expect(readTerminalAppearance({ ...file, ui: { terminalAppearance: { fontSize: 14 } } }).fontSize).toBe(14);
   });
 
@@ -184,9 +193,9 @@ describe('terminal appearance', () => {
   });
 
   it.each([undefined, null, '', 'Arial', 'url(https://bad.example)', 'inherit', '__proto__', 'constructor', 18])(
-    'uses the original font stack for a missing/invalid family %j', (fontFamily) => {
-      expect(normalizeTerminalAppearance({ fontFamily }).fontFamily).toBe('system');
-      expect(terminalFontFamily(fontFamily)).toBe(TERMINAL_FONTS.system.family);
+    'uses the current default font for a missing/invalid new preference %j', (fontFamily) => {
+      expect(normalizeTerminalAppearance({ fontFamily }).fontFamily).toBe(DEFAULT_TERMINAL_APPEARANCE.fontFamily);
+      expect(terminalFontFamily(fontFamily)).toBe(TERMINAL_FONTS[DEFAULT_TERMINAL_APPEARANCE.fontFamily].family);
     },
   );
 

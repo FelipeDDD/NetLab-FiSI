@@ -12,29 +12,36 @@ export const LEGACY_TERMINAL_FONT_SIZE = 13;
 export const MIN_TERMINAL_FONT_SIZE = 12;
 export const MAX_TERMINAL_FONT_SIZE = 18;
 export const TERMINAL_FONTS = {
-  system: { label: 'System (default)', family: 'Consolas, "Cascadia Mono", "Liberation Mono", monospace' },
-  consolas: { label: 'Consolas', family: 'Consolas, ui-monospace, monospace' },
+  system: { label: 'System', family: 'Consolas, "Cascadia Mono", "Liberation Mono", monospace' },
+  consolas: { label: 'Consolas', family: 'Consolas, "NetLab JetBrains Mono", ui-monospace, monospace' },
   cascadia: { label: 'Cascadia Code', family: '"Cascadia Code", "Cascadia Mono", Consolas, monospace' },
   courier: { label: 'Courier New', family: '"Courier New", Courier, monospace' },
+  'jetbrains-mono': { label: 'JetBrains Mono', family: '"NetLab JetBrains Mono", ui-monospace, monospace', webFamily: 'NetLab JetBrains Mono' },
+  'fira-code': { label: 'Fira Code', family: '"NetLab Fira Code", ui-monospace, monospace', webFamily: 'NetLab Fira Code' },
+  'ibm-plex-mono': { label: 'IBM Plex Mono', family: '"NetLab IBM Plex Mono", ui-monospace, monospace', webFamily: 'NetLab IBM Plex Mono' },
+  'source-code-pro': { label: 'Source Code Pro', family: '"NetLab Source Code Pro", ui-monospace, monospace', webFamily: 'NetLab Source Code Pro' },
 } as const;
 export type TerminalFont = keyof typeof TERMINAL_FONTS;
 export interface TerminalAppearance { style: 'diagonal' | 'dual-glow' | 'aurora-lines' | 'aurora-flow' | TerminalEffectId; intensity: number; fontSize: number; fontFamily: TerminalFont }
-export const DEFAULT_TERMINAL_APPEARANCE: Readonly<TerminalAppearance> = { style: 'diagonal', intensity: 80, fontSize: 14, fontFamily: 'system' };
+export const DEFAULT_TERMINAL_APPEARANCE: Readonly<TerminalAppearance> = { style: 'fx-signal-pulse', intensity: 100, fontSize: 14, fontFamily: 'consolas' };
+// Missing fields in existing/imported documents retain their historical meaning,
+// independently of future changes to defaults for newly created projects.
+const LEGACY_TERMINAL_APPEARANCE: Readonly<TerminalAppearance> = { style: 'diagonal', intensity: 80, fontSize: LEGACY_TERMINAL_FONT_SIZE, fontFamily: 'system' };
 
 export function terminalFontFamily(value: unknown): string {
   return TERMINAL_FONTS[normalizeTerminalAppearance({ fontFamily: value }).fontFamily].family;
 }
 
-export function normalizeTerminalAppearance(value: unknown, fallbackFontSize = DEFAULT_TERMINAL_APPEARANCE.fontSize): TerminalAppearance {
+export function normalizeTerminalAppearance(value: unknown, defaults: Readonly<TerminalAppearance> = DEFAULT_TERMINAL_APPEARANCE): TerminalAppearance {
   const source = value && typeof value === 'object' ? value as Partial<TerminalAppearance> : {};
   return {
-    style: source.style === 'dual-glow' || source.style === 'aurora-lines' || source.style === 'aurora-flow' || isTerminalEffect(source.style) ? source.style : 'diagonal',
+    style: source.style === 'diagonal' || source.style === 'dual-glow' || source.style === 'aurora-lines' || source.style === 'aurora-flow' || isTerminalEffect(source.style) ? source.style : defaults.style,
     intensity: typeof source.intensity === 'number' && Number.isFinite(source.intensity)
-      ? Math.round(Math.max(0, Math.min(100, source.intensity))) : DEFAULT_TERMINAL_APPEARANCE.intensity,
+      ? Math.round(Math.max(0, Math.min(100, source.intensity))) : defaults.intensity,
     fontSize: typeof source.fontSize === 'number' && Number.isFinite(source.fontSize)
-      ? Math.round(Math.max(MIN_TERMINAL_FONT_SIZE, Math.min(MAX_TERMINAL_FONT_SIZE, source.fontSize))) : fallbackFontSize,
+      ? Math.round(Math.max(MIN_TERMINAL_FONT_SIZE, Math.min(MAX_TERMINAL_FONT_SIZE, source.fontSize))) : defaults.fontSize,
     fontFamily: typeof source.fontFamily === 'string' && Object.hasOwn(TERMINAL_FONTS, source.fontFamily)
-      ? source.fontFamily : 'system',
+      ? source.fontFamily : defaults.fontFamily,
   };
 }
 
@@ -44,9 +51,8 @@ export interface AppearanceSaveFile extends SaveFile {
 }
 
 export function readTerminalAppearance(data: AppearanceSaveFile): TerminalAppearance {
-  // Older topologies used 13px and have no font field. New saves explicitly
-  // include fontSize, even at defaults, so a new 14px preference survives reload.
-  return normalizeTerminalAppearance(data.ui?.terminalAppearance, LEGACY_TERMINAL_FONT_SIZE);
+  // New documents explicitly save every field, including default values.
+  return normalizeTerminalAppearance(data.ui?.terminalAppearance, LEGACY_TERMINAL_APPEARANCE);
 }
 
 export function hasTerminalColor(kind: DeviceKind): kind is TerminalKind {

@@ -10,7 +10,7 @@ import { disposeAllSessions, disposeSession, getSession, type Session } from './
 import { PASTE_END, PASTE_START } from './terminalInput';
 import * as terminalLine from './terminalLine';
 import { restoreNetwork, serializeNetwork } from './engine/serialize';
-import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, type AppearanceSaveFile } from './terminalAppearance';
+import { DEFAULT_TERMINAL_APPEARANCE, DEFAULT_TERMINAL_COLORS, TERMINAL_FONTS, type AppearanceSaveFile } from './terminalAppearance';
 import { TERMINAL_EFFECT_GROUPS } from './terminalEffects';
 import { resizePanelPair } from './terminalPanels';
 import { PANEL_LAYOUT_KEY } from './terminalPanelPreferences';
@@ -1769,6 +1769,22 @@ describe('switching terminal organization modes', () => {
 });
 
 describe('per-device terminal appearance persistence', () => {
+  it('gives new topologies and demonstrations current defaults without restyling an existing project', () => {
+    pair();
+    const store = useStore.getState();
+    const custom = { style: 'aurora-lines' as const, intensity: 37, fontSize: 18, fontFamily: 'source-code-pro' as const };
+    store.setTerminalAppearance(custom);
+    const currentNetwork = sim.net;
+    const demo = store.createDemoDocument();
+    expect(demo.topology.ui?.terminalAppearance).toEqual({ style: 'fx-signal-pulse', intensity: 100, fontSize: 14, fontFamily: 'consolas' });
+    expect(useStore.getState().terminalAppearance).toEqual(custom);
+    expect(sim.net).toBe(currentNetwork);
+    store.newTopology();
+    expect(useStore.getState().terminalAppearance).toEqual(DEFAULT_TERMINAL_APPEARANCE);
+    store.loadDemo();
+    expect(useStore.getState().terminalAppearance).toEqual(DEFAULT_TERMINAL_APPEARANCE);
+  });
+
   it('debounces colors into autosave, restores them on boot and leaves network configuration unchanged', () => {
     const { a, b, net } = pair();
     const before = serializeNetwork(net, {});
@@ -1882,7 +1898,7 @@ describe('per-device terminal appearance persistence', () => {
     useStore.getState().setTerminalAppearance({ style: 'dual-glow', intensity: 99 });
     expect(useStore.getState().importJson(legacy)).toBeNull();
     expect(useStore.getState().terminalColors).toEqual({});
-    expect(useStore.getState().terminalAppearance).toEqual({ ...DEFAULT_TERMINAL_APPEARANCE, fontSize: 13 });
+    expect(useStore.getState().terminalAppearance).toEqual({ style: 'diagonal', intensity: 80, fontFamily: 'system', fontSize: 13 });
     useStore.getState().setTerminalColor(a.id, '#123456');
     useStore.getState().loadBundledLab(0);
     expect(useStore.getState().terminalColors).toEqual({});
@@ -1943,11 +1959,11 @@ describe('per-device terminal appearance persistence', () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
-  it.each(['system', 'consolas', 'cascadia', 'courier'] as const)('autosaves the %s family without changing network configuration', (fontFamily) => {
+  it.each(Object.keys(TERMINAL_FONTS) as (keyof typeof TERMINAL_FONTS)[])('autosaves the %s family without changing network configuration', (fontFamily) => {
     const { net } = pair();
     const before = serializeNetwork(net, {});
     const store = useStore.getState();
-    if (fontFamily === 'system') store.setTerminalAppearance({ fontFamily: 'courier' });
+    if (fontFamily === DEFAULT_TERMINAL_APPEARANCE.fontFamily) store.setTerminalAppearance({ fontFamily: 'courier' });
     store.setTerminalAppearance({ fontFamily });
     vi.advanceTimersByTime(500);
     expect(setItem).toHaveBeenCalledOnce();

@@ -4,7 +4,8 @@ import { BACKGROUND_KEY, CANVAS_BACKGROUNDS, DEFAULT_BACKGROUND, normalizeBackgr
 afterEach(() => vi.unstubAllGlobals());
 it('defaults to Blue Circuit without saving over an existing user choice',()=>{
   const setItem=vi.fn();vi.stubGlobal('localStorage',{getItem:()=>null,setItem});
-  expect(readBackground()).toEqual({...DEFAULT_BACKGROUND,choice:'bg2'});
+  expect(DEFAULT_BACKGROUND).toEqual({choice:'bg2',intensity:100,dots:true,animation:'off'});
+  expect(readBackground()).toEqual({choice:'bg2',intensity:100,dots:true,animation:'off'});
   expect(CANVAS_BACKGROUNDS[readBackground().choice].label).toBe('Blue Circuit');
   expect(setItem).not.toHaveBeenCalled();
 });

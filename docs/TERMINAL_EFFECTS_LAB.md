@@ -3,7 +3,7 @@
 Os 12 presets continuam implementados. O menu **Terminal settings** apresenta
 **Background style** por família e **Variation** somente quando há múltiplas
 opções: Aurora Soft/Balanced, Lines Subtle/Flow/Spectrum e Signal Matrix.
-**Original styles** mantém Diagonal, Dual Glow, Aurora Lines e Aurora Flow.
+**Standard styles** mantém Diagonal, Dual Glow, Aurora Lines e Aurora Flow.
 O padrão permanece Diagonal; a intensidade continua global e as cores, individuais.
 
 **Show experimental styles**, desligado ao abrir o menu, revela Aurora Vivid,

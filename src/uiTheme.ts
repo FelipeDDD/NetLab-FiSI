@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 // Register a theme here and add its token overrides in themes.css.
 export const UI_THEMES = {
-  original: { label: 'Original', group: 'dark' },
+  original: { label: 'Midnight Blue', group: 'dark' },
   'graphite-dark': { label: 'Graphite Dark', group: 'dark' },
   'slate-gray': { label: 'Slate Gray', group: 'light' },
   'deep-teal': { label: 'Deep Teal', group: 'dark' },
@@ -10,14 +10,19 @@ export const UI_THEMES = {
 } as const;
 export type UiTheme = keyof typeof UI_THEMES;
 export const UI_THEME_KEY = 'netlab:ui-theme:v1';
+export const DEFAULT_UI_THEME: UiTheme = 'graphite-dark';
 
 export function normalizeUiTheme(value: unknown): UiTheme {
   return typeof value === 'string' && Object.hasOwn(UI_THEMES, value) ? value as UiTheme : 'original';
 }
 
 export function readUiTheme(): UiTheme {
-  try { return normalizeUiTheme(localStorage.getItem(UI_THEME_KEY)); }
-  catch { return 'original'; }
+  try {
+    const saved = localStorage.getItem(UI_THEME_KEY);
+    // Absence uses the new default; existing/retired values retain their
+    // historical normalization (including midnight-blue -> original).
+    return saved == null ? DEFAULT_UI_THEME : normalizeUiTheme(saved);
+  } catch { return DEFAULT_UI_THEME; }
 }
 
 export function applyUiTheme(theme: UiTheme) {

@@ -1,6 +1,6 @@
 # UI themes
 
-`src/themes.css` owns appearance tokens. `:root` is the Original theme; each
+`src/themes.css` owns appearance tokens. `:root` is the Midnight Blue theme (ID `original`); each
 `data-ui-theme` block overrides only the roles it changes. `src/styles.css`
 continues to own component layout and consumes these tokens. The existing
 `--bg`, `--text`, `--accent` and category variables are compatibility aliases.
@@ -11,18 +11,20 @@ To add a theme:
    in `src/uiTheme.ts`. Settings groups light themes together for discoverability.
 2. Add a matching `:root[data-ui-theme="ID"]` block in `src/themes.css`.
    Set surfaces, text, borders, accent, statuses and native `color-scheme` as
-   appropriate. Unspecified roles inherit Original. Keep normal text at least
+   appropriate. Unspecified roles inherit Midnight Blue. Keep normal text at least
    4.5:1 against panel, raised and card surfaces.
 3. Run the theme/Settings tests and check menus, forms, tooltips, Inspector and
    disabled/focus states in Chromium. The Settings selector updates itself.
 
-`uiTheme.ts` reads/writes only `netlab:ui-theme:v1`. Invalid/missing preferences
-fall back to Original. The root attribute also themes portals. Theme changes
+`uiTheme.ts` reads/writes only `netlab:ui-theme:v1`. Missing preferences use
+`DEFAULT_UI_THEME` (Graphite Dark); invalid existing values retain the historical
+fallback to Midnight Blue (`original`). Reading never writes or migrates a preference. The root attribute also themes portals. Theme changes
 do not reload React Flow or alter topology/history.
 
-Available themes: Original (default), Graphite Dark, Slate Gray, Deep Teal and
+Available themes: Midnight Blue, Graphite Dark (default), Slate Gray, Deep Teal and
 Classic Light. The retired `midnight-blue` preference safely resolves to
-Original, just like any unknown theme ID. Slate Gray uses a slightly darker
+`original` (displayed as Midnight Blue), just like any unknown theme ID. The display
+rename does not restore the retired palette or change saved IDs. Slate Gray uses a slightly darker
 steel-blue accent (`#2b6582`) so small accent text stays readable on gray cards,
 hover surfaces and selected packet rows.
 
@@ -94,7 +96,7 @@ The effects are CSS background layers and inset shadows, inside existing boxes.
 They do not create hit targets, change dimensions or animate. Tab dragging/drop
 markers remain intact. `.term-host`, xterm, terminal appearance preferences and
 session code are untouched. To change the finish, adjust the Graphite tokens;
-Original and Classic Light do not opt into these rules.
+Midnight Blue and Classic Light do not opt into these rules.
 
 ### Interface card comparison (temporary)
 

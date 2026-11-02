@@ -2,9 +2,16 @@ import { disposeNetwork } from '../engine/networkLifecycle';
 import { captureTopologyDocument, prepareTopologyDocument } from '../persistence/topologyDocument';
 import { fail } from './errors';
 import { PROJECT_DOCUMENT_VERSION, type ProjectDocument, type MetaValue } from './types';
+import { DEFAULT_TERMINAL_APPEARANCE } from '../terminalAppearance';
 
 import { isObject } from './projectMetadata';
 export { isObject, isRevision, isTimestamp, isProjectId, validateMetadata } from './projectMetadata';
+
+/** Persist defaults at creation so future UI defaults cannot restyle this plan. */
+export function createEmptyProjectDocument(): ProjectDocument {
+  return { schemaVersion: PROJECT_DOCUMENT_VERSION, topology: { app: 'netsim', version: 1, devices: [], links: [],
+    ui: { terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE } } } };
+}
 
 export function createProjectId(): string {
   const source = globalThis.crypto;

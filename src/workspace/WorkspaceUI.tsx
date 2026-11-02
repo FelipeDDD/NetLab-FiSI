@@ -7,8 +7,9 @@ import type { ProjectDocument, ProjectMetadata } from '../projects/types';
 import { hasPendingForms } from '../persistence/pendingForms';
 import { encodeDraftDocument } from '../projects/workspaceDocument';
 import { useTranslation } from '../i18n';
+import { createEmptyProjectDocument } from '../projects/projectDocument';
 
-export const emptyPlan: ProjectDocument = { schemaVersion: 1, topology: { app: 'netsim', version: 1, devices: [], links: [] } };
+export const emptyPlan: ProjectDocument = createEmptyProjectDocument();
 /** An unnamed draft still needs Save As, even when it contains nothing to lose.
  * Keep that persistence meaning intact; this exception belongs to close UX. */
 export function canCloseEmptyDraft(draft: DraftControllerState, document: ProjectDocument | null): boolean {

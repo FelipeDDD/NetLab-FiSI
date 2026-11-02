@@ -3,6 +3,7 @@ import type { WorkspaceRepository } from '../projects/workspaceRepository';
 import { encodeDraftDocument } from '../projects/workspaceDocument';
 import { assessDraftAcknowledgement, type DraftWriteResult, type OpenDraft, type SessionRecord } from '../projects/workspaceTypes';
 import type { ProjectDocument, ProjectSnapshot } from '../projects/types';
+import { createEmptyProjectDocument } from '../projects/projectDocument';
 import { classifyError } from '../projects/errors';
 import { disposeNetwork } from '../engine/networkLifecycle';
 import { prepareTopologyDocument } from './topologyDocument';
@@ -15,7 +16,7 @@ class SessionFault extends Error {
 function take<T>(result: SessionResult<T>): T { if (!result.ok) throw new SessionFault(result.error); return result.value; }
 function fault(code: 'not-started' | 'disposed' | 'runtime-changed' | 'unapplied-forms', message: string): never { throw new SessionFault({ code, message }); }
 const failure = (error: unknown): SessionError => error instanceof SessionFault ? error.detail : classifyError(error);
-const empty: ProjectDocument = { schemaVersion: 1, topology: { app: 'netsim', version: 1, devices: [], links: [] } };
+const empty: ProjectDocument = createEmptyProjectDocument();
 export type SessionStartOptions = SessionBootstrapOptions & { discardStartupChanges?: boolean; expectedRuntimeDocument?: ProjectDocument };
 
 interface Entry {

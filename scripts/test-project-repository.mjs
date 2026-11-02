@@ -312,6 +312,11 @@ try {
     await runDeviceEditingReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_TERMINAL_FONTS_REVIEW === '1') {
+    const { runTerminalFontsReview } = await import('./terminal-fonts-review.mjs');
+    await runTerminalFontsReview({ page: pageOne, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_DEFAULTS_REVIEW === '1') {
     const { runDefaultsReview } = await import('./defaults-review.mjs');
     await runDefaultsReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, report });

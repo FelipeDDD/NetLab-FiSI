@@ -1,20 +1,40 @@
 import { DEVICE_COLORS } from './deviceColors';
 import { afterEach, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { UI_THEMES, UI_THEME_KEY, applyUiTheme, normalizeUiTheme, readUiTheme, useUiTheme } from './uiTheme';
+import { DEFAULT_UI_THEME, UI_THEMES, UI_THEME_KEY, applyUiTheme, normalizeUiTheme, readUiTheme, useUiTheme } from './uiTheme';
 
-afterEach(() => { vi.unstubAllGlobals(); useUiTheme.setState({ theme: 'original' }); });
+afterEach(() => { vi.unstubAllGlobals(); useUiTheme.setState({ theme: DEFAULT_UI_THEME }); });
 
-it('defaults old installations and unknown preferences to Original', () => {
+it('retains the original ID as the historical fallback, displaying Midnight Blue', () => {
   for (const value of [null, undefined, '', 'dark', 'midnight-blue', 'toString', '__proto__', {}, 1]) expect(normalizeUiTheme(value)).toBe('original');
   for (const theme of Object.keys(UI_THEMES)) expect(normalizeUiTheme(theme)).toBe(theme);
   vi.stubGlobal('localStorage', { getItem: () => null });
-  expect(readUiTheme()).toBe('original');
+  expect(readUiTheme()).toBe('graphite-dark');
   vi.stubGlobal('localStorage', { getItem: () => 'classic-light' });
   expect(readUiTheme()).toBe('classic-light');
   vi.stubGlobal('localStorage', { getItem: () => 'midnight-blue' });
   expect(readUiTheme()).toBe('original');
   expect(Object.hasOwn(UI_THEMES, 'midnight-blue')).toBe(false);
+  expect(UI_THEMES.original.label).toBe('Midnight Blue');
+  expect(Object.values(UI_THEMES).some(theme => theme.label === 'Original' as string)).toBe(false);
+});
+
+it('initializes new users with Graphite Dark without writing any preference', async () => {
+  const setItem = vi.fn();
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem });
+  expect(DEFAULT_UI_THEME).toBe('graphite-dark');
+  expect(readUiTheme()).toBe('graphite-dark');
+  vi.resetModules();
+  const initialized = await import('./uiTheme');
+  expect(initialized.useUiTheme.getState().theme).toBe('graphite-dark');
+  expect(setItem).not.toHaveBeenCalled();
+});
+
+it.each([...Object.keys(UI_THEMES), 'midnight-blue', ''])('preserves the stored choice %j without overwriting it on read', saved => {
+  const setItem = vi.fn();
+  vi.stubGlobal('localStorage', { getItem: () => saved, setItem });
+  expect(readUiTheme()).toBe(saved === 'midnight-blue' || saved === '' ? 'original' : saved);
+  expect(setItem).not.toHaveBeenCalled();
 });
 
 it('updates the document immediately and persists only its own preference', () => {
@@ -36,7 +56,7 @@ it('updates the document immediately and persists only its own preference', () =
 
 it('works without storage or a browser document', () => {
   vi.stubGlobal('localStorage', { getItem: () => { throw Error('blocked'); }, setItem: () => { throw Error('blocked'); } });
-  expect(readUiTheme()).toBe('original');
+  expect(readUiTheme()).toBe('graphite-dark');
   expect(() => useUiTheme.getState().setTheme('deep-teal')).not.toThrow();
   expect(useUiTheme.getState().theme).toBe('deep-teal');
   expect(() => applyUiTheme('original')).not.toThrow();

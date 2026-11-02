@@ -28,7 +28,9 @@ it('shows the chosen family and its concise variations while experiments start h
   expect(html).toContain('<option value="fx-lines-flow" selected="">Flow</option>');
   expect(html).toContain('>Subtle</option>');
   expect(html).toContain('>Spectrum</option>');
-  expect(html).toContain('<optgroup label="Original styles">');
+  expect(html).toContain('<optgroup label="Standard styles">');
+  expect(html).not.toContain('Original styles');
+  expect(html).not.toContain('(original)');
   expect(html).toContain('<option value="aurora-lines">Aurora Lines</option>');
   expect(html).not.toMatch(/Vivid|Minimal|Pulse|Prism|Ambient|Deep Glow/);
   expect(html).toContain('<input type="checkbox"/>');
@@ -65,6 +67,18 @@ it('reveals all styles on request and keeps a selected experiment when hiding th
   const signal = terminalStyleFamilies('diagonal', true).find((item) => item.id === 'Signal / Wireframe')!;
   expect(terminalStyleForFamily(signal, 'diagonal')).toBe('fx-signal-matrix');
   expect(terminalStyleForFamily(signal, 'fx-signal-pulse')).toBe('fx-signal-pulse');
+});
+
+it('displays the default Pulse preset, intensity and font with all other experiments hidden', () => {
+  view.terminalAppearance = { ...DEFAULT_TERMINAL_APPEARANCE };
+  const html = renderToStaticMarkup(createElement(TerminalSettingsControls));
+  expect(html).toContain('<option value="Signal / Wireframe" selected="">Signal / Wireframe</option>');
+  expect(html).toContain('<option value="fx-signal-pulse" selected="">Pulse (experimental)</option>');
+  expect(html).toContain('<input type="checkbox"/>');
+  expect(html).not.toMatch(/Vivid|Minimal|Prism|Ambient|Deep Glow/);
+  expect(html).toContain('<output>100%</output>');
+  expect(html).toContain('<option value="consolas" selected="">Consolas</option>');
+  expect(html).toContain('<option value="14" selected="">14 px</option>');
 });
 
 it('offers equal distribution in terminal settings and disables it when fewer than two panels are unlocked', () => {

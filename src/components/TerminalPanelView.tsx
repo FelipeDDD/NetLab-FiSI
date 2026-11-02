@@ -5,7 +5,8 @@ import { sim } from '../sim';
 import { IpDevice } from '../engine/ipdevice';
 import { getSession } from '../terminals';
 import { MIN_TERMINAL_PANEL_WIDTH, TERMINAL_GROUP_LABELS, type TerminalPanel } from '../terminalPanels';
-import { terminalAuroraColors, terminalFlowColors, terminalBackground, terminalColor, terminalFontFamily, terminalTabPalette } from '../terminalAppearance';
+import { terminalAuroraColors, terminalFlowColors, terminalBackground, terminalColor, terminalTabPalette } from '../terminalAppearance';
+import { loadTerminalFont } from '../terminalFonts';
 import { TerminalColorButton } from './TerminalAppearanceControls';
 import { attachTerminalSession, observeTerminalSize } from './terminalDockLayout';
 import { TerminalPanelMoveHandle, TerminalTabMoveMenu, useTerminalTabMovement } from './TerminalTabMovement';
@@ -34,8 +35,6 @@ function TerminalSessionView({ deviceId, visible, focused, suspended }: { device
     if (!(device instanceof IpDevice)) return;
     const session = getSession(device);
     if (session.term.options.fontSize !== preference.fontSize) session.term.options.fontSize = preference.fontSize;
-    const family = terminalFontFamily(preference.fontFamily);
-    if (session.term.options.fontFamily !== family) session.term.options.fontFamily = family;
   }, [deviceId, preference.fontSize, preference.fontFamily, suspended]);
 
   useLayoutEffect(() => {
@@ -43,12 +42,18 @@ function TerminalSessionView({ deviceId, visible, focused, suspended }: { device
     const device = sim.net.devices.get(deviceId);
     if (!(device instanceof IpDevice)) return;
     const session = getSession(device);
-    // Refit explicitly on a font change: the host can keep the same pixel size.
-    // Hidden tabs receive the preference above and fit when shown again.
-    return observeTerminalSize(ref.current, () => {
-      session.fit.fit();
-      restorePresentationSelection(session.term);
+    let active = true;
+    const ready = loadTerminalFont(preference.fontFamily).then(family => {
+      if (active && session.term.options.fontFamily !== family) session.term.options.fontFamily = family;
     });
+    // Refit explicitly on a font change: the host can keep the same pixel size.
+    // Hidden tabs load their selected family and fit when shown again.
+    const stop = observeTerminalSize(ref.current, () => {
+      session.fit.fit();
+      session.term.refresh(0, session.term.rows - 1);
+      restorePresentationSelection(session.term);
+    }, ready);
+    return () => { active = false; stop(); };
   }, [visible, deviceId, preference.fontSize, preference.fontFamily, suspended]);
 
   useEffect(() => {

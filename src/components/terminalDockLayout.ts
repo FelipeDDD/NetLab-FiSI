@@ -47,7 +47,7 @@ export function attachTerminalSession(session: Session, host: HTMLElement): void
 
 // Only visible panes are fitted. Coalesce ResizeObserver notifications and
 // disconnect on unmount/hide without disposing the underlying session.
-export function observeTerminalSize(host: HTMLElement, fit: () => void): () => void {
+export function observeTerminalSize(host: HTMLElement, fit: () => void, fontReady?: Promise<unknown>): () => void {
   let frame: number | null = null;
   let stopped = false;
   const requestFit = () => {
@@ -60,6 +60,9 @@ export function observeTerminalSize(host: HTMLElement, fit: () => void): () => v
   const observer = new ResizeObserver(requestFit);
   observer.observe(host);
   requestFit();
+  // A font can finish loading without changing the host's pixel dimensions.
+  // Share the existing frame coalescing and cancellation with resize handling.
+  if (fontReady) void fontReady.then(requestFit, requestFit);
   return () => {
     stopped = true;
     observer.disconnect();

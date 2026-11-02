@@ -1740,6 +1740,8 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
 
 .term-host .xterm {
   height: 100%;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
 }
 .host-creation-mode, .host-os-setting { display: flex; flex-direction: column; gap: 5px; font-size: 12px; margin-bottom: 12px; }
 .host-creation-mode select, .host-os-setting select { min-width: 0; width: 100%; background: var(--ui-form-surface); color: var(--ui-form-text); border: 1px solid var(--ui-form-border); border-radius: 4px; padding: 5px; }
