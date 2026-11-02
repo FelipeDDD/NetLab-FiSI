@@ -15,6 +15,8 @@ const devices: { kind: JourneyDevice; x: number; y: number; width: number; name:
   { kind: 'server', x: 1370, y: 170, width: 80, name: 'srv1' },
 ];
 const initial: View = { scene: 0, playing: false, seeking: false, reply: false, reduced: false, ended: false, assets: 'loading' };
+// Let the homepage settle before the first DATA animation starts.
+const INITIAL_AUTOPLAY_DELAY_MS = 725;
 const deviceLabels = { host: 'journey.deviceComputer', switch: 'journey.deviceSwitch', router: 'journey.deviceRouter', server: 'journey.deviceServer' } as const;
 function ControlIcon({ kind }: { kind: 'previous' | 'next' | 'play' | 'pause' | 'replay' }) {
   return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
@@ -38,6 +40,7 @@ export function PacketScenes() {
     let visualProgress = 0;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let progress = 0, playing = false, inside = false, reduced = motion.matches, frame = 0, last = 0, disposed = false;
+    let autoplayDelay = INITIAL_AUTOPLAY_DELAY_MS;
     let seek: { from: number; to: number; elapsed: number; resume: boolean; paused: boolean; fromDistance: number; toDistance: number } | null = null;
     let published = '', assets: View['assets'] = 'loading', autoEligible = !reduced, cycles = 0;
     element.style.setProperty('--journey-arrival-duration', HERO_TIMING.arrivalMs + 'ms');
@@ -60,7 +63,11 @@ export function PacketScenes() {
     const tick = (time: number) => {
       frame = 0;
       if (!enabled()) { last = 0; return; }
-      const elapsed = last ? Math.min(50, time - last) : 0; last = time;
+      let elapsed = last ? Math.min(50, time - last) : 0; last = time;
+      if (playing && autoplayDelay > 0) {
+        const delay = Math.min(autoplayDelay, elapsed);
+        autoplayDelay -= delay; elapsed -= delay;
+      }
       if (seek) {
         seek.elapsed += elapsed; progress = seek.from + (seek.to - seek.from) * smoothStep(seek.elapsed / SEEK_DURATION_MS);
         if (seek.elapsed >= SEEK_DURATION_MS) { progress = seek.to; playing = seek.resume; seek = null; }
@@ -73,6 +80,7 @@ export function PacketScenes() {
     };
     command.current = action => {
       autoEligible = false;
+      autoplayDelay = 0;
       if (action.kind === 'toggle') {
         if (seek) seek.paused = !seek.paused;
         else if (playing) playing = false;
