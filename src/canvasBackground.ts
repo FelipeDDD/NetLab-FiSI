@@ -19,7 +19,7 @@ function isBackgroundChoice(value: unknown): value is BackgroundChoice {
 }
 export type CanvasBackground = { choice: BackgroundChoice; intensity: number; dots: boolean; animation: BackgroundAnimation };
 export const BACKGROUND_KEY = 'netlab:canvas-background:v1';
-export const DEFAULT_BACKGROUND: CanvasBackground = { choice: 'bg2', intensity: 100, dots: false, animation: 'shooting' };
+export const DEFAULT_BACKGROUND: CanvasBackground = { choice: 'bg3', intensity: 100, dots: false, animation: 'shooting' };
 export function normalizeBackground(value: Partial<CanvasBackground> | null): CanvasBackground {
   if (value === null) return { ...DEFAULT_BACKGROUND };
   return {

@@ -2,11 +2,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { BACKGROUND_KEY, CANVAS_BACKGROUNDS, DEFAULT_BACKGROUND, normalizeBackground, readBackground, useCanvasBackground } from './canvasBackground';
 
 afterEach(() => vi.unstubAllGlobals());
-it('defaults to Blue Circuit without saving over an existing user choice',()=>{
+it('defaults to Slate Circuit without saving over an existing user choice',()=>{
   const setItem=vi.fn();vi.stubGlobal('localStorage',{getItem:()=>null,setItem});
-  expect(DEFAULT_BACKGROUND).toEqual({choice:'bg2',intensity:100,dots:false,animation:'shooting'});
-  expect(readBackground()).toEqual({choice:'bg2',intensity:100,dots:false,animation:'shooting'});
-  expect(CANVAS_BACKGROUNDS[readBackground().choice].label).toBe('Blue Circuit');
+  expect(DEFAULT_BACKGROUND).toEqual({choice:'bg3',intensity:100,dots:false,animation:'shooting'});
+  expect(readBackground()).toEqual({choice:'bg3',intensity:100,dots:false,animation:'shooting'});
+  expect(CANVAS_BACKGROUNDS[readBackground().choice].label).toBe('Slate Circuit');
   expect(setItem).not.toHaveBeenCalled();
 });
 it.each(Object.keys(CANVAS_BACKGROUNDS))('preserves the saved %s choice ahead of the new default',choice=>{
