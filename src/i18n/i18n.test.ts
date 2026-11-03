@@ -42,19 +42,20 @@ describe('catalog contracts', () => {
     }
   });
   it('every static key referenced by migrated consumers exists', () => {
-    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/menuGroups.ts', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx', '../components/LearningHelp.tsx', '../tutorials/TutorialUI.tsx'];
+    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/menuGroups.ts', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx', '../components/LearningHelp.tsx', '../tutorials/TutorialUI.tsx', '../tutorials/SubnetTutorialPanel.tsx'];
     for (const file of files) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-      for (const match of source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey|practice|learningHelp|guided)\.\w+)['"]/g)) {
+      for (const match of source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey|practice|learningHelp|guided|guidedSubnet)\.\w+)['"]/g)) {
         expect(translate('en', match[1] as TranslationKey)).toBeTruthy();
       }
     }
   });
   it('catalog keys are used by migrated components (explicit finite dynamic families)', () => {
-    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/menuGroups.ts', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx', '../components/LearningHelp.tsx', '../tutorials/TutorialUI.tsx'];
+    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/menuGroups.ts', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx', '../components/LearningHelp.tsx', '../tutorials/TutorialUI.tsx', '../tutorials/SubnetTutorialPanel.tsx'];
     const source = files.map(file => readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
-    const references = new Set([...source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey|practice|learningHelp|guided)\.\w+)['"]/g)].map(m => m[1]));
+    const references = new Set([...source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey|practice|learningHelp|guided|guidedSubnet)\.\w+)['"]/g)].map(m => m[1]));
     for (const feature of ['terminal', 'switch', 'routing', 'capture', 'exercise']) { references.add(`journey.${feature}Title`); references.add(`journey.${feature}Body`); references.add(`journey.${feature}Label`); }
+    for (const key of ['maskTitle', 'maskText', 'maskPassed', 'demoTitle', 'demoText', 'demoPassed', 'failureTitle', 'failureText', 'failurePassed', 'correctTitle', 'correctText', 'correctPassed', 'retestTitle', 'retestText', 'finished', 'missing', 'conflict', 'noPort', 'network', 'forms', 'terminalBusy', 'terminalInput', 'demoRepeat']) references.add(`guidedSubnet.${key}`);
     const unused = Object.entries(catalogs).flatMap(([domain, table]) => Object.keys(table.en).map(key => `${domain}.${key}`)).filter(key => !references.has(key));
     expect(unused).toEqual([]);
   });

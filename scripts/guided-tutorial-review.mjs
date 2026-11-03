@@ -132,16 +132,50 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
       assert.equal(await passed(), true);
     });
     await test('PC C extends the same lab; wrong devices, Inspector-only IPv4 and non-learner pings cannot complete it', async () => {
+      await page.evaluate("store.getState().setHostCreationMode('windows');");
       await click('.exercise-panel footer button', 'Weiter'); await wait("document.querySelector('[data-guided-step=\"5\"]')");
-      await page.evaluate("window.expansionNetwork=sim.net;window.expansionOriginal=[...sim.net.devices.values()];store.getState().setTerminalDockCollapsed(true);store.getState().select(null);store.getState().setHostCreationMode('windows');");
+      const mode = () => page.evaluate("return document.querySelector('.host-creation-mode select').value;");
+      const chooseMode = async value => {
+        await page.evaluate(`const e=document.querySelector('.host-creation-mode select');e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));`); await delay(80);
+      };
+      const dragHost = async os => {
+        const count = await page.evaluate('return store.getState().nodes.length;');
+        const drop = await page.evaluate(`const r=document.querySelector('.react-flow').getBoundingClientRect();
+          for(let y=r.top+30;y<r.bottom-20;y+=40)for(let x=r.left+30;x<r.right-20;x+=40)
+            if(document.elementFromPoint(x,y)?.classList.contains('react-flow__pane'))return {x,y};
+          throw Error('No unobstructed canvas drop target');`);
+        const data = { items: [{ mimeType: 'application/netsim', data: 'host' }], dragOperationsMask: 16 };
+        for (const event of ['dragEnter','dragOver','drop']) await page.send('Input.dispatchDragEvent', { type: event, ...drop, data });
+        await delay(120);
+        assert.equal(await page.evaluate('return store.getState().nodes.length;'), count + 1);
+        assert.equal(await page.evaluate('return sim.net.devices.get(store.getState().nodes.at(-1).id).os;'), os);
+      };
+      assert.equal(await mode(), 'linux');
+      assert.equal(await page.evaluate("return localStorage.getItem('netsim:host-creation:v1');"), 'windows');
+      await chooseMode('windows'); await page.evaluate('store.getState().refresh();');
+      assert.equal(await mode(), 'windows');
+      await reloadAt(5); assert.equal(await mode(), 'linux');
+      await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(personalId)});`);
+      await wait("!document.querySelector('[data-guided-step]')"); assert.equal(await mode(), 'windows');
+      await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(tutorialId)});`);
+      await wait("document.querySelector('[data-guided-step=\"5\"]')"); assert.equal(await mode(), 'linux');
+      await page.evaluate("window.expansionNetwork=sim.net;window.expansionOriginal=[...sim.net.devices.values()];store.getState().setTerminalDockCollapsed(true);store.getState().select(null);");
       await screenshot('05-pc-c-hinzufuegen');
+      await chooseMode('windows');
       await click('.palette-item.kind-host'); assert.equal(await passed(), false);
+      assert.equal(await page.evaluate("return sim.net.devices.get(store.getState().nodes.at(-1).id).os;"), 'windows');
+      await dragHost('windows'); assert.equal(await passed(), false);
+      await chooseMode('mixed'); assert.equal(await mode(), 'mixed');
       await click('.palette-item.kind-server'); assert.equal(await passed(), false);
-      await page.evaluate("store.getState().setHostCreationMode('linux');"); await click('.palette-item.kind-host');
+      await chooseMode('linux'); await click('.palette-item.kind-host');
       await wait("document.querySelector('[data-tutorial-passed]').dataset.tutorialPassed==='true'");
       const c = await page.evaluate("return [...sim.net.devices.values()].find(d=>!expansionOriginal.includes(d)&&d.kind==='host'&&d.os==='linux').id;");
       await wait(`sim.net.devices.get(${JSON.stringify(c)}).name==='PC C'`);
+      await dragHost('linux');
+      await page.evaluate('store.getState().undoTopology();');
+      assert.equal(await page.evaluate("return localStorage.getItem('netsim:host-creation:v1');"), 'windows');
       await click('.exercise-panel footer button', 'Weiter');
+      assert.equal(await mode(), 'windows');
       await page.evaluate(`store.getState().onConnect({source:${JSON.stringify(c)},target:store.getState().nodes.find(n=>n.data.kind==='server').id});`);
       assert.equal(await passed(), false);
       await page.evaluate(`const l=[...sim.net.links.values()].find(l=>l.a.device.id===${JSON.stringify(c)}||l.b.device.id===${JSON.stringify(c)});store.getState().onEdgesChange([{type:'remove',id:l.id}]);store.getState().onConnect({source:${JSON.stringify(c)},target:'tutorial-01-switch'});`);
@@ -211,6 +245,10 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
       await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(tutorialId)});`); await wait("document.querySelector('[data-guided-step=\"8\"]')");
       assert.equal(await passed(),true);
     });
+    if (process.env.NETLAB_SUBNET_TUTORIAL_REVIEW === '1') {
+      const { runSubnetTutorialReview } = await import('./subnet-tutorial-review.mjs');
+      await runSubnetTutorialReview({ page, root, report, wait, delay, click, command, advance, mount, tutorialId, personalId });
+    }
     report.guidedTutorialReview = { directory, captures: ['01-kabel-verbinden.png', '02-ipv4-konfigurieren.png', '03-verbindung-bestanden.png', '04-ping-beenden-pending.png', '05-pc-c-hinzufuegen.png', '06-pc-c-kabel.png', '07-pc-c-ipv4-terminal.png', '08-arp-hinweis.png', '08-pc-c-verbindung.png', '09-tutorial-abgeschlossen.png', '04-classic-light-700.png'] };
   } finally {
     await page.evaluate('window.ws?.dispose();');

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TutorialController } from './TutorialController';
 import { FIRST_DEVICES, firstConnectionConditions, firstConnectionDocument } from './firstConnection';
 import { restoreNetwork, serializeNetwork } from '../engine/serialize';
@@ -60,6 +60,7 @@ function fixture(persistent = false) {
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     observeCommands: (listener: (event: TerminalCommandEvent) => void) => { commands.add(listener); return () => { commands.delete(listener); }; },
     renameDevice: (id: string, name: string) => { net.devices.get(id)!.name = name; refresh(); },
+    hostCreationDraft: vi.fn(),
   };
   const create = () => new TutorialController(sessions, runtime, persistent ? new TutorialProgressStore(repository, sessions) : undefined);
   let controller = create(), release = controller.connect();
@@ -77,7 +78,7 @@ function fixture(persistent = false) {
     await controller.start(); connectA(); controller.next();
     submit('ip address add 192.168.10.10/24 dev eth0'); controller.next();
   };
-  return { get controller() { return controller; }, documents, meta, refresh, submit, emit, ready, connectA, switchTo, get net() { return net; },
+  return { get controller() { return controller; }, runtime, documents, meta, refresh, submit, emit, ready, connectA, switchTo, get net() { return net; },
     progressFailure(value: boolean) { failProgress = value; },
     progressReadFailure(value: boolean) { failProgressReads = value; },
     async reload() {
@@ -92,6 +93,27 @@ function fixture(persistent = false) {
 }
 
 describe('first guided chapter', () => {
+  it('scopes the catalogue override to step 5, restores it after reload, and releases it on exit', async () => {
+    const f = fixture(true);
+    try {
+      await f.ready();
+      const ping = f.submit('ping 192.168.10.20');
+      f.net.scheduler.advanceTo(f.net.now + 1500); ping.interrupt(); f.controller.next();
+      const id = f.controller.getState().draftId!;
+      expect(f.runtime.hostCreationDraft).toHaveBeenLastCalledWith(id);
+      await f.reload();
+      expect(f.controller.getState()).toMatchObject({ step: 4, active: true });
+      expect(f.runtime.hostCreationDraft).toHaveBeenLastCalledWith(id);
+      await f.switchTo('personal'); expect(f.runtime.hostCreationDraft).toHaveBeenLastCalledWith(null);
+      await f.switchTo(id); await f.controller.initialize();
+      expect(f.runtime.hostCreationDraft).toHaveBeenLastCalledWith(id);
+      f.controller.previous(); expect(f.runtime.hostCreationDraft).toHaveBeenLastCalledWith(null);
+      f.controller.next(); expect(f.runtime.hostCreationDraft).toHaveBeenLastCalledWith(id);
+      const c = new Host(f.net, 'pc-c', 'new'); f.net.devices.set(c.id, c); f.refresh();
+      f.controller.next(); expect(f.runtime.hostCreationDraft).toHaveBeenLastCalledWith(null);
+    } finally { f.dispose(); }
+    expect(f.runtime.hostCreationDraft).toHaveBeenLastCalledWith(null);
+  });
   it('can retry a temporary progress-read failure without creating or replacing a draft', async () => {
     const f=fixture(true); try {
       await f.controller.start(); f.connectA(); f.controller.next();

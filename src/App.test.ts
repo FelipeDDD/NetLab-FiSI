@@ -5,6 +5,7 @@ import App from './App';
 
 const state = vi.hoisted(() => ({ selected: 'host-1' as string | null, packetInspectorOpen: false, terminals: [] }));
 vi.mock('./store', () => ({ useStore: (select: (s: typeof state) => unknown) => select(state) }));
+vi.mock('./terminals', () => ({ getSession: vi.fn() }));
 vi.mock('@xyflow/react', () => ({ ReactFlowProvider: ({ children }: { children: ReactNode }) => children }));
 vi.mock('./components/Toolbar', () => ({ Toolbar: () => null }));
 vi.mock('./components/PacketAnimationControl', () => ({ PacketAnimationControl: () => null }));

@@ -6,6 +6,7 @@ import { serializeNetwork } from '../engine/serialize';
 import type { TerminalCommandEvent, TerminalCommandContext } from '../terminalCommandEvents';
 import { FIRST_CONNECTION, FIRST_DEVICES, firstConnectionConditions, firstConnectionDocument } from './firstConnection';
 import { TutorialProgressStore, tutorialFingerprint, type TutorialSnapshot, type TutorialProgress } from './tutorialProgress';
+import { chapterOneSignature } from './subnetChapter';
 
 export type TutorialHint = 'cable' | 'ipv4' | 'ping' | 'stopPing' | 'network' | 'missing' | 'forms' | 'wrongTarget' | 'pingFailed' | 'addC' | 'cableC' | 'ipv4C' | 'ipv4CExisting' | 'pingC';
 export interface TutorialState {
@@ -32,6 +33,7 @@ export interface TutorialRuntime {
   observeCommands(listener: (event: TerminalCommandEvent) => void): () => void;
   renameDevice(id: string, name: string): void;
   started?(draftId: string): void;
+  hostCreationDraft?(draftId: string | null): void;
 }
 type Sessions = Pick<SessionController, 'getState' | 'subscribe' | 'openDocument' | 'switchDraft' | 'hasPendingOperations'>;
 
@@ -113,7 +115,7 @@ export class TutorialController {
     this.restoring = true; this.publish({ active: false });
     const net = this.runtime.network(), draftId = this.runtime.activeDraftId();
     try {
-      const original = this.originalSignature(), signature = this.runtime.signature();
+      const original = this.originalSignature(), signature = chapterOneSignature(this.runtime.network());
       const persisted = 'schemaVersion' in attempt;
       const aValid = attempt.a && (persisted ? attempt.a.fingerprint === await tutorialFingerprint(original) : attempt.a.signature === original);
       const cValid = attempt.c && (persisted ? attempt.c.fingerprint === await tutorialFingerprint(signature) : attempt.c.signature === signature);
@@ -146,18 +148,22 @@ export class TutorialController {
     this.state.ready = !progress;
   }
   getState = () => this.state;
+  hasCompletedChapter = () => this.completed.has(FIRST_CONNECTION.steps.length);
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<TutorialState>) {
     const next = { ...this.state, ...patch };
     if (Object.keys(next).every(key => next[key as keyof TutorialState] === this.state[key as keyof TutorialState])) return;
-    this.state = next; this.listeners.forEach(listener => listener());
+    this.state = next;
+    this.runtime.hostCreationDraft?.(next.active && next.step === 4 && !next.finished ? next.draftId : null);
+    this.listeners.forEach(listener => listener());
   }
   connect() {
     this.disposed = false;
     this.releases = [this.sessions.subscribe(this.refresh), this.runtime.subscribe(this.refresh), this.runtime.observeCommands(this.command)];
     this.discovery = this.discover();
     this.refresh();
-    return () => { this.disposed = true; this.releases.forEach(release => release()); this.releases = []; this.candidate = undefined; this.progress?.dispose(); };
+    this.runtime.hostCreationDraft?.(this.state.active && this.state.step === 4 && !this.state.finished ? this.state.draftId : null);
+    return () => { this.disposed = true; this.releases.forEach(release => release()); this.releases = []; this.candidate = undefined; this.runtime.hostCreationDraft?.(null); this.progress?.dispose(); };
   }
   async start(restart = false) {
     await this.initialize();
@@ -229,7 +235,7 @@ export class TutorialController {
       if (this.cEvidence) this.cEvidence.commandId = -1;
       this.publish({ active: false }); return;
     }
-    const conditions = firstConnectionConditions(this.runtime.network()), signature = this.runtime.signature();
+    const conditions = firstConnectionConditions(this.runtime.network()), signature = chapterOneSignature(this.runtime.network());
     // Adding C must not erase the completed A/B lesson; edits to A/B still do.
     if (this.evidence && this.evidence.signature !== this.originalSignature()) this.evidence = undefined;
     if (this.state.step === 4 && !this.cBaseline) this.cBaseline = new Set(this.runtime.network().devices.keys());
@@ -280,10 +286,10 @@ export class TutorialController {
       }
       if (this.state.step === 7) {
         if (event.type === 'started') {
-          this.cCandidate = this.cConditions().ready && /^ping(?:\s+-c\s+\d+)?\s+192\.168\.10\.20\s*$/.test(command.line.trim()) ? { command, signature: this.runtime.signature(), output: '' } : undefined;
+          this.cCandidate = this.cConditions().ready && /^ping(?:\s+-c\s+\d+)?\s+192\.168\.10\.20\s*$/.test(command.line.trim()) ? { command, signature: chapterOneSignature(this.runtime.network()), output: '' } : undefined;
           if (this.cCandidate) this.cEvidence = undefined;
           this.cPingHint = this.cCandidate ? 'pingC' : /^ping\s/.test(command.line.trim()) ? 'wrongTarget' : 'pingC'; this.refresh();
-        } else if (this.cCandidate?.command.id === command.id && this.cCandidate.signature === this.runtime.signature() && !this.runtime.pendingForms()) {
+        } else if (this.cCandidate?.command.id === command.id && this.cCandidate.signature === chapterOneSignature(this.runtime.network()) && !this.runtime.pendingForms()) {
           if (event.type === 'output') {
             this.cCandidate.output = (this.cCandidate.output + event.text).slice(-2048);
             if (/(?:^|\n)64 bytes from 192\.168\.10\.20: icmp_seq=\d+ ttl=\d+ time=[\d.]+ ms\r?(?:\n|$)/.test(this.cCandidate.output)) this.cEvidence = { signature: this.cCandidate.signature, commandId: command.id, ended: false };
@@ -307,10 +313,10 @@ export class TutorialController {
       }
       if (!firstConnectionConditions(this.runtime.network()).ready || this.runtime.pendingForms()) return;
       this.pingHint = 'ping';
-      this.candidate = { command, signature: this.runtime.signature(), output: '' }; this.refresh(); return;
+      this.candidate = { command, signature: chapterOneSignature(this.runtime.network()), output: '' }; this.refresh(); return;
     }
     const candidate = this.candidate;
-    if (!candidate || command.id !== candidate.command.id || candidate.signature !== this.runtime.signature() || this.runtime.pendingForms()) return;
+    if (!candidate || command.id !== candidate.command.id || candidate.signature !== chapterOneSignature(this.runtime.network()) || this.runtime.pendingForms()) return;
     if (event.type === 'output') {
       candidate.output = (candidate.output + event.text).slice(-2048);
       // These lines are emitted only after runPing receives an actual Echo Reply.

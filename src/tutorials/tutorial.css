@@ -8,6 +8,14 @@
 [data-exercise="guided-first-connection"] { --guided-command: #fbbf24; }
 [data-ui-theme="classic-light"] [data-exercise="guided-first-connection"] { --guided-command: #8a5300; }
 .guided-action-status { display: flex; align-items: flex-start; gap: 8px; }
+[data-exercise="guided-subnet-mask"] footer { display: flex; justify-content: space-between; gap: 8px; flex-shrink: 0; }
+[data-exercise="guided-subnet-mask"] pre { padding: 8px; background: var(--ui-surface-card); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+[data-exercise="guided-subnet-mask"] [data-tutorial-passed="true"] { color: var(--ui-success); }
+.guided-subnet-answer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.guided-subnet-answer label { flex-basis: 100%; }
+.guided-subnet-answer input { flex: 1 1 140px; width: 140px; min-width: 0; font-family: var(--font-mono, monospace); }
+.guided-subnet-error { color: var(--ui-danger, #d95858); }
+.guided-subnet-replies { padding-left: 0; list-style: none; }
 .guided-action-indicator { width: 18px; height: 18px; flex: 0 0 18px; border: 2px solid var(--ui-text-muted); border-radius: 50%; box-sizing: border-box; text-align: center; line-height: 14px; font-size: 12px; }
 [data-tutorial-passed="true"] .guided-action-indicator { border-color: var(--ui-success); background: var(--ui-success); color: var(--ui-surface-card); }
 [data-tutorial-finished="true"] { color: var(--ui-success); }

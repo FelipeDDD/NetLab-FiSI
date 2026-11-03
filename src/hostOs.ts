@@ -1,6 +1,17 @@
 // Host identity is saved in the topology; the creation preference is local UI state.
 export type HostOs = 'linux' | 'windows';
 export type HostCreationMode = HostOs | 'mixed';
+/** Visit-local tutorial hint; never part of the saved catalogue preference. */
+export interface HostCreationContext {
+  hostCreationMode: HostCreationMode;
+  tutorialHostCreation: { draftId: string; mode: HostCreationMode } | null;
+  workspaceIdentity: { draftId: string | null } | null;
+}
+export function effectiveHostCreationMode(state: HostCreationContext): HostCreationMode {
+  const context = state.tutorialHostCreation;
+  return context && context.draftId === state.workspaceIdentity?.draftId
+    ? context.mode : state.hostCreationMode;
+}
 export const HOST_CREATION_KEY = 'netsim:host-creation:v1';
 export const normalizeHostOs = (value: unknown): HostOs => value === 'windows' ? 'windows' : 'linux';
 export const normalizeHostCreationMode = (value: unknown): HostCreationMode =>

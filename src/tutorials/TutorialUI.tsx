@@ -14,9 +14,15 @@ import { LearningHelpLink } from '../components/LearningHelp';
 import { useTranslation, type TranslationKey } from '../i18n';
 import { FIRST_CONNECTION } from './firstConnection';
 import { TutorialController, type TutorialState, type TutorialHint } from './TutorialController';
+import { SubnetTutorialController, type SubnetState } from './SubnetTutorialController';
+import { SubnetProgressStore } from './subnetProgress';
+import { SubnetTutorialPanel } from './SubnetTutorialPanel';
+import { SUBNET_DEMO_COMMAND, SUBNET_PC_ID } from './subnetChapter';
+import { getSession } from '../terminals';
+import { IpDevice } from '../engine/ipdevice';
 import './tutorial.css';
 
-const Context = createContext<{ controller: TutorialController; state: TutorialState } | null>(null);
+const Context = createContext<{ controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState } | null>(null);
 export function GuidedTutorialProvider({ sessions, repository, children }: { sessions: SessionController; repository: ProjectRepository; children: ReactNode }) {
   const [controller] = useState(() => new TutorialController(sessions, {
     network: () => sim.net, signature: () => JSON.stringify(serializeNetwork(sim.net, {})),
@@ -24,16 +30,32 @@ export function GuidedTutorialProvider({ sessions, repository, children }: { ses
     pendingForms: hasPendingForms, subscribe: listener => useStore.subscribe(listener), observeCommands: observeTerminalCommands,
     renameDevice: (id, name) => useStore.getState().renameDevice(id, name),
     started: requestExerciseViewport,
+    hostCreationDraft: draftId => useStore.getState().setTutorialHostCreationDraft(draftId),
   }, new TutorialProgressStore(repository, sessions)));
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
+  const [subnet] = useState(() => new SubnetTutorialController(sessions, controller, {
+    network: () => sim.net, activeDraftId: () => useStore.getState().workspaceIdentity?.draftId ?? null,
+    pendingForms: hasPendingForms, subscribe: listener => useStore.subscribe(listener), observeCommands: observeTerminalCommands,
+    insert: pcC => useStore.getState().addSubnetTutorialPC(pcC),
+    demonstrate: () => {
+      const device = sim.net.devices.get(SUBNET_PC_ID);
+      if (!(device instanceof IpDevice)) return 'disposed';
+      useStore.getState().openTerminal(device.id);
+      const result = getSession(device).executeCommand(SUBNET_DEMO_COMMAND);
+      if (result === 'accepted' && useStore.getState().paused) useStore.getState().setPaused(false);
+      return result;
+    },
+  }, new SubnetProgressStore(repository, sessions)));
+  const subnetState = useSyncExternalStore(subnet.subscribe, subnet.getState);
   useEffect(() => controller.connect(), [controller]);
+  useEffect(() => subnet.connect(), [subnet]);
   useEffect(() => {
-    const flush = () => { if (document.visibilityState === 'hidden') void controller.flushProgress(); };
-    const before = (event: BeforeUnloadEvent) => { if (controller.getState().saving) { event.preventDefault(); event.returnValue = ''; } };
+    const flush = () => { if (document.visibilityState === 'hidden') { void controller.flushProgress(); void subnet.flushProgress(); } };
+    const before = (event: BeforeUnloadEvent) => { if (controller.getState().saving || subnet.getState().saving) { event.preventDefault(); event.returnValue = ''; } };
     document.addEventListener('visibilitychange', flush); window.addEventListener('beforeunload', before);
     return () => { document.removeEventListener('visibilitychange', flush); window.removeEventListener('beforeunload', before); };
-  }, [controller]);
-  return <Context.Provider value={{ controller, state }}>{children}</Context.Provider>;
+  }, [controller, subnet]);
+  return <Context.Provider value={{ controller, state, subnet, subnetState }}>{children}</Context.Provider>;
 }
 
 export function GuidedTutorialMenu({ close }: { close(): void }) {
@@ -70,6 +92,7 @@ export function GuidedTutorialPanel() {
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => setCollapsed(false), [ui?.state.draftId]);
   if (!ui || practiceOpen) return null;
+  if (ui.subnetState.active) return <SubnetTutorialPanel key={ui.subnetState.record?.draftId} controller={ui.subnet} state={ui.subnetState} />;
   if (!ui.state.active) return ui.state.error ? <aside className="exercise-error" role="alert">{t('guided.error')} <button type="button" className="btn" onClick={() => void ui.controller.start()}>{t('common.retry')}</button></aside> : null;
   const { controller, state } = ui, step = steps[state.step];
   return <ExercisePanelFrame key={state.draftId} exerciseId="guided-first-connection" collapsed={collapsed} header={<>
@@ -93,9 +116,12 @@ export function GuidedTutorialPanel() {
       </p>
       {state.step === 3 && state.passed && <p className="exercise-learning">{t('guided.explanation')}</p>}
       {state.step === 7 && state.passed && (state.finished ? <div role="status" className="guided-action-status" data-tutorial-finished="true"><span className="guided-action-indicator" aria-hidden="true">✓</span><div><strong>{t('guided.finished')}</strong><p>{t('guided.finishedText')}</p></div></div> : <><p className="exercise-learning">{t('guided.explanationC')}</p><p>{t('guided.stopReminder')} <kbd className="guided-shortcut">{t('guided.shortcut')}</kbd>.</p></>)}
+      {state.step === 7 && controller.hasCompletedChapter() && ui.subnetState.warning && <p role="status">{t(`guidedSubnet.${ui.subnetState.warning}`)}</p>}
+      {state.step === 7 && controller.hasCompletedChapter() && ui.subnetState.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void ui.subnet.retryProgress()}>{t('common.retry')}</button></p>}
     </div><footer>
       <button type="button" className="btn" disabled={state.step === 0} onClick={() => controller.previous()}>{t('guided.previous')}</button>
       {state.step < steps.length - 1 && <button type="button" className="btn btn--primary" disabled={!state.passed || state.busy} onClick={() => controller.next()}>{t('guided.next')}</button>}
+      {state.step === 7 && controller.hasCompletedChapter() && <button type="button" className="btn btn--primary" data-start-subnet disabled={state.saving || state.storageError || ui.subnetState.busy || ui.subnetState.storageError} onClick={() => void ui.subnet.begin()}>{t('guidedSubnet.transition')}</button>}
     </footer></>}
   </ExercisePanelFrame>;
 }

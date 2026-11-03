@@ -1,5 +1,8 @@
 # Tutorial guiado 01 — Erste Verbindung (protótipo)
 
+Continuidade implementada: [Capítulo 2 — Subnetzmaske verstehen](tutorial-subnet-mask.md),
+no mesmo rascunho, com progresso independente e preservação das oito etapas abaixo.
+
 Entrada: **Übungen (Beta) → Geführte Tutorials → Erste Verbindung**. A entrada é
 separada dos seis exercícios publicados e não escreve em `exercises:beta:v1`.
 Uma nova execução abre um rascunho normal pelo Session Controller; planos existentes

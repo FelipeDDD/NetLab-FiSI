@@ -14,7 +14,7 @@ import { DEFAULT_PING_ANIMATION_SPEED, normalizePingAnimationSpeed, sequencePack
 import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
 import { Host, IpDevice, RouterDevice } from './engine/ipdevice';
-import { chooseHostOs, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
+import { chooseHostOs, effectiveHostCreationMode, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
 import type { DeviceKind } from './engine/device';
 import { serializeNetwork, type SaveFile } from './engine/serialize';
 import { disposeNetwork } from './engine/networkLifecycle';
@@ -53,7 +53,9 @@ import type { HistoryLink } from './topologyHistory';
 import { DEFAULT_MARKING, markingBounds, pruneAreaMarkings, readBaseOffsets, readMarkingRect, validBaseOffsets, validMarkingStyle, type AreaMarking, type MarkingBaseOffsets, type MarkingStyle } from './areaMarkings';
 import { readExtensions, touchesArea, validAreaRect, type AreaRect, type MarkingExtension } from './markingGeometry';
 import { captureDeviceClipboard, prepareDevicePaste, type DeviceClipboard } from './deviceClipboard';
-import { freePosition, groupBounds, insertionPosition, placementBox, type PlacementBox } from './devicePlacement';
+import { deviceSize, freePosition, groupBounds, insertionPosition, placementBox, type PlacementBox } from './devicePlacement';
+import { SUBNET_PC_ID, SUBNET_LINK_ID, subnetPeers, subnetPreparationError, type SubnetWarning } from './tutorials/subnetChapter';
+import { FIRST_DEVICES } from './tutorials/firstConnection';
 
 export interface DevNodeData extends Record<string, unknown> {
   kind: DeviceKind;
@@ -125,6 +127,9 @@ interface NetsimState {
   receiveShareLink(): void;
   hostCreationMode: HostCreationMode;
   setHostCreationMode(mode: HostCreationMode): void;
+  tutorialHostCreation: { draftId: string; mode: HostCreationMode } | null;
+  setTutorialHostCreationDraft(draftId: string | null): void;
+  setPaletteHostCreationMode(mode: HostCreationMode): void;
   setHostOs(id: string, os: HostOs): void;
   topologyHistory: TopologyHistory;
   beginNodeMovement(source: 'drag' | 'keyboard'): void;
@@ -217,6 +222,7 @@ interface NetsimState {
   quizAnswers: Record<string, number>;
 
   addDeviceAt(kind: DeviceKind, pos: { x: number; y: number }): void;
+  addSubnetTutorialPC(pcC: string): SubnetWarning | null;
   addDeviceSmart(kind: DeviceKind, visible: PlacementBox): void;
   copySelectedDevices(): boolean;
   pasteDevices(desired: Point, visible?: PlacementBox): boolean;
@@ -1082,6 +1088,17 @@ export const useStore = create<NetsimState>()((set, get) => {
     quizAnswers: {},
 
     hostCreationMode: readHostCreationMode(),
+    tutorialHostCreation: null,
+    setTutorialHostCreationDraft(draftId) {
+      if ((get().tutorialHostCreation?.draftId ?? null) === draftId) return;
+      set({ tutorialHostCreation: draftId ? { draftId, mode: 'linux' } : null });
+    },
+    setPaletteHostCreationMode(value) {
+      const state = get(), context = state.tutorialHostCreation;
+      if (context && context.draftId === state.workspaceIdentity?.draftId) {
+        set({ tutorialHostCreation: { ...context, mode: normalizeHostCreationMode(value) } });
+      } else state.setHostCreationMode(value);
+    },
     setHostCreationMode(value) {
       const mode = normalizeHostCreationMode(value);
       set({ hostCreationMode: mode }); saveHostCreationMode(mode);
@@ -1099,13 +1116,37 @@ export const useStore = create<NetsimState>()((set, get) => {
     addDeviceAt(kind, pos) {
       if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
       prepareEdit();
-      const d = createDevice(sim.net, kind, (kind === 'host' || kind === 'notebook') ? { os: chooseHostOs(get().hostCreationMode) } : {});
+      const d = createDevice(sim.net, kind, (kind === 'host' || kind === 'notebook') ? { os: chooseHostOs(effectiveHostCreationMode(get())) } : {});
       const creation = captureCreation(sim.net, d, pos, get().nodes.length);
       set({ nodes: [...get().nodes, deviceNode(d.id, kind, d.name, pos.x, pos.y)] });
       lastCreatedId = d.id;
       commitEdit({ type: 'create-device', label: `Create ${d.name}`, device: creation });
       if (Object.keys(tabLayouts).length) saveTabs();
       saveSoon();
+    },
+    addSubnetTutorialPC(pcC) {
+      const error = subnetPreparationError(sim.net, pcC);
+      if (error) return error;
+      if (get().nodes.some(n => n.id === SUBNET_PC_ID)) return 'conflict';
+      const peers = subnetPeers(sim.net, pcC)!, switchNode = get().nodes.find(n => n.id === FIRST_DEVICES.sw);
+      if (!switchNode) return 'missing';
+      const port = peers.sw.interfaces.find(i => !i.link && i.up && i.medium === 'ethernet' && peers.sw.vlanOf(i.name) === peers.vlan)!;
+      const box = placementBox(switchNode);
+      const position = freePosition([{ x: 0, y: 0, ...deviceSize('host') }], get().nodes.map(placementBox), { x: box.x, y: box.y + box.height + 32 });
+      prepareEdit();
+      try {
+        const d = createDevice(sim.net, 'host', { id: SUBNET_PC_ID, name: 'PC D', os: 'linux' });
+        d.getInterface('eth0')!.configureIpv4({ mode: 'static', ip: parseCidr('192.168.10.12/28'), gateway: null, dns: null });
+        const link = sim.net.connect(d.id, peers.sw.id, { id: SUBNET_LINK_ID, aIface: 'eth0', bIface: port.name });
+        const devices = [captureCreation(sim.net, d, position, get().nodes.length)], links = [captureLink(link)];
+        const cableColors = { [link.id]: automaticCableAppearance(sim.net, link.id, get().cableColors) };
+        set({ nodes: [...get().nodes, deviceNode(d.id, d.kind, d.name, position.x, position.y)], edges: edgesFromEngine(), cableColors: { ...get().cableColors, ...cableColors } });
+        commitEdit({ type: 'paste-devices', label: 'Tutorial: PC D hinzufügen', devices, links, colors: {}, cableColors });
+        saveSoon(); return null;
+      } catch {
+        sim.net.removeDevice(SUBNET_PC_ID);
+        return 'conflict';
+      }
     },
     addDeviceSmart(kind, visible) {
       const state=get(), selected=state.nodes.filter(n=>n.selected);

@@ -19,12 +19,14 @@ import { captureCreation, captureLink, dhcpSettings, sortedDnsRecords } from './
 import { TAB_LAYOUT_KEY } from './terminalTabPreferences';
 import { PacketCapture } from './packetCapture';
 import { PACKET_ANIMATION_SPEED_KEY, packetAnimationDuration, packetAnimationProgress } from './packetAnimation';
-import { HOST_CREATION_KEY } from './hostOs';
+import { effectiveHostCreationMode, HOST_CREATION_KEY } from './hostOs';
 import { emptyIpv4, parseStaticIpv4 } from './engine/ipv4Config';
 import { createZustandSessionRuntime } from './persistence/zustandSessionRuntime';
 import { DEFAULT_MARKING, markingBounds } from './areaMarkings';
 import { prepareTopologyDocument } from './persistence/topologyDocument';
 import { observeTerminalCommands, type TerminalCommandEvent } from './terminalCommandEvents';
+import { firstConnectionDocument, FIRST_DEVICES } from './tutorials/firstConnection';
+import { SUBNET_PC_ID, SUBNET_LINK_ID, correctedSubnet } from './tutorials/subnetChapter';
 
 // Only the browser renderer is replaced. Commands, engine, store and persistence
 // run together so these tests cover the actual terminal-to-autosave path.
@@ -154,6 +156,43 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe('Chapter 2 device insertion', () => {
+  const completed = (ports = 8) => {
+    const document = firstConnectionDocument(), file = document.topology;
+    file.devices.find(d => d.id === FIRST_DEVICES.a)!.ifaces[0].ip = '192.168.10.10/24';
+    file.devices.find(d => d.id === FIRST_DEVICES.sw)!.ifaces = file.devices.find(d => d.id === FIRST_DEVICES.sw)!.ifaces.slice(0, ports);
+    file.devices.push({ id: 'c', kind: 'host', name: 'PC C', os: 'linux', x: 440, y: 600, forwarding: false, ifaces: [{ name: 'eth0', ip: '192.168.10.30/24', up: true }], routes: [] });
+    file.links.push({ id: 'a-link', a: [FIRST_DEVICES.a, 'eth0'], b: [FIRST_DEVICES.sw, 'eth1'] }, { id: 'c-link', a: ['c', 'eth0'], b: [FIRST_DEVICES.sw, 'eth2'] });
+    expect(useStore.getState().importJson(JSON.stringify(file))).toBeNull();
+  };
+  it('inserts Linux explicitly without changing the catalogue, existing nodes or previous history; undo/redo is atomic', () => {
+    completed(); const store = useStore.getState(); store.setHostCreationMode('windows');
+    store.onNodesChange([{ type: 'position', id: FIRST_DEVICES.a, position: { x: 70, y: 280 }, dragging: false }]);
+    const before = useStore.getState().captureWorkspaceDocument(), oldNodes = useStore.getState().nodes.map(n => ({ id: n.id, position: n.position })), history = useStore.getState().topologyHistory.past.length;
+    expect(store.addSubnetTutorialPC('c')).toBeNull();
+    const d = sim.net.devices.get(SUBNET_PC_ID) as Host, cable = sim.net.links.get(SUBNET_LINK_ID)!;
+    expect(d.os).toBe('linux'); expect(d.name).toBe('PC D'); expect(d.interfaces[0].ip).toEqual(parseCidr('192.168.10.12/28')); expect(d.interfaces[0].gateway).toBeNull();
+    expect(cable.b.name).toBe('eth3'); expect(useStore.getState().hostCreationMode).toBe('windows');
+    expect(useStore.getState().nodes.filter(n => n.id !== SUBNET_PC_ID).map(n => ({ id: n.id, position: n.position }))).toEqual(oldNodes);
+    expect(useStore.getState().topologyHistory.past).toHaveLength(history + 1);
+    expect(correctedSubnet(sim.net, 'c')).toBe(false);
+    const after = useStore.getState().captureWorkspaceDocument(); store.undoTopology();
+    expect(useStore.getState().captureWorkspaceDocument()).toEqual(before); expect(useStore.getState().topologyHistory.past).toHaveLength(history);
+    store.redoTopology(); expect(useStore.getState().captureWorkspaceDocument()).toEqual(after); expect(store.addSubnetTutorialPC('c')).toBe('conflict');
+    store.setHostCreationMode('linux');
+  });
+  it('does not mutate a full or missing switch or replace an existing reserved device', () => {
+    completed(3); const store = useStore.getState(); const full = store.captureWorkspaceDocument();
+    expect(store.addSubnetTutorialPC('c')).toBe('noPort'); expect(store.captureWorkspaceDocument()).toEqual(full);
+    completed(); store.deleteDevice(FIRST_DEVICES.sw); const missing = store.captureWorkspaceDocument();
+    expect(store.addSubnetTutorialPC('c')).toBe('missing'); expect(store.captureWorkspaceDocument()).toEqual(missing);
+    completed(); const file = store.captureWorkspaceDocument().topology;
+    file.devices.push({ id: SUBNET_PC_ID, kind: 'host', name: 'Other', os: 'windows', x: 0, y: 0, forwarding: false, ifaces: [{ name: 'eth0', ip: null, up: true }], routes: [] });
+    expect(store.importJson(JSON.stringify(file))).toBeNull(); const conflict = store.captureWorkspaceDocument();
+    expect(store.addSubnetTutorialPC('c')).toBe('conflict'); expect(store.captureWorkspaceDocument()).toEqual(conflict);
+  });
 });
 
 describe('device clipboard and insertion',()=>{
@@ -304,6 +343,35 @@ describe('network commands after automatic activation pause', () => {
 });
 
 describe('host OS profiles', () => {
+  it('uses temporary tutorial choices for both creation paths without persisting or changing existing hosts', () => {
+    const store = () => useStore.getState();
+    store().setHostCreationMode('windows');
+    useStore.setState({ workspaceIdentity: { sessionId: 'test', draftId: 'tutorial' } });
+    store().setTutorialHostCreationDraft('tutorial');
+    try {
+      expect(effectiveHostCreationMode(store())).toBe('linux');
+      store().addDeviceSmart('host', { x: 0, y: 0, width: 1000, height: 600 });
+      const linux = sim.net.devices.get(store().nodes.at(-1)!.id) as Host;
+      expect(linux.os).toBe('linux');
+      store().setPaletteHostCreationMode('windows');
+      store().setTutorialHostCreationDraft('tutorial'); // Ordinary tutorial updates retain the learner's choice.
+      store().addDeviceAt('host', { x: 300, y: 200 });
+      expect((sim.net.devices.get(store().nodes.at(-1)!.id) as Host).os).toBe('windows');
+      store().setPaletteHostCreationMode('mixed');
+      vi.spyOn(Math, 'random').mockReturnValue(.1);
+      store().addDeviceAt('host', { x: 500, y: 200 });
+      expect((sim.net.devices.get(store().nodes.at(-1)!.id) as Host).os).toBe('linux');
+      expect(linux.os).toBe('linux');
+      expect(store().hostCreationMode).toBe('windows');
+      expect(storage.get(HOST_CREATION_KEY)).toBe('windows');
+      useStore.setState({ workspaceIdentity: { sessionId: 'test', draftId: 'personal' } });
+      expect(effectiveHostCreationMode(store())).toBe('windows');
+      store().addDeviceAt('host', { x: 700, y: 200 });
+      expect((sim.net.devices.get(store().nodes.at(-1)!.id) as Host).os).toBe('windows');
+      store().setTutorialHostCreationDraft(null);
+      expect(effectiveHostCreationMode(store())).toBe('windows');
+    } finally { store().setTutorialHostCreationDraft(null); useStore.setState({ workspaceIdentity: null }); }
+  });
   it.each(['windows', 'linux'] as const)('uses %s for a new command after a selection deferred the prompt refresh', (os) => {
     const { a, net } = pair(), store = useStore.getState();
     store.setHostOs(a.id, os === 'windows' ? 'linux' : 'windows');

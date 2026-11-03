@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import type { DeviceKind } from '../engine/device';
 import { DeviceIcon } from './DeviceNode';
 import { InspectorTabs } from './InspectorTabs';
-import type { HostCreationMode } from '../hostOs';
+import { effectiveHostCreationMode, type HostCreationMode } from '../hostOs';
 import { loadPalettePreference, savePalettePreference, type PaletteCategory, type PalettePreference } from '../paletteLayout';
 
 const CATEGORIES: { id: PaletteCategory; label: string; items: { kind: DeviceKind; label: string; blurb: string }[] }[] = [
@@ -34,7 +34,7 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
     const canvas=document.querySelector('.react-flow');
     if(canvas) addDeviceSmart(kind,canvasWorldBounds(canvas.getBoundingClientRect(),screenToFlowPosition));
   };
-  const hostMode = useStore((s) => s.hostCreationMode);
+  const hostMode = useStore(effectiveHostCreationMode);
   const [preference, setPreference] = useState(loadPalettePreference);
   const [compactExpanded, setCompactExpanded] = useState(false);
   const collapsed = compact ? !compactExpanded : preference.collapsed;
@@ -74,7 +74,7 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
         tabs={[
           { id: 'devices', label: 'Geräte', content: <>
             <label className="host-creation-mode">Neue Hosts / Notebooks
-              <select value={hostMode} onChange={(e) => useStore.getState().setHostCreationMode(e.target.value as HostCreationMode)}>
+              <select value={hostMode} onChange={(e) => useStore.getState().setPaletteHostCreationMode(e.target.value as HostCreationMode)}>
                 <option value="linux">Linux</option><option value="windows">Windows</option><option value="mixed">Mixed (50/50)</option>
               </select>
             </label>
