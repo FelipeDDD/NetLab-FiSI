@@ -40,10 +40,15 @@ export async function runPracticalReview({page,url,root,report}) {
   };
   const check=async()=>{
     const before=await page.evaluate('return JSON.stringify(serial.serializeNetwork(sim.net,{}));');
-    await click('.exercise-panel button','Lösung prüfen');await wait("document.querySelector('.exercise-panel').textContent.includes('Prüfung läuft')");
+    await click('.exercise-panel button','Lösung prüfen');await wait("(()=>{const panel=document.querySelector('.exercise-panel');return !!panel&&panel.textContent.includes('Prüfung läuft')})()");
     await page.evaluate('store.getState().setPaused(true);sim.net.scheduler.advanceTo(sim.net.scheduler.now+120000);');
-    await wait("!document.querySelector('.exercise-panel').textContent.includes('Prüfung läuft')");await delay(80);
+    await wait("(()=>{const panel=document.querySelector('.exercise-panel');return !!panel&&!panel.textContent.includes('Prüfung läuft')})()");await delay(80);
     assert.equal(await page.evaluate('return JSON.stringify(serial.serializeNetwork(sim.net,{}));'),before,'checker must not modify configuration');
+  };
+  const assertE08NetworkPassed=async()=>{
+    assert.equal(await page.evaluate("return document.querySelector('.exercise-summary')?.dataset.outcome"),'passed','the active E08 attempt must pass');
+    const checks=await page.evaluate("const panel=document.querySelector('.exercise-panel');if(!panel)throw Error('E08 panel is not mounted after successful verification');panel.querySelectorAll('.exercise-requirements details').forEach(details=>details.open=true);return ['route-0','ping-a-b','ping-b-a'].map(id=>({id,text:panel.querySelector(`[data-check=\"${id}\"]`)?.textContent??null}));");
+    assert(checks.every(check=>check.text?.includes('Erfüllt')&&check.text.includes('ICMP-Antwort empfangen.')||check.id==='route-0'&&check.text?.includes('Erfüllt')), 'E08 route and both real ICMP directions must pass: '+JSON.stringify(checks));
   };
   const shot=async(name,variant,width,state,height=960)=>{
     await delay(100);const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(directory,name+'.png'),Buffer.from(png.data,'base64'));
@@ -112,8 +117,11 @@ export async function runPracticalReview({page,url,root,report}) {
       await shot('ping-quarter-speed','graphite-dark',1440,'selected');
       await page.evaluate("store.getState().setTerminalDockCollapsed(true);");
     });
-    await test('practical: E08 wrong next hop fails; target-route alternative passes; run/cancel does not mutate config',async()=>{
-      await start('e08');e08Draft=await page.evaluate('return ws.controller.getState().activeDraftId;');await check();assert(!(await status()).completed['pilot-e08-v1']);
+    await test('practical: E08 wrong next hop fails; target-route and default-route alternatives pass independently with bidirectional ping',async()=>{
+      await start('e08');e08Draft=await page.evaluate('return ws.controller.getState().activeDraftId;');
+      const originalDefault=await page.evaluate("const office=sim.net.devices.get('a');return {routes:office.staticRoutes.map(route=>({dest:route.dest,prefix:route.prefix,via:route.via===null?null:ip.ipToString(route.via),ifaceName:route.ifaceName})),gateway:office.getInterface('eth0').gateway};");
+      assert(originalDefault.routes.some(route=>route.prefix===0&&route.via==='192.168.10.254')&&originalDefault.gateway===null,'first E08 attempt must begin with its original incorrect default route: '+JSON.stringify(originalDefault));
+      await check();assert.equal(await page.evaluate("return document.querySelector('.exercise-summary').dataset.outcome"),'incomplete');
       assert.equal(await page.evaluate('return flow.getZoom();'),.65,'E08 initial zoom');
       await page.evaluate("await flow.setViewport({x:134,y:66,zoom:.7});window.e08View=flow.getViewport();store.getState().select('a');");
       assert(await page.evaluate("return document.querySelector('.host-ipv4-summary').innerHTML.includes('<dt>Gateway</dt><dd>192.168.10.254</dd>')&&!document.querySelector('.host-ipv4-summary').textContent.includes('Explizite Route');"));
@@ -145,8 +153,20 @@ export async function runPracticalReview({page,url,root,report}) {
       await shot('gateway-pending','graphite-dark',1440,'normal');
       await page.evaluate('await ws.controller.flush();');
       await click('.exercise-panel button','Lösung prüfen');await click('.exercise-panel button','Prüfung abbrechen');await page.evaluate('sim.net.scheduler.advanceTo(sim.net.scheduler.now+120000);');
-      assert(!(await status()).completed['pilot-e08-v1']);await check();assert((await status()).completed['pilot-e08-v1']);
+      assert(!(await status()).completed['pilot-e08-v1']);await check();await assertE08NetworkPassed();
       await shot('gateway-alternative-passed','graphite-dark',1440,'selected');
+
+      await start('e08','Erneut starten');
+      const e08DefaultDraft=await page.evaluate('return ws.controller.getState().activeDraftId;');
+      assert.notEqual(e08DefaultDraft,e08Draft,'default-route scenario must use a fresh attempt');
+      assert(await page.evaluate("const office=sim.net.devices.get('a');return office.getInterface('eth0').gateway===null&&office.staticRoutes.some(route=>route.prefix===0&&route.via===ip.parseIp('192.168.10.254'));"),'fresh E08 attempt must restore its original incorrect default route');
+      await check();assert.equal(await page.evaluate("return document.querySelector('.exercise-summary').dataset.outcome"),'incomplete');
+      await page.evaluate("store.getState().openTerminal('a');");await wait("document.querySelector('.xterm-helper-textarea')");
+      await command('ip route replace default via 192.168.10.1 dev eth0');
+      await wait("sim.net.devices.get('a').staticRoutes.some(route=>route.prefix===0&&route.via===ip.parseIp('192.168.10.1'))");
+      await page.evaluate("store.getState().select(null);store.getState().setTerminalDockCollapsed(true);");
+      await check();await assertE08NetworkPassed();
+      await shot('gateway-default-route-passed','graphite-dark',1440,'selected');
     });
     await test('practical: E09 Inspector/store edit and Undo/Redo remain usable; correct mask passes and altered structure fails',async()=>{
       await start('e09');e09Draft=await page.evaluate('return ws.controller.getState().activeDraftId;');
