@@ -1,0 +1,14 @@
+.guided-tutorial-menu { padding: 10px 4px; border-bottom: 1px solid var(--ui-border); }
+.guided-tutorial-menu p { margin: 6px 0; }
+.guided-tutorial-menu small { display: block; margin-top: 6px; color: var(--ui-text-muted); }
+[data-exercise="guided-first-connection"] footer { display: flex; justify-content: space-between; flex-shrink: 0; gap: 8px; }
+[data-exercise="guided-first-connection"] pre { padding: 8px; background: var(--ui-surface-card); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+[data-exercise="guided-first-connection"] [data-tutorial-passed="true"] { color: var(--ui-success); }
+[data-exercise="guided-first-connection"] :is(pre code, .guided-shortcut) { color: var(--guided-command); font-family: var(--font-mono, monospace); }
+[data-exercise="guided-first-connection"] { --guided-command: #fbbf24; }
+[data-ui-theme="classic-light"] [data-exercise="guided-first-connection"] { --guided-command: #8a5300; }
+.guided-action-status { display: flex; align-items: flex-start; gap: 8px; }
+.guided-action-indicator { width: 18px; height: 18px; flex: 0 0 18px; border: 2px solid var(--ui-text-muted); border-radius: 50%; box-sizing: border-box; text-align: center; line-height: 14px; font-size: 12px; }
+[data-tutorial-passed="true"] .guided-action-indicator { border-color: var(--ui-success); background: var(--ui-success); color: var(--ui-surface-card); }
+[data-tutorial-finished="true"] { color: var(--ui-success); }
+[data-tutorial-finished="true"] .guided-action-indicator { border-color: var(--ui-success); background: var(--ui-success); color: var(--ui-surface-card); }

@@ -107,7 +107,7 @@ try {
   await new Promise(resolve => probe.close(resolve));
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
     cacheDir: path.join(scratch, 'vite-cache'),
-    plugins: [...(process.env.NETLAB_ARTWORK_OFFSET_REVIEW === '1' || process.env.NETLAB_PRACTICAL_REVIEW === '1' || process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
+    plugins: [...(process.env.NETLAB_ARTWORK_OFFSET_REVIEW === '1' || process.env.NETLAB_PRACTICAL_REVIEW === '1' || process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_GUIDED_TUTORIAL_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
       name: 'isolated-viewport-probe', enforce: 'pre',
       transform(code, id) {
         if (!id.replaceAll('\\', '/').endsWith('/src/App.tsx')) return;
@@ -290,6 +290,11 @@ try {
     await runTerminalReferenceReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_LEARNING_HELP_REVIEW === '1') {
+    const { runLearningHelpReview } = await import('./learning-help-review.mjs');
+    await runLearningHelpReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_IPV4_REVIEW === '1') {
     const { runIpv4Review } = await import('./ipv4-review.mjs');
     await runIpv4Review({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, report });
@@ -396,6 +401,11 @@ try {
   if (process.env.NETLAB_PRACTICAL_REVIEW === '1') {
     const {runPracticalReview}=await import('./practical-exercises-review.mjs');
     await runPracticalReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_GUIDED_TUTORIAL_REVIEW === '1') {
+    const { runGuidedTutorialReview } = await import('./guided-tutorial-review.mjs');
+    await runGuidedTutorialReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
   if (process.env.NETLAB_APPLICATION_BOOT_REVIEW === '1') {

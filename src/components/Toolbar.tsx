@@ -12,6 +12,7 @@ import { MarkingsButton } from './AreaMarkings';
 import { useTranslation } from '../i18n';
 import { LanguageSelector } from '../i18n/LanguageSelector';
 import { consumeHomeIntent } from '../home/navigation';
+import { useLearningHelp } from './LearningHelp';
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 const MENUS = [
@@ -35,6 +36,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   inspectorLayout: InspectorLayoutPreference; onInspectorLayoutChange: (value: InspectorLayoutPreference) => void;
 }) {
   const workspace = useWorkspaceUI();
+  const learningHelp = useLearningHelp();
   const { t, language } = useTranslation();
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1100px)').matches);
   const [menu, setMenu] = useState<MenuPage | null>(null);
@@ -288,8 +290,12 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         </button>)}
         <div className="labs-menu-note">{workspace ? 'Übungen und Beispiele öffnen in einem neuen Plan.' : 'Loading a lab or example replaces the current canvas.'}</div>
       </>}
-      {menu === 'help' && <a className="labs-menu-item toolbar-help-link" role="menuitem" href={USER_GUIDE_URL}
-        target="_blank" rel="noopener noreferrer" onClick={() => closeMenu(true)}>{t('navigation.documentation')} ↗</a>}
+      {menu === 'help' && <>
+        <button type="button" className="labs-menu-item toolbar-menu-action" role="menuitem" data-help-page="ipv4" aria-haspopup="dialog"
+          onClick={() => { closeMenu(true); learningHelp?.open('ipv4', anchor.current); }}>{t('learningHelp.title')}</button>
+        <a className="labs-menu-item toolbar-help-link" role="menuitem" href={USER_GUIDE_URL}
+          target="_blank" rel="noopener noreferrer" onClick={() => closeMenu(true)}>{t('navigation.documentation')} ↗</a>
+      </>}
     </FloatingPopover>}
 
     {menu === 'file' && exportOpen && <FloatingPopover anchor={exportAnchor} id="toolbar-export-menu" label="Export" role="menu"

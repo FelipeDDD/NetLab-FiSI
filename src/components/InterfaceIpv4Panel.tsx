@@ -8,6 +8,7 @@ import { CopyIpButton } from './CopyIpButton';
 import { usePendingForm } from '../persistence/usePendingForm';
 import { IpDevice } from '../engine/ipdevice';
 import { InterfaceGatewayRoutes } from './InterfaceGatewayRoutes';
+import { LearningHelpLink } from './LearningHelp';
 
 const labels = { ip: 'IP-Adresse', mask: 'Subnetzmaske', gateway: 'Standardgateway', dns: 'DNS-Server' };
 type Field = keyof Ipv4Fields;
@@ -86,6 +87,7 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
         {!iface.link && <span className="iface-unplugged">unplugged</span>}</div>
       {iface.ip && <CopyIpButton address={ipToString(iface.ip.addr)} context={`${device?.name} ${ifaceName}`} />}
     </div>
+    <LearningHelpLink page="ipv4" />
     <label className="ipv4-mode">
       <input type="checkbox" aria-label={`IP-Adresse automatisch beziehen (DHCP) ${ifaceName}`}
         checked={iface.ipv4Mode === 'dhcp'} onChange={(e) => toggleDhcp(e.target.checked)} />

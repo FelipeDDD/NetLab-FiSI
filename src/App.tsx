@@ -21,6 +21,8 @@ import { PacketAnimationControl } from './components/PacketAnimationControl';
 import { terminalDockShortcut } from './terminalShortcuts';
 import { PracticeSurface } from './exercises/practice/PracticeSurface';
 import {DesktopSurface} from './browser/DesktopSurface';
+import { LearningHelpProvider } from './components/LearningHelp';
+import { GuidedTutorialPanel } from './tutorials/TutorialUI';
 
 export default function App() {
   const workspace = useWorkspaceUI();
@@ -51,6 +53,7 @@ export default function App() {
 
   return (
     <ReactFlowProvider>
+      <LearningHelpProvider>
       {workspace && <WorkspaceViewport />}
       <div className={`app${hasTerminals ? ' with-dock' : ''}${workspace ? ' workspace-enabled' : ''}`} data-inspector-layout={inspectorLayout.layout}
         data-panel-priority={panelPriority}
@@ -78,6 +81,7 @@ export default function App() {
             <Flow fitOnInit={!workspace} />
             <LabPanel />
             <ExercisePanel />
+            <GuidedTutorialPanel />
             <PracticeSurface />
             <PacketAnimationControl />
           </div>
@@ -95,6 +99,7 @@ export default function App() {
         <TerminalDock key={generation} onFocusEditor={() => editor.current?.focus({ preventScroll: true })}
           onOverlapHeightChange={setTerminalOverlapHeight} />
       </div>
+      </LearningHelpProvider>
     </ReactFlowProvider>
   );
 }

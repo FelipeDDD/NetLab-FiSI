@@ -28,6 +28,25 @@ export async function runDeviceEditingReview({page,url,root,report}) {
   try {
     await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});await mount();
     await page.evaluate('theme.getState().setTheme("graphite-dark");');await blank();
+    await test('device editor: hidden connection dots reveal on hover and real handle drags connect PC, Switch, Router and Server',async()=>{
+      await blank();
+      await page.evaluate(`store.getState().addDeviceAt('host',{x:80,y:180});store.getState().addDeviceAt('switch',{x:340,y:180});store.getState().addDeviceAt('router',{x:610,y:180});store.getState().addDeviceAt('server',{x:880,y:180});`);
+      const ids=await page.evaluate(`return Object.fromEntries([...sim.net.devices.values()].map(d=>[d.kind,d.id]));`);
+      const initial=await page.evaluate(`const h=document.querySelector('.react-flow__node[data-id="'+${JSON.stringify(ids.host)}+'"] .react-flow__handle');return{width:h.getBoundingClientRect().width,opacity:getComputedStyle(h,'::before').opacity};`);
+      assert.equal(initial.width,18);assert.equal(initial.opacity,'0');
+      const hover=await page.evaluate(`const n=document.querySelector('.react-flow__node[data-id="'+${JSON.stringify(ids.host)}+'"] .device-node'),r=n.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};`);
+      await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',...hover});await wait(`getComputedStyle(document.querySelector('.react-flow__node[data-id="${ids.host}"] .react-flow__handle'),'::before').opacity==='1'`);
+      for(const source of [ids.host,ids.router,ids.server]){
+        const points=await page.evaluate(`const a=document.querySelector('.react-flow__node[data-id="'+${JSON.stringify(source)}+'"] .react-flow__handle-right').getBoundingClientRect(),b=document.querySelector('.react-flow__node[data-id="'+${JSON.stringify(ids.switch)}+'"] .react-flow__handle-left').getBoundingClientRect();return{a:{x:a.x+a.width/2,y:a.y+a.height/2},b:{x:b.x+b.width/2,y:b.y+b.height/2}};`);
+        await page.send('Input.dispatchMouseEvent',{type:'mousePressed',...points.a,button:'left',clickCount:1});
+        for(let i=1;i<=8;i++)await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:points.a.x+(points.b.x-points.a.x)*i/8,y:points.a.y+(points.b.y-points.a.y)*i/8,buttons:1});
+        const visible=await page.evaluate(`getComputedStyle(document.querySelector('.react-flow__node[data-id="'+${JSON.stringify(ids.switch)}+'"] .react-flow__handle.connectionindicator'),'::before').opacity`);
+        assert.notEqual(visible,'0','available target Handles must appear while a cable is being dragged');
+        await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',...points.b,button:'left',clickCount:1});await wait(`sim.net.links.size===${[ids.host,ids.router,ids.server].indexOf(source)+1}`);
+      }
+      assert.equal(await page.evaluate('return sim.net.links.size;'),3);
+      await blank();
+    });
     await test('device editor: real catalogue clicks create ten nonoverlapping PCs using the visible viewport',async()=>{
       await page.evaluate('await flow.setViewport({x:-1200,y:-600,zoom:1});');
       for(let i=0;i<10;i++)await click('.palette-item.kind-host');

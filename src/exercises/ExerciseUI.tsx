@@ -13,6 +13,9 @@ import { usePractice } from './practice/session';
 import type { PracticalCriterion } from './practicalTypes';
 import { EXERCISE_MENU_GROUPS } from './menuGroups';
 import { ExerciseViewportContext, requestExerciseViewport } from './initialViewport';
+import { ExercisePanelFrame } from './ExercisePanelFrame';
+import { EXERCISE_PANEL_INTRO, summarizeExerciseChecks } from './panelContent';
+import { GuidedTutorialProvider, GuidedTutorialMenu } from '../tutorials/TutorialUI';
 
 function criterionLabel(c:PracticalCriterion) {
   const name=(id:string)=>sim.net.devices.get(id)?.name??id;
@@ -50,7 +53,7 @@ export function ExerciseProvider({ sessions, repository, children }: { sessions:
     window.addEventListener('focus', focus); window.addEventListener('beforeunload', before);
     return () => { release(); window.removeEventListener('focus', focus); window.removeEventListener('beforeunload', before); controller.dispose(); };
   }, [controller, sessions]);
-  return <Context.Provider value={{ controller, state }}><ExerciseViewportContext.Provider value={viewport}>{children}</ExerciseViewportContext.Provider></Context.Provider>;
+  return <Context.Provider value={{ controller, state }}><ExerciseViewportContext.Provider value={viewport}><GuidedTutorialProvider sessions={sessions} repository={repository}>{children}</GuidedTutorialProvider></ExerciseViewportContext.Provider></Context.Provider>;
 }
 
 export function ExerciseMenu({ close }: { close(): void }) {
@@ -61,7 +64,8 @@ export function ExerciseMenu({ close }: { close(): void }) {
   const { controller, state } = ui;
   return <>
     <PracticeLauncher close={close} />
-    <p className="exercise-note">{t('exercises.note')} {t('exercises.contentLanguage')}</p>
+    <GuidedTutorialMenu close={close} />
+    <p className="exercise-note">{t('exercises.note')}</p>
     {state.error && <p role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>{t('common.retry')}</button></p>}
     {EXERCISE_MENU_GROUPS.map(group => <details className="exercise-menu-group" key={group.id} open>
       <summary>{t(group.label)}</summary>
@@ -94,17 +98,20 @@ export function ExercisePanel() {
   const exercise = AVAILABLE_EXERCISES.find(e => e.id === active?.exerciseId);
   if (!exercise || !active) return state.error ? <aside className="exercise-error" role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>Erneut versuchen</button></aside> : null;
   const checks = exerciseChecks(exercise.id), currentVersion = active.contentVersion === exercise.contentVersion, pilot=practicalExercise(exercise.id);
-  return <aside className={`exercise-panel${collapsed ? ' is-collapsed' : ''}`} aria-label="Übung" data-exercise={exercise.id}>
-    <header><div className="exercise-heading"><strong>{exercise.student.title}</strong>
-      {pilot && <div className="exercise-summary" role="status" aria-live="polite" data-outcome={currentVersion ? state.outcome : 'unverified'}>
-        <span>{state.checking ? t('exercises.checking') : currentVersion && state.outcome === 'passed' ? '✓ ' + t('exercises.technical') : currentVersion && state.outcome === 'incomplete' ? t('exercises.incomplete') : t('exercises.pending')}</span>
-      </div>}
-    </div><button className="btn btn--icon" aria-label={t(collapsed?'exercises.expand':'exercises.collapse')} aria-expanded={!collapsed} onClick={() => setCollapsed(v => !v)}>{collapsed ? '+' : '−'}</button></header>
+  const checkSummary = summarizeExerciseChecks(exercise.student.requirements, checks, state.results);
+  const hasCheckResults = checkSummary.checked > 0;
+  const countText = hasCheckResults
+    ? t('exercises.checksCount').replace('{passed}', String(checkSummary.passed)).replace('{total}', String(checkSummary.total))
+    : t('exercises.checksPending').replace('{count}', String(checkSummary.total));
+  return <ExercisePanelFrame key={active.id} exerciseId={exercise.id} collapsed={collapsed} header={<><div className="exercise-heading"><strong>{exercise.student.title}</strong>
+      <div className="exercise-summary" role="status" aria-live="polite" data-outcome={currentVersion ? state.outcome : 'unverified'}>
+        <span>{state.checking ? t('exercises.checking') : currentVersion ? countText : t('exercises.pending')}</span>
+      </div>
+    </div><button className="btn btn--icon" aria-label={t(collapsed?'exercises.expand':'exercises.collapse')} aria-expanded={!collapsed} onClick={() => setCollapsed(v => !v)}>{collapsed ? '+' : '−'}</button></>}>
     {!collapsed && <>
       <div className="exercise-body">
-        <p lang="de">{exercise.id === 'pilot-e06-v1' ? 'PC A und PC B verwenden unterschiedliche dritte Oktette. Prüfen Sie die Kommunikation anhand ihrer /16-Masken.' : exercise.student.description}</p>
-        <p lang="de">{exercise.id === 'pilot-e06-v1' ? 'Testen Sie beide Richtungen. Wenn die Konfiguration bereits stimmt, ist keine Änderung erforderlich. Erhalten Sie die Netzkonfiguration.' : exercise.student.task}</p>
-        <ul>{exercise.student.requirements.map(r => {
+        <p className="exercise-intro" lang="de">{EXERCISE_PANEL_INTRO[exercise.id] ?? `${exercise.student.description} ${exercise.student.task}`}</p>
+        <details className="exercise-requirements"><summary>{t('exercises.details')}</summary><ul>{exercise.student.requirements.map(r => {
           const required = checks.filter(a => a.requirementId === r.id);
           const done = required.length > 0 && required.every(a => state.results[a.id]);
           const pass = done && required.every(a => state.results[a.id].pass);
@@ -118,23 +125,24 @@ export function ExercisePanel() {
               </li>;
             })}</ul></details>:failed && <small>Nicht erfüllt – Konfiguration und Erreichbarkeit prüfen.</small>}
           </li>;
-        })}</ul>
+        })}</ul></details>
         {pilot&&<>
-          {exercise.id === 'pilot-e06-v1' ? Object.keys(state.results).length > 0 && !state.checking && <section className="exercise-learning" lang="de">
-            <strong>Was bedeutet /16?</strong><p>192.168.10.50/16 und 192.168.11.60/16 gehören beide zu 192.168.0.0/16 (Maske 255.255.0.0). Das dritte Oktett unterscheidet hier keine Subnetze. Im vorgesehenen gemeinsamen LAN ermitteln die Hosts die Ziel-MAC per ARP und können direkt über den Switch kommunizieren, ohne Gateway.</p>
+          {exercise.id === 'pilot-e06-v1' ? Object.keys(state.results).length > 0 && !state.checking && <details className="exercise-learning" lang="de">
+            <summary>Was bedeutet /16?</summary><p>192.168.10.50/16 und 192.168.11.60/16 gehören beide zu 192.168.0.0/16 (Maske 255.255.0.0). Das dritte Oktett unterscheidet hier keine Subnetze. Im vorgesehenen gemeinsamen LAN ermitteln die Hosts die Ziel-MAC per ARP und können direkt über den Switch kommunizieren, ohne Gateway.</p>
             <small>Die technischen Tests prüfen die Konfiguration und ICMP, nicht Ihr Verständnis dieser Erklärung.</small>
-          </section> : <details className="exercise-manual"><summary>{t('exercises.manual')}</summary>{pilot.manualReview.map(text=><p lang="de" key={text}>{text}</p>)}</details>}
-          <small>{t('exercises.persistence')}</small></>}
+          </details> : <details className="exercise-manual"><summary>{t('exercises.manual')}</summary>{pilot.manualReview.map(text=><p lang="de" key={text}>{text}</p>)}</details>}
+        </>}
       </div>
       <footer>
         <button className="btn btn--primary" disabled={!state.ready || state.busy || state.checking || !currentVersion} onClick={() => void controller.verify()}>{state.checking ? t('exercises.checking') : pilot?t('exercises.check'):'Überprüfen'}</button>
         {state.checking && !state.saving && <button className="btn" onClick={() => controller.cancel('Prüfung abgebrochen.')}>{t('exercises.cancel')}</button>}
-        <small>{t('exercises.probeNote')}</small>
-        <p role="status">{state.message}</p>
+        <details className="exercise-help"><summary>{t('exercises.help')}</summary>
+          <p>{t('exercises.probeNote')}</p><p>{t('exercises.persistence')}</p>
+        </details>
+        {state.message && state.outcome !== 'passed' && state.outcome !== 'incomplete' && <p role="status">{state.message}</p>}
         {!currentVersion && <p>{t('exercises.versionChanged')}</p>}
         {state.error && <p role="alert">{state.error}</p>}
-        <small>{t('exercises.attemptLabel')} {active.id.slice(0, 8)} · Version {active.contentVersion}</small>
       </footer>
     </>}
-  </aside>;
+  </ExercisePanelFrame>;
 }

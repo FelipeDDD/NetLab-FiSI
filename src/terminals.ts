@@ -7,6 +7,7 @@ import { serializeNetwork } from './engine/serialize';
 import { inputBoundary, normalizeTerminalPaste, PASTE_END, PASTE_START, terminalInputDecoder } from './terminalInput';
 import { commandCursorPosition, currentCommandRange, inputStartRow } from './terminalLine';
 import { LEGACY_TERMINAL_FONT_SIZE, TERMINAL_THEME, terminalFontFamily } from './terminalAppearance';
+import { emitTerminalCommand, startTerminalCommand, type TerminalCommandContext } from './terminalCommandEvents';
 
 export interface SessionOpts {
   onAfterCommand?: (configurationChanged: boolean) => void;
@@ -84,6 +85,8 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
   let buf = '';
   let cursor = 0;
   let running: Running | null = null;
+  let runningObservation: TerminalCommandContext | null = null;
+  let interruptedCommandId: number | null = null;
   let disposed = false;
   let selectedCommand = false;
   let paintingSelection = false;
@@ -134,7 +137,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     return redrawLine(next, done, text ? nextCursor : cursor);
   };
 
-  const submit = () => {
+  const submit = (source: TerminalCommandContext['source'] = 'keyboard') => {
     const line = buf;
     buf = '';
     cursor = 0;
@@ -155,14 +158,22 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     }
     // Compare only persisted configuration, not ARP/conntrack caches or output.
     const before = JSON.stringify(serializeNetwork(device.network, {}));
+    const observation = startTerminalCommand({ network: device.network, deviceId: device.id, line, source });
+    runningObservation = observation;
     let completed = false;
     const command = shell.exec(line, {
       write: (s) => {
-        if (!disposed && !completed) term.write(s.replace(/\n/g, '\r\n'));
+        if (!disposed && !completed) {
+          emitTerminalCommand({ type: 'output', command: observation, text: s });
+          term.write(s.replace(/\n/g, '\r\n'));
+        }
       },
     }, () => {
       if (disposed || completed) return;
       completed = true;
+      emitTerminalCommand({ type: 'finished', command: observation, reason: interruptedCommandId === observation.id ? 'interrupt' : 'completed' });
+      runningObservation = null;
+      interruptedCommandId = null;
       running = null;
       opts.onAfterCommand?.(before !== JSON.stringify(serializeNetwork(device.network, {})));
       if (!disposed) term.write(promptStr());
@@ -251,6 +262,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
     if (running) {
       if (data === '\x03') {
         term.write('^C\r\n');
+        interruptedCommandId = runningObservation?.id ?? null;
         running.cancel();
       }
       return done();
@@ -317,7 +329,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       redrawLine(command, () => {
         if (disposed) return finish('disposed');
         if (!isActive()) return redrawLine('', () => finish('cancelled'));
-        submit(); finish('accepted');
+        submit('quick-ping'); finish('accepted');
       });
     });
   };
@@ -362,7 +374,7 @@ export function getSession(device: IpDevice, opts: SessionOpts = {}): Session {
       selectedCommand = false;
       promptOs = shell.os;
       redrawLine(command, () => {
-        if (!disposed) submit();
+        if (!disposed) submit('api');
         inputBusy = false;
         drainInput();
       });

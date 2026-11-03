@@ -604,18 +604,45 @@ body,
 }
 
 .react-flow__handle {
-  width: 9px;
-  height: 9px;
-  background: var(--text-dim);
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: 0;
+  opacity: 1;
+}
+
+.react-flow__handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
   border: 2px solid var(--bg);
-  opacity: 0.55;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0;
   transition: opacity 0.15s, background 0.15s;
 }
 
-.device-node:hover .react-flow__handle,
-.react-flow__handle:hover {
+.device-node:hover .react-flow__handle::before,
+.react-flow__handle:hover::before,
+.react-flow__node:focus-visible .device-node .react-flow__handle::before,
+.react-flow__node:focus-within .device-node .react-flow__handle::before {
   opacity: 1;
   background: var(--accent);
+}
+
+.react-flow:has(.react-flow__handle.connectingfrom) .react-flow__handle.connectionindicator::before,
+.react-flow__handle:is(.connectingfrom, .connectingto, .valid)::before {
+  opacity: 0.85;
+  background: var(--accent);
+}
+
+@media (hover: none) {
+  .react-flow__handle::before { opacity: 1; }
 }
 
 .react-flow__edge-path {
@@ -643,7 +670,7 @@ body,
 .cable-reconnect-status { max-width: min(390px, calc(100% - 32px)); padding: 9px 12px; background: var(--bg-panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: 12px/1.5 var(--font-ui); }
 .cable-reconnect-status .mini-btn { margin-top: 5px; }
 .device-node.cable-compatible { outline: 1px dashed var(--canvas-accent); outline-offset: 4px; cursor: crosshair; }
-.device-node.cable-compatible .react-flow__handle { opacity: 0.8; background: var(--canvas-accent); }
+.device-node.cable-compatible .react-flow__handle::before { opacity: 0.8; background: var(--canvas-accent); }
 .device-node.cable-endpoint { outline: 1px solid #38bdf899; outline-offset: 3px; }
 .interface-summary.cable-interface-highlighted { outline: 1px solid var(--accent); outline-offset: 1px; }
 .cable-details { max-width: min(300px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; font: 12px/1.6 var(--font-mono); overflow-wrap: anywhere; }

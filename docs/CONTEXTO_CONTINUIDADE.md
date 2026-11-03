@@ -11,17 +11,67 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 ### Git e sincronização
 
 - Branch `main`, remoto `https://github.com/FelipeDDD/NetLab-FiSI.git`.
-- Base anterior à consolidação desta rodada: **`ac758f9`**, sincronizada com
+- Base anterior à consolidação desta rodada: **`e109471`**, sincronizada com
   `origin/main` antes da revisão. Conferir o commit posterior com `git log -1`.
 - Commits anteriores relevantes:
   - `316264d` — atraso inicial do autoplay da homepage e limpeza do rodapé.
   - `867e178` — branding NetLab-FiSI, textos e auditoria editorial.
   - `cb4af20` — defaults visuais, fontes locais/web, testes e documentação.
   - `ac758f9` — ferramentas de rede e interações do workspace.
-- Esta consolidação reúne os refinamentos de exercícios, gateway, alinhamento
-  e defaults descritos abaixo. No notebook, conferir `git status` e atualizar
+  - `e109471` — exercícios, resumos de gateway e apresentação do canvas.
+- Esta consolidação reúne painéis de exercícios, ajuda IPv4, Handles e tutorial
+  guiado com recuperação local. No notebook, conferir `git status` e atualizar
   a branch antes de continuar; não presumir que uma cópia anterior já os contém.
 - Não descartar mudanças locais, não usar reset/clean/force e não mexer em stashes.
+
+### Aprendizagem guiada e ajuda — consolidação de 03/11/2026
+
+- Os seis exercícios Beta têm instruções compactas, resumo `N/M Prüfungen bestanden`,
+  detalhes e orientações recolhíveis. Seus critérios, topologias, versões e progresso
+  permanecem os mesmos. O painel usa `ExercisePanelFrame`: arraste pelo cabeçalho,
+  teclado, reset e limites da área visível, sem escrever no viewport ou na rede.
+  Rechenpraxis continua com seus controles próprios.
+- **Hilfe → IPv4 konfigurieren** também abre pelo Inspector e pelo tutorial, num
+  modal com foco restaurado e DE/EN/PT-BR. Exemplos selecionáveis, sem botões de
+  cópia. Documentar somente os comandos reais: Linux `ip address add` exige uma
+  interface sem IPv4 e não configura gateway; Windows usa `ipconfig /all` para
+  consulta e não implementa configuração via `netsh`. Ver [learning-help.md](learning-help.md).
+- Handles ficam ocultos sem hover, aparecem por foco/touch e durante conexões,
+  com área clicável de 18×18 px e indicador visual menor. O encaixe RJ45 do Switch,
+  mapeamento das portas, geometria dos dispositivos e engine foram preservados.
+- **Übungen → Geführte Tutorials → Erste Verbindung** tem oito etapas no mesmo
+  capítulo/rascunho: cabo de A, IPv4 de A, ping A→B, Ctrl+C, novo PC C Linux,
+  cabo de C, IPv4 de C pelo terminal e ping C→B com introdução ao ARP/cache.
+  PC C recebe esse nome se estiver livre, preservando seu ID. Não há novos capítulos,
+  notas ou alterações nos seis exercícios Beta. Comandos por API, Quick Ping e
+  sondas não comprovam as ações exigidas do aluno. `terminalCommandEvents.ts`
+  observa a execução real e distingue término normal de interrupção por Ctrl+C.
+- **Persistência do tutorial já implementada:** `tutorialProgress.ts` usa o store
+  `meta` existente, chave `guided:v1:draft:<draftId>`, com versão, etapa, histórico,
+  vínculos dos dispositivos e hashes de evidências. A topologia continua exclusivamente
+  no rascunho normal. A fila confirma o rascunho antes de gravar os metadados com CAS;
+  falhas/conflitos não autorizam sobrescrita silenciosa. Não há alteração de schema,
+  duplicação da topologia ou persistência de processos/caches/saída xterm.
+- F5 restaura o painel e revalida a configuração. Eventos históricos válidos são
+  preservados, mas ping em andamento não é restaurado: a orientação pede repetição.
+  **Fortsetzen** retoma sem duplicar; **Neu starten** cria outra tentativa e mantém
+  as abas anteriores. Sessões antigas sem metadados continuam planos normais.
+  Save/Load/JSON não transferem automaticamente essa associação para outro rascunho.
+  Encerramento abrupto ainda pode perder alterações não confirmadas em disco.
+- Referências: [tutorial-first-connection.md](tutorial-first-connection.md) e
+  [guided-learning-roadmap.md](guided-learning-roadmap.md). Capítulos seguintes,
+  incluindo a proposta de E09 guiado, continuam sujeitos a discussão; não iniciá-los
+  automaticamente. Os critérios publicados do E09 permanecem intactos.
+- Capturas e logs de revisão ficam em `.playwright-mcp/`, ignorados pelo Git.
+  Os runners usam perfil e IndexedDB descartáveis; não acessar dados reais para testes.
+- Validação final desta consolidação em **03/11/2026**, Node **24.21.0**:
+  **408 testes direcionados em 9 arquivos**, TypeScript/build e `git diff --check`
+  passaram. Chromium: **124 verificações** no runner de tutorial/exercícios e
+  **106 verificações** no de ajuda IPv4, sem falhas ou erros de browser. Os runners
+  compartilham regressões do repositório; esses números não são casos únicos somados
+  nem uma execução da suíte completa. Comandos: `node scripts/test-guided-tutorial.mjs`
+  e `node scripts/test-learning-help.mjs`. Dependências e lockfile não mudaram.
+
 
 ### Defaults e nomes aprovados
 
@@ -690,7 +740,7 @@ simulações paralelas nem contornar o controller para trocar planos.
 
 ## 6. Testes e limitações atuais
 
-Validação da consolidação mais recente em **28/10/2026**: **516 testes direcionados
+Validação histórica da consolidação de **28/10/2026**: **516 testes direcionados
 em 20 arquivos**, **109 casos do harness Chromium** (incluindo os seis cenários de
 usabilidade), TypeScript, build e `git diff --check` passaram. O harness usa perfil,
 porta e IndexedDB descartáveis. A regressão anterior de Übungen também passou com

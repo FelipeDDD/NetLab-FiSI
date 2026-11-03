@@ -24,6 +24,7 @@ import { emptyIpv4, parseStaticIpv4 } from './engine/ipv4Config';
 import { createZustandSessionRuntime } from './persistence/zustandSessionRuntime';
 import { DEFAULT_MARKING, markingBounds } from './areaMarkings';
 import { prepareTopologyDocument } from './persistence/topologyDocument';
+import { observeTerminalCommands, type TerminalCommandEvent } from './terminalCommandEvents';
 
 // Only the browser renderer is replaced. Commands, engine, store and persistence
 // run together so these tests cover the actual terminal-to-autosave path.
@@ -85,6 +86,35 @@ function open(device: IpDevice): Session {
   useStore.getState().openTerminal(device.id);
   return getSession(device);
 }
+
+it('terminal command observations distinguish keyboard, API and Quick Ping without changing execution', () => {
+  const { a, net } = pair(), session = open(a), events: TerminalCommandEvent[] = [];
+  const release = observeTerminalCommands(event => events.push(event));
+  const releaseThrowing = observeTerminalCommands(() => { throw Error('Observer failure'); });
+  try {
+    input(session, 'ping -c 1 10.0.0.2\r'); net.scheduler.advanceTo(5000);
+    expect(events.some(event => event.type === 'output' && event.text.includes('64 bytes from 10.0.0.2'))).toBe(true);
+    expect(events.find(event => event.type === 'started')?.command.source).toBe('keyboard');
+    expect(events.some(event => event.type === 'finished')).toBe(true);
+    events.length = 0;
+    expect(session.executeCommand('ping -c 1 10.0.0.2')).toBe('accepted'); net.scheduler.advanceTo(10000);
+    expect(events.find(event => event.type === 'started')?.command.source).toBe('api');
+    events.length = 0;
+    session.executeQuickPing('ping -c 1 10.0.0.2', () => {}); net.scheduler.advanceTo(15000);
+    expect(events.find(event => event.type === 'started')?.command.source).toBe('quick-ping');
+    expect(getSession(a)).toBe(session);
+    expect(events.some(event => event.type === 'finished' && event.reason === 'completed')).toBe(true);
+    events.length = 0;
+    input(session, '\x03'); expect(events).toHaveLength(0);
+    input(session, 'ping 10.0.0.2\r'); net.scheduler.advanceTo(16500);
+    input(session, 'Ctrl+C');
+    expect(events.some(event => event.type === 'finished')).toBe(false);
+    input(session, '\x03');
+    const stopped = events.filter(event => event.type === 'finished');
+    expect(stopped).toHaveLength(1);
+    expect(stopped[0]).toMatchObject({ reason: 'interrupt', command: { deviceId: a.id, source: 'keyboard', line: 'ping 10.0.0.2' } });
+  } finally { release(); releaseThrowing(); }
+});
 
 it('prepares a replacement without touching running sessions, then releases old commands and events on activation', () => {
   const { a, b, net } = pair(), session = open(a);

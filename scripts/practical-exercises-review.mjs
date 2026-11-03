@@ -45,9 +45,9 @@ export async function runPracticalReview({page,url,root,report}) {
     await wait("!document.querySelector('.exercise-panel').textContent.includes('Prüfung läuft')");await delay(80);
     assert.equal(await page.evaluate('return JSON.stringify(serial.serializeNetwork(sim.net,{}));'),before,'checker must not modify configuration');
   };
-  const shot=async(name,variant,width,state)=>{
+  const shot=async(name,variant,width,state,height=960)=>{
     await delay(100);const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(directory,name+'.png'),Buffer.from(png.data,'base64'));
-    captures.push({source:path.relative(root,path.join(directory,name+'.png')).split(path.sep).join('/'),scene:name,variant,state,width,height:960});
+    captures.push({source:path.relative(root,path.join(directory,name+'.png')).split(path.sep).join('/'),scene:name,variant,state,width,height});
   };
   let personal,personalBefore,e08Draft,e09Draft,e09Saved;
   try {
@@ -56,6 +56,7 @@ export async function runPracticalReview({page,url,root,report}) {
     personal=await page.evaluate('return ws.controller.getState().activeDraftId;');personalBefore=await page.evaluate('return JSON.stringify(store.getState().captureWorkspaceDocument());');
     await test('practical: only four pilot entries; E06 healthy with no configuration changes; personal draft preserved',async()=>{
       await menu();assert.equal(await page.evaluate("return document.querySelectorAll('.exercise-menu-entry[data-exercise^=pilot-]').length;"),4);
+      assert.equal(await page.evaluate("return document.querySelectorAll('#toolbar-exercises-menu .exercise-menu-entry[data-exercise]').length;"),6);
       assert.equal(await page.evaluate("return document.querySelectorAll('#toolbar-exercises-menu .exercise-menu-group').length;"),4);
       await page.evaluate("document.querySelectorAll('#toolbar-exercises-menu .exercise-menu-group > summary')[1].focus();");
       await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
@@ -65,10 +66,28 @@ export async function runPracticalReview({page,url,root,report}) {
       await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowDown',code:'ArrowDown',windowsVirtualKeyCode:40});
       assert.equal(await page.evaluate("return document.activeElement.textContent;"),'Routing & Gateway');
       await click('#toolbar-exercises-menu .exercise-menu-group:nth-of-type(2) > summary');
-      await start('e06');await check();assert((await status()).completed['pilot-e06-v1']);
+      await start('e06');
+      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('4 Prüfungen · Noch nicht geprüft')&&!document.querySelector('.exercise-requirements').open;"));
+      await click('.exercise-requirements > summary');assert(await page.evaluate("return document.querySelector('.exercise-requirements ul li').textContent.includes('Die dokumentierten /16-Hostadressen bleiben erhalten.');"));
+      await click('.exercise-requirements > summary');await check();assert((await status()).completed['pilot-e06-v1']);
+      const panelBefore=await page.evaluate("const p=document.querySelector('.exercise-panel'),r=p.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,viewport:flow.getViewport(),positions:store.getState().nodes.map(n=>n.position)};");
+      const progressBefore=await status();
+      const handle=await page.evaluate("const r=document.querySelector('.exercise-heading strong').getBoundingClientRect();return{x:r.x+20,y:r.y+r.height/2};");
+      await page.send('Input.dispatchMouseEvent',{type:'mousePressed',...handle,button:'left',clickCount:1});
+      for(let i=1;i<=6;i++)await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:handle.x+i*30,y:handle.y+i*5,buttons:1});
+      await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:handle.x+180,y:handle.y+30,button:'left',clickCount:1});await delay(80);
+      assert(await page.evaluate(`const r=document.querySelector('.exercise-panel').getBoundingClientRect();return Math.abs(r.x-${panelBefore.x}-180)<1&&r.width===${panelBefore.width}&&r.height===${panelBefore.height};`));
+      assert.deepEqual(await page.evaluate("return {viewport:flow.getViewport(),positions:store.getState().nodes.map(n=>n.position)};"),{viewport:panelBefore.viewport,positions:panelBefore.positions});
+      assert.deepEqual(await status(),progressBefore);
+      await click('.exercise-panel button[aria-expanded]');assert(await page.evaluate("return !document.querySelector('.exercise-body');"));
+      await click('.exercise-panel button[aria-expanded]');assert(await page.evaluate("return !!document.querySelector('.exercise-body');"));
+      await page.evaluate("document.querySelector('.exercise-drag-handle').focus();");
+      for(const type of ['keyDown','keyUp'])await page.send('Input.dispatchKeyEvent',{type,key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+      await click('.exercise-position-reset');await delay(60);
+      assert(await page.evaluate(`const r=document.querySelector('.exercise-panel').getBoundingClientRect();return r.x===${panelBefore.x}&&r.y===${panelBefore.y};`));
       assert(await page.evaluate("return Math.abs(flow.getZoom()-.65)<.001;"));
-      assert(await page.evaluate("return document.querySelector('.exercise-panel').textContent.includes('keine Änderung erforderlich');"));
-      assert(await page.evaluate("return document.querySelector('.exercise-learning').textContent.includes('192.168.0.0/16')&&!document.querySelector('.exercise-summary').textContent.includes('offen');"));
+      assert(await page.evaluate("return document.querySelector('.exercise-intro').textContent.includes('Die Konfiguration kann bereits stimmen');"));
+      assert(await page.evaluate("return document.querySelector('.exercise-learning').textContent.includes('192.168.0.0/16')&&document.querySelector('.exercise-summary').textContent.includes('4/4 Prüfungen bestanden');"));
       await shot('e06-learning-quarter-zoom','graphite-dark',1440,'normal');
       await page.evaluate("await flow.setViewport({x:120,y:80,zoom:.75});window.manualViewport=flow.getViewport();window.initialPositions=store.getState().nodes.map(n=>({id:n.id,position:n.position}));store.getState().setTerminalDockCollapsed(true);");await delay(150);
       assert.deepEqual(await page.evaluate('return flow.getViewport();'),await page.evaluate('return manualViewport;'));
@@ -130,7 +149,8 @@ export async function runPracticalReview({page,url,root,report}) {
       await shot('gateway-alternative-passed','graphite-dark',1440,'selected');
     });
     await test('practical: E09 Inspector/store edit and Undo/Redo remain usable; correct mask passes and altered structure fails',async()=>{
-      await start('e09');e09Draft=await page.evaluate('return ws.controller.getState().activeDraftId;');await check();assert(!(await status()).completed['pilot-e09-v1']);
+      await start('e09');e09Draft=await page.evaluate('return ws.controller.getState().activeDraftId;');
+      await shot('e09-compact-desktop','graphite-dark',1440,'normal');await check();assert(!(await status()).completed['pilot-e09-v1']);
       assert(await page.evaluate('return Math.abs(flow.getZoom()-.65)<.001;'));
       await page.evaluate('await flow.setViewport({x:88,y:42,zoom:.9});window.e09View=flow.getViewport();');
       await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(e08Draft)});`);await delay(100);
@@ -172,13 +192,14 @@ export async function runPracticalReview({page,url,root,report}) {
       assert.equal((await status()).attempts[await page.evaluate('return ws.controller.getState().activeDraftId;')],undefined);
     });
     await test('practical: D02 incomplete return path fails; equivalent defaults pass',async()=>{
-      await start('d02');assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('Noch nicht geprüft');"));
+      await start('d02');assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('4 Prüfungen · Noch nicht geprüft');"));
+      await shot('d02-compact-desktop','graphite-dark',1440,'normal');
       await check();assert(!(await status()).completed['pilot-d02-v1']);
-      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('Anforderungen noch nicht erfüllt');"));
+      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('2/4 Prüfungen bestanden');"));
       await page.evaluate("sim.net.devices.get('west').addRoute(0,0,ip.parseIp('10.72.254.2'),'eth1');store.getState().refresh();await ws.controller.flush();");await check();assert(!(await status()).completed['pilot-d02-v1']);
       await page.evaluate("sim.net.devices.get('east').addRoute(0,0,ip.parseIp('10.72.254.1'),'eth0');store.getState().refresh();await ws.controller.flush();");await check();assert((await status()).completed['pilot-d02-v1']);
-      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('✓ Technisch bestanden')&&!document.querySelector('.exercise-summary').textContent.includes('Besprechung offen');"));
-      assert(await page.evaluate("const body=document.querySelector('.exercise-body'),heading=document.querySelector('.exercise-panel header'),before=heading.getBoundingClientRect().top;body.scrollTop=body.scrollHeight;return body.scrollTop>0&&heading.getBoundingClientRect().top===before&&heading.contains(document.querySelector('.exercise-summary'));"));
+      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('4/4 Prüfungen bestanden')&&!document.querySelector('footer').textContent.includes('Technisch bestanden');"));
+      assert(await page.evaluate("const heading=document.querySelector('.exercise-panel header');return heading.contains(document.querySelector('.exercise-summary'))&&getComputedStyle(document.querySelector('.exercise-body')).overflowY==='auto';"));
       await shot('routing-return-passed','graphite-dark',1440,'selected');
       await page.evaluate("store.getState().renameDevice('west','West edited');");
       await wait("document.querySelector('.exercise-summary').dataset.outcome==='unverified'");
@@ -190,17 +211,30 @@ export async function runPracticalReview({page,url,root,report}) {
       for(const [language,label] of [['en','Check solution'],['pt-BR','Verificar solução'],['de','Lösung prüfen']]){
         await page.evaluate(`lang.getState().setLanguage(${JSON.stringify(language)});`);await delay(100);
         assert(await page.evaluate(`return [...document.querySelectorAll('.exercise-panel button')].some(b=>b.textContent===${JSON.stringify(label)});`));
-        assert(await page.evaluate("return document.querySelector('.exercise-body').textContent.includes('Transitnetz');"));
+        assert(await page.evaluate("return document.querySelector('.exercise-body').textContent.includes('statische Routen');"));
       }
       assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth+1;'));
       assert(await page.evaluate("const p=document.querySelector('.exercise-panel');return p.scrollWidth<=p.clientWidth+1&&p.getBoundingClientRect().bottom<=innerHeight;"));
-      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('✓ Technisch bestanden');"));
+      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('4/4 Prüfungen bestanden');"));
       await shot('routing-light-700','classic-light',700,'normal');await menu();await shot('pilot-menu-light-700','classic-light',700,'normal');
       const n=await page.evaluate('return ws.controller.getState().drafts.length;');await start('d02','Erneut starten');assert.equal(await page.evaluate('return ws.controller.getState().drafts.length;'),n+1);
       await delay(150);
       assert(await page.evaluate('const z=flow.getZoom(),v=flow.getViewport(),b=flow.getNodesBounds(flow.getNodes()),r=document.querySelector(".react-flow").getBoundingClientRect();return z<=.65&&b.x*z+v.x>=-1&&(b.x+b.width)*z+v.x<=r.width+1&&b.y*z+v.y>=-1&&(b.y+b.height)*z+v.y<=r.height+1;'));
       assert.equal(await page.evaluate("return sim.net.devices.get('west').staticRoutes.length;"),0);
       assert((await status()).completed['pilot-d02-v1']);
+    });
+    await test('practical: floating panel clamps on narrow resize and reset restores dock position',async()=>{
+      const before=await page.evaluate('return {viewport:flow.getViewport(),positions:store.getState().nodes.map(n=>n.position)};');
+      await page.evaluate("document.querySelector('.exercise-drag-handle').focus();");
+      for(let i=0;i<35;i++)for(const type of ['keyDown','keyUp'])await page.send('Input.dispatchKeyEvent',{type,key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39,modifiers:8});
+      await page.send('Emulation.setDeviceMetricsOverride',{width:500,height:700,deviceScaleFactor:1,mobile:false});await delay(180);
+      assert(await page.evaluate("const r=document.querySelector('.exercise-panel').getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;"));
+      await page.evaluate("document.querySelector('.exercise-body').scrollTop=9999;");
+      assert(await page.evaluate("return document.querySelector('.exercise-body').scrollTop>0;"));
+      assert.deepEqual(await page.evaluate('return {viewport:flow.getViewport(),positions:store.getState().nodes.map(n=>n.position)};'),before);
+      await shot('floating-panel-light-500','classic-light',500,'normal',700);
+      await click('.exercise-position-reset');
+      assert(await page.evaluate("const p=document.querySelector('.exercise-panel');return p.style.left===''&&p.style.top==='';"));
     });
   } finally {
     await page.evaluate('window.ws?.dispose();');
