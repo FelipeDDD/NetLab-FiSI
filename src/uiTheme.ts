@@ -4,6 +4,7 @@ import { create } from 'zustand';
 export const UI_THEMES = {
   original: { label: 'Midnight Blue', group: 'dark' },
   'graphite-dark': { label: 'Graphite Dark', group: 'dark' },
+  'burgundy-dark': { label: 'Burgundy Dark', group: 'dark' },
   'slate-gray': { label: 'Slate Gray', group: 'light' },
   'deep-teal': { label: 'Deep Teal', group: 'dark' },
   'classic-light': { label: 'Classic Light', group: 'light' },

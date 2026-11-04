@@ -1,4 +1,13 @@
 .guided-tutorial-menu { padding: 10px 4px; border-bottom: 1px solid var(--ui-border); }
+.guided-tutorial-menu .guided-menu-toggle { display: flex; flex-direction: row; align-items: center; gap: 10px; width: 100%; }
+.guided-menu-icon { flex: 0 0 20px; width: 20px; height: 20px; color: var(--ui-accent); }
+.guided-menu-heading { display: flex; flex: 1 1 auto; flex-direction: column; align-items: flex-start; min-width: 0; gap: 2px; }
+.guided-menu-summary { color: var(--ui-text-muted); font-size: 11px; line-height: 1.35; }
+.guided-menu-chevron { flex: 0 0 16px; width: 16px; height: 16px; color: var(--ui-text-muted); }
+#guided-tutorial-groups { margin: 2px 0 4px 19px; padding-left: 12px; border-left: 1px solid var(--ui-border); }
+.guided-menu-chapter { padding: 9px 0; }
+.guided-menu-chapter + .guided-menu-chapter { margin-top: 3px; border-top: 1px solid var(--ui-border); }
+.guided-menu-chapter > .btn + .btn { margin-left: 6px; }
 .chapter-restart-control { position: relative; display: inline-flex; flex-shrink: 0; }
 .chapter-restart-popover { position: absolute; z-index: 20; top: calc(100% + 8px); right: 0; width: min(300px, calc(100vw - 56px)); padding: 12px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-panel); color: var(--ui-text); box-shadow: var(--ui-shadow-popover); cursor: default; font-weight: normal; user-select: text; }
 .chapter-restart-popover p { line-height: 1.45; margin: 8px 0; }

@@ -28,6 +28,7 @@ export function RouterTutorialPanel({controller,state}:{controller:RouterTutoria
   </>}>
     {!collapsed&&<><div className="exercise-body" data-router-step={r.step} data-router-saving={state.saving}>
       <h3>{t(`guidedRouter.${solving?'solveTitle':ROUTER_TITLES[r.step-1]}`)}</h3><p>{t(`guidedRouter.${solving?'solveText':ROUTER_TEXTS[r.step-1]}`,values)}</p>
+      {r.step===3&&<details className="exercise-learning" data-router-interface-help><summary>{t('guidedRouter.interfaceHelpTitle')}</summary><p>{t('guidedRouter.interfaceHelpText')}</p></details>}
       {(r.step===4||r.step===6)&&<><pre><code>{t(r.step===4?'guidedRouter.addressSyntax':'guidedRouter.routeSyntax')}</code></pre><LearningHelpLink page="ipv4"/></>}
       {state.warning&&<p role="status">{t(`guidedRouter.${state.warning}`)}</p>}
       {state.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void controller.retryProgress()}>{t('common.retry')}</button></p>}

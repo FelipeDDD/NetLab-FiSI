@@ -11,6 +11,7 @@ export interface Attempt { id: string; draftId: string; exerciseId: string; cont
 export interface Completion { attemptId: string; contentVersion: number; completedAt: number }
 export interface ExerciseProgress { schemaVersion: 1; attempts: Record<string, Attempt>; completed: Record<string, Completion> }
 export interface ExerciseRuntime {
+  openAttempt?: SessionController['openDocument'];
   network(): Network;
   signature(): string;
   subscribe(listener: () => void): () => void;
@@ -94,7 +95,8 @@ export class ExerciseController {
     if (this.runtime.pendingForms()) { this.update({ error: 'Bitte zuerst offene Formulare übernehmen oder verwerfen.' }); return; }
     this.cancel(); this.update({ busy: true, error: '', results: {}, message: '' });
     try {
-      const result = await this.sessions.openDocument({ schemaVersion: 1, topology: structuredClone(exercise.student.initialTopology) });
+      const document = { schemaVersion: 1 as const, topology: structuredClone(exercise.student.initialTopology) };
+      const result = await (this.runtime.openAttempt?.(document) ?? this.sessions.openDocument(document));
       if (!result.ok) throw Error('Übung konnte nicht geöffnet werden: ' + result.error.code);
       this.runtime.started?.(result.value);
       this.pendingAttempt = { id: crypto.randomUUID(), draftId: result.value, exerciseId, contentVersion: exercise.contentVersion, startedAt: Date.now() };

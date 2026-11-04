@@ -27,6 +27,7 @@ export interface TutorialState {
   repeatPing: boolean;
 }
 export interface TutorialRuntime {
+  openAttempt?: SessionController['openDocument'];
   checkpoint?:ChapterCheckpointHooks;
   restarting?():boolean;
   network(): Network;
@@ -183,7 +184,8 @@ export class TutorialController {
         await this.restoration;
       } else {
         this.remember();
-        const opened = await this.sessions.openDocument(firstConnectionDocument());
+        const document = firstConnectionDocument();
+        const opened = await (this.runtime.openAttempt?.(document) ?? this.sessions.openDocument(document));
         if (!opened.ok) throw Error(opened.error.code);
         if (this.disposed) return;
         this.runtime.started?.(opened.value);

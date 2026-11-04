@@ -62,6 +62,18 @@ it('works without storage or a browser document', () => {
   expect(() => applyUiTheme('original')).not.toThrow();
 });
 
+it('keeps Slate Gray visibly distinct from Classic Light and readable in forms and tooltips', () => {
+  const css = readFileSync(new URL('./themes.css', import.meta.url), 'utf8');
+  const tokens = (theme: string) => Object.fromEntries([...css.match(new RegExp(`:root\\[data-ui-theme="${theme}"\\]\\s*\\{([^}]+)\\}`))![1].matchAll(/(--[\w-]+):\s*(#[\da-f]{6});/gi)].map(m => [m[1], m[2]]));
+  const luminance = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(n => n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4).reduce((sum, n, i) => sum + n * [.2126, .7152, .0722][i], 0);
+  const slate = tokens('slate-gray'), light = tokens('classic-light');
+  expect(luminance(light['--ui-surface-panel']) - luminance(slate['--ui-surface-panel'])).toBeGreaterThan(.3);
+  for (const [text, surface] of [['--ui-form-text', '--ui-form-surface'], ['--ui-tooltip-text', '--ui-tooltip-surface']]) {
+    const a = luminance(slate[text]), b = luminance(slate[surface]);
+    expect((Math.max(a, b) + .05) / (Math.min(a, b) + .05)).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 // Check the actual CSS palette, including inherited Original tokens. This
 // catches unreadable additions without coupling tests to component markup.
 it('keeps primary, secondary, status and category text readable on UI surfaces', () => {
@@ -81,12 +93,18 @@ it('keeps primary, secondary, status and category text readable on UI surfaces',
         expect((Math.max(a, b) + .05) / (Math.min(a, b) + .05), `${theme}: ${text} on ${surface}`).toBeGreaterThanOrEqual(4.5);
       }
     }
-    if (theme === 'graphite-dark' || theme === 'slate-gray') {
+    if (theme === 'graphite-dark' || theme === 'slate-gray' || theme === 'burgundy-dark') {
       for (const surface of ['--ui-surface-selected', '--ui-surface-hover']) {
         for (const text of ['--ui-text', '--ui-text-muted', '--ui-text-secondary', '--ui-accent']) {
           const a = luminance(palette[text]), b = luminance(palette[surface]);
           expect((Math.max(a, b) + .05) / (Math.min(a, b) + .05), `${theme}: ${text} on ${surface}`).toBeGreaterThanOrEqual(4.5);
         }
+      }
+    }
+    if (theme === 'burgundy-dark') {
+      for (const [text, surface] of [['--ui-form-text', '--ui-form-surface'], ['--ui-tooltip-text', '--ui-tooltip-surface']]) {
+        const a = luminance(palette[text]), b = luminance(palette[surface]);
+        expect((Math.max(a, b) + .05) / (Math.min(a, b) + .05), `${theme}: ${text} on ${surface}`).toBeGreaterThanOrEqual(4.5);
       }
     }
   }

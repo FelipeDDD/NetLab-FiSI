@@ -46,7 +46,7 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
     assert.deepEqual(await page.evaluate('return {topology:JSON.stringify(serial.serializeNetwork(sim.net,{})),tabs:ws.controller.getState().drafts.length,active:ws.controller.getState().activeDraftId};'),before);
     await page.evaluate('window.tutorialNetwork=sim.net;');
   };
-  const menu = async () => { if (await page.evaluate('return innerWidth<1100;')) await click('.toolbar-menu-trigger', 'Menü'); await click('.toolbar-menu-trigger,.toolbar-menu-action', 'Übungen (Beta)'); };
+  const menu = async () => { if (await page.evaluate('return innerWidth<1100;')) await click('.toolbar-menu-trigger', 'Menü'); await click('.toolbar-menu-trigger,.toolbar-menu-action', 'Übungen (Beta)'); await click('[data-guided-menu-toggle]'); };
   const a = 'tutorial-01-a', sw = 'tutorial-01-switch';
   let tutorialId, personalId, personalDocument, betaBefore;
   try {

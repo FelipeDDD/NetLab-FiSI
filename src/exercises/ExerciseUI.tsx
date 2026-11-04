@@ -6,6 +6,7 @@ import { useStore } from '../store';
 import { sim } from '../sim';
 import { AVAILABLE_EXERCISES, exerciseChecks, practicalExercise } from './beta';
 import { ExerciseController, type ExerciseState } from './exerciseController';
+import { openNewLearningAttempt } from './newAttempt';
 import './exercises.css';
 import { useTranslation } from '../i18n';
 import { PracticeLauncher } from './practice/PracticeSurface';
@@ -32,6 +33,7 @@ function criterionLabel(c:PracticalCriterion) {
 const Context = createContext<{ controller: ExerciseController; state: ExerciseState } | null>(null);
 export function ExerciseProvider({ sessions, repository, children }: { sessions: SessionController; repository: ProjectRepository; children: ReactNode }) {
   const [controller] = useState(() => new ExerciseController(sessions, repository, {
+    openAttempt: document => openNewLearningAttempt(sessions, document),
     network: () => sim.net,
     signature: () => JSON.stringify(useStore.getState().captureWorkspaceDocument()),
     subscribe: listener => useStore.subscribe(listener), pendingForms: hasPendingForms,

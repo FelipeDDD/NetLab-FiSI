@@ -1,4 +1,5 @@
 const en = {
+  basicsGroup: 'Chapters 1–2 · Fundamentals', subnetMenuTitle: 'Understanding subnet masks', routerMenuDescription: 'Router and default gateway', directStart: 'Start directly', menuSummary: '3 chapters · Networking fundamentals',
   restart: 'Start again', storageError: 'Tutorial progress could not be saved or recovered. Your topology is preserved. A conflict may require reloading.',
   repeatPing: 'No ping is running after restoration. Run ping 192.168.10.20 in this PC’s terminal again, wait for a reply, then stop it with Ctrl+C.',
   hintIpv4CInitial: 'Enter the command in PC C’s Linux terminal.',
@@ -33,6 +34,7 @@ const en = {
 } as const;
 type Messages = Record<keyof typeof en, string>;
 const de: Messages = {
+  basicsGroup: 'Kapitel 1–2 · Grundlagen', subnetMenuTitle: 'Subnetzmaske verstehen', routerMenuDescription: 'Router und Standardgateway', directStart: 'Direkt starten', menuSummary: '3 Kapitel · Netzwerkgrundlagen',
   restart: 'Neu starten', storageError: 'Tutorialfortschritt konnte nicht gespeichert oder wiederhergestellt werden. Die Topologie bleibt erhalten. Bei einem Konflikt kann Neuladen nötig sein.',
   repeatPing: 'Nach dem Wiederherstellen läuft kein Ping. Starten Sie ping 192.168.10.20 erneut im Terminal dieses PCs, warten Sie auf eine Antwort und beenden Sie ihn mit Strg+C.',
   hintIpv4CInitial: 'Geben Sie den Befehl im Linux-Terminal von PC C ein.',
@@ -66,6 +68,7 @@ const de: Messages = {
   hintPingFailed: 'Noch keine erfolgreiche Antwort. Kabel, Adressen und Run prüfen, dann erneut versuchen.',
 };
 const ptBR: Messages = {
+  basicsGroup: 'Capítulos 1–2 · Fundamentos', subnetMenuTitle: 'Entender a máscara de sub-rede', routerMenuDescription: 'Roteador e gateway padrão', directStart: 'Iniciar diretamente', menuSummary: '3 capítulos · Fundamentos de redes',
   restart: 'Recomeçar', storageError: 'Não foi possível salvar ou recuperar o progresso do tutorial. A topologia foi preservada. Um conflito pode exigir recarregar a página.',
   repeatPing: 'Nenhum ping está em execução após a restauração. Execute ping 192.168.10.20 novamente no terminal deste PC, espere uma resposta e encerre com Ctrl+C.',
   hintIpv4CInitial: 'Digite o comando no terminal Linux de PC C.',

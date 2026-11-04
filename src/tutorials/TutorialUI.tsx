@@ -21,14 +21,15 @@ import { SUBNET_DEMO_COMMAND, SUBNET_PC_ID } from './subnetChapter';
 import { getSession } from '../terminals';
 import { IpDevice } from '../engine/ipdevice';
 import { RouterTutorialController, type RouterState } from './RouterTutorialController';
-import { RouterProgressStore } from './routerProgress';
+import { RouterProgressStore, ROUTER_PROGRESS_PREFIX, readRouterProgress } from './routerProgress';
 import { RouterTutorialPanel } from './RouterTutorialPanel';
 import { ChapterRestartService } from './ChapterRestartService';
 import { ChapterRestartButton, ChapterRestartContext } from './ChapterRestartUI';
+import { openNewLearningAttempt } from '../exercises/newAttempt';
 import type { ChapterId } from './chapterCheckpoints';
 import './tutorial.css';
 
-const Context = createContext<{ controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState; router:RouterTutorialController; routerState:RouterState } | null>(null);
+const Context = createContext<{ sessions: SessionController; repository: ProjectRepository; controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState; router:RouterTutorialController; routerState:RouterState } | null>(null);
 export function GuidedTutorialProvider({ sessions, repository, children }: { sessions: SessionController; repository: ProjectRepository; children: ReactNode }) {
   const [restart]=useState(()=>new ChapterRestartService(repository,sessions)),status=useSyncExternalStore(restart.subscribe,restart.getState),{t}=useTranslation();
   useEffect(()=>useStore.getState().attachChapterHistory((id,direction)=>void restart.navigate(id,direction)),[restart]);
@@ -40,6 +41,7 @@ function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:
   const subscribeEarlier=(listener:()=>void)=>{const a=useStore.subscribe(listener),b=routerRef.current?.subscribe(listener),c=restart.subscribe(listener);return()=>{a();b?.();c();};};
   const checkpoint=(chapter:ChapterId)=>({before:(id:string)=>restart.before(chapter,id),prepared:(id:string,value:import('../projects/types').MetaValue)=>restart.prepared(chapter,id,value)});
   const [controller] = useState<TutorialController>(() => new TutorialController(sessions, {
+    openAttempt: document => openNewLearningAttempt(sessions, document),
     checkpoint:checkpoint('first-connection'),restarting:()=>restart.getState().busy,
     network: () => sim.net, signature: () => JSON.stringify(serializeNetwork(sim.net, {})),
     activeDraftId: () => useStore.getState().workspaceIdentity?.draftId ?? null,
@@ -67,6 +69,7 @@ function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:
   }, new SubnetProgressStore(repository, sessions)));
   const subnetState = useSyncExternalStore(subnet.subscribe, subnet.getState);
   const [router]=useState<RouterTutorialController>(()=>new RouterTutorialController(sessions,subnet,{
+    openAttempt: document => openNewLearningAttempt(sessions, document),
     checkpoint:checkpoint('two-networks'),suspended:()=>restart.getState().busy,restarting:()=>restart.getState().busy,
     network:()=>sim.net,activeDraftId:()=>useStore.getState().workspaceIdentity?.draftId??null,pendingForms:hasPendingForms,
     subscribe:listener=>{const a=useStore.subscribe(listener),b=restart.subscribe(listener);return()=>{a();b();};},observeCommands:observeTerminalCommands,insert:pcC=>useStore.getState().addRouterTutorialGroup(pcC),started:requestExerciseViewport,
@@ -85,24 +88,56 @@ function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:
     return () => { document.removeEventListener('visibilitychange', flush); window.removeEventListener('beforeunload', before); };
   }, [controller, subnet, router]);
   const busy=restart.getState().busy;
-  return <ChapterRestartContext.Provider value={{service:restart,newAttempt:chapter=>chapter==='two-networks'?router.begin(true):controller.start(true)}}><Context.Provider value={{ controller, state:{...state,busy:state.busy||busy}, subnet, subnetState:{...subnetState,busy:subnetState.busy||busy}, router, routerState:{...routerState,busy:routerState.busy||busy} }}>{children}</Context.Provider></ChapterRestartContext.Provider>;
+  return <ChapterRestartContext.Provider value={{service:restart,newAttempt:chapter=>chapter==='two-networks'?router.begin(true):controller.start(true)}}><Context.Provider value={{ sessions, repository, controller, state:{...state,busy:state.busy||busy}, subnet, subnetState:{...subnetState,busy:subnetState.busy||busy}, router, routerState:{...routerState,busy:routerState.busy||busy} }}>{children}</Context.Provider></ChapterRestartContext.Provider>;
 }
 
 export function GuidedTutorialMenu({ close }: { close(): void }) {
   const ui = useContext(Context), { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const [routerDraft, setRouterDraft] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ui || !expanded) return;
+    let cancelled = false;
+    const { sessions, repository } = ui, session = sessions.getState();
+    const drafts = [...session.drafts].sort((a, b) => Number(b.id === session.activeDraftId) - Number(a.id === session.activeDraftId));
+    void (async () => {
+      for (const draft of drafts) {
+        const result = await repository.getMeta(ROUTER_PROGRESS_PREFIX + draft.id);
+        if (cancelled) return;
+        if (!result.ok || !result.value) continue;
+        try { readRouterProgress(result.value.value, draft.id); }
+        catch { continue; }
+        setRouterDraft(draft.id); return;
+      }
+      setRouterDraft(null);
+    })();
+    return () => { cancelled = true; };
+  }, [expanded, ui?.sessions, ui?.repository, ui?.routerState.loadedDraft]);
   if (!ui) return null;
   const { controller, state } = ui;
   return <section className="guided-tutorial-menu" aria-label={t('guided.group')}>
-    <strong>{t('guided.group')}</strong><p>{t('guided.title')}</p>
+    <button type="button" role="menuitem" className="labs-menu-item guided-menu-toggle" data-guided-menu-toggle aria-expanded={expanded} aria-controls="guided-tutorial-groups" onClick={() => setExpanded(value => !value)}>
+      <svg className="guided-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 6.5c-2-1.5-4.8-2-8-1v12c3.2-1 6-.5 8 1m0-12c2-1.5 4.8-2 8-1v12c-3.2-1-6-.5-8 1m0-12v12"/></svg>
+      <span className="guided-menu-heading"><strong>{t('guided.group')}</strong><span className="guided-menu-summary">{t('guided.menuSummary')}</span></span>
+      <svg className="guided-menu-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={expanded ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'}/></svg>
+    </button>
+    {expanded && <div id="guided-tutorial-groups">
+    <section className="guided-menu-chapter" aria-label={t('guided.basicsGroup')}>
+    <strong>{t('guided.basicsGroup')}</strong><p>{t('guided.title')}<br/>{t('guided.subnetMenuTitle')}</p>
     <button type="button" role="menuitem" className="btn" data-start-tutorial="first-connection" disabled={state.busy || !state.ready} onClick={() => {
       usePractice.getState().close(); void controller.start(); close();
     }}>{t(state.draftId ? 'guided.resume' : 'guided.start')}</button>
     {state.draftId && <button type="button" role="menuitem" className="btn" data-restart-tutorial disabled={state.busy || !state.ready} onClick={() => { usePractice.getState().close(); void controller.start(true); close(); }}>{t('guided.restart')}</button>}
     <small>{t('guided.prototype')}</small>{state.error && <p role="alert">{t('guided.error')}</p>}
-    <p>{t('guidedRouter.title')}</p><button type="button" role="menuitem" className="btn" data-router-direct disabled={ui.routerState.busy} onClick={()=>{usePractice.getState().close();void ui.router.begin(true);close();}}>{t('guidedRouter.direct')}</button>
+    {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
+    </section>
+    <section className="guided-menu-chapter" aria-label={t('guidedRouter.title')}>
+    <strong>{t('guidedRouter.title')}</strong><p>{t('guided.routerMenuDescription')}</p>
+    {routerDraft && <button type="button" role="menuitem" className="btn" data-router-resume disabled={ui.routerState.busy} onClick={() => { void ui.sessions.switchDraft(routerDraft).then(result => { if (result.ok) { usePractice.getState().close(); close(); } }); }}>{t('guided.resume')}</button>}
+    <button type="button" role="menuitem" className="btn" data-router-direct title={t('guidedRouter.direct')} disabled={ui.routerState.busy} onClick={()=>{usePractice.getState().close();void ui.router.begin(true);close();}}>{t('guided.directStart')}</button>
     {ui.routerState.warning&&<p role="status">{t(`guidedRouter.${ui.routerState.warning}`)}</p>}
     {ui.routerState.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void ui.router.retryProgress()}>{t('common.retry')}</button></p>}
-    {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
+    </section></div>}
   </section>;
 }
 const steps = [

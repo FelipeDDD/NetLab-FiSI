@@ -107,7 +107,7 @@ try {
   await new Promise(resolve => probe.close(resolve));
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
     cacheDir: path.join(scratch, 'vite-cache'),
-    plugins: [...(process.env.NETLAB_ARTWORK_OFFSET_REVIEW === '1' || process.env.NETLAB_PRACTICAL_REVIEW === '1' || process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_GUIDED_TUTORIAL_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
+    plugins: [...(process.env.NETLAB_CABLE_TOOLTIP_REVIEW || process.env.NETLAB_HANDLE_TUNING_REVIEW || process.env.NETLAB_DEVICE_SELECTION_REVIEW || process.env.NETLAB_ARTWORK_OFFSET_REVIEW === '1' || process.env.NETLAB_PRACTICAL_REVIEW === '1' || process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_GUIDED_TUTORIAL_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
       name: 'isolated-viewport-probe', enforce: 'pre',
       transform(code, id) {
         if (!id.replaceAll('\\', '/').endsWith('/src/App.tsx')) return;
@@ -401,6 +401,31 @@ try {
   if (process.env.NETLAB_PRACTICAL_REVIEW === '1') {
     const {runPracticalReview}=await import('./practical-exercises-review.mjs');
     await runPracticalReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_TUTORIAL_MENU_REVIEW) {
+    const { runTutorialMenuReview } = await import('./tutorial-menu-review.mjs');
+    await runTutorialMenuReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_CABLE_TOOLTIP_REVIEW) {
+    const { runCableTooltipReview } = await import('./cable-tooltip-review.mjs');
+    await runCableTooltipReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_HANDLE_TUNING_REVIEW) {
+    const { runHandleTuningReview } = await import('./handle-tuning-review.mjs');
+    await runHandleTuningReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_DEVICE_SELECTION_REVIEW) {
+    const { runDeviceSelectionReview } = await import('./device-selection-review.mjs');
+    await runDeviceSelectionReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_ATTEMPT_PREFERENCES_REVIEW) {
+    const { runAttemptPreferencesReview } = await import('./attempt-preferences-review.mjs');
+    await runAttemptPreferencesReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, report });
     await prepare(pageOne);
   }
   if (process.env.NETLAB_GUIDED_TUTORIAL_REVIEW === '1') {

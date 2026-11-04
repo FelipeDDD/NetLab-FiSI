@@ -367,11 +367,11 @@ body,
 .device-node.selected { background-color: color-mix(in srgb, var(--device-color) 12%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--device-color) 40%, transparent), 0 0 12px color-mix(in srgb, var(--device-color) 18%, transparent); }
 
 /* Visual landing regions in deviceArtwork.ts use this 5px padding + 1px border. */
-.device-node.has-device-artwork { background-color: transparent; padding: 5px 6px; border: 1px solid transparent; }
+.device-node.has-device-artwork { --device-selection-top: min(0px, var(--device-artwork-offset-y, 0px)); background-color: transparent; padding: 5px 6px; border: 1px solid transparent; }
 .device-node.has-device-artwork:hover { background-color: color-mix(in srgb, var(--device-color) 6%, transparent); border-color: color-mix(in srgb, var(--device-color) 50%, transparent); }
 .device-node.has-device-artwork.selected { background-color: color-mix(in srgb, var(--device-color) 12%, transparent); border-color: var(--device-color); }
 
-.device-node.has-device-artwork.kind-switch { width: 152px; }
+.device-node.has-device-artwork.kind-switch { --device-selection-top: -4px; width: 152px; }
 .device-node.has-device-artwork.kind-router { width: 132px; }
 .device-node.has-device-artwork.kind-server { width: 100px; }
 .device-node.has-device-artwork.kind-host { width: 124px; }
@@ -675,8 +675,12 @@ body,
 .interface-summary.cable-interface-highlighted { outline: 1px solid var(--accent); outline-offset: 1px; }
 .cable-details { max-width: min(300px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; font: 12px/1.6 var(--font-mono); overflow-wrap: anywhere; }
 .cable-details-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-family: var(--font-ui); }
-.cable-tooltip { position: fixed; z-index: 10000; pointer-events: none; width: max-content; max-width: min(300px, calc(100vw - 16px)); box-sizing: border-box; padding: 7px 10px; background: var(--bg-panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: 12px/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.cable-tooltip { position: fixed; z-index: 10000; pointer-events: none; width: max-content; max-width: min(300px, calc(100vw - 16px)); box-sizing: border-box; padding: 7px 10px; background: var(--ui-tooltip-surface); color: var(--ui-tooltip-text); border: 1px solid var(--ui-tooltip-border); border-radius: 6px; font: 12px/1.5 var(--font-mono); overflow-wrap: anywhere; }
 .cable-tooltip-panel { position: absolute; max-width: calc(100% - 32px); }
+.cable-tooltip-content { display: flex; flex-wrap: wrap; align-items: center; }
+.cable-tooltip-group { display: inline; }
+.cable-tooltip-endpoint { display: inline; border-radius: 3px; padding: 2px 3px; color: color-mix(in srgb, var(--endpoint-color) 25%, var(--ui-tooltip-text)); background: color-mix(in srgb, var(--endpoint-color) 10%, transparent); }
+.cable-tooltip-arrow { color: var(--ui-tooltip-text); padding: 0 3px; }
 
 .react-flow__attribution {
   background: transparent;
@@ -2077,20 +2081,31 @@ body.packet-panel-resizing, body.packet-panel-resizing * { cursor: col-resize !i
 /* The scaled caption can extend beyond the fixed node box. Paint hover and
    selection outlines separately so their edges clear the caption without changing node
    measurements, handles, labels or pointer targets. */
-.device-node.has-device-artwork:is(:hover, .selected) { border-color: transparent; }
+.device-node.has-device-artwork:is(:hover, .selected) { border-color: transparent; background-color: transparent; }
 .device-node.has-device-artwork.selected { box-shadow: none; }
 .device-node.has-device-artwork:is(:hover, .selected)::after {
   content: ''; position: absolute;
-  inset: min(0px, var(--device-artwork-offset-y, 0px)) calc(-1 * var(--device-selection-right, 6px)) calc(-1 * var(--device-selection-bottom, 6px)) calc(-1 * var(--device-selection-left, 6px));
+  inset: var(--device-selection-top) calc(-1 * var(--device-selection-right, 6px)) calc(-1 * var(--device-selection-bottom, 6px)) calc(-1 * var(--device-selection-left, 6px));
   border: 1px solid var(--device-color); border-radius: inherit;
-  pointer-events: none;
+  pointer-events: none; z-index: -1;
+  background-color: color-mix(in srgb, var(--device-color) 6%, transparent);
 }
+.has-device-artwork .device-action { top: calc(var(--device-selection-top) + 3px); left: calc(3px - var(--device-selection-left, 6px)); }
+.has-device-artwork .device-ping { left: auto; right: calc(3px - var(--device-selection-right, 6px)); }
 .device-node.has-device-artwork.selected::after {
+  background-color: color-mix(in srgb, var(--device-color) 12%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--device-color) 40%, transparent), 0 0 12px color-mix(in srgb, var(--device-color) 18%, transparent);
 }
 .device-node.has-device-artwork.selected.quick-ping-source::after {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--device-color) 60%, transparent);
 }
+/* Use the same offsets as the existing border. */
+.has-device-artwork .react-flow__handle-bottom {
+  bottom: calc(-1 * var(--device-selection-bottom, 6px));
+  left: calc(50% + (var(--device-selection-right, 6px) - var(--device-selection-left, 6px)) / 2);
+  z-index: 2;
+}
+.has-device-artwork.kind-switch .react-flow__handle-top { top: -4px; }
 
 .host-os-terminal { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 10px; }
 .host-os-terminal .host-os-setting { flex: 1; min-width: 0; margin: 0; }

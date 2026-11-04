@@ -14,6 +14,7 @@ import type { MetaValue } from '../projects/types';
 type Sessions = Pick<SessionController,'getState'|'subscribe'|'hasPendingOperations'|'openDocument'>;
 type Previous = Pick<SubnetTutorialController,'getState'|'subscribe'|'flushProgress'>;
 export interface RouterRuntime {
+  openAttempt?: SessionController['openDocument'];
   checkpoint?:ChapterCheckpointHooks;suspended?():boolean;restarting?():boolean;
   network():Network; activeDraftId():string|null; pendingForms():boolean;
   subscribe(fn:()=>void):()=>void; observeCommands(fn:(event:TerminalCommandEvent)=>void):()=>void;
@@ -72,7 +73,7 @@ export class RouterTutorialController {
     try{
       if(!direct){await this.parent.flushProgress();if(this.parent.getState().storageError||!this.parent.getState().passed||this.runtime.network()!==origin||this.runtime.activeDraftId()!==originId)return;}
       let id=this.runtime.activeDraftId();
-      if(direct){const result=await this.sessions.openDocument(routerDirectDocument());if(!result.ok){this.publish({storageError:true});return;}id=result.value;this.runtime.started?.(id);}
+      if(direct){const document=routerDirectDocument();const result=await(this.runtime.openAttempt?.(document)??this.sessions.openDocument(document));if(!result.ok){this.publish({storageError:true});return;}id=result.value;this.runtime.started?.(id);}
       if(!id||id!==this.sessions.getState().activeDraftId||this.runtime.pendingForms())return;
       if(!this.records.has(id))await this.load(id);if(this.readFailed.has(id))return;
       let r=this.records.get(id);
