@@ -8,6 +8,8 @@ const en = {
   linux: 'Using the Linux terminal', linuxIntro: 'Open the device terminal and check its interfaces:', netlabNote: 'Note about NetLab',
   linuxAdd: 'On an interface without an IPv4 address, this sets the address and mask:',
   linuxLimit: 'NetLab allows one IPv4 address per interface. ip address add only works when no address is set; change an existing address in the Inspector. Set the gateway separately.',
+  routesTitle: 'Gateway and default route', routesIntro: 'Address and mask define the local subnet. ip route displays the routes used for other destinations:',
+  defaultRoute: 'A default route is used when no more specific route matches. Its gateway is the next router and must be reachable on the local network. dev names this device’s outgoing interface. This generic example adds a route; it does not fill in the Inspector’s gateway field:',
   windows: 'Using Windows CMD', windowsIntro: 'Display the current configuration:',
   windowsLimit: 'NetLab does not implement static IPv4 configuration through netsh. Set the address and mask in the Inspector.',
 } as const;
@@ -22,6 +24,8 @@ const de: Messages = {
   linux: 'Über das Linux-Terminal', linuxIntro: 'Terminal des Geräts öffnen und die Schnittstellen prüfen:', netlabNote: 'Hinweis zu NetLab',
   linuxAdd: 'Auf einer Schnittstelle ohne IPv4-Adresse setzt dieser Befehl Adresse und Maske:',
   linuxLimit: 'NetLab unterstützt eine IPv4-Adresse pro Schnittstelle. ip address add funktioniert nur, wenn noch keine Adresse gesetzt ist; vorhandene Adressen im Inspector ändern. Das Gateway separat einstellen.',
+  routesTitle: 'Gateway und Standardroute', routesIntro: 'Adresse und Maske bestimmen das lokale Subnetz. ip route zeigt die Routen zu anderen Zielen:',
+  defaultRoute: 'Eine Standardroute gilt, wenn keine spezifischere Route passt. Ihr Gateway ist der nächste Router und muss im lokalen Netz erreichbar sein. dev bezeichnet die Ausgangsschnittstelle dieses Geräts. Dieses allgemeine Beispiel ergänzt eine Route; das Gateway-Feld im Inspector bleibt unverändert:',
   windows: 'Über Windows CMD', windowsIntro: 'Aktuelle Konfiguration anzeigen:',
   windowsLimit: 'Eine statische IPv4-Konfiguration per netsh ist in NetLab nicht implementiert. Adresse und Maske im Inspector setzen.',
 };
@@ -35,6 +39,8 @@ const ptBR: Messages = {
   linux: 'Pelo terminal Linux', linuxIntro: 'Abra o terminal do dispositivo e confira as interfaces:', netlabNote: 'Nota sobre o NetLab',
   linuxAdd: 'Em uma interface sem IPv4, este comando define o endereço e a máscara:',
   linuxLimit: 'O NetLab aceita um IPv4 por interface. ip address add só funciona quando ainda não há endereço; altere um IP existente no Inspector. Configure o gateway separadamente.',
+  routesTitle: 'Gateway e rota default', routesIntro: 'Endereço e máscara definem a sub-rede local. ip route mostra as rotas para outros destinos:',
+  defaultRoute: 'A rota default é usada quando nenhuma rota mais específica corresponde. Seu gateway é o próximo roteador e precisa estar acessível na rede local. dev identifica a interface de saída deste dispositivo. Este exemplo genérico adiciona uma rota; o campo Gateway do Inspector permanece inalterado:',
   windows: 'Pelo Windows CMD', windowsIntro: 'Consulte a configuração atual:',
   windowsLimit: 'O NetLab não implementa configuração de IPv4 estático por netsh. Defina o endereço e a máscara no Inspector.',
 };

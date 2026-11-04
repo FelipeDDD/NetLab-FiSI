@@ -1,5 +1,7 @@
 # Tutorial guiado 01 — Erste Verbindung (protótipo)
 
+Reinício do capítulo: [checkpoints e limites de segurança](chapter-restart.md).
+
 Continuidade implementada: [Capítulo 2 — Subnetzmaske verstehen](tutorial-subnet-mask.md),
 no mesmo rascunho, com progresso independente e preservação das oito etapas abaixo.
 

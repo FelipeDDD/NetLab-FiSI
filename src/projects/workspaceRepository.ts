@@ -5,7 +5,7 @@ import { decodeDraft, decodeSession, encodeDraftDocument, savedBase, validateEdi
 import { DRAFT_PREFIX, SESSION_PREFIX, type ClosedDraft, type CreateDraftInput, type CreateSessionInput, type DraftCloseResult,
   type DraftRecord, type DraftSaveResult, type DraftUpdateInput, type DraftVersion, type DraftWriteResult, type OpenDraft,
   type SessionDraftResult, type SessionLayoutInput, type SessionRecord, type SessionSnapshot } from './workspaceTypes';
-import type { CheckpointReason, ProjectDocument, ProjectMetadata, ProjectSnapshot, RepositoryResult, WriteOptions } from './types';
+import type { CheckpointReason, MetaMutation, ProjectDocument, ProjectMetadata, ProjectSnapshot, RepositoryResult, WriteOptions } from './types';
 
 /** Internal bridge to the existing repository; never exposed as raw transactions
  * through the public workspace API. Every operation shares its connection/CAS. */
@@ -16,6 +16,9 @@ export interface WorkspaceHost {
   checkRevision(project: ProjectMetadata, revision: number): void;
   writeNew(tx: IDBTransaction, id: string, name: string, document: ProjectDocument, now: number): Promise<ProjectSnapshot>;
   writeRevision(tx: IDBTransaction, previous: ProjectSnapshot, next: ProjectSnapshot, reason: CheckpointReason): Promise<ProjectSnapshot>;
+  prepareControl(control?: readonly MetaMutation[]): MetaMutation[];
+  writeControl(tx: IDBTransaction, control: readonly MetaMutation[]): Promise<unknown>;
+  checkControl(tx: IDBTransaction, guards: readonly {key:string;expectedRevision:number|null}[]): Promise<void>;
 }
 
 export class WorkspaceRepository {
@@ -153,12 +156,15 @@ export class WorkspaceRepository {
   async updateDraft(id: string, input: DraftUpdateInput, options?: WriteOptions): Promise<RepositoryResult<DraftWriteResult>> {
     try {
       const encoded = encodeDraftDocument(input.document), now = this.host.timestamp(), { expectedRevision, editSequence } = input; validateEditSequence(editSequence);
+      const control=this.host.prepareControl(input.control),guards=input.guards??[];
       return await this.host.execute('readwrite', async tx => {
         const current = await this.openDraft(tx, id); this.checkRevision(current, expectedRevision, 'draft-conflict');
         if (editSequence <= current.editSequence) fail({ code: 'stale-edit', draftId: id, receivedSequence: editSequence, currentSequence: current.editSequence, message: 'An older edit cannot overwrite a newer draft.' });
+        await this.host.checkControl(tx,guards);
         const draft: OpenDraft = { ...current, revision: current.revision + 1, editSequence, document: encoded.document,
           dirty: current.base === null || encoded.json !== current.base.documentJson, updatedAt: Math.max(now, current.updatedAt) };
         await requestValue(tx.objectStore('meta').put(workspaceMeta(draft)));
+        await this.host.writeControl(tx,control);
         return this.receipt(draft);
       }, options);
     } catch (error) { return errorResult(error); }

@@ -15,6 +15,7 @@ export type DhcpFieldEdit =
   | { field: 'rangeStart' | 'rangeEnd'; before: number; after: number }
   | { field: 'router' | 'dns'; before: number | null; after: number | null };
 export type InspectorOperation =
+  | {type:'set-static-routes';label:string;deviceId:string;before:import('./engine/ipdevice').Route[];after:import('./engine/ipdevice').Route[]}
   | {type:'set-dhcp-server-enabled';label:string;deviceId:string;before:boolean;after:boolean}
   | {type:'set-dhcp-configuration';label:string;deviceId:string;before:import('./engine/dhcpPools').DhcpConfiguration;after:import('./engine/dhcpPools').DhcpConfiguration}
   | { type: 'set-wifi-range'; label: string; deviceId: string; before: number; after: number }
@@ -46,6 +47,7 @@ export function sameServicePorts(a: Iterable<number>, b: Iterable<number>): bool
   return left.length === right.length && left.every((port, i) => port === right[i]);
 }
 export type TopologyOperation = MoveOperation
+  | {type:'chapter-restore';label:string;id:string}
   | InspectorOperation
   | { type: 'set-area-markings'; label: string; before: import('./areaMarkings').AreaMarking[]; after: import('./areaMarkings').AreaMarking[] }
   | { type: 'set-cable-color'; label: string; linkId: string; before: import('./cableAppearance').CableAppearance | null; after: import('./cableAppearance').CableAppearance }

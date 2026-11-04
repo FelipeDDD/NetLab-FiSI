@@ -19,7 +19,8 @@
 .learning-help > header small { color: var(--ui-text-muted); font-size: 12px; }
 .learning-help-command { margin-block: 8px; padding: 8px; background: var(--ui-surface-card); border-radius: 6px; }
 .learning-help code { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
-.learning-help-command code { display: block; user-select: text; white-space: pre-wrap; }
+.learning-help-command code { display: block; user-select: text; white-space: pre-wrap; color: #fbbf24; }
+[data-theme="classic-light"] .learning-help-command code { color: #8a5300; }
 .learning-help-windows { margin-top: 8px; border-top: 1px solid var(--ui-border); padding-top: 12px; }
 .learning-help > footer { border-top: 1px solid var(--ui-border); }
 .learning-help > footer { justify-content: flex-end; }

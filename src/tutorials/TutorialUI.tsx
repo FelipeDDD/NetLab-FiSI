@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { SessionController } from '../persistence/sessionController';
 import type { ProjectRepository } from '../projects/repository';
 import { TutorialProgressStore } from './tutorialProgress';
@@ -20,22 +20,41 @@ import { SubnetTutorialPanel } from './SubnetTutorialPanel';
 import { SUBNET_DEMO_COMMAND, SUBNET_PC_ID } from './subnetChapter';
 import { getSession } from '../terminals';
 import { IpDevice } from '../engine/ipdevice';
+import { RouterTutorialController, type RouterState } from './RouterTutorialController';
+import { RouterProgressStore } from './routerProgress';
+import { RouterTutorialPanel } from './RouterTutorialPanel';
+import { ChapterRestartService } from './ChapterRestartService';
+import { ChapterRestartButton, ChapterRestartContext } from './ChapterRestartUI';
+import type { ChapterId } from './chapterCheckpoints';
 import './tutorial.css';
 
-const Context = createContext<{ controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState } | null>(null);
+const Context = createContext<{ controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState; router:RouterTutorialController; routerState:RouterState } | null>(null);
 export function GuidedTutorialProvider({ sessions, repository, children }: { sessions: SessionController; repository: ProjectRepository; children: ReactNode }) {
-  const [controller] = useState(() => new TutorialController(sessions, {
+  const [restart]=useState(()=>new ChapterRestartService(repository,sessions)),status=useSyncExternalStore(restart.subscribe,restart.getState),{t}=useTranslation();
+  useEffect(()=>useStore.getState().attachChapterHistory((id,direction)=>void restart.navigate(id,direction)),[restart]);
+  useEffect(()=>{if(status.error)useStore.getState().setNotice(t('guidedRestart.storage'));},[status.error]);
+  return <GuidedTutorialRuntime key={status.generation} sessions={sessions} repository={repository} restart={restart}>{children}</GuidedTutorialRuntime>;
+}
+function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:SessionController;repository:ProjectRepository;restart:ChapterRestartService;children:ReactNode}){
+  const routerRef=useRef<RouterTutorialController|null>(null);
+  const subscribeEarlier=(listener:()=>void)=>{const a=useStore.subscribe(listener),b=routerRef.current?.subscribe(listener),c=restart.subscribe(listener);return()=>{a();b?.();c();};};
+  const checkpoint=(chapter:ChapterId)=>({before:(id:string)=>restart.before(chapter,id),prepared:(id:string,value:import('../projects/types').MetaValue)=>restart.prepared(chapter,id,value)});
+  const [controller] = useState<TutorialController>(() => new TutorialController(sessions, {
+    checkpoint:checkpoint('first-connection'),restarting:()=>restart.getState().busy,
     network: () => sim.net, signature: () => JSON.stringify(serializeNetwork(sim.net, {})),
     activeDraftId: () => useStore.getState().workspaceIdentity?.draftId ?? null,
-    pendingForms: hasPendingForms, subscribe: listener => useStore.subscribe(listener), observeCommands: observeTerminalCommands,
+    pendingForms: hasPendingForms, subscribe: subscribeEarlier, observeCommands: observeTerminalCommands,
+    suspended:()=>restart.getState().busy||(routerRef.current?.holdsDraft(useStore.getState().workspaceIdentity?.draftId??null)??true),
     renameDevice: (id, name) => useStore.getState().renameDevice(id, name),
     started: requestExerciseViewport,
     hostCreationDraft: draftId => useStore.getState().setTutorialHostCreationDraft(draftId),
   }, new TutorialProgressStore(repository, sessions)));
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
-  const [subnet] = useState(() => new SubnetTutorialController(sessions, controller, {
+  const [subnet] = useState<SubnetTutorialController>(() => new SubnetTutorialController(sessions, controller, {
+    checkpoint:checkpoint('subnet-mask'),restarting:()=>restart.getState().busy,
     network: () => sim.net, activeDraftId: () => useStore.getState().workspaceIdentity?.draftId ?? null,
-    pendingForms: hasPendingForms, subscribe: listener => useStore.subscribe(listener), observeCommands: observeTerminalCommands,
+    pendingForms: hasPendingForms, subscribe: subscribeEarlier, observeCommands: observeTerminalCommands,
+    suspended:()=>restart.getState().busy||(routerRef.current?.holdsDraft(useStore.getState().workspaceIdentity?.draftId??null)??true),
     insert: pcC => useStore.getState().addSubnetTutorialPC(pcC),
     demonstrate: () => {
       const device = sim.net.devices.get(SUBNET_PC_ID);
@@ -47,15 +66,26 @@ export function GuidedTutorialProvider({ sessions, repository, children }: { ses
     },
   }, new SubnetProgressStore(repository, sessions)));
   const subnetState = useSyncExternalStore(subnet.subscribe, subnet.getState);
+  const [router]=useState<RouterTutorialController>(()=>new RouterTutorialController(sessions,subnet,{
+    checkpoint:checkpoint('two-networks'),suspended:()=>restart.getState().busy,restarting:()=>restart.getState().busy,
+    network:()=>sim.net,activeDraftId:()=>useStore.getState().workspaceIdentity?.draftId??null,pendingForms:hasPendingForms,
+    subscribe:listener=>{const a=useStore.subscribe(listener),b=restart.subscribe(listener);return()=>{a();b();};},observeCommands:observeTerminalCommands,insert:pcC=>useStore.getState().addRouterTutorialGroup(pcC),started:requestExerciseViewport,
+    repeat:(step,signature,pcC)=>useStore.getState().repeatRouterTutorialTask(step,signature,pcC),
+  },new RouterProgressStore(repository,sessions)));
+  routerRef.current=router;
+  const routerState=useSyncExternalStore(router.subscribe,router.getState);
+  useEffect(()=>router.connect(),[router]);
   useEffect(() => controller.connect(), [controller]);
   useEffect(() => subnet.connect(), [subnet]);
+  useEffect(()=>{restart.flushControllers=async()=>{await controller.flushProgress();await subnet.flushProgress();await router.flushProgress();};restart.resume();return()=>{restart.flushControllers=async()=>{};};},[restart,controller,subnet,router]);
   useEffect(() => {
-    const flush = () => { if (document.visibilityState === 'hidden') { void controller.flushProgress(); void subnet.flushProgress(); } };
-    const before = (event: BeforeUnloadEvent) => { if (controller.getState().saving || subnet.getState().saving) { event.preventDefault(); event.returnValue = ''; } };
+    const flush = () => { if (document.visibilityState === 'hidden') { void controller.flushProgress(); void subnet.flushProgress(); void router.flushProgress(); } };
+    const before = (event: BeforeUnloadEvent) => { if (controller.getState().saving || subnet.getState().saving || router.getState().saving) { event.preventDefault(); event.returnValue = ''; } };
     document.addEventListener('visibilitychange', flush); window.addEventListener('beforeunload', before);
     return () => { document.removeEventListener('visibilitychange', flush); window.removeEventListener('beforeunload', before); };
-  }, [controller, subnet]);
-  return <Context.Provider value={{ controller, state, subnet, subnetState }}>{children}</Context.Provider>;
+  }, [controller, subnet, router]);
+  const busy=restart.getState().busy;
+  return <ChapterRestartContext.Provider value={{service:restart,newAttempt:chapter=>chapter==='two-networks'?router.begin(true):controller.start(true)}}><Context.Provider value={{ controller, state:{...state,busy:state.busy||busy}, subnet, subnetState:{...subnetState,busy:subnetState.busy||busy}, router, routerState:{...routerState,busy:routerState.busy||busy} }}>{children}</Context.Provider></ChapterRestartContext.Provider>;
 }
 
 export function GuidedTutorialMenu({ close }: { close(): void }) {
@@ -69,6 +99,9 @@ export function GuidedTutorialMenu({ close }: { close(): void }) {
     }}>{t(state.draftId ? 'guided.resume' : 'guided.start')}</button>
     {state.draftId && <button type="button" role="menuitem" className="btn" data-restart-tutorial disabled={state.busy || !state.ready} onClick={() => { usePractice.getState().close(); void controller.start(true); close(); }}>{t('guided.restart')}</button>}
     <small>{t('guided.prototype')}</small>{state.error && <p role="alert">{t('guided.error')}</p>}
+    <p>{t('guidedRouter.title')}</p><button type="button" role="menuitem" className="btn" data-router-direct disabled={ui.routerState.busy} onClick={()=>{usePractice.getState().close();void ui.router.begin(true);close();}}>{t('guidedRouter.direct')}</button>
+    {ui.routerState.warning&&<p role="status">{t(`guidedRouter.${ui.routerState.warning}`)}</p>}
+    {ui.routerState.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void ui.router.retryProgress()}>{t('common.retry')}</button></p>}
     {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
   </section>;
 }
@@ -92,13 +125,19 @@ export function GuidedTutorialPanel() {
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => setCollapsed(false), [ui?.state.draftId]);
   if (!ui || practiceOpen) return null;
-  if (ui.subnetState.active) return <SubnetTutorialPanel key={ui.subnetState.record?.draftId} controller={ui.subnet} state={ui.subnetState} />;
+  if(ui.routerState.active)return <RouterTutorialPanel key={ui.routerState.record?.draftId} controller={ui.router} state={ui.routerState}/>;
+  if (ui.subnetState.active) return <SubnetTutorialPanel key={ui.subnetState.record?.draftId} controller={ui.subnet} state={ui.subnetState} afterCompletion={<>
+    {ui.routerState.warning&&<p role="status">{t(`guidedRouter.${ui.routerState.warning}`)}</p>}
+    {ui.routerState.storageError&&<p role="alert">{t('guided.storageError')}</p>}
+    <button className="btn btn--primary" data-router-continue disabled={ui.subnetState.saving||ui.subnetState.storageError||ui.routerState.busy||ui.routerState.storageError} onClick={()=>void ui.router.begin()}>{t('guidedRouter.transition')}</button>
+  </>} />;
   if (!ui.state.active) return ui.state.error ? <aside className="exercise-error" role="alert">{t('guided.error')} <button type="button" className="btn" onClick={() => void ui.controller.start()}>{t('common.retry')}</button></aside> : null;
   const { controller, state } = ui, step = steps[state.step];
   return <ExercisePanelFrame key={state.draftId} exerciseId="guided-first-connection" collapsed={collapsed} header={<>
     <div className="exercise-heading"><strong>{t('guided.title')}</strong><div className="exercise-summary">{t('guided.progress', { step: state.step + 1, total: FIRST_CONNECTION.steps.length })}</div></div>
     <button type="button" className="btn btn--icon" aria-label={t(collapsed ? 'exercises.expand' : 'exercises.collapse')} aria-expanded={!collapsed}
       onClick={() => setCollapsed(value => !value)}>{collapsed ? '+' : '−'}</button>
+    <ChapterRestartButton chapter="first-connection" draftId={state.draftId} step={state.step}/>
   </>}>
     {!collapsed && <><div className="exercise-body" data-guided-step={state.step + 1} data-guided-saving={state.saving}>
       <h3>{t(step.title)}</h3>{!(state.step === 3 && state.passed) && <p>{t(step.text)}</p>}

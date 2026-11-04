@@ -1,4 +1,4 @@
-import type { ProjectDocument, ProjectSnapshot } from './types';
+import type { MetaMutation, ProjectDocument, ProjectSnapshot } from './types';
 
 export const WORKSPACE_RECORD_VERSION = 1;
 export const WORKSPACE_PREFIX = 'workspace:v1:';
@@ -59,7 +59,7 @@ export interface CreateSessionInput {
   initialTab?: { kind: 'new'; document: ProjectDocument; id?: string } | { kind: 'plan'; planId: string; id?: string };
 }
 export interface CreateDraftInput { id?: string; document: ProjectDocument; activate?: boolean }
-export interface DraftUpdateInput { expectedRevision: number; editSequence: number; document: ProjectDocument }
+export interface DraftUpdateInput { expectedRevision: number; editSequence: number; document: ProjectDocument; control?: readonly MetaMutation[]; guards?: readonly {key:string;expectedRevision:number|null}[] }
 export interface SessionLayoutInput {
   draftIds?: readonly string[];
   activeDraftId?: string | null;

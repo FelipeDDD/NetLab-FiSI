@@ -26,6 +26,8 @@ export class ProjectRepository {
       readProject: (tx, id) => this.readProject(tx, id), checkRevision: (project, revision) => this.checkRevision(project, revision),
       writeNew: (tx, id, name, document, now) => this.writeNew(tx, id, name, document, now),
       writeRevision: (tx, previous, next, reason) => this.writeRevision(tx, previous, next, reason),
+      prepareControl: control=>this.prepareControl(control),writeControl:(tx,control)=>this.writeControl(tx,control),
+      checkControl:async(tx,guards)=>{for(const guard of this.prepareControl(guards.map(g=>({...g,value:null})))){const current=await this.readMeta(tx,guard.key);if((current?.revision??null)!==guard.expectedRevision)fail({code:'meta-conflict',key:guard.key,expectedRevision:guard.expectedRevision,current,message:'Control metadata changed.'});}},
     });
     db.onversionchange = () => this.closeWithReason('version-changed');
     db.onclose = () => this.closeWithReason('unavailable');

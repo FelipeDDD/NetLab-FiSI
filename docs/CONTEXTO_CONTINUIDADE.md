@@ -1,18 +1,82 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **03/11/2026**, para continuar entre notebook e desktop.
+Atualizado em **04/11/2026**, para continuar entre notebook e desktop.
 Este é o **arquivo único de continuidade**: atualizar este resumo nas próximas
 rodadas, sem criar cópias TXT ou documentos de contexto concorrentes.
 O código, os testes e o Git continuam sendo a fonte de verdade. As seções
 históricas abaixo registram decisões antigas e podem ter sido superadas.
 
-## Leia primeiro — estado atual em 03/11/2026
+## Leia primeiro — estado atual em 04/11/2026
+
+### Novidades verificadas neste checkout
+
+- Checkout inicialmente limpo em `main`, HEAD `0760a2e` — **Capítulo 2 já implementado**.
+  Os commits `6212209` (regressões E08) e `60ecbeb` (Slate Circuit como default)
+  também estão presentes. As referências anteriores abaixo são históricas.
+- O Capítulo 2, **Subnetzmaske verstehen**, continua o mesmo rascunho, adiciona PC D
+  e usa observações reais de terminal e Quick Ping. Aceita máscaras funcionais como
+  /27, /26 e /24 sem exigir /24. Ver [tutorial-subnet-mask.md](tutorial-subnet-mask.md).
+- Nova implementação local: **Capítulo 3 — Zwei Netzwerke verbinden**, oito etapas.
+  A continuação mantém o rascunho e as configurações; o início direto abre outro
+  rascunho com LAN A funcional, sem marcar os capítulos anteriores como concluídos.
+  Acrescenta um grupo Router/Switch B/E/F com posicionamento livre e uma só operação
+  de Undo/Redo. Portas do Router são validadas pelo cabo e pela LAN, não por eth0/eth1.
+- O progresso usa `guided:two-networks:v1:draft:<draftId>` no mesmo IndexedDB.
+  Preparação tem intenção durável e recuperação idempotente. Controllers anteriores
+  ficam inativos nesse rascunho para preservar seus metadados históricos, inclusive
+  quando o gateway de A muda. PC F começa sem cabo/IPv4. As tarefas distinguem
+  Gateway de A pelo Inspector e rota default de F pelo terminal; os testes reais
+  são A↔F. O diagnóstico final observa a falta de rota de B e exige nova resposta
+  B→F após correção, sem provocar falhas artificiais em uma configuração já correta.
+  `Wiederholen` no centro do rodapé muda para `Bestätigen` no primeiro clique;
+  o segundo confirma Gateway/rota usando Undo/Redo. Escape/navegação cancelam; situações
+  ambíguas são recusadas sem reset parcial. O envelope de progresso v2 adapta o v1,
+  conserva a topologia antiga e guarda o histórico A/E sem reutilizá-lo como A/F.
+  Não há segundo Router, novas imagens ou mudanças nos algoritmos de rede.
+  Ver [tutorial-two-networks.md](tutorial-two-networks.md).
+- Validação dos refinamentos: **427 testes direcionados em 8 arquivos**, incluindo
+  os três controllers, traduções, terminais, histórico e exemplos da ajuda; TypeScript e build
+  passaram, assim como `git diff --check`. A revisão Chromium passou em **137
+  verificações** dos capítulos e **106** da ajuda (execuções separadas), com perfil e
+  IndexedDB descartáveis: dois modos completos, configurações antecipadas, diagnóstico,
+  repetição/Undo/Redo, adaptação v1, F5, idiomas e temas em 700/1440 px.
+- Os capítulos anteriores e os seis exercícios Beta conservam textos e
+  verificações existentes.
+
+### Referências flutuantes do terminal
+
+- Operações Linux de `ip route` podem ser destacadas por **Anheften** na
+  `Terminal — Befehlsreferenz`. A ajuda permanece aberta para selecionar até
+  duas referências distintas; há feedback para duplicatas e limite atingido.
+  Ao fechar a ajuda, as janelas podem ser arrastadas ou movidas por teclado,
+  fechadas individualmente e usadas junto ao terminal, Inspector e tutorial.
+- Os painéis reutilizam o catálogo e a apresentação existentes, são limitados à
+  área visível e não persistem após F5. Conteúdo existente em alemão; controles
+  novos traduzidos em DE/EN/PT-BR. Ver [terminal-command-reference.md](terminal-command-reference.md).
+- Validação da referência: **409 testes direcionados** e **115 verificações
+  Chromium**, incluindo F5, arraste, cópia, idiomas, temas e telas de 700/1440 px;
+  TypeScript, build e `git diff --check` passaram. Chromium usou perfil e banco
+  descartáveis; capturas de revisão são artefatos locais, não arquivos do projeto.
+- Na consolidação de 04/11, a suíte completa passou em **2.700 testes / 142
+  arquivos**. Foi corrigido o acesso a `document` na renderização sem navegador
+  do provedor de referências; o build de produção também passou.
 
 ### Git e sincronização
 
+- `Kapitel neu starten` agora usa checkpoint local por capítulo/rascunho, capturado
+  antes da preparação. Documento e progresso são restaurados atomicamente, com CAS,
+  confirmação não modal e Undo/Redo. Casos antigos sem checkpoint oferecem tentativa
+  independente; não há reconstrução retroativa. Capítulo 3 preserva a LAN anterior e
+  só desfaz gateways/rotas identificáveis como seus. Ver [chapter-restart.md](chapter-restart.md).
+- O runner `node scripts/test-chapter-restart.mjs` passou em **147 verificações Chromium**,
+  com banco descartável: três capítulos, dois modos do capítulo 3, F5, Undo/Redo,
+  conflitos, quota/abort, edição local concorrente e fallback para nova tentativa.
+  A suíte completa passou em **2.692 testes / 141 arquivos**, além de TypeScript,
+  build e `git diff --check`.
+
 - Branch `main`, remoto `https://github.com/FelipeDDD/NetLab-FiSI.git`.
-- Base anterior à consolidação desta rodada: **`e109471`**, sincronizada com
-  `origin/main` antes da revisão. Conferir o commit posterior com `git log -1`.
+- Base desta implementação local: **`0760a2e`**. Conferir alterações pendentes e
+  a situação da branch remota antes da próxima sincronização.
 - Commits anteriores relevantes:
   - `316264d` — atraso inicial do autoplay da homepage e limpeza do rodapé.
   - `867e178` — branding NetLab-FiSI, textos e auditoria editorial.
@@ -83,7 +147,7 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 - Valores salvos válidos continuam prioritários. O valor legado `midnight-blue`
   continua resolvendo para `original` (nome visível Midnight Blue), sem regravar
   localStorage nem restaurar uma paleta antiga que já havia sido removida.
-- Canvas independente do UI Theme: **Blue Circuit**, `choice: 'bg2'`,
+- Canvas independente do UI Theme: **Slate Circuit**, `choice: 'bg3'`,
   `intensity: 100`, `dots: false`, `animation: 'shooting'` (Shooting Star). Não alterar esses defaults
   nem sobrescrever escolhas existentes por interpretar preferências como bugs.
 - Terminal novo/Reset: `style: 'fx-signal-pulse'`, `intensity: 100`,

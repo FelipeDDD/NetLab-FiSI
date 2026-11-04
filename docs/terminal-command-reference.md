@@ -23,6 +23,48 @@ Copy uses the Clipboard API only. A denied/unavailable clipboard gives a manual
 selection/Strg+C instruction; it never sends input to a terminal. The modal has
 no shell/engine/store write access. Existing textual `help` remains unchanged.
 
+## Floating operation references
+
+The seven Linux `ip route` operations have an **Anheften** pin button. Pinning
+opens that operation in the background and **keeps the main help dialog open**,
+including its current selection and focus, so a second operation can be chosen.
+A localized status reports the count (1/2 or 2/2). Close the help normally to
+work with the references and the network. The native main dialog remains modal;
+the pinned panels themselves are nonmodal and have no background overlay.
+
+At most two distinct operations can be pinned. Duplicate and third selections
+leave the existing references intact and show a short status message. Each
+panel has a draggable, keyboard-focusable header (arrows move, Shift moves
+faster), an X close button, and scrollable content. Positions are clamped to the
+viewport on drag, content expansion and window resize. Initial placement prefers
+free canvas space and accounts for the Inspector, tutorial, dock, palette and
+other reference; on small screens overlap can remain, and headers can be moved.
+
+`ReferenceOperationContent` and `ReferenceNotes` render both surfaces directly
+from `terminalReference.ts`; no command descriptions or examples are copied into
+another catalog. Copy behavior, syntax highlighting and expandable explanations
+are shared. Existing educational content stays in German as in the main reference;
+new pin, drag, close and status controls support DE/EN/PT-BR.
+
+`FloatingReferencesProvider` owns only transient UI state, independently of the
+terminal dock, device selection and project documents. Closing terminals does not
+close references. F5 discards them; nothing is written to IndexedDB or localStorage
+for these windows. No commands run when opening or copying a reference. Other
+commands can reuse the same target/renderer contract later; this prototype exposes
+pin buttons only for `ip route`. No resizing, minimizing or tabs are introduced.
+
+Run `node scripts/test-terminal-reference.mjs` with Node 24 for isolated Chromium
+coverage, including background pinning, keyboard selection, duplicate/limit
+feedback in three languages, drag and viewport bounds, clipboard, terminals,
+tutorial, both themes at 700/1440px, and real page reload. Captures are generated
+under `.playwright-mcp/reviews/raw/terminal-reference/floating-references-*.png`.
+Unit coverage is in `src/floatingReferences.test.ts` alongside the existing
+reference, syntax and translation contract tests.
+
+Validated on 2026-11-04 (Node 24): 409 targeted tests and 115 isolated Chromium
+checks passed, with no browser runtime errors. TypeScript, production build and
+`git diff --check` passed; the existing large-chunk build warning remains.
+
 ## Content and source of truth
 
 `src/terminalReference.ts` contains 29 entries and 67 operations, checked against

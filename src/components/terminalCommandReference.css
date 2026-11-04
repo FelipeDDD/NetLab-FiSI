@@ -38,8 +38,8 @@
 .reference-syntax-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
 .syntax-value { color: var(--ui-warning); text-decoration: underline dotted; text-underline-offset: 2px; }
 .syntax-optional { color: var(--ui-text-muted); }
-.terminal-reference code { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; white-space: pre-wrap; }
-.terminal-reference summary { cursor: pointer; color: var(--ui-accent); padding: 4px 0; }
+.terminal-reference code, .floating-reference code { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; white-space: pre-wrap; }
+.terminal-reference summary, .floating-reference summary { cursor: pointer; color: var(--ui-accent); padding: 4px 0; }
 .reference-example { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; margin: 8px 0; }
 .reference-example code { padding: 9px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface-card); user-select: text; }
 .reference-copy [role="status"] { display: block; max-width: 220px; font-size: 12px; color: var(--ui-text-muted); }
@@ -49,7 +49,22 @@
 .reference-notes { margin: 16px 0; }
 .reference-notes ul { padding-left: 20px; }
 .reference-notes li { margin: 8px 0; }
-.terminal-reference :focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.terminal-reference :focus-visible, .floating-reference :focus-visible, .floating-reference-heading:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.reference-operation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.reference-pin { flex: 0 0 30px; display: grid; place-items: center; min-height: 28px; }
+.reference-pin-message { margin: 0; padding: 8px 20px; color: var(--ui-warning); }
+.floating-reference {
+  position: fixed; z-index: 70; width: min(420px, calc(100vw - 16px)); max-height: min(600px, calc(100dvh - 16px));
+  box-sizing: border-box; display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid var(--ui-border); border-radius: 9px; background: var(--ui-surface-panel);
+  color: var(--ui-text); box-shadow: var(--ui-shadow-popover); font: 13px/1.5 system-ui, sans-serif;
+}
+.floating-reference-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--ui-border); cursor: grab; touch-action: none; user-select: none; border-radius: 9px 9px 0 0; }
+.floating-reference-heading:active { cursor: grabbing; }
+.floating-reference-heading h3 { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.floating-reference-heading button { flex: 0 0 28px; font-size: 18px; cursor: pointer; }
+.floating-reference .reference-content { padding: 10px 12px; min-height: 0; }
+.floating-reference .reference-example { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 760px) {
   .terminal-reference { width: calc(100vw - 16px); height: calc(100dvh - 20px); }
   .reference-heading { padding: 12px; gap: 8px; }

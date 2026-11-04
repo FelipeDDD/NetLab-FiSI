@@ -29,6 +29,10 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   const device = net.devices.get(operation.deviceId);
   if (!device || device.disposed) return false;
   const from = direction === 'undo' ? 'after' : 'before', to = direction === 'undo' ? 'before' : 'after';
+  if(operation.type==='set-static-routes') {
+    if(!(device instanceof IpDevice)||!sameValue(device.staticRoutes,operation[from]))return false;
+    device.staticRoutes=structuredClone(operation[to]);return true;
+  }
   if (operation.type === 'set-dhcp-server-enabled') {
     if (!(device instanceof IpDevice) || device.dhcpServerEnabled !== operation[from]) return false;
     device.dhcpServerEnabled = operation[to];

@@ -245,9 +245,21 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
       await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(tutorialId)});`); await wait("document.querySelector('[data-guided-step=\"8\"]')");
       assert.equal(await passed(),true);
     });
+    if(process.env.NETLAB_CHAPTER_RESTART_REVIEW==='1'){
+      const {reviewChapterRestart}=await import('./chapter-restart-review.mjs');
+      await reviewChapterRestart({page,root,report,wait,delay,click,mount,chapter:'first-connection'});
+    }
     if (process.env.NETLAB_SUBNET_TUTORIAL_REVIEW === '1') {
       const { runSubnetTutorialReview } = await import('./subnet-tutorial-review.mjs');
       await runSubnetTutorialReview({ page, root, report, wait, delay, click, command, advance, mount, tutorialId, personalId });
+      if(process.env.NETLAB_CHAPTER_RESTART_REVIEW==='1'){
+        const {reviewChapterRestart}=await import('./chapter-restart-review.mjs');
+        await reviewChapterRestart({page,root,report,wait,delay,click,mount,chapter:'subnet-mask'});
+      }
+      if(process.env.NETLAB_ROUTER_TUTORIAL_REVIEW==='1') {
+        const {runRouterTutorialReview}=await import('./router-tutorial-review.mjs');
+        await runRouterTutorialReview({page,root,report,wait,delay,click,command,advance,mount,menu,tutorialId});
+      }
     }
     report.guidedTutorialReview = { directory, captures: ['01-kabel-verbinden.png', '02-ipv4-konfigurieren.png', '03-verbindung-bestanden.png', '04-ping-beenden-pending.png', '05-pc-c-hinzufuegen.png', '06-pc-c-kabel.png', '07-pc-c-ipv4-terminal.png', '08-arp-hinweis.png', '08-pc-c-verbindung.png', '09-tutorial-abgeschlossen.png', '04-classic-light-700.png'] };
   } finally {

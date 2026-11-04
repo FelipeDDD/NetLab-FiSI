@@ -13,6 +13,7 @@ import { PacketCapture, type PacketCaptureState } from './packetCapture';
 import { DEFAULT_PING_ANIMATION_SPEED, normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
+import { ROUTER_IDS, ROUTER_LINKS, routerPreparationError, routerConditions, routerSignature, type RouterWarning } from './tutorials/routerChapter';
 import { Host, IpDevice, RouterDevice } from './engine/ipdevice';
 import { chooseHostOs, effectiveHostCreationMode, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
 import type { DeviceKind } from './engine/device';
@@ -106,6 +107,8 @@ function deviceIps(id: string): string[] {
 interface NetsimState {
   workspaceIdentity: WorkspaceIdentity | null;
   captureWorkspaceDocument(): ProjectDocument;
+  attachChapterHistory(handler:(id:string,direction:'undo'|'redo')=>void):()=>void;
+  installChapterHistory(history:TopologyHistory):void;
   activateWorkspaceDocument(prepared: PreparedTopology, identity: WorkspaceIdentity): void;
   attachWorkspacePersistence(sink: WorkspacePersistenceSink): () => void;
   protectLegacyAutosave(): void;
@@ -223,6 +226,8 @@ interface NetsimState {
 
   addDeviceAt(kind: DeviceKind, pos: { x: number; y: number }): void;
   addSubnetTutorialPC(pcC: string): SubnetWarning | null;
+  addRouterTutorialGroup(pcC: string): RouterWarning | null;
+  repeatRouterTutorialTask(step:5|6, signature:string, pcC:string):RouterWarning|null;
   addDeviceSmart(kind: DeviceKind, visible: PlacementBox): void;
   copySelectedDevices(): boolean;
   pasteDevices(desired: Point, visible?: PlacementBox): boolean;
@@ -338,6 +343,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   let labCheckGeneration = 0;
   // Detection only: no serialized snapshot is ever applied to the live engine.
   const configuration = () => JSON.stringify(serializeNetwork(sim.net, {}));
+  let chapterHistory:((id:string,direction:'undo'|'redo')=>void)|undefined;
   let historyConfiguration = '';
   // Only this form's consecutive confirmations may merge. Any other history
   // edit/navigation or invalidation breaks the group without a second history.
@@ -372,6 +378,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     const stack = direction === 'undo' ? history.past : history.future;
     const operation = stack.at(-1);
     if (!operation) return;
+    if(operation.type==='chapter-restore'){chapterHistory?.(operation.id,direction);return;}
     if (operation.type === 'move-nodes') {
       const nodes = applyMovement(get().nodes, operation, direction);
       if (!nodes) { get().invalidateTopologyHistory(); return; }
@@ -693,6 +700,8 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
     workspaceIdentity: null,
     captureWorkspaceDocument: () => ({ schemaVersion: 1, topology: currentSave() }),
+    attachChapterHistory(handler){chapterHistory=handler;return()=>{if(chapterHistory===handler)chapterHistory=undefined;};},
+    installChapterHistory(history){historyConfiguration=configuration();set({topologyHistory:history});},
     activateWorkspaceDocument: (prepared, identity) => activatePrepared(prepared, identity),
     attachWorkspacePersistence(sink) {
       if (workspacePersistence) throw new Error('A workspace controller already owns this store.');
@@ -1147,6 +1156,45 @@ export const useStore = create<NetsimState>()((set, get) => {
         sim.net.removeDevice(SUBNET_PC_ID);
         return 'conflict';
       }
+    },
+    addRouterTutorialGroup(pcC) {
+      const error = routerPreparationError(sim.net, pcC); if (error) return error;
+      const sw = get().nodes.find(n => n.id === FIRST_DEVICES.sw); if (!sw) return 'missing';
+      const anchor = placementBox(sw);
+      const layout = [
+        { id: ROUTER_IDS.router, kind: 'router' as const, name: 'Router', x: 0, y: 138 },
+        { id: ROUTER_IDS.sw, kind: 'switch' as const, name: 'Switch B', x: 330, y: 150 },
+        { id: ROUTER_IDS.e, kind: 'host' as const, name: 'PC E', x: 660, y: 0 },
+        { id: ROUTER_IDS.f, kind: 'host' as const, name: 'PC F', x: 660, y: 340 },
+      ];
+      const occupied=get().nodes.map(placementBox);
+      const position = freePosition(layout.map(d => ({x:d.x,y:d.y,...deviceSize(d.kind)})), occupied, {x:Math.max(anchor.x+640,...occupied.map(b=>b.x+b.width+96)),y:anchor.y-150});
+      prepareEdit();
+      try {
+        const devices = layout.map((d,i) => {
+          const created = createDevice(sim.net,d.kind,{id:d.id,name:d.name,os:'linux'});
+          if (created instanceof IpDevice && d.id === ROUTER_IDS.e) created.interfaces[0].configureIpv4({mode:'static',ip:parseCidr('192.168.20.10/24'),gateway:null,dns:null});
+          return captureCreation(sim.net,created,{x:position.x+d.x,y:position.y+d.y},get().nodes.length+i);
+        });
+        const links = [captureLink(sim.net.connect(ROUTER_IDS.e,ROUTER_IDS.sw,{id:ROUTER_LINKS.e,aIface:'eth0',bIface:'eth0'}))];
+        const cableColors = Object.fromEntries(links.map(l=>[l.id,automaticCableAppearance(sim.net,l.id,get().cableColors)]));
+        set({nodes:[...get().nodes,...layout.map(d=>deviceNode(d.id,d.kind,d.name,position.x+d.x,position.y+d.y))],edges:edgesFromEngine(),cableColors:{...get().cableColors,...cableColors}});
+        commitEdit({type:'paste-devices',label:'Tutorial: LAN B und Router',devices,links,colors:{},cableColors}); saveSoon(); return null;
+      } catch { Object.values(ROUTER_IDS).forEach(id=>sim.net.removeDevice(id)); return 'conflict'; }
+    },
+    repeatRouterTutorialTask(step,signature,pcC) {
+      if(routerSignature(sim.net)!==signature)return 'repeatUnsafe';
+      const c=routerConditions(sim.net,pcC),d=sim.net.devices.get(step===5?FIRST_DEVICES.a:ROUTER_IDS.f),i=d?.getInterface('eth0');
+      if(!(d instanceof Host)||!i||i.ipv4Mode!=='static'||!i.ip||!c.hostIp)return 'repeatUnsafe';
+      if(step===5) {
+        if(!c.gateways||i.gateway===null)return 'repeatUnsafe';
+        return get().setInterfaceIpv4(d.id,i.name,{...i.ipv4,gateway:null})?'repeatUnsafe':null;
+      }
+      const defaults=d.staticRoutes.filter(r=>r.prefix===0),effective=d.lookupRoute(parseIp('192.168.10.10')!);
+      if(!c.defaultRoute||i.gateway!==null||defaults.length!==1||defaults[0]!==effective)return 'repeatUnsafe';
+      const before=structuredClone(d.staticRoutes),after=before.filter(r=>r.prefix!==0);
+      prepareEdit();d.staticRoutes=structuredClone(after);get().refresh();
+      commitEdit({type:'set-static-routes',label:'Tutorial: Standardroute erneut üben',deviceId:d.id,before,after});saveSoon();return null;
     },
     addDeviceSmart(kind, visible) {
       const state=get(), selected=state.nodes.filter(n=>n.selected);

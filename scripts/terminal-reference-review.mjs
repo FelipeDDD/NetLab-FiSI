@@ -141,7 +141,9 @@ export async function runTerminalReferenceReview({ page, url, root, report }) {
         await key('Escape', 'Escape', 27); await closed();
       }
     });
+    const { reviewFloatingReferences } = await import('./floating-reference-review.mjs');
+    await reviewFloatingReferences({ page, open, click, key, wait, delay, test, directory, database });
   } finally {
-    await page.evaluate("application?.dispose();await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase(" + JSON.stringify(database) + ");r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error('Terminal reference database cleanup blocked'));});");
+    await page.evaluate("application?.dispose();await new Promise(resolve=>setTimeout(resolve,120));await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Terminal reference database cleanup blocked')),5000);const r=indexedDB.deleteDatabase(" + JSON.stringify(database) + ");r.onsuccess=()=>{clearTimeout(timer);resolve();};r.onerror=()=>{clearTimeout(timer);reject(r.error);};});");
   }
 }

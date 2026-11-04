@@ -22,6 +22,7 @@ import { terminalDockShortcut } from './terminalShortcuts';
 import { PracticeSurface } from './exercises/practice/PracticeSurface';
 import {DesktopSurface} from './browser/DesktopSurface';
 import { LearningHelpProvider } from './components/LearningHelp';
+import { FloatingReferencesProvider } from './components/FloatingCommandReferences';
 import { GuidedTutorialPanel } from './tutorials/TutorialUI';
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
 
   return (
     <ReactFlowProvider>
+      <FloatingReferencesProvider>
       <LearningHelpProvider>
       {workspace && <WorkspaceViewport />}
       <div className={`app${hasTerminals ? ' with-dock' : ''}${workspace ? ' workspace-enabled' : ''}`} data-inspector-layout={inspectorLayout.layout}
@@ -100,6 +102,7 @@ export default function App() {
           onOverlapHeightChange={setTerminalOverlapHeight} />
       </div>
       </LearningHelpProvider>
+      </FloatingReferencesProvider>
     </ReactFlowProvider>
   );
 }

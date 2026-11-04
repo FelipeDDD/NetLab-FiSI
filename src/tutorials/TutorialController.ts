@@ -5,7 +5,9 @@ import { parseIp } from '../engine/ip';
 import { serializeNetwork } from '../engine/serialize';
 import type { TerminalCommandEvent, TerminalCommandContext } from '../terminalCommandEvents';
 import { FIRST_CONNECTION, FIRST_DEVICES, firstConnectionConditions, firstConnectionDocument } from './firstConnection';
-import { TutorialProgressStore, tutorialFingerprint, type TutorialSnapshot, type TutorialProgress } from './tutorialProgress';
+import { TutorialProgressStore, tutorialFingerprint, encodeTutorialProgress, type TutorialSnapshot, type TutorialProgress } from './tutorialProgress';
+import type { ChapterCheckpointHooks } from './chapterCheckpoints';
+import type { MetaValue } from '../projects/types';
 import { chapterOneSignature } from './subnetChapter';
 
 export type TutorialHint = 'cable' | 'ipv4' | 'ping' | 'stopPing' | 'network' | 'missing' | 'forms' | 'wrongTarget' | 'pingFailed' | 'addC' | 'cableC' | 'ipv4C' | 'ipv4CExisting' | 'pingC';
@@ -25,6 +27,8 @@ export interface TutorialState {
   repeatPing: boolean;
 }
 export interface TutorialRuntime {
+  checkpoint?:ChapterCheckpointHooks;
+  restarting?():boolean;
   network(): Network;
   activeDraftId(): string | null;
   signature(): string;
@@ -34,6 +38,7 @@ export interface TutorialRuntime {
   renameDevice(id: string, name: string): void;
   started?(draftId: string): void;
   hostCreationDraft?(draftId: string | null): void;
+  suspended?(): boolean;
 }
 type Sessions = Pick<SessionController, 'getState' | 'subscribe' | 'openDocument' | 'switchDraft' | 'hasPendingOperations'>;
 
@@ -76,6 +81,7 @@ export class TutorialController {
       c: this.cEvidence ? { signature: this.cEvidence.signature, ended: this.cEvidence.ended } : null };
   }
   private remember() {
+    if(this.runtime.suspended?.())return;
     const snapshot = this.snapshot(); if (!snapshot || this.restoring || this.discovering) return;
     this.attempts.set(snapshot.draftId, snapshot);
     const json = JSON.stringify(snapshot);
@@ -180,6 +186,8 @@ export class TutorialController {
         const opened = await this.sessions.openDocument(firstConnectionDocument());
         if (!opened.ok) throw Error(opened.error.code);
         if (this.disposed) return;
+        this.runtime.started?.(opened.value);
+        await this.runtime.checkpoint?.before(opened.value);
         this.evidence = undefined; this.candidate = undefined; this.pingHint = 'ping';
         this.cBaseline = undefined; this.cIpv4Command = undefined; this.cIpv4Applied = false; this.cEvidence = undefined; this.cCandidate = undefined;
         this.cPingHint = 'pingC';
@@ -187,7 +195,7 @@ export class TutorialController {
         this.boundDraftId = opened.value;
         this.loaded.add(opened.value);
         this.publish({ draftId: opened.value, step: 0, pcC: null, finished: false });
-        this.runtime.started?.(opened.value);
+        await this.runtime.checkpoint?.prepared(opened.value,await encodeTutorialProgress(this.snapshot()!) as unknown as MetaValue);
       }
       this.refresh();
       await this.flushProgress();
@@ -206,6 +214,8 @@ export class TutorialController {
   }
   private refresh = () => {
     if (this.disposed) return;
+    if(this.runtime.restarting?.()){this.candidate=undefined;this.cCandidate=undefined;this.cIpv4Command=undefined;return;}
+    if (this.runtime.suspended?.()) { this.candidate = undefined; this.cCandidate = undefined; this.publish({ active: false }); return; }
     // Store/capture observers can publish between sim.net replacement and the
     // atomic workspace identity update. Evaluate only a settled handoff.
     if (this.sessions.hasPendingOperations()) { this.candidate = undefined; return; }

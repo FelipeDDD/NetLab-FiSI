@@ -2,7 +2,7 @@ import type { ProjectRepository } from '../projects/repository';
 import type { WorkspaceRepository } from '../projects/workspaceRepository';
 import { encodeDraftDocument } from '../projects/workspaceDocument';
 import { assessDraftAcknowledgement, type DraftWriteResult, type OpenDraft, type SessionRecord } from '../projects/workspaceTypes';
-import type { ProjectDocument, ProjectSnapshot } from '../projects/types';
+import type { MetaMutation, ProjectDocument, ProjectSnapshot } from '../projects/types';
 import { createEmptyProjectDocument } from '../projects/projectDocument';
 import { classifyError } from '../projects/errors';
 import { disposeNetwork } from '../engine/networkLifecycle';
@@ -47,6 +47,8 @@ export class SessionController {
   private startupChanged = false;
   private readonly writes = new AbortController();
   private pendingCommands = 0;
+  private atomicEdit?:AbortController;
+  private atomicRecovery=false;
 
   constructor(private readonly repository: ProjectRepository, private readonly runtime: SessionRuntime, private readonly debounceMs = 500) {
     if (!Number.isFinite(debounceMs) || debounceMs < 0) throw new Error('Invalid debounce.');
@@ -98,6 +100,7 @@ export class SessionController {
   }
   private changed = (): void => {
     if (this.phase !== 'ready') return;
+    if(this.atomicEdit&&this.active()&&encodeDraftDocument(this.runtime.capture()).json!==this.active()!.json)this.atomicEdit.abort();
     try { this.capture(); } catch (error) { this.error = failure(error); this.publish(); }
   };
   private schedule(e: Entry): void {
@@ -117,6 +120,7 @@ export class SessionController {
     // Never replace e.document/sequence with an earlier asynchronous snapshot.
   }
   private async persist(e: Entry): Promise<void> {
+    if(this.atomicRecovery&&e.persisted.id===this.activeId)fault('runtime-changed','Export local work and reload the stored session before persisting.');
     if (e.timer !== undefined) { clearTimeout(e.timer); e.timer = undefined; }
     try {
       while (e.sequence !== e.persistedSequence) {
@@ -132,12 +136,38 @@ export class SessionController {
   /** Re-read the active engine, covering applied terminal edits too. */
   async flush(id?: string): Promise<SessionResult<void>> {
     try {
+      if(this.atomicRecovery&&(!id||id===this.activeId))fault('runtime-changed','A committed operation overlaps newer local work. Export the local copy and reload before persisting.');
       this.ready(); if (!id || id === this.activeId) this.capture();
       const e = id ? this.entries.get(id) : this.active();
       if (id && !e) throw new SessionFault({ code: 'draft-not-found', id, message: 'Draft is not open in this controller.' });
       if (e) await this.queue(e, () => this.persist(e));
       this.checkAlive(); this.error = null; this.publish(); return { ok: true, value: undefined };
     } catch (error) { const detail = failure(error); if (this.phase !== 'disposed') { this.error = detail; this.publish(); } return { ok: false, error: detail }; }
+  }
+  /** Explicit same-draft replacement with CAS control records. The caller computes a
+   * selective document patch; activation discards transient processes, never replays them. */
+  commitDocument(input:{draftId:string;expected:ProjectDocument;document:ProjectDocument;control:readonly MetaMutation[];guards:readonly {key:string;expectedRevision:number|null}[]}):Promise<SessionResult<void>> {
+    const expected=encodeDraftDocument(input.expected).json,document=encodeDraftDocument(input.document).document,control=structuredClone(input.control),guards=structuredClone(input.guards);
+    return this.command(async()=>{
+      this.ready();this.guardForms();if(this.atomicRecovery||this.activeId!==input.draftId)fault('runtime-changed','The draft changed.');
+      take(await this.flush());const e=this.active()!;
+      return this.queue(e,async()=>{
+        this.capture();if(e.json!==expected||this.runtime.hasPendingForms())fault('runtime-changed','Configuration changed after confirmation.');
+        const prepared=prepareTopologyDocument(document.topology),abort=new AbortController();let activated=false,committed=false;
+        const stop=()=>abort.abort();this.writes.signal.addEventListener('abort',stop,{once:true});this.atomicEdit=abort;
+        try{
+          const written=take(await this.workspace.updateDraft(input.draftId,{expectedRevision:e.persisted.revision,editSequence:e.sequence+1,document,control,guards},{signal:abort.signal}));committed=true;
+          this.checkAlive();
+          if(abort.signal.aborted||this.runtime.hasPendingForms()||encodeDraftDocument(this.runtime.capture()).json!==expected){
+            this.atomicRecovery=true;e.error={code:'runtime-changed',message:'New local edits overlap a committed restart. Export this local copy, then reload the consistent stored document.'};throw new SessionFault(e.error);
+          }
+          if(e.timer!==undefined)clearTimeout(e.timer);
+          this.entries.set(input.draftId,this.entry(written.draft));
+          this.runtime.activate(prepared,{sessionId:this.session!.id,draftId:input.draftId});activated=true;this.error=null;this.publish();
+        }catch(error){if(committed&&!activated){this.atomicRecovery=true;this.entries.set(input.draftId,e);e.error={code:'runtime-changed',message:'The stored operation committed; export local work and reload before persisting.'};}throw error;
+        }finally{this.atomicEdit=undefined;this.writes.signal.removeEventListener('abort',stop);if(!activated)disposeNetwork(prepared.network);}
+      });
+    });
   }
   start(options: SessionStartOptions = {}): Promise<SessionResult<SessionControllerState>> {
     return this.command(async () => {

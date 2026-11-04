@@ -14,10 +14,16 @@ catálogos DE/EN/PT-BR existentes.
 
 ## Exemplos e limites confirmados no código
 
-- Linux: `ip address show` consulta; `ip address add 192.168.10.10/24 dev eth0`
+- Linux: `ip address show` consulta; `ip address add 192.0.2.10/24 dev eth0`
   configura somente uma interface ainda sem IPv4. Há um endereço por interface;
   o comando não define gateway ou DNS. Para editar um endereço existente, a página
   recomenda o Inspector e não promete suporte a `ip address replace`.
+- `ip route` consulta a tabela; `ip route add default via 192.0.2.1 dev eth0`
+  adiciona a rota padrão genérica. A ajuda distingue endereço/máscara, o Next Hop
+  local e a rota usada quando não há correspondência mais específica. `dev` é a
+  interface de saída do próprio dispositivo. O comando não preenche o campo Gateway
+  do Inspector. Os exemplos de terminal usam a rede de documentação, sem valores
+  da solução do tutorial; comandos continuam selecionáveis, com destaque âmbar.
 - Windows: `ipconfig /all` consulta. A configuração estática por `netsh` não existe
   neste CMD simulado; a página encaminha ao Inspector.
 - Os comandos aparecem como texto selecionável e nunca são executados pela ajuda.

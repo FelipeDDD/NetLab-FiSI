@@ -9,6 +9,19 @@ import { Shell } from './commands/shell';
 import { applyInspectorEdit, applyLinkEdit, captureCreation, captureLink, restoreCreation, restoreDeletedDevices } from './topologyEdits';
 import type { InspectorOperation } from './topologyHistory';
 
+it('replays a tutorial default-route removal only against the exact route list, preserving unrelated configuration', () => {
+  const net=new Network(),host=createDevice(net,'host') as IpDevice;
+  host.addIp('eth0',parseIp('192.0.2.10')!,24);
+  host.addRoute(0,0,parseIp('192.0.2.1'),'eth0');host.addRoute(parseIp('198.51.100.0')!,24,parseIp('192.0.2.2'),'eth0');
+  const before=structuredClone(host.staticRoutes),after=before.filter(r=>r.prefix!==0);
+  const operation:InspectorOperation={type:'set-static-routes',label:'Repeat default route',deviceId:host.id,before,after};
+  expect(applyInspectorEdit(net,operation,'redo')).toBe(true);expect(host.staticRoutes).toEqual(after);
+  expect(applyInspectorEdit(net,operation,'undo')).toBe(true);expect(host.staticRoutes).toEqual(before);
+  host.staticRoutes[0].via=parseIp('192.0.2.99');const changed=serializeNetwork(net,{});
+  expect(applyInspectorEdit(net,operation,'redo')).toBe(false);expect(serializeNetwork(net,{})).toEqual(changed);
+  expect(host.getInterface('eth0')!.ip).toEqual({addr:parseIp('192.0.2.10'),prefix:24});
+});
+
 it('validates RIP state before replay, without replacing devices or touching other routers', () => {
   const net = new Network(), router = createDevice(net, 'router') as IpDevice;
   const neighbour = createDevice(net, 'router') as IpDevice, sw = createDevice(net, 'switch');

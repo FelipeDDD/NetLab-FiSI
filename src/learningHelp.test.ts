@@ -10,14 +10,21 @@ it('the IPv4 help examples run in the supported shell/CMD subset', () => {
   const write = vi.fn(), done = vi.fn(), shell = new Shell(device);
   shell.exec(IPV4_HELP_COMMANDS.add, { write }, done, 'linux');
   expect(write).not.toHaveBeenCalled();
-  expect(device.getInterface('eth0')?.ip).toEqual({ addr: parseIp('192.168.10.10'), prefix: 24 });
+  expect(device.getInterface('eth0')?.ip).toEqual({ addr: parseIp('192.0.2.10'), prefix: 24 });
   expect(device.getInterface('eth0')?.gateway).toBeNull();
   expect(device.getInterface('eth0')?.dns).toBeNull();
   shell.exec(IPV4_HELP_COMMANDS.show, { write }, done, 'linux');
-  expect(write.mock.calls.flat().join('')).toContain('192.168.10.10/24');
+  expect(write.mock.calls.flat().join('')).toContain('192.0.2.10/24');
+  write.mockClear();
+  shell.exec(IPV4_HELP_COMMANDS.defaultRoute, { write }, done, 'linux');
+  expect(write).not.toHaveBeenCalled();
+  expect(device.staticRoutes).toContainEqual(expect.objectContaining({dest:0,prefix:0,via:parseIp('192.0.2.1'),ifaceName:'eth0'}));
+  expect(device.getInterface('eth0')?.gateway).toBeNull();
+  shell.exec(IPV4_HELP_COMMANDS.routes, { write }, done, 'linux');
+  expect(write.mock.calls.flat().join('')).toContain('default via 192.0.2.1 dev eth0');
   write.mockClear();
   shell.exec(IPV4_HELP_COMMANDS.windows, { write }, done, 'windows');
-  expect(write.mock.calls.flat().join('')).toContain('192.168.10.10');
+  expect(write.mock.calls.flat().join('')).toContain('192.0.2.10');
   expect(write.mock.calls.flat().join('')).toContain('255.255.255.0');
 });
 

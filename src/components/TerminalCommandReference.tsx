@@ -1,35 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { findReference, REFERENCE_CATEGORIES, TERMINAL_REFERENCE, type ReferenceOs } from '../terminalReference';
-import { syntaxParameterHints, tokenizeSyntax } from '../referenceSyntax';
+import { ReferenceOperationContent, ReferenceNotes } from './ReferenceOperationContent';
+import { useFloatingReferences } from './FloatingCommandReferences';
+import { canPinReference } from '../floatingReferences';
+import { useTranslation } from '../i18n';
 import './terminalCommandReference.css';
 
-function CopyButton({ text, kind }: { text: string; kind: 'Syntax' | 'Beispiel' }) {
-  const [message, setMessage] = useState('');
-  const alive = useRef(true);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => {
-    alive.current = true;
-    return () => { alive.current = false; clearTimeout(timer.current); };
-  }, []);
-  return <div className="reference-copy">
-    <button type="button" className="btn" aria-label={kind + ' kopieren: ' + text} onClick={async () => {
-      let copied = false;
-      try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); copied = true; } } catch {}
-      if (!alive.current) return;
-      clearTimeout(timer.current);
-      setMessage(copied ? 'Kopiert' : 'Kopieren nicht möglich. Text markieren und Strg+C verwenden.');
-      timer.current = setTimeout(() => setMessage(''), copied ? 1800 : 5000);
-    }}>Kopieren</button>
-    <span role="status" aria-live="polite">{message}</span>
-  </div>;
-}
-
-function CopyExample({ text }: { text: string }) {
-  return <div className="reference-example"><code>{text}</code><CopyButton text={text} kind="Beispiel" /></div>;
-}
-
 export function TerminalCommandReference({ origin, onClose }: { origin: HTMLButtonElement; onClose: () => void }) {
+  const pins = useFloatingReferences();
+  const { t } = useTranslation();
+  const [pinMessage, setPinMessage] = useState<'added' | 'duplicate' | 'limit' | null>(null);
   const dialog = useRef<HTMLDialogElement>(null), searchInput = useRef<HTMLInputElement>(null);
   const content = useRef<HTMLElement>(null);
   const [os, setOs] = useState<ReferenceOs>('linux');
@@ -78,6 +59,9 @@ export function TerminalCommandReference({ origin, onClose }: { origin: HTMLButt
         setOs(next); setCategory(''); setSelectedId(next === 'linux' ? 'linux-ip-route' : 'windows-route');
       }}><option value="linux">Linux</option><option value="windows">Windows CMD</option></select></label>
     </div>
+    {pinMessage && <p className="reference-pin-message" role="status">{pinMessage === 'added'
+      ? t('referencePins.added', { count: pins?.count ?? 0 })
+      : t(pinMessage === 'duplicate' ? 'referencePins.duplicate' : 'referencePins.limit')}</p>}
     <div className="reference-layout">
       <nav className="reference-navigation" aria-label="Befehlskategorien und Befehle">
         <div className="reference-categories">
@@ -93,22 +77,18 @@ export function TerminalCommandReference({ origin, onClose }: { origin: HTMLButt
       <section ref={content} className="reference-content" aria-label="Befehlsdetails">
         {selected ? <article key={selected.id}>
           <h3>{selected.title}</h3><p>{selected.summary}</p>
-          {selected.operations.map((operation, index) => {
-            const hasExample = operation.syntax !== operation.example;
-            const hints = operation.parameters ? [operation.parameters] : syntaxParameterHints(operation.syntax);
-            return <section className="reference-operation" key={index}>
-            <h4>{operation.title}</h4><p>{operation.description}</p>
-            <div className="reference-syntax"><span>Syntax</span><div className="reference-syntax-line"><code>{tokenizeSyntax(operation.syntax).map((token, i) =>
-              <span key={i} className={token.kind === 'literal' ? undefined : 'syntax-' + token.kind}>{token.text}</span>)}</code>
-              {!hasExample && <CopyButton text={operation.syntax} kind="Syntax" />}</div></div>
-            {(hasExample || hints.length > 0) && <details><summary>{hasExample ? 'Beispiel' : ''}{hasExample && hints.length > 0 ? ' & ' : ''}{hints.length > 0 ? 'Parameter' : ''}</summary>
-              {hasExample && <CopyExample text={operation.example} />}
-              {hints.length > 0 && <ul className="reference-parameters">{hints.map((hint, i) => <li key={i}>{hint}</li>)}</ul>}
-            </details>}
-          </section>;})}
-          {!!selected.notes.length && <details className="reference-notes"><summary>Hinweise & NetLab-Grenzen</summary>
-            <ul>{selected.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>
-          </details>}
+          {selected.operations.map((operation, index) => <section className="reference-operation" key={index}>
+            <div className="reference-operation-heading"><h4>{operation.title}</h4>
+              {pins && canPinReference({ entryId: selected.id, operationIndex: index }) && <button type="button" className="btn reference-pin"
+                title={t('referencePins.pin')} aria-label={t('referencePins.pin') + ': ' + operation.title}
+                onClick={() => {
+                  const result = pins.pin({ entryId: selected.id, operationIndex: index });
+                  setPinMessage(result === 'added' ? 'added' : result === 'duplicate' ? 'duplicate' : 'limit');
+                }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m16 3 5 5-4 1-3 5-4-4 5-3Z M10 10l-4 4 4 4 4-4 M8 16l-5 5" /></svg></button>}
+            </div>
+            <ReferenceOperationContent operation={operation} />
+          </section>)}
+          <ReferenceNotes notes={selected.notes} />
         </article> : <p role="status">Keine passenden Befehle. Suchtext oder Kategorie ändern.</p>}
       </section>
     </div>

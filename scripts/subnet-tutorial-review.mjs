@@ -35,7 +35,9 @@ export async function runSubnetTutorialReview({ page, root, report, wait, delay,
   await test('transition keeps Chapter 1, original devices and positions; PC D has one undo/redo operation', async () => {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     await page.evaluate("theme.getState().setTheme('graphite-dark');store.getState().select(null);store.getState().setTerminalDockCollapsed(true);window.chapterOneDevices=[...sim.net.devices.values()];window.chapterOnePositions=store.getState().nodes.map(n=>({id:n.id,position:n.position}));window.chapterOneHistory=store.getState().topologyHistory.past.length;");
+    await delay(180);
     chapterOneMeta = await page.evaluate("return (await ws.repository.getMeta('guided:v1:draft:'+ws.controller.getState().activeDraftId)).value.value;");
+    await wait("document.querySelector('[data-start-subnet]:not(:disabled)')");
     await click('[data-start-subnet]'); await step(1); await saved();
     assert.equal(await page.evaluate('return ws.controller.getState().activeDraftId;'), tutorialId);
     assert(await page.evaluate(`const d=sim.net.devices.get(${JSON.stringify(d)}),i=d.getInterface('eth0');return d.os==='linux'&&i.ip.addr===(await import('/src/engine/ip.ts')).parseIp('192.168.10.12')&&i.ip.prefix===28&&i.gateway===null&&i.link.operational&&chapterOneDevices.every(old=>sim.net.devices.get(old.id)===old)&&JSON.stringify(store.getState().nodes.filter(n=>n.id!==d.id).map(n=>({id:n.id,position:n.position})))===JSON.stringify(chapterOnePositions);`));

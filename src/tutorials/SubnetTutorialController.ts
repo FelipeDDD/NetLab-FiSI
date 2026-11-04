@@ -8,10 +8,14 @@ import { FIRST_DEVICES } from './firstConnection';
 import { chapterOneSignature, correctedSubnet, initialSubnetDevice, SUBNET_DEMO_COMMAND, SUBNET_LINK_ID, SUBNET_PC_ID, subnetDevice, subnetPreparationError, type SubnetWarning } from './subnetChapter';
 import { newSubnetProgress, SubnetProgressStore, type SubnetProgress } from './subnetProgress';
 import { tutorialFingerprint } from './tutorialProgress';
+import type { ChapterCheckpointHooks } from './chapterCheckpoints';
+import type { MetaValue } from '../projects/types';
 
 type Sessions = Pick<SessionController, 'getState' | 'subscribe' | 'hasPendingOperations'>;
 type First = Pick<TutorialController, 'getState' | 'subscribe' | 'flushProgress' | 'hasCompletedChapter'>;
 export interface SubnetRuntime {
+  checkpoint?:ChapterCheckpointHooks;
+  restarting?():boolean;
   network(): Network;
   activeDraftId(): string | null;
   pendingForms(): boolean;
@@ -19,6 +23,7 @@ export interface SubnetRuntime {
   observeCommands(listener: (event: TerminalCommandEvent) => void): () => void;
   insert(pcC: string): SubnetWarning | null;
   demonstrate(): 'accepted' | 'busy' | 'unapplied-input' | 'disposed';
+  suspended?(): boolean;
 }
 export interface SubnetState {
   active: boolean; ready: boolean; busy: boolean; saving: boolean; storageError: boolean;
@@ -118,6 +123,7 @@ export class SubnetTutorialController {
         await this.first.flushProgress();
         if (this.first.getState().storageError || !this.first.hasCompletedChapter()) return;
         const base = chapterOneSignature(net);
+        await this.runtime.checkpoint?.before(id);
         record = await newSubnetProgress(id, first.pcC, base);
         if (net !== this.runtime.network() || id !== this.runtime.activeDraftId() || chapterOneSignature(net) !== base || this.runtime.pendingForms() || this.sessions.hasPendingOperations()) return;
         this.records.set(id, record); this.publish({ record });
@@ -137,10 +143,11 @@ export class SubnetTutorialController {
         const error = exists ? recoverable ? null : 'conflict' : this.runtime.insert(record.pcC);
         if (error) { this.publish({ warning: error }); return; }
         const prepared = this.updateRecord({ prepared: true, visible: true }, false)!;
+        await this.runtime.checkpoint?.prepared(id,prepared as unknown as MetaValue);
         await this.save(prepared);
       } else this.updateRecord({ visible: true });
       this.refresh();
-    } finally { this.publish({ busy: false }); }
+    } catch {this.publish({storageError:true});} finally { this.publish({ busy: false }); }
   }
   answer(value: string) {
     if (!this.state.active || this.state.record?.step !== 1) return;
@@ -188,6 +195,8 @@ export class SubnetTutorialController {
   }
   private refresh = () => {
     if (this.disposed) return;
+    if(this.runtime.restarting?.()){this.candidate=undefined;this.demoRequested=undefined;return;}
+    if (this.runtime.suspended?.()) { this.candidate = undefined; this.demoRequested = undefined; this.publish({ active: false, demoRunning: false }); return; }
     const id = this.sessions.getState().activeDraftId, net = this.runtime.network(), first = this.first.getState();
     if (!id || id !== this.runtime.activeDraftId() || this.sessions.hasPendingOperations()) {
       this.candidate = undefined; this.demoRequested = undefined;

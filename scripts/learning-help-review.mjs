@@ -71,7 +71,7 @@ export async function runLearningHelpReview({ page, url, root, report }) {
       await key('a', 'KeyA', 65, 2); await page.send('Input.insertText', { text: '192.168.' }); await delay(550);
       const before = await snapshot();
       await click('.inspector [data-help-page=ipv4]'); await opened();
-      const commands = ['ip address show', 'ip address add 192.168.10.10/24 dev eth0', 'ipconfig /all'];
+      const commands = ['ip address show', 'ip address add 192.0.2.10/24 dev eth0', 'ip route', 'ip route add default via 192.0.2.1 dev eth0', 'ipconfig /all'];
       assert.deepEqual(await page.evaluate("return [...document.querySelectorAll('.learning-help-command code')].map(e=>e.textContent);"), commands);
       assert.equal(await page.evaluate("return document.querySelectorAll('.learning-help-command button').length;"), 0);
       assert(await page.evaluate("return [...document.querySelectorAll('.learning-help-command code')].every(e=>getComputedStyle(e).userSelect==='text');"));

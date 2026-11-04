@@ -9,7 +9,8 @@ const HelpContext = createContext<{ open(page: LearningHelpPage, origin: HTMLEle
 export const useLearningHelp = () => useContext(HelpContext);
 
 export const IPV4_HELP_COMMANDS = {
-  show: 'ip address show', add: 'ip address add 192.168.10.10/24 dev eth0', windows: 'ipconfig /all',
+  show: 'ip address show', add: 'ip address add 192.0.2.10/24 dev eth0', windows: 'ipconfig /all',
+  routes: 'ip route', defaultRoute: 'ip route add default via 192.0.2.1 dev eth0',
 } as const;
 
 export function LearningHelpProvider({ children }: { children: ReactNode }) {
@@ -74,6 +75,8 @@ function LearningHelpDialog({ location, onClose }: { location: HelpLocation; onC
       </section><section><h3>{t('learningHelp.linux')}</h3><p>{t('learningHelp.linuxIntro')}</p><CommandExample command={IPV4_HELP_COMMANDS.show} />
         <p>{t('learningHelp.linuxAdd')}</p><CommandExample command={IPV4_HELP_COMMANDS.add} />
         <details><summary>{t('learningHelp.netlabNote')}</summary><p>{t('learningHelp.linuxLimit')}</p></details>
+        <h3>{t('learningHelp.routesTitle')}</h3><p>{t('learningHelp.routesIntro')}</p><CommandExample command={IPV4_HELP_COMMANDS.routes}/>
+        <p>{t('learningHelp.defaultRoute')}</p><CommandExample command={IPV4_HELP_COMMANDS.defaultRoute}/>
       </section></div>
       <section className="learning-help-windows"><h3>{t('learningHelp.windows')}</h3><p>{t('learningHelp.windowsIntro')}</p>
         <CommandExample command={IPV4_HELP_COMMANDS.windows} /><p>{t('learningHelp.windowsLimit')}</p></section>
