@@ -5,16 +5,21 @@ import { useStore } from '../store';
 import { SUBNET_DEMO_COMMAND, SUBNET_PC_ID } from './subnetChapter';
 import type { SubnetState, SubnetTutorialController } from './SubnetTutorialController';
 import { ChapterRestartButton } from './ChapterRestartUI';
+import { subnetChapterCompletion } from './completion';
+import { correctedSubnet } from './subnetChapter';
+import { sim } from '../sim';
+import { ChapterProgress, ExploreNetworkButton } from './CompletionUI';
 
 const titles = ['maskTitle', 'demoTitle', 'failureTitle', 'correctTitle', 'retestTitle'] as const;
 const texts = ['maskText', 'demoText', 'failureText', 'correctText', 'retestText'] as const;
 const successes = ['maskPassed', 'demoPassed', 'failurePassed', 'correctPassed', 'finished'] as const;
-export function SubnetTutorialPanel({ controller, state, afterCompletion }: { controller: SubnetTutorialController; state: SubnetState; afterCompletion?:ReactNode }) {
+export function SubnetTutorialPanel({ controller, state, afterCompletion, onExplore }: { controller: SubnetTutorialController; state: SubnetState; afterCompletion?:ReactNode; onExplore?():void }) {
   const { t } = useTranslation(), [collapsed, setCollapsed] = useState(false), r = state.record;
   if (!state.active || !r) return null;
   const step = r.step - 1;
+  const completion = subnetChapterCompletion(r, correctedSubnet(sim.net, r.pcC));
   return <ExercisePanelFrame exerciseId="guided-subnet-mask" collapsed={collapsed} header={<>
-    <div className="exercise-heading"><strong>{t('guidedSubnet.title')}</strong><div className="exercise-summary">{t('guided.progress', { step: r.step, total: 5 })}</div></div>
+    <div className="exercise-heading"><strong>{t('guidedSubnet.title')}</strong><div className="exercise-summary">{t('guided.progress', { step: r.step, total: 5 })} · <ChapterProgress progress={completion}/></div></div>
     <button className="btn btn--icon" type="button" aria-label={t(collapsed ? 'exercises.expand' : 'exercises.collapse')} aria-expanded={!collapsed} onClick={() => setCollapsed(v => !v)}>{collapsed ? '+' : '−'}</button>
     <ChapterRestartButton chapter="subnet-mask" draftId={r.draftId} step={r.step}/>
   </>}>
@@ -47,10 +52,12 @@ export function SubnetTutorialPanel({ controller, state, afterCompletion }: { co
         <span>{state.passed ? t(`guidedSubnet.${successes[step]}`) : t(step === 2 ? 'guidedSubnet.failurePending' : 'guided.pending')}</span>
       </p>
       {step === 4 && state.passed && <p className="exercise-learning" data-subnet-finished>{t('guidedSubnet.explanation')}</p>}
+      {step === 4 && completion.complete && <p>{t('guided.exploreInvitation')}</p>}
       {step===4&&state.passed&&afterCompletion}
     </div><footer>
       <button className="btn" type="button" disabled={state.busy} onClick={() => controller.previous()}>{t('guided.previous')}</button>
       {step < 4 && <button className="btn btn--primary" type="button" disabled={!state.passed || state.busy || state.storageError} onClick={() => controller.next()}>{t('guided.next')}</button>}
+      {step===4&&completion.complete&&onExplore&&<ExploreNetworkButton onClick={onExplore}/>}
     </footer></>}
   </ExercisePanelFrame>;
 }

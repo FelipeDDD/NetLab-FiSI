@@ -75,11 +75,17 @@ export function ExerciseMenu({ close }: { close(): void }) {
       const pilot=practicalExercise(e.id);
       const completion = state.progress.completed[e.id], resume = controller.resumable(e.id);
       const started = Object.values(state.progress.attempts).some(a => a.exerciseId === e.id);
+      const active = controller.activeAttempt(), current = active?.id === resume?.id && active?.exerciseId === e.id;
+      const summary = current ? summarizeExerciseChecks(e.student.requirements, exerciseChecks(e.id), state.results) : null;
+      const confirmed = completion && (!resume || completion.attemptId === resume.id);
+      const passed = current && state.outcome === 'passed' && !state.checking && !state.saving && !state.error && summary?.total && summary.passed === summary.total;
+      const completed = !!confirmed || !!passed;
       return <section key={e.id} className="exercise-menu-entry" data-exercise={e.id}>
         <strong>{e.student.title}</strong>
         {pilot&&<small>{t('exercises.pilot')}</small>}
-        <span className={completion ? 'exercise-completed' : 'exercise-note'}>{completion ? '✓ ' + t(pilot?'exercises.technical':'exercises.completed') : started ? t('exercises.started') : t('exercises.untouched')}</span>
-        {completion && <small>{new Date(completion.completedAt).toLocaleDateString(language)} · Version {completion.contentVersion}</small>}
+        <span className={completed ? 'exercise-completed' : 'exercise-note'}>{completed ? '✓ ' + t('exercises.completed') : summary && summary.checked > 0 ? t('guided.tasksCompleted', { completed: summary.passed, total: summary.total }) : started ? t('exercises.started') : t('exercises.untouched')}</span>
+        {completed && pilot && <small>{t('exercises.technical')} · {t('exercises.manual')}</small>}
+        {confirmed && <small>{new Date(completion.completedAt).toLocaleDateString(language)} · Version {completion.contentVersion}</small>}
         <div className="exercise-menu-actions">
           {resume && <button role="menuitem" className="btn" disabled={!state.ready || state.busy} onClick={() => { usePractice.getState().close(); void controller.resume(resume.draftId); close(); }}>{t('exercises.resume')}</button>}
           <button role="menuitem" className="btn" disabled={!state.ready || state.busy} onClick={() => { usePractice.getState().close(); void controller.start(e.id); close(); }}>{t(completion ? 'exercises.restart' : resume ? 'exercises.attempt' : 'exercises.start')}</button>
@@ -102,17 +108,19 @@ export function ExercisePanel() {
   const checks = exerciseChecks(exercise.id), currentVersion = active.contentVersion === exercise.contentVersion, pilot=practicalExercise(exercise.id);
   const checkSummary = summarizeExerciseChecks(exercise.student.requirements, checks, state.results);
   const hasCheckResults = checkSummary.checked > 0;
+  const completed = currentVersion && state.outcome === 'passed' && !state.checking && !state.saving && !state.error && checkSummary.total > 0 && checkSummary.passed === checkSummary.total;
   const countText = hasCheckResults
-    ? t('exercises.checksCount').replace('{passed}', String(checkSummary.passed)).replace('{total}', String(checkSummary.total))
+    ? t('guided.tasksCompleted', { completed: checkSummary.passed, total: checkSummary.total })
     : t('exercises.checksPending').replace('{count}', String(checkSummary.total));
   return <ExercisePanelFrame key={active.id} exerciseId={exercise.id} collapsed={collapsed} header={<><div className="exercise-heading"><strong>{exercise.student.title}</strong>
-      <div className="exercise-summary" role="status" aria-live="polite" data-outcome={currentVersion ? state.outcome : 'unverified'}>
-        <span>{state.checking ? t('exercises.checking') : currentVersion ? countText : t('exercises.pending')}</span>
+      <div className="exercise-summary" role="status" aria-live="polite" title={hasCheckResults ? t('exercises.checksCount', { passed: checkSummary.passed, total: checkSummary.total }) : undefined} data-outcome={currentVersion ? state.outcome : 'unverified'}>
+        <span>{state.checking ? t('exercises.checking') : completed ? '✓ ' + t('exercises.completed') : currentVersion ? countText : t('exercises.pending')}</span>
       </div>
     </div><button className="btn btn--icon" aria-label={t(collapsed?'exercises.expand':'exercises.collapse')} aria-expanded={!collapsed} onClick={() => setCollapsed(v => !v)}>{collapsed ? '+' : '−'}</button></>}>
     {!collapsed && <>
       <div className="exercise-body">
         <p className="exercise-intro" lang="de">{EXERCISE_PANEL_INTRO[exercise.id] ?? `${exercise.student.description} ${exercise.student.task}`}</p>
+        {completed && pilot && <p className="exercise-note">{t('exercises.technical')} · {t('exercises.manual')}</p>}
         <details className="exercise-requirements"><summary>{t('exercises.details')}</summary><ul>{exercise.student.requirements.map(r => {
           const required = checks.filter(a => a.requirementId === r.id);
           const done = required.length > 0 && required.every(a => state.results[a.id]);

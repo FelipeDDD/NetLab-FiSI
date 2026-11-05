@@ -9,6 +9,8 @@ import {prepareTopologyDocument} from '../persistence/topologyDocument';
 import {disposeNetwork} from '../engine/networkLifecycle';
 import {chapterOneSignature,correctedSubnet,subnetPeers} from './subnetChapter';
 import {routerConditions} from './routerChapter';
+import {staticBaseReady} from './staticRoutingChapter';
+import {triangleWiring} from './alternativePathsChapter';
 import {tutorialFingerprint} from './tutorialProgress';
 import {hasPendingForms} from '../persistence/pendingForms';
 
@@ -95,6 +97,8 @@ export class ChapterRestartService {
     try{
       if(chapter==='subnet-mask'&&await tutorialFingerprint(chapterOneSignature(prepared.network))!==p.baseFingerprint)throw Error('checkpoint-conflict');
       if(chapter==='two-networks'&&(!subnetPeers(prepared.network,p.pcC)||!correctedSubnet(prepared.network,p.pcC)||!routerConditions(prepared.network,p.pcC).exists))throw Error('checkpoint-conflict');
+      if(chapter==='static-routing'&&!staticBaseReady(prepared.network))throw Error('checkpoint-conflict');
+      if(chapter==='alternative-paths'&&!triangleWiring(prepared.network))throw Error('checkpoint-conflict');
     }finally{disposeNetwork(prepared.network);}
   }
 }

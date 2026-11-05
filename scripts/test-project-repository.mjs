@@ -408,6 +408,16 @@ try {
     await runTutorialMenuReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_STATIC_ROUTING_REVIEW === '1') {
+    const { runStaticRoutingReview } = await import('./static-routing-tutorial-review.mjs');
+    await runStaticRoutingReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_ALTERNATIVE_PATHS_REVIEW === '1') {
+    const { runAlternativePathsReview } = await import('./alternative-paths-tutorial-review.mjs');
+    await runAlternativePathsReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_CABLE_TOOLTIP_REVIEW) {
     const { runCableTooltipReview } = await import('./cable-tooltip-review.mjs');
     await runCableTooltipReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });

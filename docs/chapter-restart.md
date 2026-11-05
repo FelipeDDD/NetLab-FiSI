@@ -46,6 +46,15 @@ IDs, MACs e identidade da tentativa são conferidos antes de qualquer gravação
   destinos e posições de dispositivos anteriores são preservados. Gateways/rotas
   ambíguos, IDs reutilizados, dispositivos anteriores ausentes, cabos incompatíveis
   ou uma LAN anterior inválida bloqueiam a operação inteira.
+- **Capítulo 4:** restaura os sete equipamentos do backbone inicial e remove a
+  extensão LAN C somente quando suas identidades pertencem à tentativa. Rotas,
+  endereços e progresso retornam juntos ao cenário 1. Equipamentos independentes
+  permanecem; conexões externas ou IDs reutilizados bloqueiam o reset. Ver
+  [static-routing-tutorial.md](static-routing-tutorial.md).
+- **Capítulo 5:** restaura o triângulo inicial com seus três routers sem IPv4 e
+  remove apenas os dois PCs identificados na tentativa. Usa a mesma confirmação,
+  transação e histórico; os critérios dos capítulos anteriores permanecem iguais.
+  Ver [alternative-paths-tutorial.md](alternative-paths-tutorial.md).
 
 Dispositivos comprovadamente pertencentes ao capítulo podem ser recuperados se
 foram apagados, mediante confirmação explícita. F5 e abertura do popover não

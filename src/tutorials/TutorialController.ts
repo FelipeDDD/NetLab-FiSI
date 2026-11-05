@@ -156,6 +156,11 @@ export class TutorialController {
   }
   getState = () => this.state;
   hasCompletedChapter = () => this.completed.has(FIRST_CONNECTION.steps.length);
+  completedSteps = (draftId = this.state.draftId): number[] => {
+    if (!draftId) return [];
+    if (draftId === this.boundDraftId) return [...this.completed];
+    return [...(this.attempts.get(draftId)?.completed ?? [])];
+  };
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<TutorialState>) {
     const next = { ...this.state, ...patch };

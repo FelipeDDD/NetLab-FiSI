@@ -211,7 +211,7 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
       assert.equal(await page.evaluate("return !!document.querySelector('[data-tutorial-finished]');"),false);
       await screenshot('08-pc-c-verbindung'); await key('c','KeyC',67,2);
       await wait("document.querySelector('[data-tutorial-finished=true]')");
-      assert(await page.evaluate("return document.querySelector('[data-tutorial-finished]').textContent.includes('Tutorial abgeschlossen!');"));
+      assert(await page.evaluate("return document.querySelector('[data-tutorial-finished]').textContent.includes('Kapitel abgeschlossen!');"));
       await screenshot('09-tutorial-abgeschlossen');
       assert(await page.evaluate('return sim.net===expansionNetwork&&expansionOriginal.every(d=>sim.net.devices.get(d.id)===d);'));
       const saved = await page.evaluate('return JSON.stringify(serial.serializeNetwork(sim.net,{}));');

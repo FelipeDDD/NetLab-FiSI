@@ -35,6 +35,7 @@ export async function runRouterTutorialReview({page,root,report,wait,delay,click
   await page.evaluate(`store.getState().onConnect({source:'${r}',target:'tutorial-01-switch'});store.getState().onConnect({source:'${r}',target:'${b}'});`);await wait("document.querySelector('[data-router-passed=true]')");await shot('02-router-connected');await click('.exercise-panel footer button','Weiter');await step(3);
   await terminal(r);await command('ip address add 192.168.20.1/24 dev eth0');await command('ip address add 192.168.10.1/24 dev eth1');assert.equal(await passed(),false);
   await command('ip address del 192.168.20.1/24 dev eth0');await command('ip address add 192.168.10.1/24 dev eth0');await command('ip address del 192.168.10.1/24 dev eth1');await command('ip address add 192.168.20.1/24 dev eth1');await wait("document.querySelector('[data-router-passed=true]')");await saved();await shot('03-router-configured');
+  const {reviewTutorialCompletion}=await import('./tutorial-completion-review.mjs');await reviewTutorialCompletion({page,root,report,wait,delay,click,menu,mount,stage:'partial'});
  });
  await test('F needs a real cable and unique address; A gateway is configured through the Inspector',async()=>{
   await next();await step(4);assert.equal(await passed(),false);assert(await page.evaluate("return document.querySelector('[data-router-step] pre').textContent==='ip address add <IPv4>/<Präfix> dev eth0';"));
@@ -76,6 +77,7 @@ export async function runRouterTutorialReview({page,root,report,wait,delay,click
   await inspectorGateway('tutorial-01-b','192.168.10.1');assert.equal(await passed(),false);await page.evaluate(`store.getState().beginQuickPing('tutorial-01-b');store.getState().chooseQuickPingTarget('${f}');`);await delay(100);await advance(12000);await wait("document.querySelector('[data-router-passed=true]')");await saved();await shot('09-chapter-complete');await reload(8);assert.equal(await passed(),true);
   assert.deepEqual(await page.evaluate('return await Promise.all(["guided:v1:draft:","guided:subnet-mask:v1:draft:"].map(k=>ws.repository.getMeta(k+ws.controller.getState().activeDraftId)));'),history);
   for(const language of ['en','pt-BR','de']){await page.evaluate(`lang.getState().setLanguage(${JSON.stringify(language)});`);await delay(60);assert.equal(await passed(),true);}
+  const {reviewTutorialCompletion}=await import('./tutorial-completion-review.mjs');await reviewTutorialCompletion({page,root,report,wait,delay,click,menu,mount,stage:'completed'});
   await page.evaluate("theme.getState().setTheme('classic-light');store.getState().select(null);store.getState().setTerminalDockCollapsed(true);");await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:800,deviceScaleFactor:1,mobile:false});await delay(160);assert(await page.evaluate("const r=document.querySelector('.exercise-panel').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1&&document.documentElement.scrollWidth<=innerWidth+1;"));await shot('07-classic-light-700');
  });
  if(process.env.NETLAB_CHAPTER_RESTART_REVIEW==='1'){

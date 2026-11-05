@@ -9,11 +9,14 @@ import LZString from 'lz-string';
 import { sameIpv4, validIpv4, type InterfaceIpv4 } from './engine/ipv4Config';
 import { runDhclient } from './commands/dhclient';
 import { Network, type PingProgress } from './engine/network';
+import { observeIcmpActivity, observePingActivity } from './networkObservations';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
 import { DEFAULT_PING_ANIMATION_SPEED, normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
 import { ROUTER_IDS, ROUTER_LINKS, routerPreparationError, routerConditions, routerSignature, type RouterWarning } from './tutorials/routerChapter';
+import { STATIC_IDS, STATIC_EXTENSION_IDS, STATIC_EXTENSION_LINKS, staticBaseReady, type StaticWarning } from './tutorials/staticRoutingChapter';
+import { ALTERNATIVE_IDS, ALTERNATIVE_PCS, ALTERNATIVE_LINKS, pcPreparationError, type AlternativeWarning } from './tutorials/alternativePathsChapter';
 import { Host, IpDevice, RouterDevice } from './engine/ipdevice';
 import { chooseHostOs, effectiveHostCreationMode, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
 import type { DeviceKind } from './engine/device';
@@ -227,6 +230,8 @@ interface NetsimState {
   addDeviceAt(kind: DeviceKind, pos: { x: number; y: number }): void;
   addSubnetTutorialPC(pcC: string): SubnetWarning | null;
   addRouterTutorialGroup(pcC: string): RouterWarning | null;
+  addStaticRoutingLan(): StaticWarning | null;
+  addAlternativeRoutingPCs(): AlternativeWarning | null;
   repeatRouterTutorialTask(step:5|6, signature:string, pcC:string):RouterWarning|null;
   addDeviceSmart(kind: DeviceKind, visible: PlacementBox): void;
   copySelectedDevices(): boolean;
@@ -516,6 +521,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     };
     net.onWireTransfer = (t, context, trace) => {
       if (sim.net !== net) return;
+      observeIcmpActivity(net, t, context);
       const before = get().guidedPacket, payload = context.frame.payload;
       const to = net.devices.get(t.toDeviceId);
       const iface = to?.getInterface(context.toInterface);
@@ -536,6 +542,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     };
     net.onPingProgress = (event) => {
       if (sim.net !== net) return;
+      observePingActivity(net, event);
       if (event.type === 'started') latestPing = { start: event, finished: false };
       else if (event.type === 'finished' && latestPing?.start.deviceId === event.deviceId && latestPing.start.icmpId === event.icmpId) latestPing.finished = true;
       if (event.type !== 'started' && latestPing &&
@@ -1181,6 +1188,41 @@ export const useStore = create<NetsimState>()((set, get) => {
         set({nodes:[...get().nodes,...layout.map(d=>deviceNode(d.id,d.kind,d.name,position.x+d.x,position.y+d.y))],edges:edgesFromEngine(),cableColors:{...get().cableColors,...cableColors}});
         commitEdit({type:'paste-devices',label:'Tutorial: LAN B und Router',devices,links,colors:{},cableColors}); saveSoon(); return null;
       } catch { Object.values(ROUTER_IDS).forEach(id=>sim.net.removeDevice(id)); return 'conflict'; }
+    },
+    addStaticRoutingLan() {
+      if (!staticBaseReady(sim.net)) return 'network';
+      const router = sim.net.devices.get(STATIC_IDS.r2), port = router?.getInterface('eth2'), node = get().nodes.find(n => n.id === STATIC_IDS.r2);
+      if (!node || !port) return 'missing';
+      if (port.link || !port.up) return 'port';
+      if (STATIC_EXTENSION_IDS.some(id => sim.net.devices.has(id) || get().nodes.some(n => n.id === id)) || STATIC_EXTENSION_LINKS.some(id => sim.net.links.has(id))) return 'conflict';
+      const layout = [{ id: STATIC_IDS.sc, kind: 'switch' as const, name: 'Switch C', x: 0, y: 0 }, { id: STATIC_IDS.c, kind: 'host' as const, name: 'PC C', x: 0, y: 280 }];
+      const anchor = placementBox(node), position = freePosition(layout.map(d => ({ x: d.x, y: d.y, ...deviceSize(d.kind) })), get().nodes.map(placementBox), { x: anchor.x, y: anchor.y + anchor.height + 90 });
+      prepareEdit();
+      try {
+        const devices = layout.map((d, i) => captureCreation(sim.net, createDevice(sim.net, d.kind, { id: d.id, name: d.name, os: 'linux' }), { x: position.x + d.x, y: position.y + d.y }, get().nodes.length + i));
+        const links = [captureLink(sim.net.connect(STATIC_IDS.r2, STATIC_IDS.sc, { id: STATIC_EXTENSION_LINKS[0], aIface: 'eth2', bIface: 'eth1' })), captureLink(sim.net.connect(STATIC_IDS.c, STATIC_IDS.sc, { id: STATIC_EXTENSION_LINKS[1], aIface: 'eth0', bIface: 'eth0' }))];
+        const cableColors = Object.fromEntries(links.map(l => [l.id, automaticCableAppearance(sim.net, l.id, get().cableColors)]));
+        set({ nodes: [...get().nodes, ...layout.map(d => deviceNode(d.id, d.kind, d.name, position.x + d.x, position.y + d.y))], edges: edgesFromEngine(), cableColors: { ...get().cableColors, ...cableColors } });
+        commitEdit({ type: 'paste-devices', label: 'Tutorial: LAN C hinzufügen', devices, links, colors: {}, cableColors }); saveSoon(); return null;
+      } catch { STATIC_EXTENSION_IDS.forEach(id => sim.net.removeDevice(id)); return 'conflict'; }
+    },
+    addAlternativeRoutingPCs() {
+      const error = pcPreparationError(sim.net); if (error) return error;
+      const rows = [{ id: ALTERNATIVE_IDS.a, router: ALTERNATIVE_IDS.r1, name: 'PC A', link: ALTERNATIVE_LINKS.a, dx: -360 }, { id: ALTERNATIVE_IDS.b, router: ALTERNATIVE_IDS.r3, name: 'PC B', link: ALTERNATIVE_LINKS.b, dx: 360 }];
+      const occupied = get().nodes.map(placementBox), positions: Record<string, { x: number; y: number }> = {};
+      for (const row of rows) {
+        const router = get().nodes.find(n => n.id === row.router); if (!router) return 'missing';
+        const box = placementBox(router), position = freePosition([{ x: 0, y: 0, ...deviceSize('host') }], occupied, { x: box.x + row.dx, y: box.y + 180 });
+        positions[row.id] = position; occupied.push({ ...position, ...deviceSize('host') });
+      }
+      prepareEdit();
+      try {
+        const devices = rows.map((row, index) => captureCreation(sim.net, createDevice(sim.net, 'host', { id: row.id, name: row.name, os: 'linux' }), positions[row.id], get().nodes.length + index));
+        const links = rows.map(row => captureLink(sim.net.connect(row.id, row.router, { id: row.link, aIface: 'eth0', bIface: 'eth2' })));
+        const cableColors = Object.fromEntries(links.map(link => [link.id, automaticCableAppearance(sim.net, link.id, get().cableColors)]));
+        set({ nodes: [...get().nodes, ...rows.map(row => deviceNode(row.id, 'host', row.name, positions[row.id].x, positions[row.id].y))], edges: edgesFromEngine(), cableColors: { ...get().cableColors, ...cableColors } });
+        commitEdit({ type: 'paste-devices', label: 'Tutorial: PC A und PC B hinzufügen', devices, links, colors: {}, cableColors }); saveSoon(); return null;
+      } catch { ALTERNATIVE_PCS.forEach(id => sim.net.removeDevice(id)); return 'conflict'; }
     },
     repeatRouterTutorialTask(step,signature,pcC) {
       if(routerSignature(sim.net)!==signature)return 'repeatUnsafe';

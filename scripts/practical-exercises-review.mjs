@@ -92,7 +92,7 @@ export async function runPracticalReview({page,url,root,report}) {
       assert(await page.evaluate(`const r=document.querySelector('.exercise-panel').getBoundingClientRect();return r.x===${panelBefore.x}&&r.y===${panelBefore.y};`));
       assert(await page.evaluate("return Math.abs(flow.getZoom()-.65)<.001;"));
       assert(await page.evaluate("return document.querySelector('.exercise-intro').textContent.includes('Die Konfiguration kann bereits stimmen');"));
-      assert(await page.evaluate("return document.querySelector('.exercise-learning').textContent.includes('192.168.0.0/16')&&document.querySelector('.exercise-summary').textContent.includes('4/4 Prüfungen bestanden');"));
+      assert(await page.evaluate("return document.querySelector('.exercise-learning').textContent.includes('192.168.0.0/16')&&(document.querySelector('.exercise-summary').textContent.includes('Abgeschlossen')&&document.querySelector('.exercise-summary').title==='4/4 Prüfungen bestanden');"));
       await shot('e06-learning-quarter-zoom','graphite-dark',1440,'normal');
       await page.evaluate("await flow.setViewport({x:120,y:80,zoom:.75});window.manualViewport=flow.getViewport();window.initialPositions=store.getState().nodes.map(n=>({id:n.id,position:n.position}));store.getState().setTerminalDockCollapsed(true);");await delay(150);
       assert.deepEqual(await page.evaluate('return flow.getViewport();'),await page.evaluate('return manualViewport;'));
@@ -215,10 +215,10 @@ export async function runPracticalReview({page,url,root,report}) {
       await start('d02');assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('4 Prüfungen · Noch nicht geprüft');"));
       await shot('d02-compact-desktop','graphite-dark',1440,'normal');
       await check();assert(!(await status()).completed['pilot-d02-v1']);
-      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('2/4 Prüfungen bestanden');"));
+      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('2/4 Aufgaben abgeschlossen');"));
       await page.evaluate("sim.net.devices.get('west').addRoute(0,0,ip.parseIp('10.72.254.2'),'eth1');store.getState().refresh();await ws.controller.flush();");await check();assert(!(await status()).completed['pilot-d02-v1']);
       await page.evaluate("sim.net.devices.get('east').addRoute(0,0,ip.parseIp('10.72.254.1'),'eth0');store.getState().refresh();await ws.controller.flush();");await check();assert((await status()).completed['pilot-d02-v1']);
-      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('4/4 Prüfungen bestanden')&&!document.querySelector('footer').textContent.includes('Technisch bestanden');"));
+      assert(await page.evaluate("return (document.querySelector('.exercise-summary').textContent.includes('Abgeschlossen')&&document.querySelector('.exercise-summary').title==='4/4 Prüfungen bestanden')&&!document.querySelector('footer').textContent.includes('Technisch bestanden');"));
       assert(await page.evaluate("const heading=document.querySelector('.exercise-panel header');return heading.contains(document.querySelector('.exercise-summary'))&&getComputedStyle(document.querySelector('.exercise-body')).overflowY==='auto';"));
       await shot('routing-return-passed','graphite-dark',1440,'selected');
       await page.evaluate("store.getState().renameDevice('west','West edited');");
@@ -235,7 +235,7 @@ export async function runPracticalReview({page,url,root,report}) {
       }
       assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth+1;'));
       assert(await page.evaluate("const p=document.querySelector('.exercise-panel');return p.scrollWidth<=p.clientWidth+1&&p.getBoundingClientRect().bottom<=innerHeight;"));
-      assert(await page.evaluate("return document.querySelector('.exercise-summary').textContent.includes('4/4 Prüfungen bestanden');"));
+      assert(await page.evaluate("return (document.querySelector('.exercise-summary').textContent.includes('Abgeschlossen')&&document.querySelector('.exercise-summary').title==='4/4 Prüfungen bestanden');"));
       await shot('routing-light-700','classic-light',700,'normal');await menu();await shot('pilot-menu-light-700','classic-light',700,'normal');
       const n=await page.evaluate('return ws.controller.getState().drafts.length;');await start('d02','Erneut starten');assert.equal(await page.evaluate('return ws.controller.getState().drafts.length;'),n+1);
       await delay(150);

@@ -8,6 +8,27 @@
 .guided-menu-chapter { padding: 9px 0; }
 .guided-menu-chapter + .guided-menu-chapter { margin-top: 3px; border-top: 1px solid var(--ui-border); }
 .guided-menu-chapter > .btn + .btn { margin-left: 6px; }
+.guided-router-completed-actions { display: flex; align-items: center; gap: 8px; }
+.guided-router-completed-actions > .btn { flex: 1 1 0; min-width: 0; margin: 0; }
+[data-exercise="guided-static-routing"] footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.guided-static-addresses { overflow-x: auto; }
+.guided-static-addresses table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.guided-static-addresses :is(th, td) { padding: 4px; text-align: left; white-space: nowrap; }
+[data-exercise="guided-static-routing"] pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-exercise="guided-static-routing"] .guided-subnet-replies [data-tutorial-passed="true"] { color: var(--ui-success); }
+[data-exercise="guided-alternative-paths"] footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+[data-exercise="guided-alternative-paths"] pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-exercise="guided-alternative-paths"] .guided-subnet-replies [data-tutorial-passed="true"], [data-alternative-selected-route="true"] { color: var(--ui-success); }
+.guided-alternative-table { overflow-x: auto; }
+.guided-alternative-table table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.guided-alternative-table :is(th, td) { text-align: left; padding: 4px; white-space: nowrap; }
+.guided-alternative-choice { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
+.guided-menu-progress { display: flex; flex-direction: column; gap: 2px; margin: 7px 0; }
+.guided-progress { color: var(--ui-text-muted); font-size: 12px; }
+.guided-progress.is-complete { color: var(--ui-success); }
+.guided-completion .guided-action-indicator { border-color: var(--ui-success); color: var(--ui-surface-card); background: var(--ui-success); }
+.guided-completion p { margin: 5px 0; }
+[data-exercise="guided-first-connection"] footer { flex-wrap: wrap; }
 .chapter-restart-control { position: relative; display: inline-flex; flex-shrink: 0; }
 .chapter-restart-popover { position: absolute; z-index: 20; top: calc(100% + 8px); right: 0; width: min(300px, calc(100vw - 56px)); padding: 12px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-panel); color: var(--ui-text); box-shadow: var(--ui-shadow-popover); cursor: default; font-weight: normal; user-select: text; }
 .chapter-restart-popover p { line-height: 1.45; margin: 8px 0; }
