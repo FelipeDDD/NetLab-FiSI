@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ViewportPortal, useViewport } from '@xyflow/react';
+import { ViewportPortal, useReactFlow, useViewport } from '@xyflow/react';
 import { useStore } from '../store';
-import { DEFAULT_MARKING, MARKING_COLORS, markingBounds, type AreaMarking, type MarkingColor, type MarkingStyle } from '../areaMarkings';
+import { DEFAULT_MARKING, DEFAULT_MARKING_TEXT_SIZE, MARKING_COLORS, markingBounds, type AreaMarking, type MarkingColor, type MarkingStyle } from '../areaMarkings';
 import { FloatingPopover } from './FloatingPopover';
 import './areaMarkings.css';
 import { unionPath } from '../markingGeometry';
@@ -13,8 +13,21 @@ export function AreaMarkingsLayer() {
   const preview = useStore(s => s.markingPreview);
   const selectedId = useStore(s => s.selectedMarkingId);
   const geometry = useStore(s => s.markingGeometry), extensionPreview = useStore(s => s.markingExtensionPreview);
+  const generation = useStore(s => s.topologyGeneration);
   const busy = useStore(s => !!s.reconnectingCable || !!s.quickPing);
   const { zoom } = useViewport();
+  const { screenToFlowPosition } = useReactFlow();
+  const gesture = useRef<{ id: string; pointer: number; start: { x: number; y: number }; offset: { x: number; y: number }; moved: boolean }>();
+  const suppressClick = useRef(false);
+  const [dragged, setDragged] = useState<{ id: string; offset: { x: number; y: number } }>();
+  useEffect(() => {
+    const cancel = () => { if (gesture.current) suppressClick.current = true; gesture.current = undefined; setDragged(undefined); };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && gesture.current) { event.preventDefault(); event.stopPropagation(); cancel(); } };
+    window.addEventListener('blur', cancel);
+    window.addEventListener('keydown', key, true);
+    return () => { window.removeEventListener('blur', cancel); window.removeEventListener('keydown', key, true); };
+  }, []);
+  useEffect(() => { gesture.current = undefined; setDragged(undefined); }, [generation, busy, geometry]);
   const visible = preview ? [...markings, preview] : markings;
   if (!visible.length) return null;
   return <ViewportPortal><svg className="area-markings-layer" aria-label="Bereichsmarkierungen">
@@ -28,15 +41,44 @@ export function AreaMarkingsLayer() {
       const shape = { fill: color, fillOpacity: marking.intensity / 100, stroke: color, strokeOpacity: selected ? 1 : .72,
         strokeWidth: selected ? 2 : 1, strokeDasharray: marking === preview ? '4 4' : undefined, vectorEffect: 'non-scaling-stroke' };
       const edit = () => useStore.getState().selectMarking(marking.id);
+      const offset = dragged?.id === marking.id ? dragged.offset : marking.textOffset ?? { x: 0, y: 0 };
+      const textX = box.x + 12 + offset.x, textY = box.y + 21 + offset.y;
+      const size = marking.textSize ?? DEFAULT_MARKING_TEXT_SIZE;
       return <g key={marking.id} data-area-marking={marking.id} data-marking-selected={selected || undefined} data-marking-preview={marking === preview || undefined} aria-label={marking.name || 'Unbenannter Bereich'}>
         {extensions?.length ? <path d={unionPath([box, ...extensions])} fillRule="evenodd" {...shape} /> : <rect {...box} rx="14" {...shape} />}
-        {marking.name && <text x={box.x + 12} y={box.y + 21} className="area-marking-title nodrag nopan"
+        {marking.name && <text x={textX} y={textY} style={{ fontSize: size }} className="area-marking-title nodrag nopan"
           role={interactive ? 'button' : undefined} tabIndex={interactive ? 0 : undefined} data-interactive={interactive || undefined}
           aria-label={interactive ? `Bereich ${marking.name} bearbeiten` : undefined}
-          onPointerDown={e => { if (interactive && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); } }}
-          onClick={e => { if (interactive && !e.shiftKey) { e.stopPropagation(); edit(); } }}
+          onPointerDown={e => {
+            if (!interactive || e.shiftKey || e.button !== 0 || !e.isPrimary) return;
+            e.preventDefault(); e.stopPropagation(); suppressClick.current = false;
+            gesture.current = { id: marking.id, pointer: e.pointerId, start: screenToFlowPosition({ x: e.clientX, y: e.clientY }), offset: { ...marking.textOffset ?? { x: 0, y: 0 } }, moved: false };
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={e => {
+            const active = gesture.current; if (!active || active.pointer !== e.pointerId || active.id !== marking.id) return;
+            e.preventDefault(); e.stopPropagation();
+            const point = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+            const dx = point.x - active.start.x, dy = point.y - active.start.y;
+            if (!active.moved && Math.hypot(dx, dy) * zoom < 3) return;
+            active.moved = true;
+            setDragged({ id: active.id, offset: { x: active.offset.x + dx, y: active.offset.y + dy } });
+          }}
+          onPointerUp={e => {
+            const active = gesture.current; if (!active || active.pointer !== e.pointerId || active.id !== marking.id) return;
+            e.stopPropagation(); gesture.current = undefined; setDragged(undefined);
+            if (active.moved) {
+              const point = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+              suppressClick.current = true;
+              useStore.getState().setMarkingTextOffset(active.id, { x: active.offset.x + point.x - active.start.x, y: active.offset.y + point.y - active.start.y }, active.offset);
+            }
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+          }}
+          onPointerCancel={() => { gesture.current = undefined; setDragged(undefined); }}
+          onLostPointerCapture={() => { gesture.current = undefined; setDragged(undefined); }}
+          onClick={e => { if (suppressClick.current) { suppressClick.current = false; e.stopPropagation(); return; } if (interactive && !e.shiftKey) { e.stopPropagation(); edit(); } }}
           onKeyDown={e => { if (interactive && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); edit(); } }}>
-          <title>{marking.name}</title>{marking.name.length > 38 ? marking.name.slice(0, 37) + '…' : marking.name}</text>}
+          <title>{marking.name}</title>{marking.name.split('\n').map((line, index) => <tspan key={index} x={textX} dy={index ? `${size * 1.25}px` : 0}>{line || '\u00a0'}</tspan>)}</text>}
       </g>;
     })}
   </svg></ViewportPortal>;
@@ -117,7 +159,7 @@ function MarkingsEditor({ onCancel }: { onCancel(): void }) {
   const pending = useStore(s => s.pendingMarkingRect);
   const [draft, setDraft] = useState<MarkingStyle>(() => {
     const preview = useStore.getState().markingPreview;
-    return preview ? { name: preview.name, color: preview.color, intensity: preview.intensity } : { ...DEFAULT_MARKING };
+    return preview ? { name: preview.name, color: preview.color, intensity: preview.intensity, ...(preview.textSize !== undefined ? { textSize: preview.textSize } : {}) } : { ...DEFAULT_MARKING };
   });
   const group = useRef<object>({});
   const marking = markings.find(m => m.id === selectedId), value = marking ?? draft;
@@ -129,9 +171,9 @@ function MarkingsEditor({ onCancel }: { onCancel(): void }) {
   useEffect(() => {
     useStore.getState().previewMarking(marking ? null : draft);
     return () => useStore.getState().previewMarking(null);
-  }, [marking?.id, draft.name, draft.color, draft.intensity, selection, pending]);
+  }, [marking?.id, draft.name, draft.color, draft.intensity, draft.textSize, selection, pending]);
   const change = (patch: Partial<MarkingStyle>) => {
-    const next = { name: value.name, color: value.color, intensity: value.intensity, ...patch };
+    const next = { name: value.name, color: value.color, intensity: value.intensity, ...(value.textSize !== undefined ? { textSize: value.textSize } : {}), ...patch };
     if (marking) useStore.getState().updateMarking(marking.id, next, group.current);
     else setDraft(next);
   };
@@ -139,7 +181,11 @@ function MarkingsEditor({ onCancel }: { onCancel(): void }) {
     <strong>Markierungen</strong>
     {!pending && <button type="button" className="btn" onClick={() => useStore.getState().beginMarkingDrawing()}>Neue Fläche zeichnen</button>}
     {!pending && <MarkingPicker markings={markings} selectedId={marking?.id ?? null} />}
-    <label>Name der Fläche<input aria-label="Name der Fläche" maxLength={80} placeholder="Optional, z. B. Büro oder DMZ" value={value.name} onChange={e => change({ name: e.target.value })} /></label>
+    <label>Name der Fläche<textarea aria-label="Name der Fläche" rows={2} maxLength={80} placeholder="Optional, z. B. Büro oder DMZ" value={value.name} onChange={e => change({ name: e.target.value })} /></label>
+    <label className="marking-intensity">Textgröße <output>{value.textSize ?? DEFAULT_MARKING_TEXT_SIZE} px</output>
+      <input type="range" aria-label="Textgröße" min="10" max="28" step="1" value={value.textSize ?? DEFAULT_MARKING_TEXT_SIZE} onChange={e => change({ textSize: Number(e.target.value) })} />
+    </label>
+    {marking && <button type="button" className="btn" disabled={!marking.textOffset} onClick={() => useStore.getState().setMarkingTextOffset(marking.id, { x: 0, y: 0 })}>Textposition zurücksetzen</button>}
     <fieldset><legend>Farbe</legend><div className="marking-colors">
       {(Object.keys(MARKING_COLORS) as MarkingColor[]).map(color => <label key={color} title={MARKING_COLORS[color].label} style={{ '--marking-color': MARKING_COLORS[color].value } as CSSProperties}>
         <input type="radio" name="marking-color" aria-label={MARKING_COLORS[color].label} checked={value.color === color} onChange={() => change({ color })}/><span aria-hidden="true" />

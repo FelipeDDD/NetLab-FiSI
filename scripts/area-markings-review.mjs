@@ -55,7 +55,7 @@ export async function runAreaMarkingsReview({ page, url, root, report }) {
     for (let i = 1; i <= 12; i++) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x + dx * i / 12, y: p.y + dy * i / 12, buttons: 1 });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.x + dx, y: p.y + dy, button: 'left', clickCount: 1 }); await delay(100);
   };
-  const test = async (name, work) => { try { await work(); results[name] = { passed: true }; } catch (e) { results[name] = { passed: false, error: e.stack ?? String(e) }; throw e; } };
+  const test = async (name, work) => { if (process.env.NETLAB_MARKING_TEXT_ONLY === '1' && !name.startsWith('markings: text size')) return; try { await work(); results[name] = { passed: true }; } catch (e) { results[name] = { passed: false, error: e.stack ?? String(e) }; throw e; } };
   let originalDraft, first, second, membersDocument;
   try {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false }); await mount();
@@ -457,11 +457,66 @@ export async function runAreaMarkingsReview({ page, url, root, report }) {
       await page.evaluate('store.getState().selectMarking(store.getState().areaMarkings[1].id);');await wait('document.querySelector("#area-markings-popover")');await textClick('.markings-actions button','Bereich entfernen');assert.equal((await marks()).length,1);
       await page.evaluate('store.getState().undoTopology();');assert.deepEqual(await marks(),expected);
     });
+    await test('markings: text size, multiline drag, history and persistence remain relative to the area', async () => {
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});
+      await page.evaluate('const r=await ws.controller.openDocument({schemaVersion:1,topology:{app:"netsim",version:1,devices:[],links:[]}});if(!r.ok)throw Error(JSON.stringify(r));store.getState().addDeviceAt("host",{x:380,y:250});store.getState().addDeviceAt("host",{x:750,y:320});store.getState().setPendingMarkingRect({x:80,y:140,width:400,height:220});store.getState().createFreeMarking({name:"LAN",color:"blue",intensity:18});theme.getState().setTheme("graphite-dark");await flow.setViewport({x:250,y:160,zoom:1});'); await delay(150);
+      const id=(await marks())[0].id;
+      await page.evaluate(`store.getState().setMarkingExtensions(${JSON.stringify(id)},[]);store.getState().setFreeMarkingBounds(${JSON.stringify(id)},{x:80,y:140,width:400,height:220});store.getState().selectMarking(${JSON.stringify(id)});`);
+      await wait('document.querySelector("#area-markings-popover")');
+      await field('[aria-label="Name der Fläche"]','LAN A\nVLAN 20');
+      await page.evaluate('document.querySelector("[aria-label=Textgröße]").focus();'); await key('End');
+      assert.equal((await marks())[0].textSize,28);
+      await key('Escape'); await wait('!document.querySelector("#area-markings-popover")');
+      assert.equal(await page.evaluate(`return document.querySelectorAll('[data-area-marking="${id}"] .area-marking-title tspan').length;`),2);
+      const before=await page.evaluate(`const m=store.getState().areaMarkings.find(a=>a.id===${JSON.stringify(id)});return{bounds:m.bounds,viewport:flow.getViewport(),nodes:store.getState().nodes.map(n=>n.position)};`);
+      const selector=`[data-area-marking="${id}"] .area-marking-title tspan`;
+      const start=await point(selector);
+      const target=await page.evaluate(`const e=document.elementFromPoint(${start.x},${start.y});return {element:e?.outerHTML.slice(0,500),x:${start.x},y:${start.y}};`);
+      await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',...start});
+      await page.send('Input.dispatchMouseEvent',{type:'mousePressed',...start,button:'left',buttons:1,clickCount:1});
+      for(let i=1;i<=8;i++){await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:start.x+145*i/8,y:start.y-95*i/8,button:'left',buttons:1});await delay(20);}
+      await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:start.x+145,y:start.y-95,button:'left',clickCount:1});await delay(100);
+      const moved=(await marks())[0];
+      assert(moved.textOffset&&Math.abs(moved.textOffset.x-145)<1&&Math.abs(moved.textOffset.y+95)<1,JSON.stringify({moved,target}));
+      assert.deepEqual(moved.bounds,before.bounds);
+      assert.deepEqual(await page.evaluate('return {viewport:flow.getViewport(),nodes:store.getState().nodes.map(n=>n.position)};'),{viewport:before.viewport,nodes:before.nodes});
+      assert.equal(await page.evaluate('return !!document.querySelector("#area-markings-popover");'),false);
+      await page.evaluate(`store.getState().setFreeMarkingBounds(${JSON.stringify(id)},{x:140,y:180,width:400,height:220});`);
+      assert.deepEqual((await marks())[0].textOffset,moved.textOffset);
+      await page.evaluate('store.getState().undoTopology();store.getState().undoTopology();');
+      assert.equal((await marks())[0].textOffset,undefined);
+      await page.evaluate('store.getState().redoTopology();store.getState().redoTopology();');
+      assert.deepEqual((await marks())[0].textOffset,moved.textOffset);
+      await page.evaluate(`store.getState().selectMarking(${JSON.stringify(id)});`);await wait('document.querySelector("#area-markings-popover")');
+      await textClick('.markings-editor button','Textposition zurücksetzen');assert.equal((await marks())[0].textOffset,undefined);
+      await page.evaluate('store.getState().undoTopology();');assert.deepEqual((await marks())[0].textOffset,moved.textOffset);
+      await key('Escape');
+      await page.evaluate('await flow.setViewport({x:250,y:160,zoom:.5});');await delay(80);
+      assert.equal(await page.evaluate(`return Number.parseInt(document.querySelector('[data-area-marking="${id}"] .area-marking-title').style.fontSize);`),28);
+      const startZoom=await point(selector);
+      await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',...startZoom});
+      await page.send('Input.dispatchMouseEvent',{type:'mousePressed',...startZoom,button:'left',buttons:1,clickCount:1});
+      for(let i=1;i<=8;i++){await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:startZoom.x+40*i/8,y:startZoom.y+20*i/8,button:'left',buttons:1});await delay(20);}
+      await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:startZoom.x+40,y:startZoom.y+20,button:'left',clickCount:1});await delay(100);
+      const zoomOffset=(await marks())[0].textOffset;
+      assert(Math.abs(zoomOffset.x-moved.textOffset.x-80)<1&&Math.abs(zoomOffset.y-moved.textOffset.y-40)<1,JSON.stringify(zoomOffset));
+      await page.evaluate('await flow.setViewport({x:250,y:160,zoom:1});await ws.controller.flush();window.textMarkingExport=JSON.stringify(ws.controller.recoveryDocument());window.textMarkingDraft=ws.controller.getState().activeDraftId;');
+      const expected=await marks();
+      const saved=await page.evaluate('const r=await ws.controller.save("Textposition");if(!r.ok)throw Error(JSON.stringify(r));const loaded=await ws.repository.loadProject(r.value.plan.project.id);if(!loaded.ok)throw Error(JSON.stringify(loaded));return loaded.value.document.topology.ui.areaMarkings;');
+      assert.deepEqual(saved,expected);
+      await page.evaluate('const result=await ws.controller.openDocument(JSON.parse(textMarkingExport));if(!result.ok)throw Error(JSON.stringify(result));');
+      assert.deepEqual(await marks(),expected);
+      await page.evaluate('await ws.controller.switchDraft(textMarkingDraft);await ws.controller.flush();ws.dispose();');await mount();
+      assert.deepEqual(await marks(),expected);
+      await page.evaluate('await flow.setViewport({x:250,y:160,zoom:1});theme.getState().setTheme("graphite-dark");');await delay(100);
+      await shot('20-text-position-graphite.png','graphite-dark',1440);
+      await page.evaluate('theme.getState().setTheme("classic-light");');await shot('21-text-position-classic.png','classic-light',1440);
+    });
   } finally {
     try{await page.evaluate('window.ws?.dispose();');}catch{}
     await page.evaluate(`await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase(${JSON.stringify(database)});r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error('Markings cleanup blocked'));});`);
     Object.assign(report.results,results);await writeFile(path.join(directory,'results.json'),JSON.stringify({results,screenshots},null,2));
-    if(Object.keys(results).length===14&&Object.values(results).every(r=>r.passed)){
+    if(Object.keys(results).length===15&&Object.values(results).every(r=>r.passed)){
       const captures=screenshots.map(s=>({source:path.relative(root,path.join(directory,s.name)).split(path.sep).join('/'),scene:s.name.slice(3,-4),variant:s.theme,state:'normal',width:s.width,height:s.height}));
       const manifest=path.join(directory,'manifest.json');await writeFile(manifest,JSON.stringify({id:'area-marking-free-areas',title:'Markierungen · áreas livres e automáticas',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['normal'],captures,share:captures.slice(-4).map(s=>({...s,name:s.scene})),shareContactSheet:false},null,2));
       report.markingsReview=await generateReview(manifest);

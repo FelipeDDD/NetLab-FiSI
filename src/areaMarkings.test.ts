@@ -9,6 +9,24 @@ import { normalizeProjectDocument } from './projects/projectDocument';
 import { DEFAULT_TERMINAL_APPEARANCE } from './terminalAppearance';
 import { serializeNetwork } from './engine/serialize';
 
+it('preserves optional text presentation, defaults legacy markings and sanitizes invalid properties independently', () => {
+  const old: AreaMarking = { id: 'old', name: 'Alt', color: 'blue', intensity: 18, deviceIds: ['a'] };
+  const customized = { ...old, id: 'new', name: 'Netz A\nVLAN 20', textSize: 27, textOffset: { x: -120.5, y: 90 } };
+  expect(readAreaMarkings([old, customized], ['a'])).toEqual([old, customized]);
+  for (const invalid of [NaN, 9, 29, 12.5, '20']) {
+    expect(readAreaMarkings([{ ...old, textSize: invalid, textOffset: { x: Infinity, y: 1 } }], ['a'])).toEqual([old]);
+  }
+  expect(readAreaMarkings([{ ...customized, textOffset: { x: 0, y: 0 } }], ['a'])[0].textOffset).toBeUndefined();
+  const net = new Network(); createDevice(net, 'host', { id: 'a' });
+  try {
+    const topology = captureTopologyDocument(net, { nodes: [], areaMarkings: [old, customized], terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE }, terminalColors: {}, cableColors: {}, terminalLayoutMode: 'free', lab: null, labStep: 0, labResults: {}, quizAnswers: {} });
+    const document = normalizeProjectDocument(JSON.parse(JSON.stringify({ schemaVersion: 1, topology })));
+    const prepared = prepareTopologyDocument(document.topology);
+    try { expect(prepared.presentation.areaMarkings).toEqual([old, customized]); }
+    finally { disposeNetwork(prepared.network); }
+  } finally { disposeNetwork(net); }
+});
+
 const area: AreaMarking = { ...DEFAULT_MARKING, id: 'area-a', name: 'Büro / 東京', deviceIds: ['a', 'b'] };
 it('offers exactly six colors and sanitizes optional metadata without interpreting names as IDs', () => {
   expect(Object.keys(MARKING_COLORS)).toHaveLength(6);

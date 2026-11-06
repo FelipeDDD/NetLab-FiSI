@@ -31,6 +31,19 @@ volta à criação. **Bereich entfernen** remove somente a marcação. Escape/cl
 fora fecha o editor. Prévia livre pendente é descartada somente por cancelamento,
 Escape, novo desenho explícito ou troca de documento; não é persistida.
 
+O nome aceita até 80 caracteres e múltiplas linhas. **Textgröße** ajusta a fonte
+de cada área entre 10 e 28 unidades do canvas (12 por padrão). Arraste o próprio
+texto para posicioná-lo, inclusive fora do retângulo; um clique sem arrastar
+continua abrindo o editor. **Textposition zurücksetzen** devolve o texto à âncora
+original. O deslocamento é relativo aos limites principais da área, portanto o
+texto acompanha seu movimento. Pan e zoom usam as coordenadas normais do canvas.
+
+Tamanho e deslocamento são campos opcionais do documento; marcações antigas
+continuam com 12 e deslocamento zero. Valores opcionais inválidos são ignorados
+sem remover a marcação. O arraste cria uma entrada de Undo/Redo ao soltar; prévias
+de arraste são transitórias. Esses campos acompanham Save/Load, JSON e F5, sem
+serem adicionados ao estado da simulação.
+
 O seletor mostra uma amostra da cor, o nome completo (incluindo Unicode) e a
 quantidade de equipamentos. Pode ser usado por clique, touch ou teclado: setas,
 Home/End e Enter; Escape primeiro recolhe a lista, depois fecha o editor. A área

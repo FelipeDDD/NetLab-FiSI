@@ -1,7 +1,9 @@
 .area-markings-layer { position: absolute; width: 1px; height: 1px; overflow: visible; z-index: -2; pointer-events: none; }
 .area-markings-layer * { pointer-events: none; }
 .area-marking-title { fill: var(--canvas-text, #dbe6f4); paint-order: stroke fill; stroke: var(--canvas-background, #0a0f1c); stroke-opacity: .75; stroke-width: 3px; font: 600 12px Verdana, sans-serif; }
-.area-markings-layer .area-marking-title[data-interactive] { pointer-events: visiblePainted; cursor: pointer; }
+.area-markings-layer .area-marking-title[data-interactive] { pointer-events: visiblePainted; cursor: grab; user-select: none; touch-action: none; }
+.area-markings-layer .area-marking-title[data-interactive] tspan { pointer-events: visiblePainted; }
+.area-markings-layer .area-marking-title[data-interactive]:active { cursor: grabbing; }
 .area-marking-title:focus-visible { outline: 1px solid var(--canvas-accent, #88b5ce); outline-offset: 3px; }
 .markings-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .markings-trigger svg { flex: none; }
@@ -9,8 +11,8 @@
 .area-markings-popover { padding: 12px; background: var(--ui-surface-panel); color: var(--ui-text); }
 .markings-editor { display: grid; gap: 10px; font: 13px var(--font-ui); }
 .markings-editor label { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.markings-editor :is(input:not([type="radio"]), select) { width: 100%; min-width: 0; font-size: 13px; }
-.markings-editor :is(input[type="text"], input:not([type]), select) { background: var(--ui-form-surface); color: var(--ui-form-text); border: 1px solid var(--ui-form-border); border-radius: 5px; padding: 5px 7px; min-height: 30px; }
+.markings-editor :is(input:not([type="radio"]), textarea, select) { width: 100%; min-width: 0; font-size: 13px; }
+.markings-editor :is(input[type="text"], input:not([type]), textarea, select) { background: var(--ui-form-surface); color: var(--ui-form-text); border: 1px solid var(--ui-form-border); border-radius: 5px; padding: 5px 7px; min-height: 30px; font-family: inherit; }
 .markings-editor input[type="range"] { accent-color: var(--ui-accent); margin: 3px 0; }
 .markings-editor fieldset { padding: 0; border: 0; margin: 0; min-width: 0; }
 .markings-editor legend { padding: 0; margin-bottom: 6px; }

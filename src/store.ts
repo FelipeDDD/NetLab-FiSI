@@ -54,7 +54,7 @@ import { applyAccessVlan, applyInspectorEdit, applyLinkEdit, canApplyLinkEdit, d
 import { CABLE_COLORS, automaticCableAppearance, initialCableColors, isCableColor, readCableColors, sameCableAppearance, type CableColor, type CableAppearances } from './cableAppearance';
 import { firstReconnectInterface, reconnectTargetError } from './cableInteraction';
 import type { HistoryLink } from './topologyHistory';
-import { DEFAULT_MARKING, markingBounds, pruneAreaMarkings, readBaseOffsets, readMarkingRect, validBaseOffsets, validMarkingStyle, type AreaMarking, type MarkingBaseOffsets, type MarkingStyle } from './areaMarkings';
+import { DEFAULT_MARKING, markingBounds, pruneAreaMarkings, readBaseOffsets, readMarkingRect, readMarkingTextOffset, validBaseOffsets, validMarkingStyle, type AreaMarking, type MarkingBaseOffsets, type MarkingStyle } from './areaMarkings';
 import { readExtensions, touchesArea, validAreaRect, type AreaRect, type MarkingExtension } from './markingGeometry';
 import { captureDeviceClipboard, prepareDevicePaste, type DeviceClipboard } from './deviceClipboard';
 import { deviceSize, freePosition, groupBounds, insertionPosition, placementBox, type PlacementBox } from './devicePlacement';
@@ -159,6 +159,7 @@ interface NetsimState {
   createMarking(style: MarkingStyle): string | null;
   createFreeMarking(style: MarkingStyle): string | null;
   updateMarking(id: string, style: MarkingStyle, editGroup?: object): void;
+  setMarkingTextOffset(id: string, offset: { x: number; y: number }, expected?: { x: number; y: number }): void;
   changeMarkingMembers(id: string, action: 'add' | 'remove'): void;
   markingGeometry: { areaId: string; mode: 'draw' | 'edit' } | null;
   markingExtensionPreview: { areaId: string; extensions: MarkingExtension[]; baseOffsets?: MarkingBaseOffsets; bounds?: AreaRect } | null;
@@ -890,6 +891,22 @@ export const useStore = create<NetsimState>()((set, get) => {
         set({ topologyHistory: { past: [...history.past.slice(0, -1), { ...last, after: structuredClone(after) }], future: [] } });
       } else commitEdit({ type: 'set-area-markings', label: 'Markierung bearbeiten', before: structuredClone(before), after: structuredClone(after) });
       markingEditGroup = editGroup ? { token: editGroup, history: get().topologyHistory } : null;
+      saveSoon();
+    },
+    setMarkingTextOffset(id, offset, expected) {
+      const before = get().areaMarkings, current = before.find(m => m.id === id);
+      if (!current || !Number.isFinite(offset.x) || !Number.isFinite(offset.y) || Math.abs(offset.x) > Number.MAX_SAFE_INTEGER || Math.abs(offset.y) > Number.MAX_SAFE_INTEGER) return;
+      const previous = current.textOffset ?? { x: 0, y: 0 };
+      if (expected && (expected.x !== previous.x || expected.y !== previous.y)) return;
+      const next = readMarkingTextOffset(offset);
+      if (JSON.stringify(current.textOffset) === JSON.stringify(next)) return;
+      const after = before.map(m => {
+        if (m.id !== id) return m;
+        const { textOffset: _old, ...rest } = m;
+        return next ? { ...rest, textOffset: next } : rest;
+      });
+      prepareEdit(); set({ areaMarkings: after });
+      commitEdit({ type: 'set-area-markings', label: 'Textposition ändern', before: structuredClone(before), after: structuredClone(after) });
       saveSoon();
     },
     changeMarkingMembers(id, action) {

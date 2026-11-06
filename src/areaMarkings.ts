@@ -37,6 +37,9 @@ export interface AreaMarking {
   name: string;
   color: MarkingColor;
   intensity: number;
+  /** World-space displacement from the title's original anchor. */
+  textOffset?: { x: number; y: number };
+  textSize?: number;
   deviceIds: string[];
   extensions?: MarkingExtension[];
   baseOffsets?: MarkingBaseOffsets;
@@ -44,12 +47,21 @@ export interface AreaMarking {
   geometry?: 'free';
   bounds?: AreaRect;
 }
-export type MarkingStyle = Pick<AreaMarking, 'name' | 'color' | 'intensity'>;
+export type MarkingStyle = Pick<AreaMarking, 'name' | 'color' | 'intensity' | 'textSize'>;
+export const DEFAULT_MARKING_TEXT_SIZE = 12;
+export function readMarkingTextOffset(value: unknown): { x: number; y: number } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const { x, y } = value as { x: number; y: number };
+  if (![x, y].every(n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= Number.MAX_SAFE_INTEGER)) return undefined;
+  return x || y ? { x, y } : undefined;
+}
+export const validMarkingTextSize = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 10 && (v as number) <= 28;
 export const DEFAULT_MARKING: MarkingStyle = { name: '', color: 'blue', intensity: 18 };
 export const isMarkingColor = (v: unknown): v is MarkingColor => typeof v === 'string' && Object.hasOwn(MARKING_COLORS, v);
 export function validMarkingStyle(v: MarkingStyle): boolean {
   return typeof v.name === 'string' && v.name.length <= 80 && isMarkingColor(v.color)
-    && Number.isInteger(v.intensity) && v.intensity >= 5 && v.intensity <= 50;
+    && Number.isInteger(v.intensity) && v.intensity >= 5 && v.intensity <= 50
+    && (v.textSize === undefined || validMarkingTextSize(v.textSize));
 }
 
 /** Optional presentation data only. Never accept arbitrary CSS or unknown IDs. */
@@ -58,7 +70,7 @@ export function readAreaMarkings(value: unknown, deviceIds: Iterable<string>): A
   const allowed = new Set(deviceIds), seen = new Set<string>();
   return value.flatMap(raw => {
     if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !raw.id || seen.has(raw.id) ||
-        !validMarkingStyle(raw) || !Array.isArray(raw.deviceIds)) return [];
+        !validMarkingStyle({ ...raw, textSize: undefined }) || !Array.isArray(raw.deviceIds)) return [];
     const members = [...new Set<string>(raw.deviceIds.filter((id: unknown): id is string => typeof id === 'string' && allowed.has(id)))];
     if (raw.geometry !== undefined && raw.geometry !== 'free') return [];
     const bounds = raw.geometry === 'free' ? readMarkingRect(raw.bounds) : undefined;
@@ -66,7 +78,10 @@ export function readAreaMarkings(value: unknown, deviceIds: Iterable<string>): A
     seen.add(raw.id);
     const extensions = readExtensions(raw.extensions);
     const baseOffsets = raw.geometry === 'free' ? undefined : readBaseOffsets(raw.baseOffsets);
+    const textOffset = readMarkingTextOffset(raw.textOffset);
+    const textSize = validMarkingTextSize(raw.textSize) ? raw.textSize : undefined;
     return [{ id: raw.id, name: raw.name, color: raw.color, intensity: raw.intensity, deviceIds: members,
+      ...(textSize !== undefined ? { textSize } : {}), ...(textOffset ? { textOffset } : {}),
       ...(extensions.length ? { extensions } : {}), ...(baseOffsets ? { baseOffsets } : {}),
       ...(bounds ? { geometry: 'free' as const, bounds } : {}) }];
   });

@@ -3463,6 +3463,24 @@ describe('Quick Ping uses the existing terminal and engine', () => {
 
 describe('decorative area markings share topology presentation and Undo/Redo', () => {
   const store = () => useStore.getState();
+  it('keeps text placement relative to its free area and restores it through history and JSON', () => {
+    pair();
+    store().setPendingMarkingRect({ x: 500, y: 100, width: 220, height: 160 });
+    const id = store().createFreeMarking({ ...DEFAULT_MARKING, name: 'LAN\nVLAN 20', textSize: 26 })!;
+    store().setMarkingTextOffset(id, { x: -160, y: 45 });
+    expect(store().areaMarkings[0].textOffset).toEqual({ x: -160, y: 45 });
+    store().setMarkingTextOffset(id, { x: 20, y: 30 }, { x: 0, y: 0 });
+    expect(store().areaMarkings[0].textOffset).toEqual({ x: -160, y: 45 });
+    store().setFreeMarkingBounds(id, { x: 560, y: 180, width: 220, height: 160 });
+    expect(store().areaMarkings[0].textOffset).toEqual({ x: -160, y: 45 });
+    store().setMarkingTextOffset(id, { x: 0, y: 0 });
+    expect(store().areaMarkings[0].textOffset).toBeUndefined();
+    store().undoTopology(); expect(store().areaMarkings[0].textOffset).toEqual({ x: -160, y: 45 });
+    store().redoTopology(); expect(store().areaMarkings[0].textOffset).toBeUndefined();
+    store().undoTopology();
+    const expected = structuredClone(store().areaMarkings), json = JSON.stringify(store().captureWorkspaceDocument().topology);
+    store().newTopology(); expect(store().importJson(json)).toBeNull(); expect(store().areaMarkings).toEqual(expected);
+  });
   it('keeps native selection separate from the explicit, transient free-drawing tool', () => {
     const { a, b } = pair();
     store().onNodesChange([a,b].map(d => ({ type: 'select' as const, id: d.id, selected: true })));
