@@ -97,6 +97,15 @@ it('uses exact ARP request IDs and falls back safely when dependency metadata is
   expect(missing.visualStart).toBe(100); expect(missing.parentTransferId).toBeUndefined();
 });
 
+it('waits for a slower ARP resolution as well as forwarding, without serializing an unrelated ping', () => {
+  const forwarded = { ...packet, id: 10, visualStart: 0, visualDuration: 200 };
+  const arp = { ...packet, id: 11, kind: 'arp' as const, visualStart: 400, visualDuration: 200 };
+  const queued = sequencePacketAnimation({ ...packet, id: 12 }, { parentTransferId: 10, resolvedArpTransferId: 11 }, [forwarded, arp], 100, 200);
+  expect(queued.visualStart).toBe(600); expect(queued.parentTransferId).toBe(11);
+  const independent = sequencePacketAnimation({ ...packet, id: 13 }, undefined, [forwarded, arp, queued], 100, 200);
+  expect(independent.visualStart).toBe(100);
+});
+
 it.each([50, 250])('retimes request/reply dependencies at clock %s without position jumps or reviving completed hops', clock => {
   const a = sequencePacketAnimation(packet, undefined, [], 0, 200);
   const b = sequencePacketAnimation({ ...packet, id: 2 }, { parentTransferId: 1 }, [a], 0, 200);

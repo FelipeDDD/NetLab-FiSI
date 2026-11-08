@@ -67,6 +67,15 @@ export async function runTerminalReferenceReview({ page, url, root, report }) {
       await wait("document.querySelector('dialog.terminal-reference[open]')");
       await key('Escape', 'Escape', 27); await closed();
     });
+    await test('visible Help labels follow language and keep the lock separate in both themes', async () => {
+      for (const selectedTheme of ['graphite-dark','classic-light']) for (const [language,label] of [['de','Hilfe'],['en','Help'],['pt-BR','Ajuda']]) {
+        await page.evaluate(`theme.getState().setTheme(${JSON.stringify(selectedTheme)});(await import('/src/i18n/index.ts')).useLanguage.getState().setLanguage(${JSON.stringify(language)});`); await delay(80);
+        const controls = await page.evaluate("return [...document.querySelectorAll('.terminal-panel-info')].map(b=>{const r=b.getBoundingClientRect(),l=b.parentElement.querySelector('.terminal-panel-lock').getBoundingClientRect();return {label:b.textContent.trim(),name:b.getAttribute('aria-label'),title:b.title,width:r.width,height:r.height,separate:l.right<=r.left,display:getComputedStyle(b.querySelector('span')).display};});");
+        assert(controls.every(b=>b.label===label&&b.name===label&&b.title===label&&b.width>32&&b.height>=30&&b.separate&&b.display!=='none'),JSON.stringify(controls));
+        await open(0); await key('Escape','Escape',27); await closed();
+      }
+      await page.evaluate("(await import('/src/i18n/index.ts')).useLanguage.getState().setLanguage('de');theme.getState().setTheme('graphite-dark');");
+    });
     await test('route search, categories, parameters, expandable examples and copy', async () => {
       await open(0); await search('10.72.254.2');
       assert.equal(await page.evaluate("return document.querySelectorAll('.reference-command-list button').length;"), 1);
@@ -132,6 +141,7 @@ export async function runTerminalReferenceReview({ page, url, root, report }) {
         await page.send('Emulation.setDeviceMetricsOverride', { width, height: 960, deviceScaleFactor: 1, mobile: false });
         await page.evaluate("theme.getState().setTheme(" + JSON.stringify(selectedTheme) + ");document.querySelector('.terminal-panels').scrollLeft=0;"); await delay(80);
         assert(await page.evaluate("return [...document.querySelectorAll('.terminal-panel-header')].every(h=>{const a=h.querySelector('.terminal-panel-lock').getBoundingClientRect(),b=h.querySelector('.terminal-panel-info').getBoundingClientRect();return a.width>=28&&b.width>=28&&a.right<=b.left;});"));
+        assert(await page.evaluate("return [...document.querySelectorAll('[data-terminal-pane]')].every(p=>(getComputedStyle(p.querySelector('.terminal-panel-help-label')).display==='none')===(p.clientWidth<=360));"));
         await open(0);
         assert(await page.evaluate("return document.querySelector('.reference-legend').textContent.includes('selbst wählen')&&document.querySelector('.reference-legend').textContent.includes('optional');"));
         assert(await page.evaluate("const d=document.querySelector('.terminal-reference'),r=d.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&d.scrollWidth<=d.clientWidth+1&&document.documentElement.scrollWidth<=innerWidth+1;"));

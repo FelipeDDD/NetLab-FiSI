@@ -15,6 +15,7 @@ export async function runDeviceActionReview({page,url,root,report}) {
   const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const wait=async expression=>{for(let i=0;i<220;i++){if(await page.evaluate(`return !!(${expression});`))return;await delay(40);}throw Error('Device actions condition: '+expression);};
   const test=async(name,run)=>{
+    if(process.env.NETLAB_PING_CONTROL_REVIEW==='1'&&!name.startsWith('ping control:'))return;
     if(process.env.NETLAB_QUICK_PING_REVIEW==='1'&&!/^quick ping: (multiple IPs|address popover)/.test(name))return;
     try{await run();results[name]={passed:true};}catch(e){results[name]={passed:false,error:e.stack};throw e;}
   };
@@ -216,6 +217,61 @@ export async function runDeviceActionReview({page,url,root,report}) {
       assert.equal(await page.evaluate('return workspace.controller.getState().activeDraftId;'),active);
       await page.evaluate("await flow.setViewport({x:31,y:43,zoom:.75});store.getState().select('pc1');");await delay(100);assert.deepEqual((await geometry()).viewport,{x:31,y:43,zoom:.75});
     });
+    await test('ping control: bounded drag, independent controls, dock resize, themes and reset on reopening',async()=>{
+      await setup();await page.evaluate("store.getState().select(null);store.getState().setPaused(false);store.getState().openTerminal('pc1');");
+      await page.evaluate("terminals.getSession(sim.net.devices.get('pc1')).term.input('ping 10.0.0.30\\r',true);");
+      await wait("document.querySelector('#ping-animation-speed')&&store.getState().guidedPacket.playback.status==='playing'");
+      await page.evaluate("store.getState().toggleGuidedPlayback();");
+      const {reviewPingControlDrag}=await import('./ping-control-drag-review.mjs');
+      await reviewPingControlDrag({page,root,click,key,delay});
+      const current=await page.evaluate("const r=document.querySelector('.ping-animation-control').getBoundingClientRect();return {x:r.x,y:r.y};");
+      await page.evaluate("document.querySelector('#ping-animation-speed').focus();");await key('Home');await wait('store.getState().packetAnimationSpeed===.25');
+      await key('End');await wait('store.getState().packetAnimationSpeed===2');
+      assert(await page.evaluate(`const r=document.querySelector('.ping-animation-control').getBoundingClientRect();return r.x===${current.x}&&r.y===${current.y};`));
+      await click('.ping-animation-close');await wait("!document.querySelector('.ping-animation-control')");
+      assert.equal(await page.evaluate('return store.getState().guidedPacket.observation.sourceFinished;'),false);
+      await page.evaluate("terminals.getSession(sim.net.devices.get('pc1')).term.input('\\u0003',true);store.getState().toggleGuidedPlayback();");
+      await wait("store.getState().guidedPacket.observation.sourceFinished&&store.getState().guidedPacket.playback.status==='finished'");
+      await page.evaluate("terminals.getSession(sim.net.devices.get('pc1')).term.input('ping -c 1 10.0.0.30\\r',true);");
+      await wait("document.querySelector('#ping-animation-speed')");
+      assert(await page.evaluate("const b=document.querySelector('.ping-animation-control').getBoundingClientRect(),c=document.querySelector('.canvas').getBoundingClientRect();return Math.abs((b.left+b.right)/2-(c.left+c.right)/2)<2&&Math.abs(c.bottom-b.bottom-56)<2;"));
+      for(const width of [1440,700])for(const selectedTheme of ['graphite-dark','classic-light']){
+        await page.send('Emulation.setDeviceMetricsOverride',{width,height:960,deviceScaleFactor:1,mobile:false});
+        await page.evaluate(`theme.getState().setTheme(${JSON.stringify(selectedTheme)});`);await delay(90);
+        assert(await page.evaluate("const b=document.querySelector('.ping-animation-control').getBoundingClientRect(),c=document.querySelector('.canvas').getBoundingClientRect();return b.left>=c.left&&b.right<=c.right&&b.top>=c.top&&b.bottom<=c.bottom;"));
+      }
+      await wait("store.getState().guidedPacket.observation.sourceFinished&&store.getState().guidedPacket.playback.status==='finished'");
+      await wait("!document.querySelector('.ping-animation-control')");
+    });
+    await test('ping control: Quick Ping passive indicator, Escape, languages and immediate drag on normal and quick pings',async()=>{
+      const {reviewImmediatePingDrag}=await import('./ping-control-drag-review.mjs');
+      const usabilityRefs=path.join(root,'.playwright-mcp/reviews/quick-ping-usability/referencias-chatgpt');await mkdir(usabilityRefs,{recursive:true});
+      const usabilityShot=async name=>{const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(usabilityRefs,name+'.png'),Buffer.from(png.data,'base64'));};
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});
+      for(const [language,text] of [['de','Ziel auswählen'],['en','Select target'],['pt-BR','Selecione o destino']]) for(const selectedTheme of ['graphite-dark','classic-light']){
+        await setup();await page.evaluate(`(await import('/src/i18n/index.ts')).useLanguage.getState().setLanguage(${JSON.stringify(language)});theme.getState().setTheme(${JSON.stringify(selectedTheme)});store.getState().select('pc1');`);
+        await click('.react-flow__node[data-id=pc1] .device-ping');await wait("document.querySelector('.quick-ping-indicator')");
+        assert(await page.evaluate(`const e=document.querySelector('.quick-ping-indicator'),r=e.getBoundingClientRect();return e.textContent.includes(${JSON.stringify(text)})&&e.textContent.includes('pc1')&&r.height<40&&!e.querySelector('button')&&!document.querySelector('.quick-ping-panel')&&getComputedStyle(e).pointerEvents==='none'&&!e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));`));
+        if(language==='de'&&selectedTheme==='graphite-dark')await usabilityShot('01-indicador-discreto-DE');
+        if(language==='pt-BR'&&selectedTheme==='classic-light')await usabilityShot('02-indicador-discreto-PT-BR');
+        await key('Escape');await wait('!store.getState().quickPing');
+      }
+      for(const mode of ['normal','quick']) {
+        await setup();await page.evaluate("store.getState().setPaused(false);store.getState().setPacketAnimationSpeed(1);store.getState().select('pc1');");
+        let start='',trigger;
+        if(mode==='normal'){
+          await page.evaluate("store.getState().openTerminal('pc1');");await delay(100);
+          start="terminals.getSession(sim.net.devices.get('pc1')).term.input('ping -c 1 10.0.0.30\\r',true);";
+        }else{
+          await click('.react-flow__node[data-id=pc1] .device-ping');await wait("document.querySelector('.quick-ping-indicator')");
+          trigger=()=>click('.react-flow__node[data-id=nb1] .device-artwork');
+        }
+        await reviewImmediatePingDrag({page,wait,start,trigger,mode,report});
+        if(mode==='quick')await usabilityShot('03-painel-arrastado-sem-texto-redundante');
+        await wait("store.getState().guidedPacket.observation.sourceFinished");
+        assert(await page.evaluate("const t=terminals.getSession(sim.net.devices.get('pc1')).term;return Array.from({length:t.buffer.active.length},(_,i)=>t.buffer.active.getLine(i)?.translateToString()).join('\\n').includes('64 bytes from 10.0.0.30');"));
+      }
+    });
     await test('ping UX: terminal ping, one dot, live speed change, dismissal, finite ping and automatic timeout',async()=>{
       await setup();await page.evaluate("store.getState().setPaused(false);store.getState().setPacketAnimationSpeed(1);store.getState().openTerminal('pc1');store.getState().startPacketCapture();");
       await page.evaluate(`window.pingUXSamples=[];let frame;window.stopPingSampling=()=>cancelAnimationFrame(frame);const sample=()=>{const dots=[...document.querySelectorAll('.packet-dot')];pingUXSamples.push({count:dots.length,seq:dots[0]?.dataset.pingSequence,direction:dots[0]?.dataset.direction});if(pingUXSamples.length<5000)frame=requestAnimationFrame(sample);};sample();terminals.getSession(sim.net.devices.get('pc1')).term.input('ping 10.0.0.30\\r',true);`);
@@ -270,6 +326,11 @@ export async function runDeviceActionReview({page,url,root,report}) {
       assert(await page.evaluate("const t=terminals.getSession(sim.net.devices.get('pc2')).term;return Array.from({length:t.buffer.active.length},(_,i)=>t.buffer.active.getLine(i)?.translateToString()).join('\\n').includes('Sent = 3, Received = 3');"));
       await wait("!document.querySelector('.ping-animation-control')");
     });
+    await test('ping control: remember manual speed globally, languages, themes and F5 opt-in and opt-out',async()=>{
+      const {reviewPingSpeedPreference}=await import('./ping-speed-preference-review.mjs');
+      await reviewPingSpeedPreference({page,root,database,setup,click,key,wait,delay});
+    });
+    if(process.env.NETLAB_PING_CONTROL_REVIEW==='1'){report.deviceActionReview={results};return;}
     const manifest=path.join(directory,'manifest.json');const mapped=captures.map(c=>({source:path.relative(root,path.join(directory,c.filename)).split(path.sep).join('/'),scene:c.filename.replace('.png',''),variant:c.theme,state:c.state,width:c.width,height:c.height}));
     await writeFile(manifest,JSON.stringify({id:'ping-animation-simple',title:'NetLab - Ping-Animation',description:'Chromium real em perfil e IndexedDB descartáveis; sem dados pessoais.',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['selected','selecting','terminal','address-choice','address-choice-above','address-choice-below','settings','ping-bar'],captures:mapped,share:mapped.filter(c=>c.state==='ping-bar'||c.state==='address-choice-above'||c.scene==='quick-ping-result-1440').map(c=>({scene:c.scene,variant:c.variant,state:c.state,width:c.width,height:c.height,name:c.scene})),shareContactSheet:false},null,2));
     const publication=await generateReview(manifest);report.deviceActionReview={captures:captures.length,measurements:measurements.length,...publication};

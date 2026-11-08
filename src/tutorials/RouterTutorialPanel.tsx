@@ -7,7 +7,7 @@ import { routerTarget } from './routerChapter';
 import { LearningHelpLink } from '../components/LearningHelp';
 import { ChapterRestartButton } from './ChapterRestartUI';
 import { routerChapterCompletion } from './completion';
-import { ChapterProgress, ChapterFinished, ExploreNetworkButton } from './CompletionUI';
+import { ChapterStepProgress, ChapterFinished, ExploreNetworkButton } from './CompletionUI';
 
 export const ROUTER_TITLES=['introTitle','cablesTitle','interfacesTitle','hostTitle','gatewaysTitle','routeTitle','testTitle','diagnosisTitle'] as const;
 export const ROUTER_TEXTS=['introText','cablesText','interfacesText','hostText','gatewaysText','routeText','testText','diagnosisText'] as const;
@@ -25,7 +25,7 @@ export function RouterTutorialPanel({controller,state,onExplore}:{controller:Rou
   const completion=routerChapterCompletion(r);
   const values={fIp:routerTarget(sim.net)??'…'},solving=r.step===8&&r.diagnosis.failure;
   return <ExercisePanelFrame exerciseId="guided-two-networks" collapsed={collapsed} header={<>
-    <div className="exercise-heading"><strong>{t('guidedRouter.title')}</strong><div className="exercise-summary">{t('guided.progress',{step:r.step,total:8})} · <ChapterProgress progress={completion}/></div></div>
+    <div className="exercise-heading"><strong>{t('guidedRouter.title')}</strong><ChapterStepProgress step={r.step} total={8} progress={completion}/></div>
     <button className="btn btn--icon" aria-label={t(collapsed?'exercises.expand':'exercises.collapse')} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>{collapsed?'+':'−'}</button>
     <ChapterRestartButton chapter="two-networks" draftId={r.draftId} step={r.step}/>
   </>}>

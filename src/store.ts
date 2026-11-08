@@ -11,8 +11,9 @@ import { runDhclient } from './commands/dhclient';
 import { Network, type PingProgress } from './engine/network';
 import { observeIcmpActivity, observePingActivity } from './networkObservations';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
-import { DEFAULT_PING_ANIMATION_SPEED, normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
-import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
+import { normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
+import { preferredPingAnimationSpeed } from './pingAnimationPreference';
+import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, pingIcmpIdentity, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
 import { ROUTER_IDS, ROUTER_LINKS, routerPreparationError, routerConditions, routerSignature, type RouterWarning } from './tutorials/routerChapter';
 import { STATIC_IDS, STATIC_EXTENSION_IDS, STATIC_EXTENSION_LINKS, staticBaseReady, type StaticWarning } from './tutorials/staticRoutingChapter';
@@ -108,6 +109,8 @@ function deviceIps(id: string): string[] {
 }
 
 interface NetsimState {
+  studioPresentation: unknown;
+  setStudioPresentation(value: import('./studioPresentation').StudioPresentationData, generation: number): boolean;
   workspaceIdentity: WorkspaceIdentity | null;
   captureWorkspaceDocument(): ProjectDocument;
   attachChapterHistory(handler:(id:string,direction:'undo'|'redo')=>void):()=>void;
@@ -535,8 +538,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (get().packetVisualizationMode === 'live') {
         const packets = get().packets;
         const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(1));
-        visual.pingTraffic = !!trace?.arpPing || payload.kind === 'ipv4' && payload.l4.kind === 'icmp' &&
-          (payload.l4.msg.type === 'echo-request' || payload.l4.msg.type === 'echo-reply');
+        visual.pingTraffic = !!trace?.arpPing || payload.kind === 'ipv4' && payload.l4.kind === 'icmp' && !!pingIcmpIdentity(payload.l4.msg);
         set({ packets: [...packets, visual] });
       }
       if (sim.net === net) capture.observe(t, context);
@@ -707,6 +709,13 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({ autosaveBlocked: true, autosavePending: false });
     },
     workspaceIdentity: null,
+    studioPresentation: null,
+    setStudioPresentation(value, generation) {
+      // A late modal/effect from another draft must never change this plan.
+      if (generation !== get().topologyGeneration || workspacePersistence && !get().workspaceIdentity?.draftId) return false;
+      if (JSON.stringify(value) === JSON.stringify(get().studioPresentation)) return true;
+      set({ studioPresentation: structuredClone(value) }); saveSoon(); return true;
+    },
     captureWorkspaceDocument: () => ({ schemaVersion: 1, topology: currentSave() }),
     attachChapterHistory(handler){chapterHistory=handler;return()=>{if(chapterHistory===handler)chapterHistory=undefined;};},
     installChapterHistory(history){historyConfiguration=configuration();set({topologyHistory:history});},
@@ -1032,9 +1041,9 @@ export const useStore = create<NetsimState>()((set, get) => {
     replayGuidedPacket() { set({ guidedPacket: replayGuidedPacket(currentGuided()) }); },
     followGuidedPacket() { set({ guidedPacket: followGuidedPacket(currentGuided()) }); },
     packetAnimationClock: animationNow,
-    // Public UI exposes fixed Live/Schrittmodus rhythms. Preserve technical
-    // multiplier APIs and old keys, but never apply an invisible saved speed.
-    packetAnimationSpeed: DEFAULT_PING_ANIMATION_SPEED,
+    // Only an explicit remember-speed preference affects startup. Technical
+    // speed setters (including temporary tutorial overrides) never persist.
+    packetAnimationSpeed: preferredPingAnimationSpeed(),
     setPacketAnimationSpeed(value) {
       const speed = normalizePingAnimationSpeed(value);
       if (speed === get().packetAnimationSpeed) return;
@@ -1212,8 +1221,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!node || !port) return 'missing';
       if (port.link || !port.up) return 'port';
       if (STATIC_EXTENSION_IDS.some(id => sim.net.devices.has(id) || get().nodes.some(n => n.id === id)) || STATIC_EXTENSION_LINKS.some(id => sim.net.links.has(id))) return 'conflict';
-      const layout = [{ id: STATIC_IDS.sc, kind: 'switch' as const, name: 'Switch C', x: 0, y: 0 }, { id: STATIC_IDS.c, kind: 'host' as const, name: 'PC C', x: 0, y: 280 }];
-      const anchor = placementBox(node), position = freePosition(layout.map(d => ({ x: d.x, y: d.y, ...deviceSize(d.kind) })), get().nodes.map(placementBox), { x: anchor.x, y: anchor.y + anchor.height + 90 });
+      const layout = [{ id: STATIC_IDS.sc, kind: 'switch' as const, name: 'Switch C', x: 0, y: 180 }, { id: STATIC_IDS.c, kind: 'host' as const, name: 'PC C', x: 0, y: 0 }];
+      const anchor = placementBox(node), position = freePosition(layout.map(d => ({ x: d.x, y: d.y, ...deviceSize(d.kind) })), get().nodes.map(placementBox), { x: anchor.x, y: anchor.y - 360 });
       prepareEdit();
       try {
         const devices = layout.map((d, i) => captureCreation(sim.net, createDevice(sim.net, d.kind, { id: d.id, name: d.name, os: 'linux' }), { x: position.x + d.x, y: position.y + d.y }, get().nodes.length + i));
@@ -2025,7 +2034,7 @@ export const useStore = create<NetsimState>()((set, get) => {
           { id: srv1.id, position: { x: 730, y: 220 } },
         ],
         cableColors: initialCableColors(net), terminalColors: {},
-        terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE }, terminalLayoutMode: 'free',
+        terminalAppearance: { ...DEFAULT_TERMINAL_APPEARANCE }, terminalLayoutMode: 'free', studioPresentation: null,
         lab: null, labStep: 0, labResults: {}, quizAnswers: {},
       });
       disposeNetwork(net);
@@ -2106,7 +2115,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = null;
       set({ autosavePending: false, autosaveBlocked: false, autosaveError: null, protectedAutosave: null, pendingShare: null, rejectedDocument: null, shareLink: null });
-      set({ packetAnimationSpeed: DEFAULT_PING_ANIMATION_SPEED });
+      set({ packetAnimationSpeed: preferredPingAnimationSpeed() });
       panelPreferences = readPanelPreferences();
       get().receiveShareLink();
       try {

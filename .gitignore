@@ -19,6 +19,19 @@ samples/
 /coverage/
 *.tsbuildinfo
 
+# Generated output stays local; these approved teaching PNGs are runtime assets.
+/output/*
+!/output/imagens-ip-route-sem-setas/
+!/output/imagens-rotas-estaticas-referencia/
+/output/imagens-ip-route-sem-setas/*
+!/output/imagens-ip-route-sem-setas/ip-route-de.png
+!/output/imagens-ip-route-sem-setas/ip-route-en.png
+!/output/imagens-ip-route-sem-setas/ip-route-pt-BR.png
+/output/imagens-rotas-estaticas-referencia/*
+!/output/imagens-rotas-estaticas-referencia/rota-estatica-de.png
+!/output/imagens-rotas-estaticas-referencia/rota-estatica-en.png
+!/output/imagens-rotas-estaticas-referencia/rota-estatica-pt-BR.png
+
 # Local logs and scratch files; do not hide test fixtures in source folders.
 /*.log
 /logs/

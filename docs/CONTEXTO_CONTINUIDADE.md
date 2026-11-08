@@ -1,12 +1,194 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **04/11/2026**, para continuar entre notebook e desktop.
+Atualizado em **09/11/2026**, para continuar entre notebook e desktop.
 Este é o **arquivo único de continuidade**: atualizar este resumo nas próximas
 rodadas, sem criar cópias TXT ou documentos de contexto concorrentes.
 O código, os testes e o Git continuam sendo a fonte de verdade. As seções
 históricas abaixo registram decisões antigas e podem ter sido superadas.
 
-## Leia primeiro — estado atual em 04/11/2026
+## Leia primeiro — auditoria e estado atual em 09/11/2026
+
+Este resumo prevalece sobre os registros históricos abaixo. A auditoria foi
+realizada antes do commit das alterações recentes: base `d860e2a`, branch `main`,
+remoto `origin` em `https://github.com/FelipeDDD/NetLab-FiSI.git`. O HEAD remoto foi
+consultado e coincidia com essa base. Não presumir que o trabalho está sincronizado:
+conferir `git status`, `git log` e o remoto no computador de destino. O usuário
+**confirmou o commit dos 175 arquivos aprovados e o push de `main` para
+`origin/main`**. Não fazer merge, rebase ou force push; interromper se houver
+divergência ou erro. A instrução mais recente determina **não realizar deploy
+na Vercel nem no GitHub Pages nesta etapa**, substituindo a autorização de deploy
+dada durante a auditoria. Publicação futura exige nova instrução e acesso ao projeto.
+`vercel.json` mantém os deploys automáticos por Git desativados; a autorização
+deste update não reativa permanentemente essa automação. Não há `.vercel/project.json`,
+CLI Vercel disponível no PATH ou token Vercel configurado nesta sessão; será
+necessário vincular/autenticar o projeto ou usar acesso existente ao dashboard.
+Nesta auditoria também foi removido o gatilho `push` do workflow GitHub Pages:
+`.github/workflows/deploy.yml` passa a aceitar somente execução manual. Sem essa
+correção, o push em `main` publicaria automaticamente, contrariando a restrição
+do usuário. O workflow de CI/testes não foi desativado.
+
+### Capítulo 4 — Statisches Routing
+
+- Implementado com **11 etapas: 8 + 3**, progresso de versão 2 e migração da
+  versão anterior. R1/R2/R3 começam alinhados; LAN C nova é inserida acima de R2,
+  com PC C acima do Switch C. Posições personalizadas existentes não são migradas.
+- Textos mínimos DE/EN/PT-BR, um único `Hilfe` recolhido nas tarefas pertinentes;
+  sem `Weitere Hilfe`, `Adressplan` ou parágrafos visíveis de condições de conclusão.
+- Ajuda visual independente do texto nos passos **2/8 (`ip route`)** e
+  **4/8 (rota estática em R2)**. Visualizador lateral ou modal responsivo,
+  abrir/fechar, Escape, foco, ajuste à largura e 50% da resolução original.
+- Última etapa verifica automaticamente A→B, B→A, A→C, C→A, B→C e C→B, usando
+  `Shell/runPing`, `ping -c 1`, respostas reais e comprovantes da configuração.
+  Uma direção por vez; aguarda comando e animação antes da seguinte. Usa 2×
+  temporariamente e restaura a velocidade anterior. Falhas não concluem o capítulo;
+  permitem repetir. Sair/reiniciar cancela a sequência. Tentativa concluída não
+  reinicia automaticamente ao reabrir/F5. Pausa manual exige o Run existente.
+- A orquestração admite somente seus comandos API identificados; probes API
+  externos continuam sem comprovar tarefas. Persistência, CAS e checkpoints/Undo
+  permanecem integrados. Consultar [static-routing-tutorial.md](static-routing-tutorial.md)
+  e `src/tutorials/StaticRoutingTutorialController.ts`.
+
+### Capítulo 5 — Alternative Wege
+
+- Implementado com **17 etapas: 4 + 10 + 3**. Primeiro endereça e testa vizinhos
+  no triângulo; depois insere PCs, configura ida/retorno por R2, interpreta Next Hop
+  e Longest Prefix Match; por fim interrompe um enlace e comprova o caminho direto.
+- Instruções e ajudas concisas nos três idiomas; no máximo um `Hilfe`, sem
+  submenus ou respostas antecipadas no corpo das perguntas. Evidências dos enlaces
+  são independentes, com pacotes reais; configuração parcial não é sucesso final.
+- Progresso de versão 2, recuperação/migração de tentativas antigas, IDs/posições
+  preservados e verificações dos caminhos reais. Testes automatizados completos
+  passaram nesta auditoria. **O teste manual didático pelo usuário ainda é o próximo
+  passo**, especialmente primeiras etapas, `ip route`, LPM e falha/alternativa.
+- Referências: [alternative-paths-tutorial.md](alternative-paths-tutorial.md),
+  `AlternativePathsController.ts`, `AlternativePathsPanel.tsx` e
+  `alternativePathsProgress.ts` em `src/tutorials/`.
+
+### Topology Studio (Beta)
+
+- Implementação própria em `src/export/studio/`, carregada sob demanda pelo menu
+  Export. Usa posições originais como referência, cards adaptativos, separação
+  local, endpoints nas bordas e geometria independente do canvas do simulador.
+- Presets Clean, Presentation e Technischer Bericht; A4/A3, retrato/paisagem,
+  layouts de apresentação independentes por formato, escala, aliases, títulos,
+  subtítulos, Routing Tables selecionáveis/editáveis e rodapé opcional.
+- Reposicionamento individual e global do diagrama, ajuste de tabelas, layout
+  compacto, alinhamento magnético, guias de distância e inversão vertical.
+  Esses controles alteram apresentação, não configurações/IPs da rede.
+- Branding obrigatório NetLab-FiSI, assinatura discreta Topology Studio, título e
+  subtítulo personalizáveis; sem metadados automáticos de data/captura/formato no
+  documento. SVG, PNG, HTML e impressão/PDF preservados.
+- Captura dados técnicos **ao abrir**. Fechar, alterar a topologia e reabrir
+  atualiza IPs/rotas/dispositivos, reconciliando a apresentação existente. A seção
+  `Dokumenthilfe & Aktualisieren`, seu botão e timestamp foram removidos;
+  `Dokumentationsinhalte` continua presente. Não há sincronização contínua.
+- Apresentação persistida em `ui.topologyStudio` no Topology JSON e nos rascunhos.
+  `src/studioPresentation.ts` valida/repara campos; versões futuras desconhecidas
+  permanecem opacas e geram aviso. `persistence.ts` e `pageLayouts.ts` reconciliam
+  os dados atuais sem descartar silenciosamente o documento.
+- Referência de detalhes/limites: [topology-studio.md](topology-studio.md).
+
+### Imagens didáticas — incluir os seis assets no Git
+
+Os PNGs aprovados são arquivos de execução da aplicação, não capturas de teste.
+`src/tutorials/tutorialVisualHelp.ts` os referencia com `new URL(..., import.meta.url)`;
+o Vite os inclui no build. Todos medem **1672 × 941** e os hashes foram conferidos.
+
+- `output/imagens-ip-route-sem-setas/ip-route-de.png`
+- `output/imagens-ip-route-sem-setas/ip-route-en.png`
+- `output/imagens-ip-route-sem-setas/ip-route-pt-BR.png`
+- `output/imagens-rotas-estaticas-referencia/rota-estatica-de.png`
+- `output/imagens-rotas-estaticas-referencia/rota-estatica-en.png`
+- `output/imagens-rotas-estaticas-referencia/rota-estatica-pt-BR.png`
+
+Não sobrescrever assets aprovados. O padrão visual está em
+[padrao-imagens-didaticas.md](padrao-imagens-didaticas.md), e a integração em
+[guided-visual-help.md](guided-visual-help.md). Os três PNGs mais antigos em
+`output/imagens-ip-route/` foram preservados localmente, mas não são consumidos
+pelo código e ficam fora do commit. O `.gitignore` permite somente os seis acima
+dentro de `output/`; novas imagens futuras exigem inclusão explícita.
+
+### Canvas, terminal e Ping-Animation
+
+- Drop de cabos usa o alvo visual efetivo e coordenadas subpixel; melhorias de
+  hitbox/hover dos botões Terminal e Quick Ping em zoom baixo. Ver
+  `src/canvasDropTarget.ts` e [device-actions-and-presentation.md](device-actions-and-presentation.md).
+- Quick Ping usa indicador passivo discreto com origem/destino e Escape;
+  múltiplos IPs continuam exigindo escolha explícita no popover existente.
+- Help do terminal tem ícone e texto Hilfe/Help/Ajuda, modo compacto por largura
+  do painel e cadeado independente. Conteúdo/comandos do terminal preservados.
+- Ping-Animation arrastável pelo cabeçalho, limitado ao canvas/dock; slider e
+  checkbox independentes, retorno à posição padrão após fechar/reabrir. Cálculo
+  de limites compartilhado com exercícios, sem acoplamento dos componentes.
+  O painel aparece com um salto observado; não tem atraso deliberado de drag.
+  Texto redundante de animação reduzida removido.
+- `Lembrar velocidade`/`Remember speed`/`Geschwindigkeit merken`: opt-in global
+  em `netlab:ping-animation-preference:v1` no localStorage. Só ações manuais gravam;
+  mudanças temporárias automáticas não sobrescrevem. Sem opt-in, usa o padrão
+  0,25× na inicialização. Desmarcar desativa a lembrança sem alterar o ping atual.
+- A causalidade visual ARP→IP e os erros ICMP usam metadados de observação;
+  alterações em `engine/network.ts` e `engine/ipdevice.ts` apenas associam esses
+  eventos à apresentação, sem mudar scheduler, encaminhamento ou protocolo.
+
+### Validação desta auditoria
+
+- Suíte completa: **2.983 testes / 178 arquivos**, todos aprovados.
+- TypeScript e build de produção aprovados, incluindo os seis PNGs. Permanece o
+  aviso conhecido de chunk JS acima de 500 kB; não houve mudança de bibliotecas.
+- Chromium: Studio/interface/exportações **112 verificações** e capítulo 5
+  **111 verificações**, aprovadas com perfis e bancos descartáveis.
+- Chromium: capítulo 4 **109 verificações** e Quick Ping/velocidade/preferência
+  **106 verificações**, aprovadas. A sequência de 2× não sobrescreve o opt-in.
+- Chromium: snapshot/reabertura/persistência/exportações e interações do canvas
+  **108 verificações**, aprovadas; 120 trajetos de hover e 120 conexões sem falha.
+- Demais roteiros e resultado final da auditoria são registrados no resumo
+  entregue ao usuário; consultar os logs locais `final-git-audit-*.log` em
+  `.playwright-mcp/` quando este mesmo checkout estiver disponível.
+- Triagem dos arquivos candidatos sem tokens/chaves privadas reconhecíveis,
+  arquivos de credenciais ou caminhos pessoais de anexos. Capturas, logs,
+  `node_modules/`, `dist/`, perfis e demais outputs continuam ignorados.
+- Não transportar `.env`, credenciais, caches, banco/perfil do navegador pelo Git.
+  Topologias pessoais e dados IndexedDB precisam de exportação/importação própria.
+
+### Pendências e como continuar em outro computador
+
+1. Conferir branch, commit e alterações locais antes de atualizar. Depois da
+   sincronização autorizada, no outro computador usar `git fetch origin` e,
+   somente se a árvore estiver apropriada, `git pull --ff-only`. Não sobrescrever
+   trabalho local nem resolver divergências por reset/force. Este resumo não é
+   prova de que um push aconteceu; verificar o histórico.
+2. Ler este arquivo e os documentos da área. Usar Node **22** como referência
+   de CI; esta auditoria local rodou em Node **24.21.0**. `npm ci`, `npm run dev`,
+   depois **http://localhost:5173/app.html**. `.npmrc` desativa symlinks (`bin-links=false`)
+   por compatibilidade com o volume de trabalho; scripts invocam os binários via Node.
+   Preservar a origem `localhost:5173` para não aparentar perda dos dados locais.
+3. Próximo trabalho: **teste manual do capítulo 5** pelo usuário. Registrar
+   dificuldades didáticas reais antes de novas mudanças.
+4. Trabalho futuro: definir a **configuração de rotas pela interface**, com
+   escopo e validação próprios. Não antecipar implementação nem mudar protocolos.
+5. Trabalho futuro: adicionar **`Lembrar posição`** ao painel Ping-Animation,
+   ao lado de `Lembrar velocidade`. A velocidade continua sendo uma preferência
+   global; a posição deve ser salva **por projeto/topologia**. Ao desmarcar,
+   utilizar a posição central padrão. Respeitar os limites da viewport.
+   Esta pendência ainda não foi implementada.
+6. Limites conhecidos: textos/blocos manuais longos podem colidir no Studio;
+   ajustar escala/posições ou usar A3 conforme os avisos. A interface geral pode
+   exceder a largura em 390 px; o visualizador mantém seus próprios limites.
+   Algumas ajudas técnicas antigas ainda estão somente em alemão. Preferências
+   dependem do armazenamento do navegador; não sincronizam entre computadores.
+7. Para reproduzir: `npm test`, `npm run build`, `git diff --check` e os runners
+   `test-static-routing-tutorial.mjs`, `test-alternative-paths-tutorial.mjs`,
+   `test-studio-interface.mjs`, `test-studio-snapshot.mjs` e
+   `test-ping-control-drag.mjs` em `scripts/`. Os runners procuram Chrome/Edge/
+   Chromium; `NETLAB_CHROMIUM_PATH` permite indicar um binário existente. Não usam
+   o perfil ou banco pessoal. Em Windows restrito, o esbuild e Chromium podem
+   exigir permissão de execução fora do sandbox; isso não é falha do código.
+8. Capturas para revisão devem continuar organizadas em pastas próprias
+   `.playwright-mcp/reviews/<rodada>/referencias-chatgpt/`, somente PNGs finais.
+   Logs/PDFs/JSONs ficam fora dessa pasta. Esses artefatos não entram no commit;
+   código, testes, documentação e os seis assets aprovados entram juntos.
+
+## Histórico — estado consolidado em 04/11/2026
 
 ### Novidades verificadas neste checkout
 

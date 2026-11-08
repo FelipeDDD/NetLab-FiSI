@@ -27,6 +27,22 @@ it('the real triangle supports neighbor reachability, LPM, remote routes, path f
     expect((net.devices.get(I.r1) as IpDevice).lookupRoute(parseIp('192.168.20.20')!)).toMatchObject({ prefix: 24, via: parseIp('10.0.12.2') });
     expect((net.devices.get(I.r1) as IpDevice).lookupRoute(parseIp('192.168.10.10')!)).toMatchObject({ prefix: 24, kind: 'connected' });
     expect(alternativeConditions(net)).toMatchObject({ via: true, direct: false });
+    // The finer teaching steps use the same whole-LAN decision as the final
+    // validator: a successful PC-only exception must never replace that proof.
+    expect(run(I.r1, 'ip route add 192.168.20.20/32 via 10.0.13.2')).toBe('');
+    expect(alternativeConditions(net)).toMatchObject({ r1Forward: false, forward: false, via: false });
+    expect(run(I.r1, 'ip route del 192.168.20.20/32')).toBe('');
+    expect(run(I.r1, 'ip route del 192.168.20.0/24')).toBe('');
+    // With only a broad route via the wrong physical path, the intended path
+    // is invalid even if some endpoint could still answer.
+    expect(alternativeConditions(net).r1Forward).toBe(false);
+    expect(run(I.r1, 'ip route add 192.168.20.0/25 via 10.0.12.2')).toBe('');
+    expect(alternativeConditions(net).r1Forward).toBe(false);
+    expect(run(I.r1, 'ip route add 192.168.20.128/25 via 10.0.12.2')).toBe('');
+    expect(alternativeConditions(net)).toMatchObject({ r1Forward: true, forward: true, via: true });
+    expect(run(I.r1, 'ip route del 192.168.20.0/25')).toBe('');
+    expect(run(I.r1, 'ip route del 192.168.20.128/25')).toBe('');
+    expect(run(I.r1, 'ip route add 192.168.20.0/24 via 10.0.12.2')).toBe('');
     net.onWireTransfer = (transfer, context) => { const p = context.frame.payload; if (p.kind === 'ipv4' && p.l4.kind === 'icmp' && p.l4.msg.type === 'echo-request') wires.push([transfer.fromDeviceId, transfer.toDeviceId]); };
     expect(run(I.a, 'ping -c 1 192.168.20.20', true)).toContain('64 bytes from');
     expect(wires).toEqual(expectedPcPath('ab', 'via').slice(1).map((id, index) => [expectedPcPath('ab', 'via')[index], id])); wires.length = 0;

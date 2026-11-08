@@ -53,10 +53,10 @@ export function savePacketAnimationSpeed(speed: number): void {
 }
 
 export function sequencePacketAnimation(transfer: WireTransfer, visual: WireVisualTrace | undefined, packets: readonly AnimatedTransfer[], clock: number, duration: number): AnimatedTransfer {
-  // Forwarding takes precedence. Only a response's first hop depends directly
-  // on its request's final hop; independent transfers/branches remain parallel.
-  const predecessor = visual?.parentTransferId ?? visual?.echoRequestTransferId ?? visual?.arpRequestTransferId;
-  const parent = packets.find((packet) => packet.id === predecessor);
+  // Wait for every known causal prerequisite, including the ARP reply that
+  // released a queued IP frame. Independent attempts/branches stay parallel.
+  const predecessors = [visual?.parentTransferId, visual?.echoRequestTransferId, visual?.arpRequestTransferId, visual?.resolvedArpTransferId];
+  const parent = predecessors.flatMap(id => packets.find(packet => packet.id === id) ?? []).reduce<AnimatedTransfer | undefined>((latest, packet) => !latest || packet.visualStart + packet.visualDuration > latest.visualStart + latest.visualDuration ? packet : latest, undefined);
   const visualStart = Math.max(clock, parent ? parent.visualStart + parent.visualDuration : clock);
   // Missing/expired predecessors never stall the network or invent a relation.
   // Retain every eligible transmission until its own visual deadline.

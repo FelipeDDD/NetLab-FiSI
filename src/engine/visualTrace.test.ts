@@ -43,13 +43,15 @@ for (const middle of ['switch', 'router', 'firewall'] as const) {
       });
       const requests = echo('echo-request'), responses = echo('echo-reply');
       expect(requests).toHaveLength(2); expect(responses).toHaveLength(2);
-      expect(requests[0].trace).toBeUndefined();
+      expect(requests[0].trace?.resolvedArpTransferId).toEqual(expect.any(Number));
       expect(responses[0].trace).toEqual({ echoRequestTransferId: requests[1].transfer.id });
-      expect(requests[1].trace).toEqual({ parentTransferId: requests[0].transfer.id });
+      expect(requests[1].trace).toMatchObject({ parentTransferId: requests[0].transfer.id });
       expect(responses[1].trace).toEqual({ parentTransferId: responses[0].transfer.id, echoRequestTransferId: requests[1].transfer.id });
       const first = visuals.find((p) => p.id === requests[0].transfer.id)!;
       const second = visuals.find((p) => p.id === requests[1].transfer.id)!;
-      expect(first.visualStart).toBe(0); expect(second.visualStart).toBe(1000);
+      const resolved = visuals.find(p => p.id === requests[0].trace?.resolvedArpTransferId)!;
+      expect(first.visualStart).toBe(resolved.visualStart + resolved.visualDuration);
+      expect(second.visualStart).toBeGreaterThanOrEqual(first.visualStart + first.visualDuration);
       const reply = visuals.find(p => p.id === responses[0].transfer.id)!;
       const returned = visuals.find(p => p.id === responses[1].transfer.id)!;
       expect(reply.visualStart).toBe(second.visualStart + second.visualDuration);
@@ -65,7 +67,10 @@ for (const middle of ['switch', 'router', 'firewall'] as const) {
       expect(responses[1].context).not.toHaveProperty('echoRequestTransferId');
       expect(responses[1].context.frame.payload).not.toHaveProperty('echoRequestTransferId');
       expect(responses[1].transfer).not.toHaveProperty('echoRequestTransferId');
+      expect(requests[0].context.frame.payload).not.toHaveProperty('resolvedArpTransferId');
     }
+    const firstVisuals = visuals.filter(p => transmissions.find(t => t.transfer.id === p.id)?.transfer.fromDeviceId === a.id && p.kind === 'icmp');
+    expect(firstVisuals).toHaveLength(2); expect(firstVisuals[0].visualStart).toBe(firstVisuals[1].visualStart);
   });
 }
 

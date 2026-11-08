@@ -106,8 +106,103 @@ Esc, mudança de plano, falhas de VLAN/rota, barra inferior e velocidade. As cap
 reais e a galeria ficam em `.playwright-mcp/reviews/`, pela organização existente.
 Dados reais do navegador, Save/Load, schema IndexedDB e protocolos não mudaram.
 
+## Continuidade de hover e drop de cabos — 07/11/2026
+
+As legendas IPv4 de routers podem tornar a seleção mais larga que o asset.
+O contorno anterior era um pseudo-elemento sem eventos: atravessar essa faixa
+até os botões encerrava o hover. `.device-interaction-region` agora recebe os
+eventos exatamente dentro dos insets já usados pelo contorno. A geometria visual
+de assets, legendas, seleção, botões e handles permanece igual. O hover termina
+normalmente ao sair; os controles não ficam permanentemente visíveis.
+
+O drop de conexão agora considera essa mesma região real, em client coordinates
+(pan/zoom já aplicados pelo DOM), em vez de depender apenas do raio dos handles.
+O `PointerEvent` fornece o ponto fracionário que o `mouseup` da biblioteca
+arredondava nos zooms pequenos. `canvasDropTarget.ts` exige um destino único;
+overlays, exterior e sobreposição ambígua não produzem conexões. Handles
+explícitos continuam utilizáveis. `Flow.tsx` encaminha uma só tentativa à
+validação existente de interfaces, preservando limites, portas e click-connect.
+
+`scripts/test-canvas-interaction.mjs` reproduz hover lento/diagonal e drops reais
+em 25/50/65/100/125%, incluindo routers com três/quatro IPv4, PCs, switches,
+servidores, interfaces ocupadas, destino cheio, exterior e sobreposição. Os
+retângulos de assets, rótulos, handles e controles são comparados antes/depois.
+Resultados e capturas estão em `.playwright-mcp/reviews/canvas-studio-persistence/`;
+somente os PNGs finais de referência ficam em `referencias-chatgpt/`.
+
+Validação: 120 trajetos de hover sem interrupção e 120 drops sem falhas em pontos
+válidos, além dos casos de capacidade e ambiguidade. No baseline dos routers,
+36 dos 60 trajetos interrompiam os controles. A comparação visual final reproduz
+a hitbox antiga desabilitando só o novo elemento transparente e captura o mesmo
+ponto em 50%, com geometria idêntica. Suíte completa: 166 arquivos / 2.880 testes;
+TypeScript, build e diff-check aprovados.
+
+Refinamento posterior de zoom baixo: os botões Terminal/Quick Ping passam a
+buscar 24 px de tela, limitados à largura interna da seleção com 4 px de
+separação e ao espaço que mantém o centro clicável livre dos handles. Em 25%
+isso resulta em 21,25 px nos routers e 17,25 px nos PCs da fixture; em 50/65%
+chega a 24 px e em 100% os 28 px originais permanecem. O ajuste de escala em
+`DeviceActions.tsx` cresce para dentro dos mesmos cantos; não muda a região de
+hover/drop, handles, IP copiável ou validação dos cabos. Medidas e cliques reais
+em 25/50/65/100%, incluindo cópia de IPv4, estão em
+`.playwright-mcp/reviews/studio-distance-flip-hover/` e documentados em
+[topology-studio.md](topology-studio.md).
+
 A revisão Chromium também cobre ping por terminal Linux/Windows, captura pelo
 dropdown superior, uma bolinha por frame, mudança de velocidade sem saltos,
 fechamento manual e automático e ausência de controles didáticos em Packets.
 Os resultados e capturas ficam na galeria local; o build mantém apenas o aviso
 conhecido de tamanho de chunk acima de 500 kB.
+
+### Quick Ping e controle móvel: refinamento de usabilidade
+
+A seleção de destino mostra somente um indicador passivo de uma linha com a
+origem, a instrução e Escape, localizado em DE/EN/PT-BR. Ele não captura cliques
+nem cria um diálogo ou menu. A escolha explícita de IPv4 para destinos com vários
+endereços continua usando o popover já existente; erros de seleção continuam
+visíveis no indicador. O cancelamento por Escape permanece no canvas.
+
+Auditoria do `Ping-Animation`: sua montagem depende de uma sessão de ping com
+pelo menos um salto no player. `useEffect` torna o controle visível; não há timer
+de bloqueio do drag. O único timer é o de ocultação após o fim da animação.
+O teste de primeira aparição confirmou o cabeçalho como alvo real do ponteiro e
+arraste nativo iniciado cerca de 44 ms após montar no ping normal e 6 ms no Quick
+Ping, sem espera de 1–1,5 s. Esses tempos são medidas locais, não garantias de
+latência. A disponibilidade da animação ainda depende de transmissões reais.
+
+Ao pressionar o cabeçalho, a posição deixa imediatamente de ser recentralizada
+automaticamente; o ResizeObserver ainda limita o painel à área visível se o dock
+ou canvas mudar de tamanho. Slider, fechamento e retorno à posição padrão foram
+preservados. O texto `Animation gekürzt · Details in Packets` e sua regra CSS foram
+removidos; não havia traduções dessa frase no catálogo. Não houve mudança no
+player, protocolo, duração de eventos, captura ou inspeção de pacotes.
+
+Validação: `node scripts/test-ping-control-drag.mjs` cobre seleção/cancelamento,
+três idiomas, dois temas, drag na primeira aparição com ping normal e Quick Ping,
+viewport/dock, slider e reabertura. Os snapshots das posições dos equipamentos e
+do zoom permanecem iguais após mover o controle. Capturas desta rodada:
+`.playwright-mcp/reviews/quick-ping-usability/referencias-chatgpt/`.
+
+### Lembrar velocidade da animação
+
+A checkbox abaixo do slider habilita explicitamente a preferência global
+`netlab:ping-animation-preference:v1` no localStorage, seguindo o padrão das
+preferências locais da interface. Não entra no documento de uma topologia,
+checkpoint, exportação ou progresso dos exercícios. Na ausência de preferência
+válida, começa desmarcada e usa o padrão de 0,25×; chaves antigas de velocidade
+não implicam consentimento para lembrar.
+
+Somente o slider registra a velocidade manual; a checkbox salva essa escolha
+quando ativada. Mudanças técnicas via `setPacketAnimationSpeed`, como os 2×
+temporários do capítulo 4 e sua restauração, não gravam a preferência. Marcar a
+checkbox durante esse override também guarda a última escolha manual.
+Desmarcar não altera a animação em andamento; desativa a preferência persistida,
+e a próxima inicialização volta ao padrão. Durante a mesma sessão, o slider
+continua com o comportamento anterior. Armazenamento bloqueado não impede
+o uso dos controles, mas a escolha pode não sobreviver ao fechamento do navegador.
+
+Validação: leitura inválida/legada, opt-in/opt-out e override automático em
+`src/pingAnimationPreference.test.ts`; F5, topologias, idiomas e temas em
+`scripts/ping-speed-preference-review.mjs`; sequência automática e F5 do capítulo 4
+com preferência habilitada no roteiro do capítulo. Captura:
+`.playwright-mcp/reviews/ping-speed-preference/referencias-chatgpt/`.

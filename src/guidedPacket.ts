@@ -1,4 +1,5 @@
 import type { PingProgress, WireFrameContext, WireTransfer, WireVisualTrace } from './engine/network';
+import type { IcmpMessage } from './engine/types';
 
 export type PacketVisualizationMode = 'live' | 'guided';
 export const GUIDED_PING_COUNT = 4; // Rolling replay window, never a session limit.
@@ -14,6 +15,7 @@ export interface GuidedHop extends WireTransfer {
   ping: number; // Actual ICMP sequence number, including continuous pings.
   direction: 'request' | 'reply';
   arp?: 'request' | 'reply';
+  icmpError?: 'dest-unreachable' | 'time-exceeded';
   /** Relative presentation step within one attempt; siblings share a step. */
   visualStep?: number;
 }
@@ -49,6 +51,14 @@ export interface GuidedPlayback {
 export interface GuidedPacketState {
   observation: GuidedObservation;
   playback: GuidedPlayback;
+}
+/** The ICMP error's quoted protocol identity belongs to the original ping.
+ * Socket errors (UDP/TCP) remain independent Live traffic. */
+export function pingIcmpIdentity(message: IcmpMessage) {
+  if (message.type === 'echo-request' || message.type === 'echo-reply') return { id: message.id, seq: message.seq, direction: message.type === 'echo-request' ? 'request' as const : 'reply' as const };
+  const original = message.original;
+  return original.proto === 'icmp' && original.icmpId !== null && original.icmpSeq !== null
+    ? { id: original.icmpId, seq: original.icmpSeq, direction: 'reply' as const, error: message.type } : null;
 }
 const emptyPlayback = (): GuidedPlayback => ({ kind: 'follow', status: 'waiting', hops: [], index: 0, progress: 0, skipped: 0 });
 export const emptyGuidedPacket = (): GuidedPacketState => ({
@@ -149,22 +159,26 @@ export function observeGuidedPacket(state: GuidedPacketState, transfer: WireTran
       ping: origin.seq, direction: origin.direction, arp: p.op }, parent?.id ?? request?.id);
   }
   if (p.l4.kind !== 'icmp') return state;
-  const msg = p.l4.msg;
-  if ((msg.type !== 'echo-request' && msg.type !== 'echo-reply') || msg.id !== o.session.icmpId) return state;
+  const msg = pingIcmpIdentity(p.l4.msg);
+  if (!msg || msg.id !== o.session.icmpId) return state;
   const attempts = o.attempts.map((a) => ({ ...a }));
   const attempt = attempts.find((a) => a.seq === msg.seq);
   if (!attempt) return state;
-  const direction = msg.type === 'echo-request' ? 'request' : 'reply';
+  const direction = msg.direction;
   const root = trace?.parentTransferId === undefined;
   const parent = o.observed.find((hop) => hop.id === trace?.parentTransferId);
   if (root && direction === 'request') {
     if (transfer.fromDeviceId !== o.session.deviceId || attempt.requestRoot !== null) return state;
     attempt.requestRoot = transfer.id;
   } else if (root && direction === 'reply') {
-    const request = o.observed.find((hop) => hop.id === trace?.echoRequestTransferId && hop.direction === 'request');
+    // Errors quote this exact ICMP id/sequence. Associate only a unique actual
+    // request delivered to the error's sender; never infer a path from IPs,
+    // proximity or whichever animation happened most recently.
+    const arrivals = msg.error ? o.observed.filter(h => h.kind === 'icmp' && !h.icmpError && h.direction === 'request' && h.ping === msg.seq && h.toDeviceId === transfer.fromDeviceId && h.end <= transfer.start) : [];
+    const request = msg.error ? arrivals.length === 1 ? arrivals[0] : undefined : o.observed.find((hop) => hop.id === trace?.echoRequestTransferId && hop.direction === 'request');
     if (attempt.replyRoot !== null || request?.ping !== msg.seq) return state;
     attempt.replyRoot = transfer.id; attempt.requestDestination = request.id;
-  } else if (!parent || parent.direction !== direction || parent.ping !== msg.seq) return state;
+  } else if (!parent || parent.direction !== direction || parent.ping !== msg.seq || parent.icmpError !== msg.error) return state;
   if (o.observed.length >= MAX_GUIDED_HOPS) return { ...state, observation: { ...o, truncated: true } };
   if (destination) {
     if (direction === 'request') attempt.requestDestination = transfer.id;
@@ -172,8 +186,8 @@ export function observeGuidedPacket(state: GuidedPacketState, transfer: WireTran
   }
   const hop: GuidedHop = { ...transfer, ...(trace?.parentTransferId === undefined ? {} : { parentTransferId: trace.parentTransferId }),
     fromDeviceName: context.fromDeviceName, toDeviceName: context.toDeviceName,
-    fromInterface: context.fromInterface, toInterface: context.toInterface, ping: msg.seq, direction };
-  return recordHop({ ...state, observation: { ...o, attempts } }, hop, parent?.id ?? trace?.echoRequestTransferId);
+    fromInterface: context.fromInterface, toInterface: context.toInterface, ping: msg.seq, direction, ...(msg.error ? { icmpError: msg.error } : {}) };
+  return recordHop({ ...state, observation: { ...o, attempts } }, hop, parent?.id ?? trace?.echoRequestTransferId ?? (msg.error ? attempt.requestDestination ?? undefined : undefined));
 }
 
 function recordHop(state: GuidedPacketState, hop: GuidedHop, predecessor?: number): GuidedPacketState {
@@ -232,7 +246,7 @@ export function updateGuidedObservation(state: GuidedPacketState, now: number): 
   const o = state.observation;
   if (!o.session || o.status === 'incomplete') return state;
   const attempts = o.attempts.map((a) => {
-    const replied = o.observed.some((hop) => hop.id === a.replyDestination && hop.end <= now);
+    const replied = o.observed.some((hop) => hop.id === a.replyDestination && !hop.icmpError && hop.end <= now);
     return replied === a.replied ? a : { ...a, replied };
   });
   const active = state.playback.hops[state.playback.index]?.ping;

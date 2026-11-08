@@ -5,7 +5,7 @@ import { parseIp, networkOf, ipToString } from '../engine/ip';
 import { serializeNetwork, type SavedDevice, type SavedLink } from '../engine/serialize';
 import type { ProjectDocument } from '../projects/types';
 
-export const STATIC_CHAPTER = { id: 'static-routing', version: 1, steps: 8 } as const;
+export const STATIC_CHAPTER = { id: 'static-routing', version: 2, steps: 11 } as const;
 export const STATIC_IDS = { a: 'tutorial-04-a', sa: 'tutorial-04-sa', r1: 'tutorial-04-r1', r2: 'tutorial-04-r2', r3: 'tutorial-04-r3', sb: 'tutorial-04-sb', b: 'tutorial-04-b', sc: 'tutorial-04-sc', c: 'tutorial-04-c' } as const;
 export const STATIC_BASE_IDS: readonly string[] = [STATIC_IDS.a, STATIC_IDS.sa, STATIC_IDS.r1, STATIC_IDS.r2, STATIC_IDS.r3, STATIC_IDS.sb, STATIC_IDS.b];
 export const STATIC_EXTENSION_IDS: readonly string[] = [STATIC_IDS.sc, STATIC_IDS.c];
@@ -18,9 +18,9 @@ const ip = (s: string) => parseIp(s)!;
 const interfaces = (addresses: (string | null)[]) => addresses.map((address, i) => ({ name: `eth${i}`, ip: address, ipv4Mode: address ? 'static' as const : 'unconfigured' as const, up: true }));
 export function staticRoutingDocument(): ProjectDocument {
   const I = STATIC_IDS;
-  const host = (id: string, name: string, x: number, address: string, gateway: string): SavedDevice => ({ id, kind: 'host', os: 'linux', name, x, y: 260, forwarding: false, routes: [], ifaces: [{ name: 'eth0', up: true, ip: address, ipv4Mode: 'static', gateway }] });
-  const sw = (id: string, name: string, x: number): SavedDevice => ({ id, kind: 'switch', name, x, y: 300, forwarding: false, routes: [], ifaces: interfaces(Array(8).fill(null)) });
-  const router = (id: string, name: string, x: number, addresses: (string | null)[]): SavedDevice => ({ id, kind: 'router', os: 'linux', name, x, y: 300, forwarding: true, routes: [], ifaces: interfaces(addresses) });
+  const host = (id: string, name: string, x: number, address: string, gateway: string): SavedDevice => ({ id, kind: 'host', os: 'linux', name, x, y: 140, forwarding: false, routes: [], ifaces: [{ name: 'eth0', up: true, ip: address, ipv4Mode: 'static', gateway }] });
+  const sw = (id: string, name: string, x: number): SavedDevice => ({ id, kind: 'switch', name, x, y: 320, forwarding: false, routes: [], ifaces: interfaces(Array(8).fill(null)) });
+  const router = (id: string, name: string, x: number, addresses: (string | null)[]): SavedDevice => ({ id, kind: 'router', os: 'linux', name, x, y: 320, forwarding: true, routes: [], ifaces: interfaces(addresses) });
   const links: SavedLink[] = [
     { id: 'tutorial-04-a-link', a: [I.a, 'eth0'], b: [I.sa, 'eth0'] },
     { id: 'tutorial-04-lan-a', a: [I.sa, 'eth1'], b: [I.r1, 'eth0'] },
@@ -30,11 +30,11 @@ export function staticRoutingDocument(): ProjectDocument {
     { id: 'tutorial-04-b-link', a: [I.sb, 'eth0'], b: [I.b, 'eth0'] },
   ];
   return { schemaVersion: 1, topology: { app: 'netsim', version: 1, devices: [
-    host(I.a, 'PC A', 0, '192.168.10.10/24', '192.168.10.1'), sw(I.sa, 'Switch A', 280),
-    router(I.r1, 'R1', 580, ['192.168.10.1/24', '10.0.12.1/30', null, null]),
-    router(I.r2, 'R2', 1020, ['10.0.12.2/30', '10.0.23.1/30', null, null]),
-    router(I.r3, 'R3', 1460, ['10.0.23.2/30', '192.168.20.1/24', null, null]),
-    sw(I.sb, 'Switch B', 1760), host(I.b, 'PC B', 2040, '192.168.20.20/24', '192.168.20.1'),
+    host(I.a, 'PC A', 100, '192.168.10.10/24', '192.168.10.1'), sw(I.sa, 'Switch A', 240),
+    router(I.r1, 'R1', 420, ['192.168.10.1/24', '10.0.12.1/30', null, null]),
+    router(I.r2, 'R2', 660, ['10.0.12.2/30', '10.0.23.1/30', null, null]),
+    router(I.r3, 'R3', 900, ['10.0.23.2/30', '192.168.20.1/24', null, null]),
+    sw(I.sb, 'Switch B', 1080), host(I.b, 'PC B', 1220, '192.168.20.20/24', '192.168.20.1'),
   ], links: links.map(l => ({ ...l, latency: 40 })) } };
 }
 /** Configuration identity deliberately excludes positions and transient caches. */
@@ -71,8 +71,9 @@ function staticHop(net: Network, id: string, lan: string, iface: string, via: st
 }
 export function staticRoutingConditions(net: Network) {
   const I = STATIC_IDS, base = staticBaseReady(net);
-  const forward = base && staticHop(net, I.r1, '192.168.20.0', 'eth1', '10.0.12.2') && staticHop(net, I.r2, '192.168.20.0', 'eth1', '10.0.23.2');
-  const backward = base && staticHop(net, I.r3, '192.168.10.0', 'eth0', '10.0.23.1') && staticHop(net, I.r2, '192.168.10.0', 'eth0', '10.0.12.1');
+  const r1Forward = base && staticHop(net, I.r1, '192.168.20.0', 'eth1', '10.0.12.2'), r2Forward = base && staticHop(net, I.r2, '192.168.20.0', 'eth1', '10.0.23.2');
+  const r3Back = base && staticHop(net, I.r3, '192.168.10.0', 'eth0', '10.0.23.1'), r2Back = base && staticHop(net, I.r2, '192.168.10.0', 'eth0', '10.0.12.1');
+  const forward = r1Forward && r2Forward, backward = r3Back && r2Back;
   const ci = device(net, I.c)?.getInterface('eth0'), ri = device(net, I.r2)?.getInterface('eth2'), sw = net.devices.get(I.sc);
   const usable = (addr: number) => networkOf(addr, 24) === ip('192.168.30.0') && addr % 256 > 0 && addr % 256 < 255 && [...net.devices.values()].flatMap(d => d.interfaces).filter(i => i.ip?.addr === addr).length === 1;
   const lanC = base && net.devices.get(I.c) instanceof Host && sw instanceof SwitchDevice && sw.vlanOf('eth0') === sw.vlanOf('eth1') && linked(net, I.r2, 'eth2', I.sc, 'eth1') && linked(net, I.c, 'eth0', I.sc, 'eth0') && !!ci?.ip && ci.ip.prefix === 24 && usable(ci.ip.addr) && !!ri?.ip && ri.ip.prefix === 24 && usable(ri.ip.addr) && ['192.168.10.10', '192.168.20.20'].every(target => { const route = device(net, I.c)!.lookupRoute(ip(target)); return route?.prefix === 0 && route.ifaceName === 'eth0' && route.via === ri.ip!.addr; });
@@ -80,7 +81,7 @@ export function staticRoutingConditions(net: Network) {
   // First absent route on the actual forward chain. Wrong next hops are not
   // reported as an absent route, and never pass the route-configuration tasks.
   const firstMissing = !base ? null : !device(net, I.r1)!.lookupRoute(ip('192.168.20.20')) ? I.r1 : staticHop(net, I.r1, '192.168.20.0', 'eth1', '10.0.12.2') && !device(net, I.r2)!.lookupRoute(ip('192.168.20.20')) ? I.r2 : null;
-  return { base, forward, backward, lanC: !!lanC, toC, firstMissing };
+  return { base, r1Forward, r2Forward, r3Back, r2Back, forward, backward, lanC: !!lanC, toC, firstMissing };
 }
 export function staticTarget(net: Network, key: 'a' | 'b' | 'c') { const address = device(net, STATIC_IDS[key])?.getInterface('eth0')?.ip?.addr; return address === undefined ? null : ipToString(address); }
 export function staticExtensionIdentity(net: Network): StaticExtensionIdentity | null {

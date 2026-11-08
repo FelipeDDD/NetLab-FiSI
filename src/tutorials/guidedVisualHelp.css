@@ -1,0 +1,13 @@
+.guided-help-with-image { position: relative; }
+.guided-help-with-image > details > summary { padding-right: 145px; min-height: 32px; align-content: center; }
+.guided-visual-help-trigger { position: absolute; right: 0; top: 0; display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
+.guided-visual-help { position: fixed; box-sizing: border-box; margin: 0; padding: 0; max-width: none; max-height: calc(100dvh - 24px); border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-surface-panel); color: var(--ui-text); box-shadow: var(--ui-shadow-popover); z-index: 1400; }
+.guided-visual-help[open] { display: flex; flex-direction: column; }
+.guided-visual-help > header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ui-border); }
+.guided-visual-help > header strong { flex: 1; }
+.guided-visual-help > header .btn { flex-shrink: 0; }
+.guided-visual-help-scroll { overflow: auto; min-height: 0; padding: 8px; overscroll-behavior: contain; }
+.guided-visual-help-scroll img { display: block; width: 100%; height: auto; max-width: none; }
+.guided-visual-help[data-modal="true"] { inset: 12px; margin: auto; width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+.guided-visual-help::backdrop { background: rgb(0 0 0 / 55%); }
+.guided-visual-help :focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }

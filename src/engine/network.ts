@@ -29,7 +29,7 @@ export interface WireFrameContext {
 
 // Presentation side channel only: never part of protocol data or capture context.
 export interface VisualPingOrigin { deviceId: string; icmpId: number; seq: number; direction: 'request' | 'reply' }
-export interface WireVisualTrace { parentTransferId?: number; echoRequestTransferId?: number; arpRequestTransferId?: number; arpPing?: VisualPingOrigin }
+export interface WireVisualTrace { parentTransferId?: number; echoRequestTransferId?: number; arpRequestTransferId?: number; resolvedArpTransferId?: number; arpPing?: VisualPingOrigin }
 
 // Read-only command lifecycle observation; not protocol/capture data.
 export type PingProgress = { deviceId: string; icmpId: number } &
@@ -83,6 +83,7 @@ export class Network {
   private visualArrivals = new WeakMap<FramePayload, Map<string, number>>();
   private visualEchoRequests = new WeakMap<IcmpMessage, number>();
   private visualArpRequests = new WeakMap<ArpPayload, number>();
+  private visualArpResolutions = new WeakMap<Ipv4Packet, Map<string, number>>();
   private visualPingOrigins = new WeakMap<IcmpMessage, VisualPingOrigin>();
   private visualArpOrigins = new WeakMap<ArpPayload, VisualPingOrigin>();
   // Fired when a declared firewall chain drops or rejects a packet — the UI
@@ -253,6 +254,16 @@ export class Network {
     if (origin) this.visualArpOrigins.set(reply, origin);
   }
 
+  /** Presentation-only dependency: the queued IP frame waited for this reply.
+   * Protocol state, scheduler times and the order of queue flushing are unchanged. */
+  associateVisualArpResolution(packet: Ipv4Packet, reply: ArpPayload, deviceId: string): void {
+    const arrival = this.visualArrivals.get(reply)?.get(deviceId);
+    if (arrival === undefined) return;
+    let resolutions = this.visualArpResolutions.get(packet);
+    if (!resolutions) { resolutions = new Map(); this.visualArpResolutions.set(packet, resolutions); }
+    resolutions.set(deviceId, arrival);
+  }
+
   emitPingProgress(event: PingProgress): void {
     try { this.onPingProgress?.(event); } catch { /* Observation must not interrupt a command. */ }
   }
@@ -279,12 +290,14 @@ export class Network {
       const echoRequestTransferId = frame.payload.kind === 'ipv4' && frame.payload.l4.kind === 'icmp'
         ? this.visualEchoRequests.get(frame.payload.l4.msg) : undefined;
       const arpRequestTransferId = frame.payload.kind === 'arp' ? this.visualArpRequests.get(frame.payload) : undefined;
+      const resolvedArpTransferId = frame.payload.kind === 'ipv4' ? this.visualArpResolutions.get(frame.payload)?.get(from.id) : undefined;
       const arpPing = frame.payload.kind === 'arp' ? this.visualArpOrigins.get(frame.payload) : undefined;
-      if (parentTransferId === undefined && echoRequestTransferId === undefined && arpRequestTransferId === undefined && arpPing === undefined) this.onWireTransfer(transfer, context);
+      if (parentTransferId === undefined && echoRequestTransferId === undefined && arpRequestTransferId === undefined && resolvedArpTransferId === undefined && arpPing === undefined) this.onWireTransfer(transfer, context);
       else this.onWireTransfer(transfer, context, {
         ...(parentTransferId === undefined ? {} : { parentTransferId }),
         ...(echoRequestTransferId === undefined ? {} : { echoRequestTransferId }),
         ...(arpRequestTransferId === undefined ? {} : { arpRequestTransferId }),
+        ...(resolvedArpTransferId === undefined ? {} : { resolvedArpTransferId }),
         ...(arpPing === undefined ? {} : { arpPing: { ...arpPing } }),
       });
     } catch {

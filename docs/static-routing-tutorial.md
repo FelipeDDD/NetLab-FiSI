@@ -21,7 +21,8 @@ PC A — Switch A — R1 — R2 — R3 — Switch B — PC B
 
 Os routers começam com encaminhamento ativo, RIP desativado e sem as rotas
 estáticas entre LANs. A UI apresenta instruções DE/EN/PT-BR, Adressplan recolhível
-e dicas progressivas. Não configura rotas nem executa comandos pelo aluno.
+e dicas progressivas. A configuração fica a cargo do aluno; somente a verificação
+final executa pings automaticamente.
 
 1. Ping real A → B: falha de rede identificada em R1, ou Echo Reply se a rede já
    tiver sido corretamente configurada antecipadamente. Timeout genérico não basta.
@@ -38,7 +39,9 @@ e dicas progressivas. Não configura rotas nem executa comandos pelo aluno.
 
 O segundo blueprint contém somente a extensão prevista: switch, PC e dois cabos.
 Não substitui R1/R2/R3 nem seus endereços, rotas ou posições. O posicionamento da
-extensão usa o mecanismo existente para procurar espaço livre perto de R2.
+extensão usa o mecanismo existente para procurar espaço livre acima de R2,
+com PC C acima do Switch C. Isso afeta somente novas inserções: posições já
+persistidas e os equipamentos das LANs A/B não são reposicionados.
 Voltar de etapa não desfaz a expansão nem cria equipamentos outra vez.
 
 ## Critérios reais e evidências
@@ -52,13 +55,14 @@ As identidades e o endereçamento do backbone preparado são preservados; LAN C
 aceita diferentes pares de endereços de host únicos e gateway/default efetivo via R2.
 
 O controller observa a saída real dos comandos do terminal e do Quick Ping,
-correlacionando origem, destino, comando, etapa e configuração. Comandos `api`,
+correlacionando origem, destino, comando, etapa e configuração. Comandos `api` externos,
 cliques, pacotes enviados e respostas de outros dispositivos não contam como
 sucesso. Pings concorrentes mantêm candidatos separados por ID de comando.
 Os seis indicadores finais precisam de respostas na mesma configuração.
 
 As evidências persistidas contêm hashes da configuração permanente, excluindo
-posições, caches e processos. F5 não executa pings nem restaura comandos ativos.
+posições, caches e processos. F5 não restaura comandos ativos nem repete a
+verificação de uma tentativa já concluída.
 Alterar a configuração invalida as respostas atuais; mover equipamentos não.
 O contador representa tarefas efetivamente validadas. **Netzwerk frei erkunden**
 fecha somente o painel. Reabrir pelo menu mantém a rede e o progresso.
@@ -106,3 +110,31 @@ arquiva as anteriores. Os artefatos não entram no Git.
 O capítulo é um laboratório de rotas estáticas com backbone definido. Não é um
 verificador genérico de topologias arbitrárias, não configura RIP e não introduz
 uma biblioteca pública de blueprints. Não foram necessárias mudanças no motor.
+
+## Verificação automática da última etapa
+
+Na etapa 11, a abertura do painel inicia A→B, B→A, A→C, C→A, B→C e C→B,
+um `ping -c 1` por direção. Usa o mesmo `Shell/runPing` dos terminais, sem ocupar
+sua entrada, mudar o scheduler ou fabricar eventos de sucesso. A identidade
+privada de cada comando permite somente a execução pertencente à sequência;
+probes API externos continuam rejeitados. A saída real passa pelo validador e
+pela persistência de comprovantes já existentes.
+
+A próxima direção aguarda a conclusão do comando e da sua animação observada.
+O player existente usa 2× temporariamente; o valor anterior volta ao terminar,
+cancelar ou detectar mudança de configuração/rede. Os indicadores mostram
+pendente, em execução, confirmado ou falhou. Falhas permitem repetir a sequência.
+Uma pausa manual é respeitada: o painel indica continuar pelo Run existente.
+
+Voltar, recolher/fechar o painel, trocar de plano ou reiniciar cancela somente o
+comando pertencente à verificação, removendo seus timers pelo cancelamento nativo.
+Uma verificação interrompida pode ser repetida pelo botão da etapa. Ao recarregar
+uma etapa final ainda incompleta, uma nova sequência pode começar; comprovantes
+anteriores permanecem sujeitos ao hash da configuração. Tentativas concluídas
+não iniciam outra sequência automaticamente, inclusive após F5 e Undo/Redo.
+
+Os testes do controller cobrem Request/Reply reais correlacionados por origem,
+destino, ID e sequência, concorrência máxima de um ping automático, falha/retentativa,
+cancelamento e restauração da velocidade. O roteiro Chromium verifica o fluxo,
+Fit View, idiomas, F5 e reset. Capturas desta rodada:
+`.playwright-mcp/reviews/chapter4-final-refinements/referencias-chatgpt/`.

@@ -1051,6 +1051,7 @@ export abstract class IpDevice extends Device {
       if (pending.timer) this.network.scheduler.cancel(pending.timer);
       this.pendingArp.delete(arp.senderIp);
       for (const pkt of pending.queue) {
+        this.network.associateVisualArpResolution(pkt, arp, this.id);
         pending.iface.send({ srcMac: pending.iface.mac, dstMac: arp.senderMac, payload: pkt });
       }
     }

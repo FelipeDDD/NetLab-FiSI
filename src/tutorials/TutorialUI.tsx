@@ -29,11 +29,12 @@ import { openNewLearningAttempt } from '../exercises/newAttempt';
 import type { ChapterId } from './chapterCheckpoints';
 import { firstChapterCompletion, subnetChapterCompletion, routerChapterCompletion } from './completion';
 import { correctedSubnet } from './subnetChapter';
-import { ChapterProgress, ChapterFinished, ExploreNetworkButton } from './CompletionUI';
+import { ChapterStepProgress, ChapterProgress, ChapterFinished, ExploreNetworkButton } from './CompletionUI';
 import { loadTutorialMenuProgress, type TutorialMenuProgress } from './menuProgress';
 import { StaticRoutingTutorialController, type StaticRoutingState } from './StaticRoutingTutorialController';
 import { StaticRoutingProgressStore } from './staticRoutingProgress';
 import { StaticRoutingTutorialPanel } from './StaticRoutingTutorialPanel';
+import { staticVerificationPresentation } from './staticRoutingVerification';
 import { staticRoutingCompletion } from './completion';
 import { AlternativePathsController, type AlternativeState } from './AlternativePathsController';
 import { AlternativePathsProgressStore } from './alternativePathsProgress';
@@ -100,7 +101,7 @@ function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:
     openAttempt:document=>openNewLearningAttempt(sessions,document),checkpoint:checkpoint('static-routing'),restarting:()=>restart.getState().busy,
     network:()=>sim.net,activeDraftId:()=>useStore.getState().workspaceIdentity?.draftId??null,pendingForms:hasPendingForms,
     subscribe:listener=>{const a=useStore.subscribe(listener),b=restart.subscribe(listener);return()=>{a();b();};},observeCommands:observeTerminalCommands,
-    expand:()=>useStore.getState().addStaticRoutingLan(),started:requestExerciseViewport,
+    expand:()=>useStore.getState().addStaticRoutingLan(),started:requestExerciseViewport, verificationPresentation:staticVerificationPresentation,
   },new StaticRoutingProgressStore(repository,sessions)));
   routingRef.current=routing;
   const routingState=useSyncExternalStore(routing.subscribe,routing.getState);
@@ -241,7 +242,7 @@ export function GuidedTutorialPanel() {
   if (state.draftId && ui.hiddenPanels.has(`${state.draftId}:first-connection`)) return null;
   const completion = firstChapterCompletion({ completed: controller.completedSteps() });
   return <ExercisePanelFrame key={state.draftId} exerciseId="guided-first-connection" collapsed={collapsed} header={<>
-    <div className="exercise-heading"><strong>{t('guided.title')}</strong><div className="exercise-summary">{t('guided.progress', { step: state.step + 1, total: FIRST_CONNECTION.steps.length })} · <ChapterProgress progress={completion}/></div></div>
+    <div className="exercise-heading"><strong>{t('guided.title')}</strong><ChapterStepProgress step={state.step + 1} total={FIRST_CONNECTION.steps.length} progress={completion}/></div>
     <button type="button" className="btn btn--icon" aria-label={t(collapsed ? 'exercises.expand' : 'exercises.collapse')} aria-expanded={!collapsed}
       onClick={() => setCollapsed(value => !value)}>{collapsed ? '+' : '−'}</button>
     <ChapterRestartButton chapter="first-connection" draftId={state.draftId} step={state.step}/>

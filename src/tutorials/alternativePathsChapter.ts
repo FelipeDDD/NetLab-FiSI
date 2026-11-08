@@ -25,6 +25,11 @@ export const NEIGHBOR_TESTS = [
   { key: 'n13', from: I.r1, to: I.r3, target: '10.0.13.2', iface: 'eth1' }, { key: 'n31', from: I.r3, to: I.r1, target: '10.0.13.1', iface: 'eth1' },
 ] as const;
 export type NeighborTest = typeof NEIGHBOR_TESTS[number]['key'];
+export const ALTERNATIVE_TOTAL = 17;
+export function alternativePart(step: number) {
+  const start = step <= 4 ? 1 : step <= 14 ? 5 : 15;
+  return { part: start === 1 ? 1 : start === 5 ? 2 : 3, start, total: start === 1 ? 4 : start === 5 ? 10 : 3 };
+}
 export type AlternativeWarning = 'forms' | 'missing' | 'transit' | 'wiring' | 'port' | 'conflict';
 export interface AlternativePcIdentity { a: string; b: string }
 export function alternativePathsDocument(): ProjectDocument {
@@ -49,6 +54,13 @@ export function transitConfigured(net: Network, allowBroken = false) {
     return iface?.ip?.addr === ip(address) && iface.ip.prefix === 30 && [...net.devices.values()].flatMap(d => d.interfaces).filter(i => i.ip?.addr === iface.ip!.addr).length === 1;
   });
 }
+/** The same address/uniqueness rules, limited to the link currently practised. */
+export function transitLinkConfigured(net: Network, index: number) {
+  return triangleWiring(net) && TRANSIT_PLAN.slice(index * 2, index * 2 + 2).every(row => {
+    const iface = net.devices.get(row.device)?.getInterface(row.iface);
+    return iface?.ip?.addr === ip(row.address.split('/')[0]) && iface.ip.prefix === 30 && [...net.devices.values()].flatMap(d => d.interfaces).filter(i => i.ip?.addr === iface.ip!.addr).length === 1;
+  });
+}
 const canonical = (net: Network) => { const topology = serializeNetwork(net, {}); topology.devices.sort((a, b) => a.id.localeCompare(b.id)); topology.links.sort((a, b) => a.id.localeCompare(b.id)); return topology; };
 export const alternativeSignature = (net: Network) => JSON.stringify(canonical(net));
 /** Normalize only the two permitted link interruptions. IPs, routes, firewall,
@@ -65,6 +77,14 @@ export function neighborSignature(net: Network) {
   const t = canonical(net);
   return JSON.stringify({ routers: t.devices.filter(d => ALTERNATIVE_ROUTERS.includes(d.id)).map(d => ({ id: d.id, kind: d.kind, ifaces: d.ifaces.filter(i => i.name === 'eth0' || i.name === 'eth1'), forwarding: d.forwarding, ripEnabled: d.ripEnabled, firewall: d.firewall })),
     links: t.links.filter(link => TRIANGLE_LINKS.some(l => l.id === link.id)), choices: NEIGHBOR_TESTS.map(test => dev(net, test.from)?.lookupRoute(ip(test.target))) });
+}
+/** A later link's addressing must not erase a previous link's real ping proof.
+ * Keep neighborSignature unchanged to recognize receipts from version 1. */
+export function neighborLinkSignature(net: Network, index: number) {
+  const t = canonical(net), tests = NEIGHBOR_TESTS.slice(index * 2, index * 2 + 2), link = TRIANGLE_LINKS[index];
+  return JSON.stringify({ routers: t.devices.filter(d => tests.some(test => test.from === d.id)).map(d => ({ id: d.id, kind: d.kind, forwarding: d.forwarding, ripEnabled: d.ripEnabled, firewall: d.firewall,
+    ifaces: d.ifaces.filter(i => tests.some(test => test.from === d.id && test.iface === i.name)) })),
+    link: t.links.find(l => l.id === link.id), choices: tests.map(test => dev(net, test.from)?.lookupRoute(ip(test.target))) });
 }
 export const usedPathBroken = (net: Network) => TRIANGLE_LINKS.filter(link => link.id !== L.direct && !net.links.get(link.id)?.operational).length === 1;
 function selectedHop(net: Network, id: string, lan: string, iface: string, via: string) {
@@ -100,10 +120,15 @@ export function alternativeConditions(net: Network) {
     const route = pc instanceof IpDevice ? pc.lookupRoute(ip(base === '192.168.10.0' ? '192.168.20.20' : '192.168.10.10')) : null;
     return pc instanceof Host && !!i?.ip && i.ip.prefix === 24 && usable(i.ip.addr) && !!r?.ip && r.ip.prefix === 24 && usable(r.ip.addr) && route?.prefix === 0 && route.ifaceName === 'eth0' && route.via === r.ip.addr && matchesLink(net, { id: linkId, a: [pcId, 'eth0'], b: [routerId, 'eth2'] }, false);
   };
-  const lans = backbone && lan(I.a, I.r1, L.a, '192.168.10.0') && lan(I.b, I.r3, L.b, '192.168.20.0');
-  const via = !!lans && strict && selectedHop(net, I.r1, '192.168.20.0', 'eth0', '10.0.12.2') && selectedHop(net, I.r2, '192.168.20.0', 'eth1', '10.0.23.2') && selectedHop(net, I.r3, '192.168.10.0', 'eth0', '10.0.23.1') && selectedHop(net, I.r2, '192.168.10.0', 'eth0', '10.0.12.1');
+  const lanA = backbone && lan(I.a, I.r1, L.a, '192.168.10.0'), lanB = backbone && lan(I.b, I.r3, L.b, '192.168.20.0');
+  const lans = lanA && lanB;
+  const r1Forward = !!lans && strict && selectedHop(net, I.r1, '192.168.20.0', 'eth0', '10.0.12.2');
+  const forward = r1Forward && selectedHop(net, I.r2, '192.168.20.0', 'eth1', '10.0.23.2');
+  const r3Back = !!lans && strict && selectedHop(net, I.r3, '192.168.10.0', 'eth0', '10.0.23.1');
+  const backward = r3Back && selectedHop(net, I.r2, '192.168.10.0', 'eth0', '10.0.12.1');
+  const via = forward && backward;
   const direct = !!lans && selectedHop(net, I.r1, '192.168.20.0', 'eth1', '10.0.13.2') && selectedHop(net, I.r3, '192.168.10.0', 'eth1', '10.0.13.1');
-  return { strict, backbone, lans: !!lans, via, direct, broken: backbone && usedPathBroken(net) };
+  return { strict, backbone, lanA: !!lanA, lanB: !!lanB, lans: !!lans, r1Forward, forward, r3Back, backward, via, direct, broken: backbone && usedPathBroken(net) };
 }
 export function expectedPcPath(direction: 'ab' | 'ba', route: 'via' | 'direct') {
   const forward = route === 'via' ? [I.a, I.r1, I.r2, I.r3, I.b] : [I.a, I.r1, I.r3, I.b];

@@ -13,6 +13,7 @@ export interface TopologyDocumentState {
   terminalAppearance: TerminalAppearance;
   cableColors: CableAppearances;
   areaMarkings?: readonly AreaMarking[];
+  studioPresentation?: unknown;
   terminalLayoutMode: TerminalLayoutMode;
   lab: LabDef | null;
   labStep: number;
@@ -25,6 +26,7 @@ export function captureTopologyDocument(net: Network, state: TopologyDocumentSta
   const positions = Object.fromEntries(state.nodes.map(n => [n.id, { ...n.position }]));
   const save: AppearanceSaveFile = serializeNetwork(net, positions);
   save.ui = { terminalAppearance: { ...state.terminalAppearance } };
+  if (state.studioPresentation != null) save.ui.topologyStudio = state.studioPresentation;
   if (Object.keys(state.terminalColors).length) save.ui.terminalColors = { ...state.terminalColors };
   const colors = readCableColors(state.cableColors, net.links.keys());
   if (Object.keys(colors).length) save.ui.cableColors = colors;
@@ -80,6 +82,7 @@ export interface PreparedTopology {
     cableColors: CableAppearances;
     terminalLayoutMode: TerminalLayoutMode;
     areaMarkings: AreaMarking[];
+    studioPresentation: unknown;
   };
 }
 
@@ -97,6 +100,9 @@ export function prepareTopologyDocument(input: unknown): PreparedTopology {
         cableColors: readCableColors(document.ui?.cableColors, network.links.keys()),
         terminalLayoutMode: normalizeTerminalLayoutMode(document.ui?.terminalLayoutMode),
         areaMarkings: readAreaMarkings(document.ui?.areaMarkings, network.devices.keys()),
+        // Opaque transport preserves unknown future Studio versions as well.
+        // The Studio validates its own metadata before rendering and editing.
+        studioPresentation: document.ui?.topologyStudio ?? null,
       },
     };
   } catch (error) {

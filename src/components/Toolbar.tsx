@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore } from '../store';
 import { LABS } from '../labs/library';
 import { EXAMPLES } from '../labs/examples';
@@ -13,6 +13,9 @@ import { useTranslation } from '../i18n';
 import { LanguageSelector } from '../i18n/LanguageSelector';
 import { consumeHomeIntent } from '../home/navigation';
 import { useLearningHelp } from './LearningHelp';
+import { studioText } from '../export/studio/messages';
+
+const TopologyStudio = lazy(() => import('../export/studio/TopologyStudio'));
 
 const USER_GUIDE_URL = 'https://github.com/michael-borck/netsim/blob/main/docs/USER_GUIDE.md';
 const MENUS = [
@@ -44,6 +47,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const [menuFocus, setMenuFocus] = useState<'first' | 'last'>('first');
   const [focusedMenu, setFocusedMenu] = useState<MenuId>('file');
   const [exportOpen, setExportOpen] = useState(false);
+  const [studio, setStudio] = useState<{ origin: HTMLElement | null } | null>(null);
   const [exportFocus, setExportFocus] = useState<'first' | 'none'>('none');
   const triggers = useRef<Partial<Record<MenuId | 'compact', HTMLButtonElement | null>>>({});
   const anchor = useRef<HTMLElement | null>(null);
@@ -308,12 +312,17 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         if (event.key === 'ArrowLeft') { event.preventDefault(); event.stopPropagation(); closeExport(); exportAnchor.current?.focus(); }
         else typeAhead(event);
       }}>
+      <button type="button" className="labs-menu-item" role="menuitem" data-open-topology-studio aria-haspopup="dialog"
+        onClick={() => { const origin = anchor.current; closeMenu(); setStudio({ origin }); }}>
+        <span className="labs-menu-title">{studioText(language, 'open')}</span><span className="labs-menu-blurb">{studioText(language, 'hint')}</span>
+      </button>
       {EXPORTS.map(item => <button key={item.action} type="button" className="labs-menu-item" role="menuitem"
         onClick={() => perform(() => useStore.getState()[item.action]())}>
         <span className="labs-menu-title">{item.label}</span><span className="labs-menu-blurb">{item.hint}</span>
       </button>)}
     </FloatingPopover>}
 
+    {studio && <Suspense fallback={null}><TopologyStudio origin={studio.origin} onClose={() => setStudio(null)}/></Suspense>}
     {dialog === 'settings' && <FloatingPopover anchor={anchor} id="inspector-layout-settings" label={t('navigation.settings')} width={300}
       className="inspector-layout-settings" onClose={() => setDialog(null)}>
       <h2 className="toolbar-dialog-title">{t('navigation.settings')}</h2>

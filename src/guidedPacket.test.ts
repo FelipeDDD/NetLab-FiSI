@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { packetAnimationDuration, PING_ANIMATION_SPEEDS } from './packetAnimation';
 import type { WireFrameContext, WireTransfer } from './engine/network';
 import { advanceGuidedPacket, emptyGuidedPacket, updateGuidedObservation, followGuidedPacket, guidedReplayHops,
-  MAX_GUIDED_HOPS, MAX_GUIDED_QUEUE, observeGuidedPacket, observeGuidedPingProgress, replayGuidedPacket,
+  MAX_GUIDED_HOPS, MAX_GUIDED_QUEUE, observeGuidedPacket, observeGuidedPingProgress, pingIcmpIdentity, replayGuidedPacket,
   stepGuidedPacket, toggleGuidedPlayback, validateGuidedPacket, visibleGuidedHops, type GuidedPacketState } from './guidedPacket';
 const context = (seq = 1, reply = false): WireFrameContext => ({
   fromDeviceName: 'PC', toDeviceName: 'Switch', fromInterface: 'eth0', toInterface: 'eth1',
@@ -213,6 +213,32 @@ it('plays physical broadcast branches in parallel and starts the real ARP Reply 
   expect(visibleGuidedHops(state.playback).map(h=>h.id)).toEqual([6]);
   state=advanceGuidedPacket(state,200,200);
   expect(visibleGuidedHops(state.playback).map(h=>h.id)).toEqual([7]);
+});
+it.each(['dest-unreachable', 'time-exceeded'] as const)('associates a real %s with its delivered request, without counting it as an Echo Reply', type => {
+  let state = path();
+  // Use the request half of the fixture; no Echo Reply has occurred.
+  state = { ...state, observation: { ...state.observation, observed: state.observation.observed.slice(0, 2), attempts: state.observation.attempts.map(a => ({ ...a, replyRoot: null, replyDestination: null, replied: false })) },
+    playback: { ...state.playback, hops: state.playback.hops.slice(0, 2) } };
+  const quoted = { src: 1, dst: 2, proto: 'icmp' as const, icmpId: 7, icmpSeq: 1, srcPort: null, dstPort: null };
+  const message = type === 'dest-unreachable' ? { type, code: 'net' as const, original: quoted } : { type, original: quoted };
+  const failure: WireFrameContext = { ...context(), frame: { ...context().frame, payload: { kind: 'ipv4', src: 2, dst: 1, ttl: 64, l4: { kind: 'icmp', msg: message } } } };
+  const response = { ...transfer(9, 'b', 'sw'), start: 80, end: 160 };
+  // The quoted id alone is insufficient: the request must have been delivered
+  // to the device that generated the failure, with no ambiguous arrival.
+  expect(observeGuidedPacket(state, { ...response, start: 79 }, failure, undefined, false)).toBe(state);
+  expect(observeGuidedPacket(state, { ...response, fromDeviceId: 'unrelated' }, failure, undefined, false)).toBe(state);
+  state = observeGuidedPacket(state, response, failure, undefined, false);
+  state = observeGuidedPacket(state, { ...transfer(10, 'sw', 'a'), start: 160, end: 240 }, failure, { parentTransferId: 9 }, true);
+  expect(state.observation.observed.slice(-2).map(h => h.icmpError)).toEqual([type, type]);
+  expect(guidedReplayHops(state.observation).map(h => h.id)).toEqual([1, 2, 9, 10]);
+  state = advanceGuidedPacket(state, 300, 200); expect(visibleGuidedHops(state.playback).map(h => h.id)).toEqual([2]);
+  state = advanceGuidedPacket(state, 200, 200); expect(visibleGuidedHops(state.playback).map(h => h.id)).toEqual([9]);
+  expect(updateGuidedObservation(state, 500).observation.attempts[0].replied).toBe(false);
+  const otherSession = start(state, 'a', 8);
+  expect(observeGuidedPacket(otherSession, response, failure, undefined, false)).toBe(otherSession);
+});
+it('leaves quoted UDP/TCP errors outside the focused ping timeline', () => {
+  for (const proto of ['udp', 'tcp'] as const) expect(pingIcmpIdentity({ type: 'dest-unreachable', code: 'port', original: { src: 1, dst: 2, proto, icmpId: null, icmpSeq: null, srcPort: 1000, dstPort: 80 } })).toBeNull();
 });
 it('bounds an individual flooding path and never invents an ambiguous replay branch', () => {
   let state = attempt(start()); state = observeGuidedPacket(state, transfer(1), context(), undefined, false);

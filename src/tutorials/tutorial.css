@@ -43,6 +43,11 @@
 [data-exercise="guided-first-connection"] { --guided-command: #fbbf24; }
 [data-ui-theme="classic-light"] [data-exercise="guided-first-connection"] { --guided-command: #8a5300; }
 .guided-action-status { display: flex; align-items: flex-start; gap: 8px; }
+.guided-step-progress { display:flex; flex-direction:column; gap:4px; }
+.guided-step-progress progress { display:block; width:100%; max-width:230px; height:3px; border:0; accent-color:var(--ui-accent); }
+.guided-step-progress progress::-webkit-progress-bar { background:var(--ui-border); border-radius:3px; }
+.guided-step-progress progress::-webkit-progress-value { background:var(--ui-accent); border-radius:3px; }
+.guided-scenario { color:var(--ui-text-muted); font-weight:400; }
 [data-exercise="guided-subnet-mask"] footer { display: flex; justify-content: space-between; gap: 8px; flex-shrink: 0; }
 [data-exercise="guided-two-networks"] footer { display: flex; justify-content: space-between; gap: 8px; flex-shrink: 0; }
 [data-exercise="guided-two-networks"] footer.guided-router-repeat-footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }

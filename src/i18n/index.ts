@@ -8,17 +8,20 @@ import journey from './catalogs/journey';
 import practice from './catalogs/practice';
 import learningHelp from './catalogs/learningHelp';
 import guided from './catalogs/guided';
+import guidedVisual from './catalogs/guidedVisual';
 import guidedSubnet from './catalogs/guidedSubnet';
 import guidedRouter from './catalogs/guidedRouter';
 import guidedRestart from './catalogs/guidedRestart';
 import guidedStatic from './catalogs/guidedStatic';
+import guidedStaticLine from './catalogs/guidedStaticLine';
 import guidedAlternative from './catalogs/guidedAlternative';
 import referencePins from './catalogs/referencePins';
+import pingControls from './catalogs/pingControls';
 
 export const LANGUAGES = { de: 'Deutsch', en: 'English', 'pt-BR': 'Português (Brasil)' } as const;
 export type Language = keyof typeof LANGUAGES;
 export const LANGUAGE_KEY = 'netlab:language:v1';
-export const catalogs = { common, home, navigation, exercises, workspace, journey, practice, learningHelp, guided, guidedSubnet, guidedRouter, guidedRestart, guidedStatic, guidedAlternative, referencePins };
+export const catalogs = { common, home, navigation, exercises, workspace, journey, practice, learningHelp, guided, guidedVisual, guidedSubnet, guidedRouter, guidedRestart, guidedStatic, guidedStaticLine, guidedAlternative, referencePins, pingControls };
 type Domain = keyof typeof catalogs;
 export type TranslationKey = { [D in Domain]: `${D}.${keyof typeof catalogs[D]['en'] & string}` }[Domain];
 export function normalizeLanguage(value: unknown): Language {

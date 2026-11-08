@@ -95,6 +95,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
   return (
     <div style={{ '--device-color': DEVICE_COLORS[data.kind], '--device-artwork-offset-y': `${deviceArtworkOffsetY(data.kind)}px` } as CSSProperties}
       onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected || inspected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}${compatible ? ' cable-compatible' : ''}${pingSource ? ' quick-ping-source' : ''}${pingTarget ? ' quick-ping-target' : ''}`}>
+      {artwork && <span className="device-interaction-region" aria-hidden="true" />}
       <Handle type="source" position={Position.Top} id="t" />
       <Handle type="source" position={Position.Right} id="r" />
       <Handle type="source" position={Position.Bottom} id="b" />

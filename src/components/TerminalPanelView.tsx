@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { useTranslation } from '../i18n';
 import { useStore } from '../store';
 import { sim } from '../sim';
 import { IpDevice } from '../engine/ipdevice';
@@ -132,6 +133,7 @@ function TerminalTab({ id, panel }: { id: string; panel: TerminalPanel }) {
 }
 
 export function TerminalPanelView({ panel, index, focused, width, suspended, onOpenReference }: { panel: TerminalPanel; index: number; focused: boolean; width: number; suspended: boolean; onOpenReference: (origin: HTMLButtonElement) => void }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLElement>(null);
   const style = useStore((s) => s.terminalAppearance.style);
   const custom = useStore((s) => s.terminalColors[panel.active]);
@@ -176,11 +178,12 @@ export function TerminalPanelView({ panel, index, focused, width, suspended, onO
           <path d={panel.lockedWidth === undefined ? 'M8 10V7a4 4 0 0 1 8 0' : 'M8 10V7a4 4 0 0 1 8 0v3'} />
         </svg>
       </button>
-      <button type="button" className="terminal-panel-info" title="Befehlsreferenz öffnen" aria-label="Befehlsreferenz öffnen"
+      <button type="button" className="terminal-panel-info" title={t('navigation.help')} aria-label={t('navigation.help')}
         aria-haspopup="dialog" onClick={event => onOpenReference(event.currentTarget)}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
           <circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7v1" />
         </svg>
+        <span className="terminal-panel-help-label">{t('navigation.help')}</span>
       </button>
     </div>
     <div className="terminal-pane-content">

@@ -89,7 +89,9 @@ export async function reviewFloatingReferences({ page, open, click, key, wait, d
   await test('a tutorial and its terminal remain usable while references are open', async () => {
     // Actual menu handler starts a separate draft, in the disposable review database only.
     await page.evaluate("[...document.querySelectorAll('.toolbar-menu-trigger,.toolbar-menu-action')].find(e=>e.textContent.includes('Übungen (Beta)')).click();");
-    await wait("document.querySelector('[data-start-tutorial]')");
+    await wait("document.querySelector('[data-guided-menu-toggle]')");
+    await click('[data-guided-menu-toggle]');
+    await wait("document.querySelector('[data-start-tutorial]:not(:disabled)')");
     await page.evaluate("document.querySelector('[data-start-tutorial]').click();");
     await wait("document.querySelector('[data-guided-step=\"1\"]')");
     await page.evaluate("store.getState().openTerminal('tutorial-01-a');"); await wait("document.querySelector('.terminal-panel-info')");

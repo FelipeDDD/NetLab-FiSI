@@ -34,6 +34,8 @@ import { MarkingFreeDraw } from './MarkingFreeDraw';
 import { MarkingGeometryEditor, markingsAtPoint, type MarkingMenuPoint } from './MarkingGeometryEditor';
 import {DeviceContextMenu,type DeviceMenuPoint} from './DeviceContextMenu';
 import { QuickPingAddressPopover } from './QuickPingAddressPopover';
+import { QuickPingIndicator } from './QuickPingIndicator';
+import { canvasDropTarget } from '../canvasDropTarget';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { floating: FloatingEdge };
@@ -91,6 +93,8 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
   const keyboardMoving = useRef(false);
   const pingClick = useRef<{ id: string; time: number } | null>(null);
   const cableBeforeDrag = useRef<string | null>(null);
+  const connectionDrag = useRef<{ generation: number } | null>(null);
+  const connectionDropPoint = useRef<{ x: number; y: number } | null>(null);
   const finishKeyboard = () => {
     if (keyboardTimer.current) clearTimeout(keyboardTimer.current);
     keyboardTimer.current = null;
@@ -103,6 +107,8 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
     keyboardTimer.current = null;
     keyboardMoving.current = false;
     cableBeforeDrag.current = null;
+    connectionDrag.current = null;
+    connectionDropPoint.current = null;
     pingClick.current = null;
     alignment.reset();
     setCableMenu(null); setCableMessage(null); setPointer(null);
@@ -212,7 +218,22 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       edgeTypes={edgeTypes}
       onNodesChange={alignment.onNodesChange}
       onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
+      // Mouse drags commit once at the physical drop, rather than accepting a
+      // nearby handle outside the target's visible region. Keep click-connect.
+      onConnect={connection => { if (!connectionDrag.current) onConnect(connection); }}
+      onConnectStart={() => { connectionDropPoint.current = null; connectionDrag.current = { generation: useStore.getState().topologyGeneration }; }}
+      onConnectEnd={(event, connection) => {
+        const drag = connectionDrag.current; connectionDrag.current = null;
+        const precisePoint = connectionDropPoint.current; connectionDropPoint.current = null;
+        const state = useStore.getState();
+        if (!drag || drag.generation !== state.topologyGeneration || state.quickPing || state.reconnectingCable || !connection.fromNode || !canvas.current) return;
+        const pointer = 'changedTouches' in event ? event.changedTouches[0] : event;
+        if (!pointer) return;
+        const target = canvasDropTarget(canvas.current, precisePoint ?? { x: pointer.clientX, y: pointer.clientY });
+        if (!target || target === connection.fromNode.id || state.nodes.find(n => n.id === target)?.connectable === false) return;
+        onConnect({ source: connection.fromNode.id, target, sourceHandle: connection.fromHandle?.id ?? null,
+          targetHandle: connection.toNode?.id === target ? connection.toHandle?.id ?? null : null });
+      }}
       edgesReconnectable={false}
       nodesDraggable={!reconnecting && !quickPing}
       nodesConnectable={!reconnecting && !quickPing}
@@ -239,7 +260,10 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         if (!(event.target as Element).closest('button, input, textarea, select, [contenteditable], .react-flow__node, .react-flow__edge')) event.currentTarget.focus({preventScroll:true});
         cableBeforeDrag.current = (event.target as Element).closest('.react-flow__node') ? useStore.getState().edges.find(e => e.selected)?.id ?? null : null;
       }}
-      onPointerCancelCapture={() => { alignment.reset(); useStore.getState().cancelNodeMovement(); }}
+      // PointerEvent preserves subpixel coordinates; the mouseup passed by the
+      // connection library rounds them down, which matters at 25% zoom.
+      onPointerUpCapture={event => { if (connectionDrag.current) connectionDropPoint.current = { x: event.clientX, y: event.clientY }; }}
+      onPointerCancelCapture={() => { connectionDrag.current = null; connectionDropPoint.current = null; alignment.reset(); useStore.getState().cancelNodeMovement(); }}
       onFocusCapture={(event) => {
         const edge = (event.target as Element).closest('.react-flow__edge');
         if (edge) { setPointer(null); useStore.getState().hoverLink(edge.getAttribute('data-id')); }
@@ -372,12 +396,7 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       <PacketLayer />
       {quickPing?.targetId && quickPing.addresses
         ? <QuickPingAddressPopover key={quickPing.targetId} targetId={quickPing.targetId} addresses={quickPing.addresses} />
-        : quickPing && <Panel position="top-center" className="quick-ping-panel nodrag nopan nowheel">
-        <div role="status">Ping-Ziel auswählen · Esc zum Abbrechen</div>
-        <small>Quelle: {nodes.find(n => n.id === quickPing.sourceId)?.data.label}</small>
-        {quickPing.message && <p role="status">{quickPing.message}</p>}
-        <button type="button" className="btn" onClick={() => useStore.getState().cancelQuickPing()}>Abbrechen</button>
-      </Panel>}
+        : quickPing && <QuickPingIndicator source={nodes.find(n => n.id === quickPing.sourceId)?.data.label ?? quickPing.sourceId} message={quickPing.message}/>}
       {!reconnecting && <LinkDetails pointer={pointer} />}
       <CableManager menu={cableMenu} onMenuChange={setCableMenu} message={cableMessage} onMessageChange={setCableMessage} />
       <DeviceContextMenu menu={deviceMenu} onClose={()=>setDeviceMenu(null)}/>

@@ -11,7 +11,7 @@ export function GuidedPacketControls() {
     <p id="guided-playback-status" role="status">{kind === 'replay' ? 'Replay of observed hops. ' : 'Following the newest ping. '}
       {observation.message}
       {status === 'finished' && ' Playback finished; ready for a new ping.'}</p>
-    {hop && <p className="guided-hop-label">Ping {hop.ping} · {hop.arp ? `ARP ${hop.arp === 'request' ? 'Request' : 'Reply'}` : hop.direction === 'request' ? 'Echo Request' : 'Echo Reply'}<br />
+    {hop && <p className="guided-hop-label">Ping {hop.ping} · {hop.arp ? `ARP ${hop.arp === 'request' ? 'Request' : 'Reply'}` : hop.icmpError === 'dest-unreachable' ? 'ICMP Destination Unreachable' : hop.icmpError === 'time-exceeded' ? 'ICMP Time Exceeded' : hop.direction === 'request' ? 'Echo Request' : 'Echo Reply'}<br />
       Hop {index + 1} / {hops.length}<br />
       {hop.fromDeviceName} / {hop.fromInterface} → {hop.toDeviceName} / {hop.toInterface}</p>}
     <div className="guided-playback-actions">

@@ -8,7 +8,7 @@ import { ChapterRestartButton } from './ChapterRestartUI';
 import { subnetChapterCompletion } from './completion';
 import { correctedSubnet } from './subnetChapter';
 import { sim } from '../sim';
-import { ChapterProgress, ExploreNetworkButton } from './CompletionUI';
+import { ChapterStepProgress, ExploreNetworkButton } from './CompletionUI';
 
 const titles = ['maskTitle', 'demoTitle', 'failureTitle', 'correctTitle', 'retestTitle'] as const;
 const texts = ['maskText', 'demoText', 'failureText', 'correctText', 'retestText'] as const;
@@ -19,7 +19,7 @@ export function SubnetTutorialPanel({ controller, state, afterCompletion, onExpl
   const step = r.step - 1;
   const completion = subnetChapterCompletion(r, correctedSubnet(sim.net, r.pcC));
   return <ExercisePanelFrame exerciseId="guided-subnet-mask" collapsed={collapsed} header={<>
-    <div className="exercise-heading"><strong>{t('guidedSubnet.title')}</strong><div className="exercise-summary">{t('guided.progress', { step: r.step, total: 5 })} · <ChapterProgress progress={completion}/></div></div>
+    <div className="exercise-heading"><strong>{t('guidedSubnet.title')}</strong><ChapterStepProgress step={r.step} total={5} progress={completion}/></div>
     <button className="btn btn--icon" type="button" aria-label={t(collapsed ? 'exercises.expand' : 'exercises.collapse')} aria-expanded={!collapsed} onClick={() => setCollapsed(v => !v)}>{collapsed ? '+' : '−'}</button>
     <ChapterRestartButton chapter="subnet-mask" draftId={r.draftId} step={r.step}/>
   </>}>

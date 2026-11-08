@@ -107,7 +107,7 @@ try {
   await new Promise(resolve => probe.close(resolve));
   server = await createServer({ root, configFile: path.join(root, 'vite.config.ts'),
     cacheDir: path.join(scratch, 'vite-cache'),
-    plugins: [...(process.env.NETLAB_CABLE_TOOLTIP_REVIEW || process.env.NETLAB_HANDLE_TUNING_REVIEW || process.env.NETLAB_DEVICE_SELECTION_REVIEW || process.env.NETLAB_ARTWORK_OFFSET_REVIEW === '1' || process.env.NETLAB_PRACTICAL_REVIEW === '1' || process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_GUIDED_TUTORIAL_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
+    plugins: [...(process.env.NETLAB_STABILITY_CANVAS_REVIEW === '1' || process.env.NETLAB_CABLE_TOOLTIP_REVIEW || process.env.NETLAB_HANDLE_TUNING_REVIEW || process.env.NETLAB_DEVICE_SELECTION_REVIEW || process.env.NETLAB_ARTWORK_OFFSET_REVIEW === '1' || process.env.NETLAB_PRACTICAL_REVIEW === '1' || process.env.NETLAB_VIEWPORT_REVIEW === '1' || process.env.NETLAB_GUIDED_TUTORIAL_REVIEW === '1' || process.env.NETLAB_LEGIBILITY_REVIEW || process.env.NETLAB_CANVAS_INTERACTION_REVIEW === '1' || process.env.NETLAB_DEVICE_ACTION_REVIEW === '1' || process.env.NETLAB_SELECTION_OUTLINE_REVIEW === '1' || process.env.NETLAB_PANEL_STACKING === '1' || process.env.NETLAB_USABILITY_REVIEW === '1' || process.env.NETLAB_IPV4_REVIEW === '1' || process.env.NETLAB_MARKINGS_REVIEW === '1' || process.env.NETLAB_DEVICE_EDIT_REVIEW === '1' ? [{
       name: 'isolated-viewport-probe', enforce: 'pre',
       transform(code, id) {
         if (!id.replaceAll('\\', '/').endsWith('/src/App.tsx')) return;
@@ -255,6 +255,26 @@ try {
     }
   }
 
+  if (process.env.NETLAB_STUDIO_INTERFACE_REVIEW === '1') {
+    const { runStudioInterfaceReview } = await import('./studio-interface-review.mjs');
+    const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+    await runStudioInterfaceReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report, downloads: path.join(scratch, 'downloads'), openPage: async () => {
+      const target = await (await fetch(currentDebug + '/json/new?about:blank', { method: 'PUT' })).json();
+      return connect(target.webSocketDebuggerUrl);
+    } });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_STABILITY_CANVAS_REVIEW === '1') {
+    const { runStabilizationCanvasReview } = await import('./stabilization-canvas-review.mjs');
+    await runStabilizationCanvasReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+
+  if (process.env.NETLAB_CANVAS_INTERACTION_REVIEW === '1') {
+    const { runCanvasInteractionReview } = await import('./canvas-interaction-review.mjs');
+    await runCanvasInteractionReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_DEVICE_ACTION_REVIEW === '1') {
     const { runDeviceActionReview } = await import('./device-action-review.mjs');
     await runDeviceActionReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
@@ -406,6 +426,21 @@ try {
   if (process.env.NETLAB_TUTORIAL_MENU_REVIEW) {
     const { runTutorialMenuReview } = await import('./tutorial-menu-review.mjs');
     await runTutorialMenuReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_TOPOLOGY_STUDIO_REVIEW === '1') {
+    const { runTopologyStudioReview } = await import('./topology-studio-review.mjs');
+    const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+    await runTopologyStudioReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report, downloads: path.join(scratch, 'downloads'),
+      openPage: async () => {
+        const target = await (await fetch(currentDebug + '/json/new?about:blank', { method: 'PUT' })).json();
+        // A new Edge target can briefly advertise its socket before accepting it.
+        for (let attempt = 0; ; attempt++) {
+          try { return await connect(target.webSocketDebuggerUrl); }
+          catch (error) { if (error instanceof Error || attempt >= 9) throw error; await delay(50); }
+        }
+      },
+    });
     await prepare(pageOne);
   }
   if (process.env.NETLAB_STATIC_ROUTING_REVIEW === '1') {
