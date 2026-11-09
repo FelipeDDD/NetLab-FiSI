@@ -20,16 +20,16 @@ function through(step: number, completed = Array.from({ length: step - 1 }, (_, 
   if (completed.includes(8)) p.directReplies = { ab: other, ba: other };
   return p;
 }
-it.each([[1, 1], [2, 1], [3, 4], [4, 5], [5, 7], [6, 13], [7, 15], [8, 16]])('migrates legacy navigation %i → %i without changing its receipts or input', (oldStep, nextStep) => {
+it.each([[1, 1], [2, 1], [3, 4], [4, 5], [5, 7], [6, 13], [7, 18], [8, 19]])('migrates legacy navigation %i → %i without changing its receipts or input', (oldStep, nextStep) => {
   const p = through(oldStep), before = structuredClone(p), result = readAlternativeProgress(p, 'draft');
-  expect(result.step).toBe(nextStep); expect(result.chapterVersion).toBe(2); expect(p).toEqual(before);
+  expect(result.step).toBe(nextStep); expect(result.chapterVersion).toBe(3); expect(p).toEqual(before);
   for (const field of ['attemptId', 'prepared', 'stage', 'extension', 'neighbors', 'viaReplies', 'viaBaseline', 'failure', 'directReplies'] as const) expect(result[field]).toEqual(p[field]);
   expect(readAlternativeProgress(result, 'draft')).toEqual(result);
 });
 it('keeps a completed old attempt complete and maps all eight tasks to the seventeen new tasks', () => {
   const p = through(8, [1, 2, 3, 4, 5, 6, 7, 8]), result = readAlternativeProgress(p, 'draft');
-  expect(result.step).toBe(17); expect(result.completed).toEqual(Array.from({ length: 17 }, (_, i) => i + 1));
-  expect(alternativePathsCompletion(result)).toEqual({ completed: 17, total: 17, complete: true });
+  expect(result.step).toBe(20); expect(result.completed).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,18,19,20]);
+  expect(alternativePathsCompletion(result)).toEqual({ completed: 20, total: 20, complete: true });
   expect(result.investigated).toBe(hash); expect(result.returnInvestigated).toBe(hash);
 });
 it('does not invent ping evidence for an old addressing-only task or an unfinished route task', () => {
@@ -44,14 +44,23 @@ it('recovers an old pending PC insertion at its mapped transition and retains in
   const document = alternativePathsDocument(), checkpoint = { schemaVersion: 1, kind: 'chapter-checkpoint', chapter: 'alternative-paths', draftId: 'draft', attemptId: legacy().attemptId,
     before: document, initial: document, progress: legacy() };
   const before = structuredClone(checkpoint), read = readChapterCheckpoint(checkpoint, 'draft', 'alternative-paths');
-  expect(read.progress).toMatchObject({ chapterVersion: 2, step: 1, completed: [] }); expect(checkpoint).toEqual(before);
+  expect(read.progress).toMatchObject({ chapterVersion: 3, step: 1, completed: [] }); expect(checkpoint).toEqual(before);
 });
 it('rejects invalid old evidence before migrating and incomplete new final claims', () => {
   const bad = through(8, [1, 2, 3, 4, 5, 6, 7, 8]); bad.directReplies.ba = hash;
   expect(() => readAlternativeProgress(bad, 'draft')).toThrow('Incompatible');
   const p = through(3); p.neighbors.n21 = other;
   expect(() => readAlternativeProgress(p, 'draft')).toThrow('Incompatible');
-  const next = readAlternativeProgress(legacy(), 'draft'); next.completed = [17];
+  const next = readAlternativeProgress(legacy(), 'draft'); next.completed = [20];
   expect(() => readAlternativeProgress(next, 'draft')).toThrow('Incompatible');
-  expect(() => readAlternativeProgress({ ...legacy(), chapterVersion: 3 }, 'draft')).toThrow('Incompatible');
+  expect(() => readAlternativeProgress({ ...legacy(), chapterVersion: 4 }, 'draft')).toThrow('Incompatible');
+});
+
+it.each([false,true])('preserves an old step 14 without inventing LAN C or ping receipts (old theory completed: %s)',completed=>{
+  const {lpm: _lpm,...base}=readAlternativeProgress(through(7),'draft');
+  const old={...base,chapterVersion:2,step:14,completed:Array.from({length:completed?14:13},(_,i)=>i+1),lpmUnderstood:completed,viaBaseline:completed?hash:null};
+  const before=structuredClone(old),p=readAlternativeProgress(old,'draft');
+  expect(old).toEqual(before);expect(p.step).toBe(14);expect(p.lpm).toEqual({stage:'unprepared',baseline:null,pc:null,localReply:null,pathReply:null,legacy:completed});
+  expect(p.completed).toEqual(Array.from({length:13},(_,i)=>i+1));expect(p.viaReplies).toEqual(old.viaReplies);expect(p.attemptId).toBe(old.attemptId);
+  expect(readAlternativeProgress(p,'draft')).toEqual(p);
 });

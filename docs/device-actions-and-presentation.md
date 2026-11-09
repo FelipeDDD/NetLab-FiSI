@@ -206,3 +206,32 @@ Validação: leitura inválida/legada, opt-in/opt-out e override automático em
 `scripts/ping-speed-preference-review.mjs`; sequência automática e F5 do capítulo 4
 com preferência habilitada no roteiro do capítulo. Captura:
 `.playwright-mcp/reviews/ping-speed-preference/referencias-chatgpt/`.
+
+### Lembrar posição por plano
+
+A segunda checkbox (`Position merken` / `Remember position` / `Lembrar posição`)
+usa `ui.pingAnimationPosition` no documento netsim v1: `{ remember: true,
+position: { x, y } }`. As coordenadas são pixels relativos ao canvas, independentes
+do pan/zoom da topologia. Sem campo ou com opt-out, usa a posição central padrão,
+56 px acima do limite inferior do canvas. Não há nova chave global de localStorage.
+
+Marcar guarda a posição manual atual; arrastes e setas seguintes atualizam a
+preferência ao terminar a ação. Desmarcar remove a posição persistida e volta ao
+centro. A posição efetiva é limitada à área disponível após resize do navegador ou
+dock; esse ajuste automático não grava novas coordenadas. Quando o espaço volta,
+a escolha salva reaparece. Arraste sem opt-in continua temporário.
+
+Rascunhos, Save/Save As/Load, troca de abas, F5 e JSON transportam a preferência
+pela captura/preparação/canonicalização existentes. Salvar manualmente o plano
+continua necessário para atualizar sua versão nomeada. Dados antigos mantêm o
+comportamento anterior; entradas inválidas recebem defaults seguros. Versões de
+documento, topologia e banco permanecem iguais. Velocidade global e overrides
+automáticos de 2× não escrevem essa preferência.
+
+Testes: `src/pingAnimationPosition.test.ts` e `scripts/ping-position-review.mjs`,
+incluído em `node scripts/test-ping-control-drag.mjs`. A revisão usa perfil e banco
+descartáveis, com dois planos, reabertura, F5, JSON, resize, idiomas e temas.
+
+Validação em 09/11/2026: 383 testes direcionados, 107 verificações Chromium,
+TypeScript, build e `git diff --check` aprovados. Capturas em
+`.playwright-mcp/reviews/ping-position/referencias-chatgpt/`.

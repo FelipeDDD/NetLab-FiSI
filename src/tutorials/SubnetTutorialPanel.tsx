@@ -9,6 +9,7 @@ import { subnetChapterCompletion } from './completion';
 import { correctedSubnet } from './subnetChapter';
 import { sim } from '../sim';
 import { ChapterStepProgress, ExploreNetworkButton } from './CompletionUI';
+import { TutorialCommand, TutorialText } from './TutorialCommand';
 
 const titles = ['maskTitle', 'demoTitle', 'failureTitle', 'correctTitle', 'retestTitle'] as const;
 const texts = ['maskText', 'demoText', 'failureText', 'correctText', 'retestText'] as const;
@@ -24,22 +25,22 @@ export function SubnetTutorialPanel({ controller, state, afterCompletion, onExpl
     <ChapterRestartButton chapter="subnet-mask" draftId={r.draftId} step={r.step}/>
   </>}>
     {!collapsed && <><div className="exercise-body" data-subnet-step={r.step} data-subnet-saving={state.saving}>
-      <h3>{t(`guidedSubnet.${titles[step]}`)}</h3><p>{t(`guidedSubnet.${texts[step]}`)}</p>
+      <h3>{t(step === 2 && r.unreachable ? 'guidedSubnet.failureQuestion' : `guidedSubnet.${titles[step]}`)}</h3><p><TutorialText>{t(`guidedSubnet.${texts[step]}`)}</TutorialText></p>
       {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
       {state.warning && <p role="status" className="hint">{t(`guidedSubnet.${state.warning}`)}</p>}
       {!r.prepared && <button type="button" className="btn" disabled={state.busy || state.storageError} onClick={() => void controller.begin()}>{t('guidedSubnet.prepare')}</button>}
       <button type="button" className="btn btn--small" onClick={() => useStore.getState().openTerminal(SUBNET_PC_ID)}>{t('guidedSubnet.terminal')}</button>
       {step === 0 && <>
-        <pre><code>ip addr</code></pre>
+        <pre><TutorialCommand>ip addr</TutorialCommand></pre>
         <form className="guided-subnet-answer" onSubmit={e => { e.preventDefault(); controller.checkAnswer(); }}>
           <label htmlFor="guided-subnet-mask">{t('guidedSubnet.maskLabel')}</label>
           <input id="guided-subnet-mask" className="iface-ip" value={r.answer} inputMode="decimal" autoComplete="off" spellCheck={false} aria-invalid={state.answerError || undefined} aria-describedby={state.answerError ? 'guided-subnet-answer-error' : undefined} onChange={e => controller.answer(e.target.value)} />
           <button className="btn" type="submit" disabled={state.busy || !r.prepared}>{t('guidedSubnet.check')}</button>
         </form>
-        {state.answerError && <p id="guided-subnet-answer-error" role="status" className="guided-subnet-error">{t(r.inspected ? 'guidedSubnet.maskWrong' : 'guidedSubnet.inspectFirst')}</p>}
+        {state.answerError && <p id="guided-subnet-answer-error" role="status" className="guided-subnet-error"><TutorialText>{t(r.inspected ? 'guidedSubnet.maskWrong' : 'guidedSubnet.inspectFirst')}</TutorialText></p>}
       </>}
       {step === 1 && <>
-        <pre><code>{SUBNET_DEMO_COMMAND}</code></pre>
+        <pre><TutorialCommand>{SUBNET_DEMO_COMMAND}</TutorialCommand></pre>
         {state.demoRunning ? <p role="status">{t('guidedSubnet.demoRunning')}</p> : <>
           {r.demoClaimed && !r.demoPassed && <p>{t('guidedSubnet.demoRestored')}</p>}
           <button className="btn" type="button" disabled={state.busy || state.storageError} onClick={() => void controller.demonstrate()}>{t('guidedSubnet.repeat')}</button>

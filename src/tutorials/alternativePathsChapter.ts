@@ -25,12 +25,14 @@ export const NEIGHBOR_TESTS = [
   { key: 'n13', from: I.r1, to: I.r3, target: '10.0.13.2', iface: 'eth1' }, { key: 'n31', from: I.r3, to: I.r1, target: '10.0.13.1', iface: 'eth1' },
 ] as const;
 export type NeighborTest = typeof NEIGHBOR_TESTS[number]['key'];
-export const ALTERNATIVE_TOTAL = 17;
+export const ALTERNATIVE_TOTAL = 20;
 export function alternativePart(step: number) {
-  const start = step <= 4 ? 1 : step <= 14 ? 5 : 15;
-  return { part: start === 1 ? 1 : start === 5 ? 2 : 3, start, total: start === 1 ? 4 : start === 5 ? 10 : 3 };
+  if (step <= 4) return { part: 1, start: 1, total: 4 };
+  if (step <= 13) return { part: 2, start: 5, total: 9 };
+  if (step <= 17) return { part: 3, start: 14, total: 4 };
+  return { part: 4, start: 18, total: 3 };
 }
-export type AlternativeWarning = 'forms' | 'missing' | 'transit' | 'wiring' | 'port' | 'conflict';
+export type AlternativeWarning = 'forms' | 'missing' | 'transit' | 'wiring' | 'port' | 'conflict' | 'lpmPort' | 'lpmIdentity';
 export interface AlternativePcIdentity { a: string; b: string }
 export function alternativePathsDocument(): ProjectDocument {
   return { schemaVersion: 1, topology: { app: 'netsim', version: 1, devices: [

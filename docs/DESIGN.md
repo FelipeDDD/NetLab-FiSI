@@ -80,7 +80,7 @@ decisions. A pure-TS simulator gives instant, deterministic, inspectable, gradab
 ### Stack
 
 TypeScript + React + React Flow + xterm.js + Vite; Zustand (or similar) for state;
-Vitest for engine tests; deploy to GitHub Pages. No backend.
+Vitest for engine tests; manual deployment to Vercel. No backend.
 
 ## 5. Firewall semantics (v1 scope within phase 2)
 

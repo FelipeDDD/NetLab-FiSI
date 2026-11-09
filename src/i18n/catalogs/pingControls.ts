@@ -1,5 +1,6 @@
 const en = {
   remember: 'Remember speed',
+  rememberPosition: 'Remember position',
   chooseTarget: '{source} → Select target · Esc to cancel',
   drag: 'Move Ping-Animation', dragHint: 'Drag to move or use the arrow keys',
   close: 'Close ping controls', closeHint: 'Close controls · Animation continues',
@@ -8,6 +9,7 @@ const en = {
 type Messages = Record<keyof typeof en, string>;
 const de: Messages = {
   remember: 'Geschwindigkeit merken',
+  rememberPosition: 'Position merken',
   chooseTarget: '{source} → Ziel auswählen · Esc zum Abbrechen',
   drag: 'Ping-Animation verschieben', dragHint: 'Zum Verschieben ziehen oder Pfeiltasten verwenden',
   close: 'Ping-Steuerung schließen', closeHint: 'Steuerung schließen · Animation läuft weiter',
@@ -15,6 +17,7 @@ const de: Messages = {
 };
 const pt: Messages = {
   remember: 'Lembrar velocidade',
+  rememberPosition: 'Lembrar posição',
   chooseTarget: '{source} → Selecione o destino · Esc para cancelar',
   drag: 'Mover Ping-Animation', dragHint: 'Arraste para mover ou use as setas do teclado',
   close: 'Fechar controles do ping', closeHint: 'Fechar controles · A animação continua',

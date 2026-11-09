@@ -13,7 +13,7 @@ licensing — which is exactly what killed easy classroom adoption of the tools 
 
 NetSim is a static site. All simulation runs in the browser. Persistence and sharing use
 localStorage, JSON file export/import, and lz-string-compressed URL fragments. Deployment
-target is any static host (GitHub Pages).
+target is any static host. The current host is Vercel, with manual deployments.
 
 ## Consequences
 

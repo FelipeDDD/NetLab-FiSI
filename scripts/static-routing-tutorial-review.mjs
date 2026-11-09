@@ -61,7 +61,7 @@ export async function runStaticRoutingReview({ page, url, root, report }) {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false }); await mount();
     await page.evaluate("theme.getState().setTheme('graphite-dark');store.getState().addDeviceAt('host',{x:300,y:200});await ws.controller.flush();"); personal = await receipt();
     await test('direct start isolates the personal plan and prepares only the seven initial devices', async () => {
-      await menu(); await click('[data-static-direct]'); await step(1); await saved(); attempt = (await receipt()).id; assert.notEqual(attempt, personal.id);
+      await menu(); assert.equal(await page.evaluate('return document.querySelector("[data-static-direct]").textContent;'), 'Kapitel starten'); await click('[data-static-direct]'); await step(1); await saved(); attempt = (await receipt()).id; assert.notEqual(attempt, personal.id);
       assert.equal(await page.evaluate('return sim.net.devices.size;'), 7); assert.equal(await page.evaluate('return chapter.staticRoutingConditions(sim.net).base;'), true);
       await page.evaluate("store.getState().setTerminalDockCollapsed(true);store.getState().select(null);"); await fitLayout('line-1440',true); initial = await screenshot('01-minimal-instruction', 'initial');
     });

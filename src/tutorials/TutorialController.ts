@@ -276,6 +276,9 @@ export class TutorialController {
       this.candidate = undefined; this.pingHint = 'ping';
     }
     const forms = this.runtime.pendingForms();
+    // State-based task: Inspector and terminal are equivalent. Keep the legacy
+    // receipt field, but never trust it in place of the current cable/IP/mask.
+    if (this.state.step === 6 && !forms && c.cable && c.ipv4) this.cIpv4Applied = true;
     const passed = !forms && (this.state.step === 0 ? conditions.cable : this.state.step === 1 ? conditions.cable && conditions.ipv4 : this.state.step < 4 ? conditions.ready && !!this.evidence && (this.state.step === 2 || this.evidence.interrupted) : this.state.step === 4 ? c.host : this.state.step === 5 ? c.cable : this.state.step === 6 ? c.cable && c.ipv4 && this.cIpv4Applied : c.ready && !!this.cEvidence);
     if (passed) this.completed.add(this.state.step + 1);
     const hint: TutorialHint = !conditions.exists ? 'missing' : !conditions.cable ? 'cable' :

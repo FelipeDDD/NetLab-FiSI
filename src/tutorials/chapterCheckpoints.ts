@@ -12,6 +12,7 @@ import { readStaticRoutingProgress, STATIC_PROGRESS_PREFIX, type StaticRoutingPr
 import { STATIC_BASE_IDS, STATIC_EXTENSION_IDS, STATIC_IDS } from './staticRoutingChapter';
 import { readAlternativeProgress, ALTERNATIVE_PROGRESS_PREFIX, type AlternativePathsProgress } from './alternativePathsProgress';
 import { ALTERNATIVE_ROUTERS, ALTERNATIVE_PCS, ALTERNATIVE_IDS } from './alternativePathsChapter';
+import { emptyLpm } from './alternativeLpm';
 
 export type ChapterId='first-connection'|'subnet-mask'|'two-networks'|'static-routing'|'alternative-paths';
 export const CHAPTERS:ChapterId[]=['first-connection','subnet-mask','two-networks','static-routing','alternative-paths'];
@@ -44,6 +45,7 @@ export function readChapterCheckpoint(value:unknown,id:string,chapter:ChapterId)
     if(chapter==='static-routing'&&(!same(before,initial)||!p.prepared||p.stage!=='line'||!same(p.completed,[])||p.investigated!==null||p.missingAnswer!==null||p.inspectedR1!==false||p.retested!==null||p.returnInvestigated!==null||p.extension!==null||Object.values(p.lineReplies as object).some(Boolean)||Object.values(p.finalReplies as object).some(Boolean)||!STATIC_BASE_IDS.every(id=>initial!.topology.devices.some(d=>d.id===id))))throw Error('checkpoint-invalid');
     if(chapter==='alternative-paths'&&(!same(before,initial)||!p.prepared||p.stage!=='triangle'||!same(p.completed,[])||p.remoteUnderstood!==false||p.hopUnderstood!==false||p.lpmUnderstood!==false||p.extension!==null||p.failure!==null||p.viaBaseline!==null||Object.values(p.neighbors as object).some(Boolean)||Object.values(p.viaReplies as object).some(Boolean)||Object.values(p.directReplies as object).some(Boolean)||!ALTERNATIVE_ROUTERS.every(id=>initial!.topology.devices.some(d=>d.id===id))))throw Error('checkpoint-invalid');
   }
+  if(initial&&chapter==='alternative-paths'&&!same((progress as unknown as AlternativePathsProgress).lpm,emptyLpm()))throw Error('checkpoint-invalid');
   return {...c,before,initial,progress};
 }
 const identity=(a:SavedDevice,b:SavedDevice)=>a.kind===b.kind&&a.ifaces.every(i=>b.ifaces.some(j=>j.name===i.name&&j.mac===i.mac));
@@ -56,7 +58,8 @@ export function chapterRestartDocument(c:ChapterCheckpoint,current:ProjectDocume
   const original=c.progress as unknown as Record<string,unknown>;
   if(c.chapter==='first-connection'?progress.startedAt!==original.startedAt:c.chapter==='static-routing'||c.chapter==='alternative-paths'?progress.attemptId!==original.attemptId:progress.pcC!==original.pcC||progress.baseFingerprint!==original.baseFingerprint||progress.source!==original.source)throw Error('checkpoint-conflict');
   const baseline=c.before.topology,initial=c.initial.topology,result=structuredClone(current),now=result.topology;
-  const owned=new Set(c.chapter==='first-connection'?[...Object.values(FIRST_DEVICES),...(typeof (progress.devices as {c?:unknown})?.c==='string'?[(progress.devices as {c:string}).c]:[])]:c.chapter==='subnet-mask'?[SUBNET_PC_ID]:c.chapter==='static-routing'?[...STATIC_BASE_IDS,...STATIC_EXTENSION_IDS]:c.chapter==='alternative-paths'?[...ALTERNATIVE_ROUTERS,...ALTERNATIVE_PCS]:Object.values(ROUTER_IDS));
+  const lpmPc=c.chapter==='alternative-paths'?(progress as unknown as AlternativePathsProgress).lpm.pc:null;
+  const owned=new Set(c.chapter==='first-connection'?[...Object.values(FIRST_DEVICES),...(typeof (progress.devices as {c?:unknown})?.c==='string'?[(progress.devices as {c:string}).c]:[])]:c.chapter==='subnet-mask'?[SUBNET_PC_ID]:c.chapter==='static-routing'?[...STATIC_BASE_IDS,...STATIC_EXTENSION_IDS]:c.chapter==='alternative-paths'?[...ALTERNATIVE_ROUTERS,...ALTERNATIVE_PCS,...(lpmPc?[lpmPc.id]:[])]:Object.values(ROUTER_IDS));
   const beforeIds=new Set(baseline.devices.map(d=>d.id));
   const currentIds=new Set(now.devices.map(d=>d.id));
   if(c.chapter==='static-routing'){
@@ -66,6 +69,8 @@ export function chapterRestartDocument(c:ChapterCheckpoint,current:ProjectDocume
     }
   }
   if(c.chapter==='alternative-paths'){
+    const liveC=lpmPc&&now.devices.find(d=>d.id===lpmPc.id);
+    if(liveC&&(liveC.kind!=='host'||liveC.ifaces.length!==1||liveC.ifaces[0].name!=='eth0'||liveC.ifaces[0].mac!==lpmPc!.mac))throw Error('checkpoint-conflict');
     const extension=(progress as unknown as AlternativePathsProgress).extension;
     for(const [key,id] of [['a',ALTERNATIVE_IDS.a],['b',ALTERNATIVE_IDS.b]] as const){const live=now.devices.find(d=>d.id===id);if(!live)continue;
       if(!extension||live.kind!=='host'||live.ifaces.length!==1||live.ifaces[0].name!=='eth0'||live.ifaces[0].mac!==extension[key])throw Error('checkpoint-conflict');

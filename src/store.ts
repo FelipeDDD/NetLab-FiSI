@@ -13,6 +13,7 @@ import { observeIcmpActivity, observePingActivity } from './networkObservations'
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
 import { normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { preferredPingAnimationSpeed } from './pingAnimationPreference';
+import { readPingAnimationPosition, type PingAnimationPosition } from './pingAnimationPosition';
 import { advanceGuidedPacket, toggleGuidedPlayback, followGuidedPacket, emptyGuidedPacket, updateGuidedObservation, observeGuidedPacket, observeGuidedPingProgress, pingIcmpIdentity, replayGuidedPacket, stepGuidedPacket, validateGuidedPacket, type GuidedPacketState, type PacketVisualizationMode } from './guidedPacket';
 import { createDevice } from './engine/factory';
 import { ROUTER_IDS, ROUTER_LINKS, routerPreparationError, routerConditions, routerSignature, type RouterWarning } from './tutorials/routerChapter';
@@ -113,6 +114,8 @@ interface NetsimState {
   setStudioPresentation(value: import('./studioPresentation').StudioPresentationData, generation: number): boolean;
   workspaceIdentity: WorkspaceIdentity | null;
   captureWorkspaceDocument(): ProjectDocument;
+  pingAnimationPosition: PingAnimationPosition;
+  setPingAnimationPosition(value: PingAnimationPosition): void;
   attachChapterHistory(handler:(id:string,direction:'undo'|'redo')=>void):()=>void;
   installChapterHistory(history:TopologyHistory):void;
   activateWorkspaceDocument(prepared: PreparedTopology, identity: WorkspaceIdentity): void;
@@ -717,6 +720,12 @@ export const useStore = create<NetsimState>()((set, get) => {
       set({ studioPresentation: structuredClone(value) }); saveSoon(); return true;
     },
     captureWorkspaceDocument: () => ({ schemaVersion: 1, topology: currentSave() }),
+    pingAnimationPosition: { remember: false },
+    setPingAnimationPosition(value) {
+      const preference = readPingAnimationPosition(value);
+      if (JSON.stringify(preference) === JSON.stringify(get().pingAnimationPosition)) return;
+      set({ pingAnimationPosition: preference }); saveSoon();
+    },
     attachChapterHistory(handler){chapterHistory=handler;return()=>{if(chapterHistory===handler)chapterHistory=undefined;};},
     installChapterHistory(history){historyConfiguration=configuration();set({topologyHistory:history});},
     activateWorkspaceDocument: (prepared, identity) => activatePrepared(prepared, identity),

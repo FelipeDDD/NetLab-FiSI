@@ -16,9 +16,10 @@ continua no mesmo rascunho. Não abre outro plano nem substitui a topologia.
    cadência do motor ou a velocidade global das animações. Terminal ocupado,
    texto não enviado e seleção são respeitados; há repetição manual. Uma execução
    aceita pelo terminal também ativa Run, inclusive após uma pausa manual.
-3. **Warum funktioniert der Ping nicht?:** exige um ping do aluno para PC B.
+3. **Verbindung zu PC B testen:** exige um ping do aluno para PC B.
    Só a saída exata `ping: connect: Network is unreachable`, com rota ausente e
-   configuração inicial operacional, comprova a falha. A explicação aparece depois.
+   configuração inicial operacional, comprova a falha. Somente após essa observação
+   o título passa a **Warum funktioniert der Ping nicht?** e aparece a explicação.
 4. **Netzwerk korrigieren:** o aluno altera a máscara pelo Inspector ou terminal,
    sem receber o comando nem o valor esperado. O IPv4 continua `192.168.10.12`, sem
    gateway. São aceitos prefixos que produzam rotas conectadas em eth0 para A/B/C;

@@ -47,7 +47,7 @@ export function normalizeTerminalAppearance(value: unknown, defaults: Readonly<T
 
 // UI metadata extends the existing v1 file; the engine never reads these fields.
 export interface AppearanceSaveFile extends SaveFile {
-  ui?: { topologyStudio?: unknown; areaMarkings?: import('./areaMarkings').AreaMarking[]; cableColors?: Record<string, import('./cableAppearance').CableAppearance | import('./cableAppearance').CableColor>; terminalColors?: Record<string, string>; terminalAppearance?: Partial<TerminalAppearance>; terminalLayoutMode?: TerminalLayoutMode };
+  ui?: { pingAnimationPosition?: import('./pingAnimationPosition').PingAnimationPosition; topologyStudio?: unknown; areaMarkings?: import('./areaMarkings').AreaMarking[]; cableColors?: Record<string, import('./cableAppearance').CableAppearance | import('./cableAppearance').CableColor>; terminalColors?: Record<string, string>; terminalAppearance?: Partial<TerminalAppearance>; terminalLayoutMode?: TerminalLayoutMode };
 }
 
 export function readTerminalAppearance(data: AppearanceSaveFile): TerminalAppearance {

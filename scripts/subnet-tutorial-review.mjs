@@ -85,11 +85,16 @@ export async function runSubnetTutorialReview({ page, root, report, wait, delay,
     await click('.exercise-panel footer button', 'Weiter'); await step(3);
   });
   await test('only the learner no-route result reveals the explanation', async () => {
+    for(const [language,title] of [['en','Test the connection to PC B'],['pt-BR','Testar a conexão com PC B'],['de','Verbindung zu PC B testen']]) {
+      await page.evaluate('(await import("/src/i18n/index.ts")).useLanguage.getState().setLanguage('+JSON.stringify(language)+');');await delay(50);
+      assert.equal(await page.evaluate('return document.querySelector("[data-subnet-step] h3").textContent;'),title);
+    }
+    assert.equal(await page.evaluate('return document.querySelector("[data-subnet-step] h3").textContent;'), 'Verbindung zu PC B testen');
     assert.equal(await page.evaluate('return !!document.querySelector("[data-subnet-failure-explanation]");'), false);
     await page.evaluate(`store.getState().openTerminal(${JSON.stringify(d)});`); await wait("document.querySelector('.xterm-helper-textarea')");
     await page.evaluate(`(await import('/src/terminals.ts')).getSession(sim.net.devices.get(${JSON.stringify(d)})).executeCommand('ping -c 1 192.168.10.20');`); await delay(100); assert.equal(await passed(), false);
     await command('ping -c 1 192.168.10.13'); await advance(6000); assert.equal(await passed(), false);
-    await command('ping -c 3 192.168.10.20'); await wait("document.querySelector('[data-subnet-passed=true]')"); assert(await page.evaluate('return !!document.querySelector("[data-subnet-failure-explanation]");')); await shot('03-no-route-observed');
+    await command('ping -c 3 192.168.10.20'); await wait("document.querySelector('[data-subnet-passed=true]')"); assert(await page.evaluate('return !!document.querySelector("[data-subnet-failure-explanation]");')); assert.equal(await page.evaluate('return document.querySelector("[data-subnet-step] h3").textContent;'), 'Warum funktioniert der Ping nicht?'); await shot('03-no-route-observed');
     await reload(3); assert.equal(await passed(), true); await click('.exercise-panel footer button', 'Weiter'); await step(4);
   });
   await test('Inspector /27 passes; new Echo Replies from B and C are required across F5 and plan switches', async () => {

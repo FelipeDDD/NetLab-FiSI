@@ -1,3 +1,4 @@
+import { TutorialCommand, TutorialText } from './TutorialCommand';
 import { useEffect, useState } from 'react';
 import { GuidedVisualHelp } from './GuidedVisualHelp';
 import { staticRoutingVisualHelp } from './tutorialVisualHelp';
@@ -23,7 +24,7 @@ function FinalRoutingVerification({ controller, state }: { controller: StaticRou
         <span aria-hidden="true">{status === 'confirmed' ? '✓' : status === 'failed' ? '×' : status === 'running' ? '◌' : '○'}</span> PC {pair[0].toUpperCase()} → PC {pair[1].toUpperCase()} · {t(`guidedStaticLine.verification${status}`)}
       </li>;
     })}</ul>
-    {state.verification.running && paused && <p role="status">{t('guidedStaticLine.verificationPaused')}</p>}
+    {state.verification.running && paused && <p role="status"><TutorialText>{t('guidedStaticLine.verificationPaused')}</TutorialText></p>}
     {!state.verification.running && !state.passed && <button type="button" className="btn" data-static-verify disabled={state.busy || state.storageError || !!state.warning} onClick={() => controller.startFinalVerification()}>{t('guidedStaticLine.verificationRetry')}</button>}
   </>;
 }
@@ -42,14 +43,14 @@ export function StaticRoutingTutorialPanel({ controller, state, onExplore }: { c
     <ChapterRestartButton chapter="static-routing" draftId={r.draftId} step={r.step}/>
   </>}>
     {!collapsed && <><div className="exercise-body" data-static-step={r.step} data-static-saving={state.saving}>
-      <h3>{t(key('Title'))}</h3><p>{t(key('Text'))}</p>
+      <h3>{t(key('Title'))}</h3><p><TutorialText>{t(key('Text'))}</TutorialText></p>
       {r.step === 3 && <label>{t('guidedStatic.chooseRouter')}<select data-static-missing value={r.missingAnswer ?? ''} disabled={state.busy || state.storageError} onChange={event => controller.chooseMissing(event.target.value as MissingRouter)}>
         <option value="" disabled>{t('guidedStatic.choose')}</option>{(['r1', 'r2', 'r3'] as const).map(key => <option key={key} value={key}>{key.toUpperCase()}</option>)}<option value="none">{t('guidedStatic.noMissing')}</option>
       </select></label>}
-      {state.answerError && <p role="alert">{t('guidedStatic.wrongAnswer')}</p>}
+      {state.answerError && <p role="alert"><TutorialText>{t('guidedStatic.wrongAnswer')}</TutorialText></p>}
       {hasHelp && <div className={visualHelp ? 'guided-help-with-image' : undefined} key={r.step}><details className="exercise-learning" data-static-help><summary>{t('guidedStaticLine.help')}</summary>
         {r.step === 2 ? <>
-          <strong>{t('guidedStaticLine.readTable')}</strong><p>{t('guidedStaticLine.routeIntro')}</p>
+          <strong>{t('guidedStaticLine.readTable')}</strong><p><TutorialText>{t('guidedStaticLine.routeIntro')}</TutorialText></p>
           <pre><code>{'192.168.10.0/24 dev eth0 proto kernel scope link src 192.168.10.1\n10.0.12.0/30 dev eth1 proto kernel scope link src 10.0.12.1'}</code></pre>
           <ul>
             <li><code>192.168.10.0/24</code> — {t('guidedStaticLine.targetNetwork')}</li>
@@ -58,14 +59,14 @@ export function StaticRoutingTutorialPanel({ controller, state, onExplore }: { c
             <li><code>scope link</code> — {t('guidedStaticLine.directlyReachable')}</li>
             <li><code>src 192.168.10.1</code> — {t('guidedStaticLine.sourceAddress')}</li>
           </ul>
-          {!staticRoutingConditions(sim.net).r1Forward && <p>{t('guidedStaticLine.missingLanB')}</p>}
-          <strong>{t('guidedStaticLine.addRoute')}</strong><pre><code>ip route add 192.168.20.0/24 via 10.0.12.2</code></pre>
-          <p>{t('guidedStaticLine.routeMeaning')}</p><p>{t('guidedStaticLine.returnMeaning')}</p>
-        </> : <p>{t(key('Help'))}</p>}
+          {!staticRoutingConditions(sim.net).r1Forward && <p><TutorialText>{t('guidedStaticLine.missingLanB')}</TutorialText></p>}
+          <strong>{t('guidedStaticLine.addRoute')}</strong><pre><TutorialCommand>ip route add 192.168.20.0/24 via 10.0.12.2</TutorialCommand></pre>
+          <p><TutorialText>{t('guidedStaticLine.routeMeaning')}</TutorialText></p><p><TutorialText>{t('guidedStaticLine.returnMeaning')}</TutorialText></p>
+        </> : <p><TutorialText>{t(key('Help'))}</TutorialText></p>}
       </details>{visualHelp && <GuidedVisualHelp help={visualHelp}/>}</div>}
       {r.step === 8 && <ul className="guided-subnet-replies">{pairs.map(pair => <li key={pair} data-static-reply={pair} data-tutorial-passed={state.replies[pair]}><span aria-hidden="true">{state.replies[pair] ? '✓' : '○'}</span> PC {pair[0].toUpperCase()} → PC {pair[1].toUpperCase()} · {staticTarget(sim.net, pair[1] as 'a') ?? '—'}</li>)}</ul>}
       {r.step === 11 && <FinalRoutingVerification controller={controller} state={state}/>}
-      {state.warning && <p role="status">{t(`guidedStatic.${state.warning}`)}</p>}
+      {state.warning && <p role="status"><TutorialText>{t(`guidedStatic.${state.warning}`)}</TutorialText></p>}
       {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
       {(!r.prepared || r.stage === 'expanding') && <button type="button" className="btn" disabled={state.busy || state.saving || state.storageError} onClick={() => void controller.prepare()}>{t('guidedStatic.prepare')}</button>}
       <div data-static-passed={state.passed} data-tutorial-passed={state.passed}>{state.passed && <p className="guided-action-status" role="status"><span className="guided-action-indicator" aria-hidden="true">✓</span><span>{t('guidedStatic.passed')}</span></p>}</div>

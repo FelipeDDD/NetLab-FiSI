@@ -8,9 +8,9 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 
 ## Leia primeiro — auditoria e estado atual em 09/11/2026
 
-Este resumo prevalece sobre os registros históricos abaixo. A auditoria foi
-realizada antes do commit das alterações recentes: base `d860e2a`, branch `main`,
-remoto `origin` em `https://github.com/FelipeDDD/NetLab-FiSI.git`. O HEAD remoto foi
+Este resumo prevalece sobre os registros históricos abaixo. O checkout foi
+conferido em 09/11: branch `main` limpa, HEAD **`2a1b91f`**, sincronizado com
+`origin/main` em `https://github.com/FelipeDDD/NetLab-FiSI.git`; o HEAD remoto foi
 consultado e coincidia com essa base. Não presumir que o trabalho está sincronizado:
 conferir `git status`, `git log` e o remoto no computador de destino. O usuário
 **confirmou o commit dos 175 arquivos aprovados e o push de `main` para
@@ -22,10 +22,48 @@ dada durante a auditoria. Publicação futura exige nova instrução e acesso ao
 deste update não reativa permanentemente essa automação. Não há `.vercel/project.json`,
 CLI Vercel disponível no PATH ou token Vercel configurado nesta sessão; será
 necessário vincular/autenticar o projeto ou usar acesso existente ao dashboard.
-Nesta auditoria também foi removido o gatilho `push` do workflow GitHub Pages:
-`.github/workflows/deploy.yml` passa a aceitar somente execução manual. Sem essa
-correção, o push em `main` publicaria automaticamente, contrariando a restrição
-do usuário. O workflow de CI/testes não foi desativado.
+Na rodada atual, o workflow obsoleto `.github/workflows/deploy.yml` foi removido:
+GitHub Pages já está desativado no repositório. Hospedagem atual: Vercel com deploy
+manual. `vercel.json` e os demais workflows não foram alterados.
+Após a revisão, o usuário autorizou **commit e push para `origin/main`** das
+alterações desta rodada: remoção do workflow Pages, posição do Ping-Animation por
+plano, refinamentos dos tutoriais 1–5 e atividade prática de LPM com LAN C.
+Essa autorização substitui as restrições anteriores de commit/push desta rodada;
+**deploy, merge, rebase e force push continuam fora do escopo**. Para retomar em
+outro computador, consultar o HEAD real com `git log -1` e verificar a sincronização;
+`2a1b91f` acima registra a base anterior à consolidação. Stash e backups locais
+devem continuar preservados; capturas, logs e arquivos temporários ficam fora do Git.
+Validação final da consolidação: **2.996 testes em 180 arquivos passaram com
+Node 24**, além de TypeScript, build e diff-check. Revisões Chromium dos tutoriais
+e da posição do ping foram aprovadas nos bancos descartáveis. Dependências,
+`package-lock.json` e configuração da Vercel permanecem inalterados nesta rodada.
+
+### Revisão pontual dos tutoriais 1–5
+
+- Comandos Linux em blocos e trechos de instruções/ajudas usam o componente
+  compartilhado `TutorialCommand`/`TutorialText` e âmbar do tema. Saídas de
+  terminal, tabelas e IPs isolados mantêm sua apresentação. Exemplos genéricos
+  de rotas usam rede/CIDR nos três idiomas; conceitos de prefixo são preservados.
+- Capítulo 1, etapa 7: IPv4 de PC C aceita Inspector ou terminal. Cabo, identidade,
+  IP e máscara reais são revalidados, inclusive após F5; o registro antigo de
+  comando continua compatível. As etapas de ping mantêm suas exigências existentes.
+- Capítulo 2, etapa 3: título neutro antes do teste; pergunta sobre a falha somente
+  após a evidência real já exigida pelo verificador.
+- Capítulo 5, etapa 7: explicação de falta de rota em R1 somente com ICMP e caminho
+  observados compatíveis e ausência de rota confirmada. Resposta bem-sucedida e
+  outras falhas recebem feedback próprio. A causa específica não é inferida de
+  comprovantes históricos após F5; nova execução permite observá-la novamente.
+- Menu: Capítulo 3 mantém `Direkt starten`; capítulos 4/5 distinguem início
+  independente (`Kapitel starten`), retomada e nova tentativa. DE/EN/PT-BR.
+- **Editor visual de rotas permanece pendente**, para etapa separada. Esta revisão
+  não implementa comandos Windows nem promete configuração de rotas pelo Inspector.
+- Validação desta revisão: **479 testes em 18 arquivos**, TypeScript, build e
+  `git diff --check` aprovados. Chromium com perfis/bancos descartáveis: capítulos
+  1–3 (**139 verificações**), 4 (**109**) e 5 (**111**), sem falhas ou erros de
+  navegador. Cobertura inclui Inspector/terminal, F5, progresso, DE/EN/PT-BR,
+  Graphite Dark/Classic Light e 700/1440 px. Capturas nos diretórios existentes
+  `.playwright-mcp/reviews/raw/guided-tutorial/`, `chapter4-minimal/` e
+  `chapter5-minimal/` (artefatos locais, fora do Git).
 
 ### Capítulo 4 — Statisches Routing
 
@@ -50,16 +88,43 @@ do usuário. O workflow de CI/testes não foi desativado.
 
 ### Capítulo 5 — Alternative Wege
 
-- Implementado com **17 etapas: 4 + 10 + 3**. Primeiro endereça e testa vizinhos
-  no triângulo; depois insere PCs, configura ida/retorno por R2, interpreta Next Hop
-  e Longest Prefix Match; por fim interrompe um enlace e comprova o caminho direto.
+- Ampliado para **20 etapas: 4 + 9 + 4 + 3**, progresso **versão 3**. Depois da
+  comprovação A ↔ B por R2 e de Next Hop, as tarefas 14–17 ensinam LPM com uma
+  LAN C real. As antigas tarefas de falha/alternativa de LAN B passam a 18–20.
+- Ao entrar na atividade, prepara somente R3 eth3 com `192.168.30.129/25`.
+  O aluno cria um PC Linux, conecta à eth3 e configura `192.168.30.130/25`,
+  gateway/default efetivo `192.168.30.129`. Nome/posição livres; vínculo por ID/MAC
+  somente com host novo conectado à porta correta, usando baseline persistida.
+- Ping local C → R3 comprovado; depois R2 recebe rota para LAN C via `10.0.23.2`.
+  R1 usa `192.168.30.0/24 via 10.0.12.2` e `192.168.30.128/25 via 10.0.13.2`.
+  As duas alternativas encaminham de verdade. A pergunta de LPM aparece após
+  observar A → R1 → R3 → C e a resposta C → R3 → R2 → R1 → A. Maior CIDR vence
+  somente entre rotas correspondentes. Nenhuma mudança na engine/animação.
+- Provas A/B e local C–R3 têm escopos próprios; acrescentar LAN C ou suas rotas
+  não invalida provas anteriores. Hashes globais antigos continuam reconhecidos;
+  normalização de um par válido ocorre junta. A falha posterior de enlace conserva
+  seu baseline completo e as proteções contra atribuição incorreta de causa.
+- Intenção antes da edição, topologia antes do recibo, CAS e recuperação de gravação
+  interrompida. F5 não duplica PCs nem restaura processos. Checkpoint/reinício inclui
+  C somente após vínculo seguro; equipamento independente ou identidade reutilizada
+  não é apagado. PC ainda não vinculado permanece preservado, por segurança.
+- Migração v1 → v2 → v3 preserva rede e histórico. Antiga etapa 14 não concluída
+  abre a nova prática. Atividade teórica antiga já concluída recebe crédito
+  histórico explícito (`lpm.legacy`), sem inventar PC/pings; conclusões anteriores
+  continuam concluídas. Nova tentativa oferece o fluxo prático completo.
 - Instruções e ajudas concisas nos três idiomas; no máximo um `Hilfe`, sem
   submenus ou respostas antecipadas no corpo das perguntas. Evidências dos enlaces
   são independentes, com pacotes reais; configuração parcial não é sucesso final.
-- Progresso de versão 2, recuperação/migração de tentativas antigas, IDs/posições
-  preservados e verificações dos caminhos reais. Testes automatizados completos
-  passaram nesta auditoria. **O teste manual didático pelo usuário ainda é o próximo
-  passo**, especialmente primeiras etapas, `ip route`, LPM e falha/alternativa.
+- **O teste manual didático pelo usuário continua pendente**, agora incluindo
+  criação de PC C, observação de ida/retorno distintos e conclusão da LAN B.
+- Validação da expansão: **487 testes em 18 arquivos**, TypeScript, build e
+  `git diff --check` aprovados. Chromium: **113 verificações** no roteiro completo
+  com banco/perfil descartáveis, sem falhas ou erros de navegador. Inclui criação
+  por arraste, /24 e /25 reais, F5 na criação, migração da antiga etapa 14, três
+  idiomas, LPM em Dark/Light e 700 px, conclusão, reinício e Undo/Redo. Capturas em
+  `.playwright-mcp/reviews/raw/alternative-paths-staging/` e organização existente
+  de `chapter5-minimal/`. Consolidação via commit/push autorizada após a revisão;
+  nenhum deploy foi solicitado.
 - Referências: [alternative-paths-tutorial.md](alternative-paths-tutorial.md),
   `AlternativePathsController.ts`, `AlternativePathsPanel.tsx` e
   `alternativePathsProgress.ts` em `src/tutorials/`.
@@ -118,7 +183,7 @@ dentro de `output/`; novas imagens futuras exigem inclusão explícita.
 - Help do terminal tem ícone e texto Hilfe/Help/Ajuda, modo compacto por largura
   do painel e cadeado independente. Conteúdo/comandos do terminal preservados.
 - Ping-Animation arrastável pelo cabeçalho, limitado ao canvas/dock; slider e
-  checkbox independentes, retorno à posição padrão após fechar/reabrir. Cálculo
+  checkboxes independentes. Sem opt-in de posição, retorna ao padrão ao reabrir. Cálculo
   de limites compartilhado com exercícios, sem acoplamento dos componentes.
   O painel aparece com um salto observado; não tem atraso deliberado de drag.
   Texto redundante de animação reduzida removido.
@@ -126,12 +191,26 @@ dentro de `output/`; novas imagens futuras exigem inclusão explícita.
   em `netlab:ping-animation-preference:v1` no localStorage. Só ações manuais gravam;
   mudanças temporárias automáticas não sobrescrevem. Sem opt-in, usa o padrão
   0,25× na inicialização. Desmarcar desativa a lembrança sem alterar o ping atual.
+- **`Position merken` / `Remember position` / `Lembrar posição` implementado**:
+  preferência opcional `ui.pingAnimationPosition` no documento v1, com opt-in e
+  coordenadas relativas ao canvas. Cada plano/rascunho conserva sua escolha em
+  troca de abas, reabertura e F5; Save/Load e JSON usam a serialização existente.
+  Projetos antigos continuam centralizados, sem mudança de schema IndexedDB.
+  Desmarcar limpa a preferência e recentraliza o painel. Arraste/setas registram
+  posições manuais; resize do navegador/dock apenas limita a posição exibida e
+  não destrói a escolha salva. A velocidade global e os 2× temporários continuam
+  independentes. Ver [device-actions-and-presentation.md](device-actions-and-presentation.md).
 - A causalidade visual ARP→IP e os erros ICMP usam metadados de observação;
   alterações em `engine/network.ts` e `engine/ipdevice.ts` apenas associam esses
   eventos à apresentação, sem mudar scheduler, encaminhamento ou protocolo.
 
 ### Validação desta auditoria
 
+- Rodada Pages/posição por plano: **383 testes direcionados**, **107 verificações
+  Chromium** (perfil/banco descartáveis), TypeScript, build e `git diff --check`
+  aprovados. Cobre dois planos, opt-in/opt-out, reabertura, F5, Save/JSON,
+  redimensionamento, idiomas/temas e independência da velocidade global.
+  Mantém o aviso conhecido de chunk acima de 500 kB. Sem commit/push/deploy.
 - Suíte completa: **2.983 testes / 178 arquivos**, todos aprovados.
 - TypeScript e build de produção aprovados, incluindo os seis PNGs. Permanece o
   aviso conhecido de chunk JS acima de 500 kB; não houve mudança de bibliotecas.
@@ -166,24 +245,19 @@ dentro de `output/`; novas imagens futuras exigem inclusão explícita.
    dificuldades didáticas reais antes de novas mudanças.
 4. Trabalho futuro: definir a **configuração de rotas pela interface**, com
    escopo e validação próprios. Não antecipar implementação nem mudar protocolos.
-5. Trabalho futuro: adicionar **`Lembrar posição`** ao painel Ping-Animation,
-   ao lado de `Lembrar velocidade`. A velocidade continua sendo uma preferência
-   global; a posição deve ser salva **por projeto/topologia**. Ao desmarcar,
-   utilizar a posição central padrão. Respeitar os limites da viewport.
-   Esta pendência ainda não foi implementada.
-6. Limites conhecidos: textos/blocos manuais longos podem colidir no Studio;
+5. Limites conhecidos: textos/blocos manuais longos podem colidir no Studio;
    ajustar escala/posições ou usar A3 conforme os avisos. A interface geral pode
    exceder a largura em 390 px; o visualizador mantém seus próprios limites.
    Algumas ajudas técnicas antigas ainda estão somente em alemão. Preferências
    dependem do armazenamento do navegador; não sincronizam entre computadores.
-7. Para reproduzir: `npm test`, `npm run build`, `git diff --check` e os runners
+6. Para reproduzir: `npm test`, `npm run build`, `git diff --check` e os runners
    `test-static-routing-tutorial.mjs`, `test-alternative-paths-tutorial.mjs`,
    `test-studio-interface.mjs`, `test-studio-snapshot.mjs` e
    `test-ping-control-drag.mjs` em `scripts/`. Os runners procuram Chrome/Edge/
    Chromium; `NETLAB_CHROMIUM_PATH` permite indicar um binário existente. Não usam
    o perfil ou banco pessoal. Em Windows restrito, o esbuild e Chromium podem
    exigir permissão de execução fora do sandbox; isso não é falha do código.
-8. Capturas para revisão devem continuar organizadas em pastas próprias
+7. Capturas para revisão devem continuar organizadas em pastas próprias
    `.playwright-mcp/reviews/<rodada>/referencias-chatgpt/`, somente PNGs finais.
    Logs/PDFs/JSONs ficam fora dessa pasta. Esses artefatos não entram no commit;
    código, testes, documentação e os seis assets aprovados entram juntos.

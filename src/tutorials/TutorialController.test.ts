@@ -175,7 +175,7 @@ describe('first guided chapter', () => {
       expect(f.documents.size).toBe(2);
     } finally { f.dispose(); }
   });
-  it('extends the same lab with a new Linux host and requires terminal configuration and a learner ping on C', async () => {
+  it('extends the same lab with a new Linux host, validates its actual configuration and requires a learner ping on C', async () => {
     const f = fixture(); try {
       await f.ready(); const a = f.net.devices.get(FIRST_DEVICES.a), sw = f.net.devices.get(FIRST_DEVICES.sw);
       const draft = f.controller.getState().draftId;
@@ -191,15 +191,12 @@ describe('first guided chapter', () => {
       f.net.disconnect([...f.net.links.keys()].at(-1)!); f.net.connect(c.id, FIRST_DEVICES.sw); f.refresh();
       expect(f.controller.getState().passed).toBe(true); f.controller.next();
       expect(f.controller.getState().hint).toBe('ipv4C');
-      c.getInterface('eth0')!.ip = parseCidr('192.168.10.30/24'); f.refresh(); // Inspector configuration alone.
+      c.getInterface('eth0')!.ip = parseCidr('192.168.10.31/24'); f.refresh();
       expect(f.controller.getState().hint).toBe('ipv4CExisting');
       expect(f.controller.getState().passed).toBe(false);
       f.submit('ip address add 192.168.10.30/24 dev eth0', 'keyboard', c.id); // Existing address: rejected, no false receipt.
       expect(f.controller.getState().passed).toBe(false);
-      f.submit('ip address del 192.168.10.30/24 dev eth0', 'keyboard', c.id);
-      f.submit('ip address add 192.168.10.30/24 dev eth0', 'api', c.id);
-      expect(f.controller.getState().passed).toBe(false);
-      f.submit('ip address del 192.168.10.30/24 dev eth0', 'keyboard', c.id);
+      f.submit('ip address del 192.168.10.31/24 dev eth0', 'keyboard', c.id);
       f.submit('ip address add 192.168.10.30/24 dev eth0', 'keyboard', FIRST_DEVICES.b);
       expect(f.controller.getState().passed).toBe(false);
       f.submit('ip address add 192.168.10.30/24 dev eth0', 'keyboard', c.id);
@@ -226,6 +223,24 @@ describe('first guided chapter', () => {
       expect(f.controller.getState()).toMatchObject({ step: 7, passed: true, draftId: draft });
       expect(f.net.devices.get(FIRST_DEVICES.a)).toBe(a); expect(f.net.devices.get(FIRST_DEVICES.sw)).toBe(sw);
       expect(JSON.stringify(serializeNetwork(f.net, {}))).toBe(saved);
+    } finally { f.dispose(); }
+  });
+  it('accepts PC C configuration through the Inspector and rechecks cable, address and mask after reload', async () => {
+    const f = fixture(true); try {
+      await f.ready(); const ping = f.submit('ping 192.168.10.20'); f.net.scheduler.advanceTo(f.net.now + 1500); ping.interrupt(); f.controller.next();
+      const c = new Host(f.net, 'pc-c-inspector', 'New'); f.net.devices.set(c.id, c); f.refresh(); await Promise.resolve();
+      f.controller.next(); f.net.connect(c.id, FIRST_DEVICES.sw); f.refresh(); f.controller.next();
+      c.interfaces[0].configureIpv4({ mode: 'static', ip: parseCidr('192.168.10.30/25'), gateway: null, dns: null }); f.refresh();
+      expect(f.controller.getState().passed).toBe(false);
+      c.interfaces[0].configureIpv4({ mode: 'static', ip: parseCidr('192.168.10.30/24'), gateway: null, dns: null }); f.refresh();
+      expect(f.controller.getState().passed).toBe(true); await f.reload();
+      expect(f.controller.getState()).toMatchObject({ step: 6, pcC: c.id, passed: true });
+      const restored = f.net.devices.get(c.id) as Host;
+      restored.interfaces[0].ip = parseCidr('192.168.10.31/24'); f.refresh(); await f.reload();
+      expect(f.controller.getState().passed).toBe(false);
+      (f.net.devices.get(c.id) as Host).interfaces[0].ip = parseCidr('192.168.10.30/24'); f.refresh();
+      const cable = [...f.net.links.values()].find(l => l.a.device.id === c.id || l.b.device.id === c.id)!;
+      f.net.disconnect(cable.id); f.refresh(); expect(f.controller.getState().passed).toBe(false);
     } finally { f.dispose(); }
   });
   it('keeps a conflicting PC C name and all other devices unchanged', async () => {

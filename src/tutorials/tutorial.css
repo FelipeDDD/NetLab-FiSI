@@ -39,9 +39,7 @@
 [data-exercise="guided-first-connection"] footer { display: flex; justify-content: space-between; flex-shrink: 0; gap: 8px; }
 [data-exercise="guided-first-connection"] pre { padding: 8px; background: var(--ui-surface-card); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 [data-exercise="guided-first-connection"] [data-tutorial-passed="true"] { color: var(--ui-success); }
-[data-exercise="guided-first-connection"] :is(pre code, .guided-shortcut) { color: var(--guided-command); font-family: var(--font-mono, monospace); }
-[data-exercise="guided-first-connection"] { --guided-command: #fbbf24; }
-[data-ui-theme="classic-light"] [data-exercise="guided-first-connection"] { --guided-command: #8a5300; }
+.exercise-panel .guided-command, .exercise-panel .guided-shortcut { color: var(--ui-warning); font-family: var(--font-mono, monospace); }
 .guided-action-status { display: flex; align-items: flex-start; gap: 8px; }
 .guided-step-progress { display:flex; flex-direction:column; gap:4px; }
 .guided-step-progress progress { display:block; width:100%; max-width:230px; height:3px; border:0; accent-color:var(--ui-accent); }
@@ -56,8 +54,6 @@
 [data-exercise="guided-two-networks"] .guided-router-repeat-footer > button[data-router-repeat-confirm="true"]:not(:disabled) { color: var(--ui-warning); border-color: var(--ui-warning); }
 [data-exercise="guided-two-networks"] [data-tutorial-passed="true"] { color: var(--ui-success); }
 [data-exercise="guided-two-networks"] pre { padding:8px; border-radius:6px; background:var(--ui-surface-card); white-space:pre-wrap; overflow-wrap:anywhere; }
-[data-exercise="guided-two-networks"] pre code { color:#fbbf24; font-family:var(--font-mono,monospace); }
-[data-ui-theme="classic-light"] [data-exercise="guided-two-networks"] pre code { color:#8a5300; }
 [data-exercise="guided-subnet-mask"] pre { padding: 8px; background: var(--ui-surface-card); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 [data-exercise="guided-subnet-mask"] [data-tutorial-passed="true"] { color: var(--ui-success); }
 .guided-subnet-answer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }

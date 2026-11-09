@@ -32,7 +32,14 @@ export function PacketAnimationControl() {
 function PingAnimationPanel({ speed, onClose }: { speed: number; onClose(): void }) {
   const { t } = useTranslation();
   const remember = usePingAnimationPreference(s => s.remember);
-  const { element, position, dragging, handle } = useFloatingPanelDrag();
+  const placement = useStore(s => s.pingAnimationPosition);
+  const { element, position, dragging, handle, manualPosition } = useFloatingPanelDrag({
+    preferredPosition: placement.remember ? placement.position : undefined,
+    onManualPosition: point => {
+      const state = useStore.getState();
+      if (state.pingAnimationPosition.remember) state.setPingAnimationPosition({ remember: true, position: point });
+    },
+  });
   const labels = PING_ANIMATION_SPEEDS.map(value => `${value}×`);
   return <section ref={element} className="ping-animation-control nodrag nopan nowheel" aria-label="Ping-Animation"
     style={position ? { left: position.x, top: position.y, bottom: 'auto', transform: 'none' } : undefined}>
@@ -56,7 +63,10 @@ function PingAnimationPanel({ speed, onClose }: { speed: number; onClose(): void
       }} />
     <div className="ping-animation-labels" aria-hidden="true">{labels.map((label, index) =>
       <span key={label} data-active={PING_ANIMATION_SPEEDS[index] === speed}>{label}</span>)}</div>
-    <label className="ping-animation-remember"><input type="checkbox" checked={remember}
+    <div className="ping-animation-preferences"><label className="ping-animation-remember"><input type="checkbox" checked={remember}
       onChange={event => usePingAnimationPreference.getState().setRemember(event.target.checked)}/>{t('pingControls.remember')}</label>
+      <label className="ping-animation-remember"><input type="checkbox" checked={placement.remember}
+        onChange={event => useStore.getState().setPingAnimationPosition(event.target.checked
+          ? { remember: true, position: manualPosition.current ?? position } : { remember: false })}/>{t('pingControls.rememberPosition')}</label></div>
   </section>;
 }

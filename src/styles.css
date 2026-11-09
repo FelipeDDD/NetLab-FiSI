@@ -123,6 +123,7 @@ body,
 
 .ping-animation-control { position: absolute; z-index: 20; bottom: 56px; left: 50%; transform: translateX(-50%); width: 300px; max-width: calc(100% - 104px); padding: 10px 12px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-surface-panel); color: var(--ui-text); box-shadow: var(--ui-shadow-floating); font-size: 12px; }
 .ping-animation-control header { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ping-animation-preferences { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 4px; }
 .ping-animation-drag-handle { cursor: grab; touch-action: none; user-select: none; }
 .ping-animation-drag-handle[data-dragging="true"] { cursor: grabbing; }
 .ping-animation-control strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }

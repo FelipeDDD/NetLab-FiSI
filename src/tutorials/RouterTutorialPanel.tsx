@@ -1,3 +1,4 @@
+import { TutorialCommand, TutorialText } from './TutorialCommand';
 import { useEffect, useState } from 'react';
 import { ExercisePanelFrame } from '../exercises/ExercisePanelFrame';
 import { useTranslation } from '../i18n';
@@ -30,17 +31,17 @@ export function RouterTutorialPanel({controller,state,onExplore}:{controller:Rou
     <ChapterRestartButton chapter="two-networks" draftId={r.draftId} step={r.step}/>
   </>}>
     {!collapsed&&<><div className="exercise-body" data-router-step={r.step} data-router-saving={state.saving}>
-      <h3>{t(`guidedRouter.${solving?'solveTitle':ROUTER_TITLES[r.step-1]}`)}</h3><p>{t(`guidedRouter.${solving?'solveText':ROUTER_TEXTS[r.step-1]}`,values)}</p>
-      {r.step===3&&<details className="exercise-learning" data-router-interface-help><summary>{t('guidedRouter.interfaceHelpTitle')}</summary><p>{t('guidedRouter.interfaceHelpText')}</p></details>}
-      {(r.step===4||r.step===6)&&<><pre><code>{t(r.step===4?'guidedRouter.addressSyntax':'guidedRouter.routeSyntax')}</code></pre><LearningHelpLink page="ipv4"/></>}
-      {state.warning&&<p role="status">{t(`guidedRouter.${state.warning}`)}</p>}
+      <h3>{t(`guidedRouter.${solving?'solveTitle':ROUTER_TITLES[r.step-1]}`)}</h3><p><TutorialText>{t(`guidedRouter.${solving?'solveText':ROUTER_TEXTS[r.step-1]}`,values)}</TutorialText></p>
+      {r.step===3&&<details className="exercise-learning" data-router-interface-help><summary>{t('guidedRouter.interfaceHelpTitle')}</summary><p><TutorialText>{t('guidedRouter.interfaceHelpText')}</TutorialText></p></details>}
+      {(r.step===4||r.step===6)&&<><pre><TutorialCommand>{t(r.step===4?'guidedRouter.addressSyntax':'guidedRouter.routeSyntax')}</TutorialCommand></pre><LearningHelpLink page="ipv4"/></>}
+      {state.warning&&<p role="status"><TutorialText>{t(`guidedRouter.${state.warning}`)}</TutorialText></p>}
       {state.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void controller.retryProgress()}>{t('common.retry')}</button></p>}
       {!r.prepared&&<button className="btn" disabled={state.busy||state.storageError} onClick={()=>void controller.prepare()}>{t('guidedRouter.prepare')}</button>}
       {r.step===7&&<ul className="guided-subnet-replies">{(['a','f'] as const).map(key=><li key={key} data-router-reply={key} data-tutorial-passed={state.replies[key]}><span aria-hidden="true">{state.replies[key]?'✓':'○'}</span> {t(key==='a'?'guidedRouter.replyA':'guidedRouter.replyF')}</li>)}</ul>}
       {r.step!==1&&<p className="guided-action-status" role="status" data-router-passed={state.passed} data-tutorial-passed={state.passed}><span className="guided-action-indicator" aria-hidden="true">{state.passed?'✓':''}</span><span>{t(state.passed?r.step===8?'guidedRouter.finished':'guidedRouter.passed':'guided.pending')}</span></p>}
-      {r.step===8&&state.passed&&<p className="exercise-learning">{t(r.diagnosis.failure?'guidedRouter.explanation':'guidedRouter.alreadyCorrect')}</p>}
+      {r.step===8&&state.passed&&<p className="exercise-learning"><TutorialText>{t(r.diagnosis.failure?'guidedRouter.explanation':'guidedRouter.alreadyCorrect')}</TutorialText></p>}
       {r.step===8&&completion.complete&&<ChapterFinished/>}
-      {state.repeatError&&<p role="alert">{t('guidedRouter.repeatUnsafe')}</p>}
+      {state.repeatError&&<p role="alert"><TutorialText>{t('guidedRouter.repeatUnsafe')}</TutorialText></p>}
     </div><footer className={canRepeat?'guided-router-repeat-footer':undefined}>
       <button className="btn" disabled={state.busy||r.step===1} onClick={()=>{setRepeat(null);controller.previous();}}>{t('guided.previous')}</button>
       {canRepeat&&<button type="button" className="btn" data-router-repeat data-router-repeat-confirm={armed} aria-pressed={armed}

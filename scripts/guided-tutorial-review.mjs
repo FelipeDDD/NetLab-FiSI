@@ -131,7 +131,7 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
       await menu(); await click('[data-start-tutorial]'); await wait("document.querySelector('[data-guided-step=" + '"4"' + "]')");
       assert.equal(await passed(), true);
     });
-    await test('PC C extends the same lab; wrong devices, Inspector-only IPv4 and non-learner pings cannot complete it', async () => {
+    await test('PC C extends the same lab; Inspector or terminal IPv4 works while wrong devices and non-learner pings remain excluded', async () => {
       await page.evaluate("store.getState().setHostCreationMode('windows');");
       await click('.exercise-panel footer button', 'Weiter'); await wait("document.querySelector('[data-guided-step=\"5\"]')");
       const mode = () => page.evaluate("return document.querySelector('.host-creation-mode select').value;");
@@ -188,12 +188,17 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
       await type('.inspector input[aria-label="IP-Adresse eth0"]', '192.168.10.30/24'); await click('.inspector input[aria-label="Subnetzmaske eth0"]');
       await click('.exercise-panel h3');
       await wait(`sim.net.devices.get(${JSON.stringify(c)}).getInterface('eth0').ip?.prefix===24`);
-      assert.equal(await passed(), false);
-      await wait("document.querySelector('[data-guided-step]').textContent.includes('entfernen')");
+      assert.equal(await passed(), true);
+      await reloadAt(7); assert.equal(await passed(),true);
+      for(const [language,title] of [['en','Configure PC C’s IPv4'],['pt-BR','Configurar IPv4 de PC C'],['de','IPv4 von PC C konfigurieren']]) {
+        await page.evaluate('lang.getState().setLanguage('+JSON.stringify(language)+');');await delay(50);
+        assert.equal(await page.evaluate('return document.querySelector("[data-guided-step] h3").textContent;'),title);
+        assert(await page.evaluate('return document.querySelector("[data-guided-step]").textContent.includes("Inspector")&&document.querySelector("[data-guided-step] pre code").classList.contains("guided-command");'));
+      }
       await click('.exercise-panel [data-help-page=ipv4]'); await wait("document.querySelector('.learning-help[open]')"); await key('Escape','Escape',27);
       await page.evaluate(`store.getState().terminals.forEach(id=>store.getState().closeTerminal(id));store.getState().openTerminal(${JSON.stringify(c)});`);
       await wait("document.querySelector('.xterm-helper-textarea')");
-      await command('ip address add 192.168.10.30/24 dev eth0'); assert.equal(await passed(), false);
+      await command('ip address add 192.168.10.30/24 dev eth0'); assert.equal(await passed(), true);
       await command('ip address del 192.168.10.30/24 dev eth0'); await screenshot('07-pc-c-ipv4-terminal');
       await command('ip address add 192.168.10.30/24 dev eth0'); assert.equal(await passed(), true);
       await reloadAt(7); assert.equal(await passed(),true);

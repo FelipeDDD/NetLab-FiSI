@@ -1,3 +1,5 @@
+import { TutorialCommand, TutorialText } from './TutorialCommand';
+import { parseCidr } from '../engine/ip';
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { SessionController } from '../persistence/sessionController';
 import type { ProjectRepository } from '../projects/repository';
@@ -110,6 +112,7 @@ function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:
     network:()=>sim.net,activeDraftId:()=>useStore.getState().workspaceIdentity?.draftId??null,pendingForms:hasPendingForms,
     subscribe:listener=>{const a=useStore.subscribe(listener),b=restart.subscribe(listener);return()=>{a();b();};},observeCommands:observeTerminalCommands,observeActivity:observeNetworkActivity,
     insert:()=>useStore.getState().addAlternativeRoutingPCs(),started:requestExerciseViewport,
+    prepareLpm:()=>useStore.getState().setInterfaceIpv4('tutorial-05-r3','eth3',{mode:'static',ip:parseCidr('192.168.30.129/25'),gateway:null,dns:null}) ? 'lpmPort' : null,
   },new AlternativePathsProgressStore(repository,sessions)));
   alternativeRef.current=alternative;
   const alternativeState=useSyncExternalStore(alternative.subscribe,alternative.getState);
@@ -176,11 +179,11 @@ export function GuidedTutorialMenu({ close }: { close(): void }) {
       } else { usePractice.getState().close(); void controller.start(); close(); }
     }}>{t(firstProgress?.complete && subnetProgress?.complete ? 'guided.openNetwork' : basicsDraft ? 'guided.resume' : 'guided.start')}</button>
     {basicsDraft && <button type="button" role="menuitem" className="btn" data-restart-tutorial disabled={state.busy || !state.ready || progressLoading || progressError} onClick={() => { usePractice.getState().close(); void controller.start(true); close(); }}>{t('guided.restart')}</button>}
-    <small>{t('guided.prototype')}</small>{state.error && <p role="alert">{t('guided.error')}</p>}
+    <small>{t('guided.prototype')}</small>{state.error && <p role="alert"><TutorialText>{t('guided.error')}</TutorialText></p>}
     {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
     </section>
     <section className="guided-menu-chapter" aria-label={t('guidedRouter.title')}>
-    <strong>{t('guidedRouter.title')}</strong><p>{t('guided.routerMenuDescription')}</p>
+    <strong>{t('guidedRouter.title')}</strong><p><TutorialText>{t('guided.routerMenuDescription')}</TutorialText></p>
     {routerProgress && <div className="guided-menu-progress" data-chapter-progress="two-networks"><ChapterProgress progress={routerProgress}/></div>}
     {routerProgress?.complete ? <div className="guided-router-completed-actions" data-router-completed-actions>
       <button type="button" role="menuitem" className="btn" data-router-resume disabled={ui.routerState.busy} onClick={() => { if (!routerDraft) return; void ui.sessions.switchDraft(routerDraft).then(result => { if (result.ok) { ui.showPanels(routerDraft); usePractice.getState().close(); close(); } }); }}>{t('guided.openNetwork')}</button>
@@ -189,23 +192,23 @@ export function GuidedTutorialMenu({ close }: { close(): void }) {
       {routerDraft && <button type="button" role="menuitem" className="btn" data-router-resume disabled={ui.routerState.busy} onClick={() => { void ui.sessions.switchDraft(routerDraft).then(result => { if (result.ok) { ui.showPanels(routerDraft); usePractice.getState().close(); close(); } }); }}>{t('guided.resume')}</button>}
       <button type="button" role="menuitem" className="btn" data-router-direct title={t('guidedRouter.direct')} disabled={ui.routerState.busy} onClick={()=>{usePractice.getState().close();void ui.router.begin(true);close();}}>{t('guided.directStart')}</button>
     </>}
-    {ui.routerState.warning&&<p role="status">{t(`guidedRouter.${ui.routerState.warning}`)}</p>}
+    {ui.routerState.warning&&<p role="status"><TutorialText>{t(`guidedRouter.${ui.routerState.warning}`)}</TutorialText></p>}
     {ui.routerState.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void ui.router.retryProgress()}>{t('common.retry')}</button></p>}
     </section>
     <section className="guided-menu-chapter" aria-label={t('guidedStatic.title')}>
-      <strong>{t('guidedStatic.title')}</strong><p>{t('guidedStatic.menuDescription')}</p>
+      <strong>{t('guidedStatic.title')}</strong><p><TutorialText>{t('guidedStatic.menuDescription')}</TutorialText></p>
       {routingProgress&&<div className="guided-menu-progress" data-chapter-progress="static-routing"><ChapterProgress progress={routingProgress}/></div>}
       {routingDraft&&<button type="button" role="menuitem" className="btn" data-static-resume disabled={ui.routingState.busy||progressLoading||progressError} onClick={()=>{void ui.sessions.switchDraft(routingDraft).then(result=>{if(result.ok){ui.showPanels(routingDraft);usePractice.getState().close();close();}});}}>{t(routingProgress?.complete?'guided.openNetwork':'guided.resume')}</button>}
-      <button type="button" role="menuitem" className="btn" data-static-direct disabled={ui.routingState.busy||progressLoading||progressError} onClick={()=>{usePractice.getState().close();void ui.routing.begin();close();}}>{t('guided.directStart')}</button>
+      <button type="button" role="menuitem" className="btn" data-static-direct disabled={ui.routingState.busy||progressLoading||progressError} onClick={()=>{usePractice.getState().close();void ui.routing.begin();close();}}>{t(routingDraft?'guided.newAttempt':'guided.chapterStart')}</button>
       {ui.routingState.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void ui.routing.retryProgress()}>{t('common.retry')}</button></p>}
     </section>
     <section className="guided-menu-chapter" aria-label={t('guidedAlternative.title')}>
-      <strong>{t('guidedAlternative.title')}</strong><p>{t('guidedAlternative.menuDescription')}</p>
+      <strong>{t('guidedAlternative.title')}</strong><p><TutorialText>{t('guidedAlternative.menuDescription')}</TutorialText></p>
       {alternativeProgress&&<div className="guided-menu-progress" data-chapter-progress="alternative-paths"><ChapterProgress progress={alternativeProgress}/></div>}
       {alternativeDraft&&<button type="button" role="menuitem" className="btn" data-alternative-resume disabled={ui.alternativeState.busy||progressLoading||progressError} onClick={()=>{void ui.sessions.switchDraft(alternativeDraft).then(result=>{if(result.ok){ui.showPanels(alternativeDraft);usePractice.getState().close();close();}});}}>{t(alternativeProgress?.complete?'guided.openNetwork':'guided.resume')}</button>}
-      <button type="button" role="menuitem" className="btn" data-alternative-direct disabled={ui.alternativeState.busy||progressLoading||progressError} onClick={()=>{usePractice.getState().close();void ui.alternative.begin();close();}}>{t('guided.directStart')}</button>
+      <button type="button" role="menuitem" className="btn" data-alternative-direct disabled={ui.alternativeState.busy||progressLoading||progressError} onClick={()=>{usePractice.getState().close();void ui.alternative.begin();close();}}>{t(alternativeDraft?'guided.newAttempt':'guided.chapterStart')}</button>
       {ui.alternativeState.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void ui.alternative.retryProgress()}>{t('common.retry')}</button></p>}
-    </section>{progressError && <p role="alert">{t('guided.storageError')}</p>}</div>}
+    </section>{progressError && <p role="alert"><TutorialText>{t('guided.storageError')}</TutorialText></p>}</div>}
   </section>;
 }
 const steps = [
@@ -233,8 +236,8 @@ export function GuidedTutorialPanel() {
   if(ui.routerState.active && ui.routerState.record) return ui.hiddenPanels.has(`${ui.routerState.record.draftId}:two-networks`) ? null : <RouterTutorialPanel key={ui.routerState.record.draftId} controller={ui.router} state={ui.routerState} onExplore={() => ui.hidePanel('two-networks', ui.routerState.record!.draftId)}/>;
   if (ui.subnetState.active && ui.subnetState.record && ui.hiddenPanels.has(`${ui.subnetState.record.draftId}:subnet-mask`)) return null;
   if (ui.subnetState.active) return <SubnetTutorialPanel key={ui.subnetState.record?.draftId} controller={ui.subnet} state={ui.subnetState} afterCompletion={<>
-    {ui.routerState.warning&&<p role="status">{t(`guidedRouter.${ui.routerState.warning}`)}</p>}
-    {ui.routerState.storageError&&<p role="alert">{t('guided.storageError')}</p>}
+    {ui.routerState.warning&&<p role="status"><TutorialText>{t(`guidedRouter.${ui.routerState.warning}`)}</TutorialText></p>}
+    {ui.routerState.storageError&&<p role="alert"><TutorialText>{t('guided.storageError')}</TutorialText></p>}
     <button className="btn" data-router-continue disabled={ui.subnetState.saving||ui.subnetState.storageError||ui.routerState.busy||ui.routerState.storageError} onClick={()=>void ui.router.begin()}>{t('guidedRouter.transition')}</button>
   </>} onExplore={() => ui.hidePanel('subnet-mask', ui.subnetState.record!.draftId)} />;
   if (!ui.state.active) return ui.state.error ? <aside className="exercise-error" role="alert">{t('guided.error')} <button type="button" className="btn" onClick={() => void ui.controller.start()}>{t('common.retry')}</button></aside> : null;
@@ -248,23 +251,23 @@ export function GuidedTutorialPanel() {
     <ChapterRestartButton chapter="first-connection" draftId={state.draftId} step={state.step}/>
   </>}>
     {!collapsed && <><div className="exercise-body" data-guided-step={state.step + 1} data-guided-saving={state.saving}>
-      <h3>{t(step.title)}</h3>{!(state.step === 3 && state.passed) && <p>{t(step.text)}</p>}
-      {state.repeatPing && <p role="status" data-guided-repeat>{t('guided.repeatPing')}</p>}
+      <h3>{t(step.title)}</h3>{!(state.step === 3 && state.passed) && <p><TutorialText>{t(step.text)}</TutorialText></p>}
+      {state.repeatPing && <p role="status" data-guided-repeat><TutorialText>{t('guided.repeatPing')}</TutorialText></p>}
       {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
       {(state.step === 1 || state.step === 6) && <LearningHelpLink page="ipv4" />}
-      {state.step === 7 && !state.passed && <section className="exercise-learning"><strong>{t('guided.arpTitle')}</strong><p>{t('guided.arpText')}</p><p>{t('guided.arpCached')}</p></section>}
-      {(state.step === 2 || state.step === 7) && <pre><code>ping 192.168.10.20</code></pre>}
-      {state.step === 6 && <pre><code>ip address add 192.168.10.30/24 dev eth0</code></pre>}
+      {state.step === 7 && !state.passed && <section className="exercise-learning"><strong>{t('guided.arpTitle')}</strong><p><TutorialText>{t('guided.arpText')}</TutorialText></p><p><TutorialText>{t('guided.arpCached')}</TutorialText></p></section>}
+      {(state.step === 2 || state.step === 7) && <pre><TutorialCommand>ping 192.168.10.20</TutorialCommand></pre>}
+      {state.step === 6 && <pre><TutorialCommand>ip address add 192.168.10.30/24 dev eth0</TutorialCommand></pre>}
       {state.step === 3 && !state.passed && <p><kbd className="guided-shortcut">{t('guided.shortcut')}</kbd></p>}
       <p className="guided-action-status" role="status" data-tutorial-passed={state.passed}>
         <span className="guided-action-indicator" aria-hidden="true">{state.passed ? '✓' : ''}</span>
-        <span>{state.passed ? t(step.success).replace(/^✓\s*/, '') : state.hint === 'addC' || state.hint === 'cableC' ? t('guided.pending') : t(hints[state.hint])}</span>
+        <span>{state.passed ? t(step.success).replace(/^✓\s*/, '') : state.hint === 'addC' || state.hint === 'cableC' ? t('guided.pending') : <TutorialText>{t(hints[state.hint])}</TutorialText>}</span>
         {state.passed && state.step === 4 && <code>{sim.net.devices.get(state.pcC ?? '')?.name}</code>}
       </p>
-      {state.step === 3 && state.passed && <p className="exercise-learning">{t('guided.explanation')}</p>}
-      {state.step === 7 && completion.complete && <div data-tutorial-finished={state.finished ? 'true' : undefined}><ChapterFinished/><p className="exercise-learning">{t('guided.finishedText')}</p>{!state.finished && <p>{t('guided.stopReminder')} <kbd className="guided-shortcut">{t('guided.shortcut')}</kbd>.</p>}</div>}
-      {state.step === 7 && state.passed && !completion.complete && <p className="exercise-learning">{t('guided.explanationC')}</p>}
-      {state.step === 7 && controller.hasCompletedChapter() && ui.subnetState.warning && <p role="status">{t(`guidedSubnet.${ui.subnetState.warning}`)}</p>}
+      {state.step === 3 && state.passed && <p className="exercise-learning"><TutorialText>{t('guided.explanation')}</TutorialText></p>}
+      {state.step === 7 && completion.complete && <div data-tutorial-finished={state.finished ? 'true' : undefined}><ChapterFinished/><p className="exercise-learning"><TutorialText>{t('guided.finishedText')}</TutorialText></p>{!state.finished && <p>{t('guided.stopReminder')} <kbd className="guided-shortcut">{t('guided.shortcut')}</kbd>.</p>}</div>}
+      {state.step === 7 && state.passed && !completion.complete && <p className="exercise-learning"><TutorialText>{t('guided.explanationC')}</TutorialText></p>}
+      {state.step === 7 && controller.hasCompletedChapter() && ui.subnetState.warning && <p role="status"><TutorialText>{t(`guidedSubnet.${ui.subnetState.warning}`)}</TutorialText></p>}
       {state.step === 7 && controller.hasCompletedChapter() && ui.subnetState.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void ui.subnet.retryProgress()}>{t('common.retry')}</button></p>}
     </div><footer>
       <button type="button" className="btn" disabled={state.step === 0} onClick={() => controller.previous()}>{t('guided.previous')}</button>

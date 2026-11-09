@@ -22,7 +22,7 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
   const receipt = () => page.evaluate("const id=ws.controller.getState().activeDraftId;return {id,document:store.getState().captureWorkspaceDocument(),progress:(await ws.repository.getMeta('guided:alternative-paths:v1:draft:'+id)).value?.value,tabs:ws.controller.getState().drafts.length};");
   const step = n => wait(`document.querySelector('[data-alternative-step="${n}"]')`), passed = () => wait("document.querySelector('[data-alternative-passed=true]')");
   const minimalPanel = async n => {
-    assert(await page.evaluate(`const p=document.querySelector('[data-alternative-step]'),h=p.querySelector('[data-alternative-help]');return p.querySelectorAll('details').length<=1&&!p.querySelector('[data-alternative-condition],[data-alternative-more-help],[data-alternative-address-plan]')&&(!h||!h.open)&&([6,7,11,12,17].includes(${n})?!h:!!h)&&![...p.querySelectorAll(':scope > p')].some(e=>/Abgeschlossen, wenn|Complete when|Concluído quando/.test(e.textContent));`));
+    assert(await page.evaluate(`const p=document.querySelector('[data-alternative-step]'),h=p.querySelector('[data-alternative-help]');return p.querySelectorAll('details').length<=1&&!p.querySelector('[data-alternative-condition],[data-alternative-more-help],[data-alternative-address-plan]')&&(!h||!h.open)&&([6,7,11,12,20].includes(${n})?!h:!!h)&&![...p.querySelectorAll(':scope > p')].some(e=>/Abgeschlossen, wenn|Complete when|Concluído quando/.test(e.textContent));`));
   };
   const next = async n => { await wait("document.querySelector('[data-alternative-next]:not(:disabled)')"); await click('[data-alternative-next]'); await step(n); await saved(); await minimalPanel(n); };
   const answer = async (kind, value) => { await page.evaluate(`const input=document.querySelector('[data-alternative-answer=${kind}]');input.value=${JSON.stringify(value)};input.dispatchEvent(new Event('change',{bubbles:true}));`); await delay(120); };
@@ -48,7 +48,7 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
   const reloadAt = async n => { await saved(); const before = await receipt(); await mount(true); await step(n); await saved(); assert.deepEqual(await receipt(), before); };
   const test = async (name, work) => { try { await work(); report.results['alternative paths: ' + name] = { passed: true }; } catch (e) { report.results['alternative paths: ' + name] = { passed: false, error: e.stack, visible: await page.evaluate('return document.querySelector(".exercise-panel")?.textContent;') }; throw e; } };
   const I = { r1: 'tutorial-05-r1', r2: 'tutorial-05-r2', r3: 'tutorial-05-r3', a: 'tutorial-05-a', b: 'tutorial-05-b' };
-  let personal, original, attempt, legacyNeighborHash;
+  let personal, original, attempt, legacyNeighborHash, pcC;
   const captures = [];
   const capturePanel = async (name, state, width = 1440, variant = 'graphite-dark') => {
     await page.evaluate('store.getState().setTerminalDockCollapsed(true);'); await delay(180);
@@ -58,7 +58,7 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false }); await mount();
     await page.evaluate("theme.getState().setTheme('graphite-dark');store.getState().addDeviceAt('host',{x:300,y:200});store.getState().setTerminalLayoutMode('by-type');store.getState().setTerminalDockCollapsed(true);await ws.controller.flush();"); personal = await receipt();
     await test('independent unconfigured triangle, one scenario counter and collapsed contextual help', async () => {
-      await menu(); await click('[data-alternative-direct]'); await step(1); await saved(); attempt = (await receipt()).id; assert.notEqual(attempt, personal.id);
+      await menu(); assert.equal(await page.evaluate('return document.querySelector("[data-alternative-direct]").textContent;'), 'Kapitel starten'); await click('[data-alternative-direct]'); await step(1); await saved(); attempt = (await receipt()).id; assert.notEqual(attempt, personal.id);
       assert(await page.evaluate("return sim.net.devices.size===3&&sim.net.links.size===3&&[...sim.net.devices.values()].every(d=>d.kind==='router'&&d.interfaces.every(i=>!i.ip))&&store.getState().terminalLayoutMode==='by-type';"));
       assert(await page.evaluate("return document.querySelector('.guided-scenario').textContent.includes('Nachbarn verbinden')&&document.querySelector('.guided-step-progress').textContent.includes('Schritt 1 von 4')&&!document.querySelector('[data-alternative-help]').open;"));
       await minimalPanel(1);
@@ -102,7 +102,13 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       await configureGateway(I.b, '192.168.20.1'); await passed(); await next(7);
     });
     await test('forward routes, new diagnostic pings, return routes and actual bidirectional paths progress independently', async () => {
-      assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/); await passed(); await next(8);
+      assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/); await passed();
+      assert(await page.evaluate('return document.querySelector("[data-alternative-investigation=missing-route]")?.textContent.includes("192.168.20.0/24");'));
+      for(const language of ['en','pt-BR','de']){
+        await page.evaluate('(await import("/src/i18n/index.ts")).useLanguage.getState().setLanguage('+JSON.stringify(language)+');');await delay(50);
+        assert(await page.evaluate('return document.querySelector("[data-alternative-investigation=missing-route]").textContent.includes("192.168.20.0/24");'));
+      }
+      await next(8);
       assert.equal(await command(I.r1,'ip route add 192.168.20.0/24 via 10.0.12.2'),''); await passed(); await next(9);
       assert.equal(await command(I.r2,'ip route add 192.168.20.0/24 via 10.0.23.2'),''); await passed(); await next(10);
       assert(await page.evaluate("return !document.querySelector('[data-alternative-passed=true]');"));
@@ -115,18 +121,54 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       assert(await page.evaluate("return document.querySelector('[data-alternative-proven-path]').dataset.alternativeProvenPath==='verified';")); await next(13);
       assert(await page.evaluate("return !document.querySelector('[data-alternative-feedback]');"));
       await answer('hop','r3'); assert(await page.evaluate("return !document.querySelector('[data-alternative-passed=true]');")); await answer('hop','r2'); await passed(); await next(14);
-      assert(await page.evaluate("return !document.querySelector('[data-alternative-feedback]');"));
-      await answer('lpm','cables'); assert(await page.evaluate("return !document.querySelector('[data-alternative-passed=true]')&&!document.querySelector('[data-alternative-feedback]');"));
-      await click('[data-alternative-help] > summary');
-      assert(await page.evaluate("const h=document.querySelector('[data-alternative-help]');return !h.querySelector('details')&&h.innerText.includes('65.536')&&h.innerText.includes('Optional')&&h.querySelectorAll('table').length===1;"));
-      assert.equal(await command(I.r1,'ip route add 192.168.0.0/16 via 10.0.13.2'),'');
-      assert(await page.evaluate("return document.querySelector('[data-alternative-proven-path]').dataset.alternativeProvenPath==='invalidated';"));
-      assert.match(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/); assert.match(await command(I.b,'ping -c 1 192.168.10.10',true),/64 bytes from/);
-      assert(await page.evaluate("return document.querySelector('[data-alternative-selected-route=true]').textContent.includes('192.168.20.0/24');"));
-      await answer('lpm','specific'); await passed();
-      if (!await page.evaluate("return document.querySelector('[data-alternative-help]').open;")) await click('[data-alternative-help] > summary');
-      await page.evaluate("document.querySelector('[data-alternative-selected-route=true]').scrollIntoView({block:'nearest'});");
-      await capturePanel('05-lpm-live-table','explanation'); await next(15);
+    });
+    await test('old step 14 migrates without replacing the network; PC C is created by dragging and survives F5', async()=>{
+      await wait("sim.net.devices.get('tutorial-05-r3').getInterface('eth3').ip?.prefix===25&&!document.querySelector('[data-alternative-saving=true]')");
+      const before=await receipt();
+      await page.evaluate("const id=ws.controller.getState().activeDraftId,key='guided:alternative-paths:v1:draft:'+id,entry=(await ws.repository.getMeta(key)).value,p=structuredClone(entry.value);p.chapterVersion=2;p.step=14;p.completed=Array.from({length:13},(_,i)=>i+1);p.lpmUnderstood=false;p.viaBaseline=null;delete p.lpm;const result=await ws.repository.setMeta({key,expectedRevision:entry.revision,value:p});if(!result.ok)throw Error(result.error.code);");
+      await mount(true);await step(14);await saved();
+      assert.deepEqual((await receipt()).document,before.document);assert.equal((await receipt()).progress.chapterVersion,3);
+      assert.equal((await receipt()).progress.lpm.pc,null);assert.equal((await receipt()).document.topology.devices.length,5);
+      await page.evaluate("store.getState().setHostCreationMode('linux');store.getState().setTerminalDockCollapsed(true);store.getState().select(null);");
+      const drop=await page.evaluate("const r=document.querySelector('.react-flow').getBoundingClientRect();for(let y=r.bottom-130;y>r.top+20;y-=40)for(let x=r.right-180;x>r.left+20;x-=40)if(document.elementFromPoint(x,y)?.classList.contains('react-flow__pane'))return{x,y};throw Error('No canvas drop target');");
+      for(const type of ['dragEnter','dragOver','drop'])await page.send('Input.dispatchDragEvent',{type,...drop,data:{items:[{mimeType:'application/netsim',data:'host'}],dragOperationsMask:16}});
+      await wait('sim.net.devices.size===6');
+      pcC=await page.evaluate('return store.getState().nodes.at(-1).id;');
+      assert.equal((await receipt()).progress.lpm.pc,null);await reloadAt(14);
+      await page.evaluate('store.getState().onConnect({source:'+JSON.stringify(pcC)+',target:"tutorial-05-r3",targetHandle:"eth3"});');
+      await wait('(document.querySelector("[data-alternative-saving=false]")&&sim.net.devices.get("tutorial-05-r3").getInterface("eth3").link)');await saved();
+      assert.equal((await receipt()).progress.lpm.pc.id,pcC);
+      assert.equal(await command(pcC,'ip address add 192.168.30.130/24 dev eth0'),'');await configureGateway(pcC,'192.168.30.129');
+      assert(await page.evaluate('return !document.querySelector("[data-alternative-passed=true]");'));
+      await command(pcC,'ip address del 192.168.30.130/24 dev eth0');await command(pcC,'ip address add 192.168.30.130/25 dev eth0');await configureGateway(pcC,'192.168.30.129');await passed();
+      await reloadAt(14);await capturePanel('05a-lan-c','question');await next(15);
+      await command(I.b,'ping -c 1 192.168.30.129',true);assert(await page.evaluate('return !document.querySelector("[data-alternative-passed=true]");'));
+      assert.match(await command(pcC,'ping -c 1 192.168.30.129',true),/64 bytes from/);await passed();await reloadAt(15);await next(16);
+    });
+    await test('both routes to LAN C are real and LPM chooses /25 with a different return path',async()=>{
+      await command(I.r2,'ip route add 192.168.30.128/25 via 10.0.23.2');await command(I.r1,'ip route add 192.168.30.0/24 via 10.0.12.2');
+      await page.evaluate("window.lpmWires=[];window.releaseLpm=(await import('/src/networkObservations.ts')).observeNetworkActivity(e=>{if(e.kind==='icmp')lpmWires.push({from:e.from,to:e.to,direction:e.direction,source:e.source,destination:e.destination});});");
+      assert.match(await command(I.a,'ping -c 1 192.168.30.130',true),/64 bytes from/);
+      assert.deepEqual(await page.evaluate('return lpmWires.filter(e=>e.direction==="request").map(e=>[e.from,e.to]);'),[[I.a,I.r1],[I.r1,I.r2],[I.r2,I.r3],[I.r3,pcC]]);
+      assert(await page.evaluate('return !document.querySelector("[data-alternative-passed=true]");'));
+      await command(I.r1,'ip route add 192.168.30.128/25 via 10.0.13.2');await passed();await capturePanel('05b-two-routes','help');await next(17);
+      assert(await page.evaluate('return !document.querySelector("[data-alternative-answer=lpm]");'));
+      await command(I.b,'ping -c 1 192.168.30.130',true);assert(await page.evaluate('return !document.querySelector("[data-alternative-answer=lpm]");'));
+      await page.evaluate('lpmWires=[];');assert.match(await command(I.a,'ping -c 1 192.168.30.130',true),/64 bytes from/);
+      const expectedRequest=[[I.a,I.r1],[I.r1,I.r3],[I.r3,pcC]],expectedReply=[[pcC,I.r3],[I.r3,I.r2],[I.r2,I.r1],[I.r1,I.a]];
+      assert.deepEqual(await page.evaluate('return lpmWires.filter(e=>e.direction==="request").map(e=>[e.from,e.to]);'),expectedRequest);
+      assert.deepEqual(await page.evaluate('return lpmWires.filter(e=>e.direction==="reply").map(e=>[e.from,e.to]);'),expectedReply);
+      await wait('document.querySelector("[data-alternative-answer=lpm]")');
+      assert((await receipt()).progress.viaReplies.ab);assert.equal((await receipt()).progress.lpm.pc.id,pcC);
+      await answer('lpm','cables');assert(await page.evaluate('return !document.querySelector("[data-alternative-passed=true]");'));await answer('lpm','specific');await passed();
+      await reloadAt(17);
+      for(const language of ['en','pt-BR','de']){await page.evaluate('lang.getState().setLanguage('+JSON.stringify(language)+');');await delay(100);assert(await page.evaluate('return document.querySelector("[data-alternative-feedback=lpm]").textContent.includes("/25")&&document.querySelector("[data-lpm-path=reply]").textContent.includes("R2");'));}
+      await click('[data-alternative-help] > summary');assert(await page.evaluate('return document.querySelector("[data-alternative-selected-route=true]").textContent.includes("192.168.30.128/25");'));
+      await capturePanel('05-lpm-live-table','explanation');
+      await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:1000,deviceScaleFactor:1,mobile:false});await page.evaluate("theme.getState().setTheme('classic-light');");await delay(180);
+      assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth+1;'));await capturePanel('05c-lpm-light-mobile','explanation',700,'classic-light');
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await page.evaluate("theme.getState().setTheme('graphite-dark');");await delay(180);
+      await page.evaluate('window.releaseLpm?.();');await next(18);
     });
     await test('failure is witnessed without automatic failover and preservation warning appears only after a mismatch', async () => {
       assert(await page.evaluate("return !document.querySelector('[data-alternative-failure-mismatch]');"));
@@ -134,25 +176,18 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       assert.equal(await command(I.r2,'ip route add 203.0.113.0/24 via 10.0.12.1'),'');
       await wait("document.querySelector('[data-alternative-failure-mismatch]')");
       assert.equal(await command(I.r2,'ip route del 203.0.113.0/24'),'');
-      assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/); await passed(); await reloadAt(15);
-      await capturePanel('06-link-failure','failure'); await next(16);
+      assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/); await passed(); await reloadAt(18);
+      await capturePanel('06-link-failure','failure'); await next(19);
     });
-    await test('manual direct routes and fresh bidirectional proof complete all seventeen tasks', async () => {
+    await test('manual direct routes and fresh bidirectional proof complete all twenty tasks', async () => {
       assert.equal(await command(I.r1,'ip route replace 192.168.20.0/24 via 10.0.13.2'),''); assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);
-      assert.equal(await command(I.r3,'ip route replace 192.168.10.0/24 via 10.0.13.1'),''); await passed(); await next(17);
+      assert.equal(await command(I.r3,'ip route replace 192.168.10.0/24 via 10.0.13.1'),''); await passed(); await next(20);
       assert.match(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/); assert(await page.evaluate("return !document.querySelector('[data-alternative-passed=true]');"));
       assert.match(await command(I.b,'ping -c 1 192.168.10.10',true),/64 bytes from/); await passed(); await saved();
-      assert.deepEqual((await receipt()).progress.completed,Array.from({length:17},(_,i)=>i+1));
+      assert.deepEqual((await receipt()).progress.completed,Array.from({length:20},(_,i)=>i+1));
       await capturePanel('07-alternative-completed','completed');
       const before = await receipt(); await click('[data-explore-network]'); await wait("!document.querySelector('[data-alternative-step]')"); assert.deepEqual(await receipt(),before);
-      await menu(); await click('[data-alternative-resume]'); await step(17); await reloadAt(17); await passed();
-      // Exercise the actual v1 reader against a completed, physically identical
-      // old attempt, retaining its valid globally scoped neighbour receipts.
-      await page.evaluate(`const id=ws.controller.getState().activeDraftId,key='guided:alternative-paths:v1:draft:'+id,entry=(await ws.repository.getMeta(key)).value,p=structuredClone(entry.value);p.chapterVersion=1;p.step=8;p.completed=[1,2,3,4,5,6,7,8];p.neighbors=Object.fromEntries(Object.keys(p.neighbors).map(k=>[k,${JSON.stringify(legacyNeighborHash)}]));delete p.investigated;delete p.returnInvestigated;const result=await ws.repository.setMeta({key,expectedRevision:entry.revision,value:p});if(!result.ok)throw Error(result.error.code);`);
-      await mount(true); await step(17); await passed(); await saved();
-      assert.equal((await receipt()).progress.chapterVersion,1); // Reader-only migration until the learner changes progress.
-      await click('.exercise-panel footer button','Zurück'); await step(16); await passed(); await next(17);
-      assert.deepEqual((await receipt()).document,before.document); assert.deepEqual((await receipt()).progress.completed,before.progress.completed);
+      await menu(); await click('[data-alternative-resume]'); await step(20); await reloadAt(20); await passed();
     });
     await test('DE/EN/PT-BR, themes, three viewports and plan switches preserve the learning document', async () => {
       const intact = await receipt();
@@ -164,7 +199,7 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       for (const name of themes) { await page.evaluate(`theme.getState().setTheme(${JSON.stringify(name)});`); await delay(120); assert(await page.evaluate(`return document.documentElement.dataset.uiTheme===${JSON.stringify(name)};`)); }
       report.alternativePathsThemes=themes;
       await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(personal.id)});`); await wait("!document.querySelector('[data-alternative-step]')"); assert.deepEqual((await receipt()).document,personal.document);
-      await menu(); await click('[data-alternative-resume]'); await step(17); await passed(); assert.equal((await receipt()).id,attempt);
+      await menu(); await click('[data-alternative-resume]'); await step(20); await passed(); assert.equal((await receipt()).id,attempt);
       assert.deepEqual((await receipt()).document,intact.document);
       for (const [width,variant] of [[1024,'graphite-dark'],[700,'classic-light']]) {
         await page.send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false}); await page.evaluate(`theme.getState().setTheme(${JSON.stringify(variant)});`); await delay(180);
@@ -176,9 +211,9 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false}); await page.evaluate("theme.getState().setTheme('graphite-dark');"); await delay(180);
       const before=await receipt(); await click('[data-chapter-restart=alternative-paths]'); await wait("document.querySelector('[data-chapter-restart-confirm]:not(:disabled)')"); await click('[data-chapter-restart-confirm]'); await step(1); await saved();
       assert(await page.evaluate('return sim.net.devices.size===3&&sim.net.links.size===3&&[...sim.net.devices.values()].every(d=>d.interfaces.every(i=>!i.ip)&&d.staticRoutes.length===0);')); assert.deepEqual((await receipt()).progress.completed,[]);
-      await page.evaluate('store.getState().undoTopology();'); await step(17); await saved(); assert.deepEqual(await receipt(),before);
+      await page.evaluate('store.getState().undoTopology();'); await step(20); await saved(); assert.deepEqual(await receipt(),before);
       await page.evaluate('store.getState().redoTopology();'); await step(1); await saved(); await reloadAt(1);
-      await menu(); await click('[data-alternative-direct]'); await step(1); await saved(); assert.notEqual((await receipt()).id,attempt); assert.equal((await receipt()).tabs,before.tabs+1);
+      await menu(); assert.equal(await page.evaluate('return document.querySelector("[data-alternative-direct]").textContent;'), 'Neuen Versuch starten'); await click('[data-alternative-direct]'); await step(1); await saved(); assert.notEqual((await receipt()).id,attempt); assert.equal((await receipt()).tabs,before.tabs+1);
     });
     const manifest=path.join(directory,'manifest.json');
     await writeFile(manifest,JSON.stringify({id:'chapter-5-minimal-instructions',title:'Kapitel 5 · Instruções e ajuda simplificadas',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['initial','help','question','diagnosis','explanation','failure','completed'],captures,share:captures.filter(c=>c.scene!=='08-dark-tablet').map(c=>({...c,name:c.scene.replace(/^\d+-/, '')})),shareContactSheet:false}));
@@ -186,6 +221,6 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
     for (const [i,c] of captures.filter(c=>c.scene!=='08-dark-tablet').entries()) await writeFile(path.join(references,String(i+1).padStart(2,'0')+'-'+c.scene.replace(/^\d+-/, '')+'.png'),await readFile(path.join(root,c.source)));
     report.alternativePathsReview=await generateReview(manifest);
   } finally {
-    await page.evaluate('window.releaseObserver?.();window.ws?.dispose();'); await page.evaluate(`await new Promise((resolve,reject)=>{const request=indexedDB.deleteDatabase(${JSON.stringify(database)});request.onsuccess=resolve;request.onerror=()=>reject(request.error);request.onblocked=()=>reject(Error('Alternative chapter cleanup blocked'));});`);
+    await page.evaluate('window.releaseLpm?.();window.releaseObserver?.();window.ws?.dispose();'); await page.evaluate(`await new Promise((resolve,reject)=>{const request=indexedDB.deleteDatabase(${JSON.stringify(database)});request.onsuccess=resolve;request.onerror=()=>reject(request.error);request.onblocked=()=>reject(Error('Alternative chapter cleanup blocked'));});`);
   }
 }

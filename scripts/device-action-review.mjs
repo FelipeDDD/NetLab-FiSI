@@ -330,6 +330,10 @@ export async function runDeviceActionReview({page,url,root,report}) {
       const {reviewPingSpeedPreference}=await import('./ping-speed-preference-review.mjs');
       await reviewPingSpeedPreference({page,root,database,setup,click,key,wait,delay});
     });
+    await test('ping control: independent document positions, reload, JSON, dock and opt-out',async()=>{
+      const {reviewPingPosition}=await import('./ping-position-review.mjs');
+      await reviewPingPosition({page,root,database,setup,click,key,wait,delay});
+    });
     if(process.env.NETLAB_PING_CONTROL_REVIEW==='1'){report.deviceActionReview={results};return;}
     const manifest=path.join(directory,'manifest.json');const mapped=captures.map(c=>({source:path.relative(root,path.join(directory,c.filename)).split(path.sep).join('/'),scene:c.filename.replace('.png',''),variant:c.theme,state:c.state,width:c.width,height:c.height}));
     await writeFile(manifest,JSON.stringify({id:'ping-animation-simple',title:'NetLab - Ping-Animation',description:'Chromium real em perfil e IndexedDB descartáveis; sem dados pessoais.',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['selected','selecting','terminal','address-choice','address-choice-above','address-choice-below','settings','ping-bar'],captures:mapped,share:mapped.filter(c=>c.state==='ping-bar'||c.state==='address-choice-above'||c.scene==='quick-ping-result-1440').map(c=>({scene:c.scene,variant:c.variant,state:c.state,width:c.width,height:c.height,name:c.scene})),shareContactSheet:false},null,2));

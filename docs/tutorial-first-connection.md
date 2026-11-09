@@ -34,10 +34,12 @@ permanecem abertos. Se esse rascunho já estiver aberto, a entrada o retoma.
    livre. A ação normal de renomeação ocorre após a criação, preservando ID,
    configuração, cabos e ordem do histórico; não impor posição.
 6. **Kabel verbinden:** validar um cabo físico entre esse PC C e o switch original.
-7. **IPv4 im Terminal konfigurieren:** exigir submissão pelo teclado no terminal
-   Linux de PC C, `ip address add 192.168.10.30/24 dev eth0`, com `eth0` sem
-   endereço antes e com o endereço correto ao terminar. Inspector e API não
-   fornecem essa evidência; um comando rejeitado por endereço já existente também não.
+7. **IPv4 von PC C konfigurieren:** aceitar `192.168.10.30/24` aplicado em `eth0`
+   do PC C vinculado, pelo Inspector ou pelo comando Linux
+   `ip address add 192.168.10.30/24 dev eth0`. O comando mantém sua limitação de
+   exigir interface sem IPv4. A aprovação consulta cabo, IP e máscara atuais,
+   sem formulários pendentes; o comprovante de comando antigo continua compatível,
+   mas não substitui essa revalidação, inclusive após F5.
 8. **Verbindung testen:** reconhecer uma Echo Reply do comando de ping digitado
    em PC C para PC B. Mostrar explicação da rede local compartilhada e orientar
    **Strg + C**, sem acrescentar uma etapa obrigatória de interrupção.
@@ -58,6 +60,11 @@ O painel reutiliza `ExercisePanelFrame`: arraste, reset, recolhimento e rolagem.
 Mostra uma etapa por vez, usa **Weiter** nas duas primeiras e permite **Zurück**
 sem alterar a rede. Não há nota, perguntas teóricas ou sondas automáticas.
 Os textos e controles usam DE/EN/PT-BR; os comandos mantêm sua sintaxe.
+
+Os cinco capítulos compartilham `TutorialCommand` (exemplos explícitos) e
+`TutorialText` (frases de comandos reconhecidas em instruções e ajudas). O estilo
+`guided-command` usa o âmbar do tema. Texto simples, valores IP isolados e saídas
+de tabelas não são classificados como comandos; o conteúdo não é interpretado como HTML.
 
 ## Contratos pequenos
 
@@ -145,6 +152,6 @@ O roteiro cobre cabo pela interface, IP incorreto/correto no Inspector, comandos
 Linux, ajuda, painel flutuante, ping incorreto, exclusão de sondas/Quick Ping,
 sucesso via teclado, retorno ao plano pessoal, temas e recuperação honesta após
 recarregar. A expansão cobre PC C com tipo/OS incorretos, cabo errado, IPv4
-apenas pelo Inspector, comando no terminal errado, ping sem resposta e Quick Ping,
+correto/incorreto pelo Inspector, comando no terminal errado, ping sem resposta e Quick Ping,
 retorno pelas oito instruções e indicadores pendentes/concluídos.
 Capturas do fluxo em `.playwright-mcp/reviews/raw/guided-tutorial/`.

@@ -28,4 +28,7 @@ export function routerChapterCompletion(record: RouterProgress): ChapterCompleti
   return summarize(steps, 8);
 }
 export const staticRoutingCompletion = (record: StaticRoutingProgress) => summarize(record.completed.filter(step => step !== 11 || staticFinalProved(record)), 11);
-export const alternativePathsCompletion = (record: AlternativePathsProgress) => summarize(record.completed.filter(step => step !== 17 || alternativeFinalProved(record)), 17);
+export const alternativePathsCompletion = (record: AlternativePathsProgress) => summarize([
+  ...record.completed.filter(step => step !== 20 || alternativeFinalProved(record)),
+  ...(record.lpm.legacy ? [14, 15, 16, 17] : []),
+], 20);

@@ -44,6 +44,8 @@ export async function reviewPingControlDrag({ page, root, click, key, delay }) {
     await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x+dx,y:p.y+dy,button:'left',clickCount:1});
     await delay(70);
   };
+  // The initial document fit and newly opened dock settle before the baseline.
+  await delay(200);
   const original=await geometry();inside(original);
   assert(Math.abs((original.bar.left+original.bar.right)/2-(original.canvas.left+original.canvas.right)/2)<2);
   assert.equal(await page.evaluate("return getComputedStyle(document.querySelector('.ping-animation-drag-handle')).cursor;"),'grab');

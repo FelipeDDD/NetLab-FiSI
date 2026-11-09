@@ -6,6 +6,7 @@ import { readTerminalAppearance, readTerminalColors, type AppearanceSaveFile, ty
 import { normalizeTerminalLayoutMode, type TerminalLayoutMode } from '../terminalPanels';
 import type { LabDef, LabProgress } from '../labs/types';
 import { readAreaMarkings, type AreaMarking } from '../areaMarkings';
+import { readPingAnimationPosition, type PingAnimationPosition } from '../pingAnimationPosition';
 
 export interface TopologyDocumentState {
   nodes: readonly { id: string; position: { x: number; y: number } }[];
@@ -14,6 +15,7 @@ export interface TopologyDocumentState {
   cableColors: CableAppearances;
   areaMarkings?: readonly AreaMarking[];
   studioPresentation?: unknown;
+  pingAnimationPosition?: PingAnimationPosition;
   terminalLayoutMode: TerminalLayoutMode;
   lab: LabDef | null;
   labStep: number;
@@ -26,6 +28,8 @@ export function captureTopologyDocument(net: Network, state: TopologyDocumentSta
   const positions = Object.fromEntries(state.nodes.map(n => [n.id, { ...n.position }]));
   const save: AppearanceSaveFile = serializeNetwork(net, positions);
   save.ui = { terminalAppearance: { ...state.terminalAppearance } };
+  const pingPosition = readPingAnimationPosition(state.pingAnimationPosition);
+  if (pingPosition.remember) save.ui.pingAnimationPosition = pingPosition;
   if (state.studioPresentation != null) save.ui.topologyStudio = state.studioPresentation;
   if (Object.keys(state.terminalColors).length) save.ui.terminalColors = { ...state.terminalColors };
   const colors = readCableColors(state.cableColors, net.links.keys());
@@ -83,6 +87,7 @@ export interface PreparedTopology {
     terminalLayoutMode: TerminalLayoutMode;
     areaMarkings: AreaMarking[];
     studioPresentation: unknown;
+    pingAnimationPosition: PingAnimationPosition;
   };
 }
 
@@ -103,6 +108,7 @@ export function prepareTopologyDocument(input: unknown): PreparedTopology {
         // Opaque transport preserves unknown future Studio versions as well.
         // The Studio validates its own metadata before rendering and editing.
         studioPresentation: document.ui?.topologyStudio ?? null,
+        pingAnimationPosition: readPingAnimationPosition(document.ui?.pingAnimationPosition),
       },
     };
   } catch (error) {
