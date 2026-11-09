@@ -26,7 +26,9 @@ export function FloatingEdge({ id, source, target, style, selected }: EdgeProps)
     linkAttachment({ ...targetNode, position: targetNode.internals.positionAbsolute }, id, nodes, edges), cableStyle);
   const path = geometry.path;
   const inactive = inactiveWireless(sim.net.links.get(id));
+  const link = sim.net.links.get(id);
+  const unavailable = link?.medium === 'ethernet' && !link.operational;
   const tint = color?.color;
   return <BaseEdge id={id} path={path} style={{ ...style, ...(tint ? { '--cable-color': tint, '--cable-glow': tint + '66' } : {}) } as CSSProperties} interactionWidth={18}
-    className={[inactive ? 'wlan-inactive' : '', hovered || selected ? 'cable-emphasized' : ''].filter(Boolean).join(' ')} />;
+    className={[inactive ? 'wlan-inactive' : '', unavailable ? 'cable-unavailable' : '', hovered || selected ? 'cable-emphasized' : ''].filter(Boolean).join(' ')} />;
 }

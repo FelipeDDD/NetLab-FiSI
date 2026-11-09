@@ -1,12 +1,12 @@
 import type { ProjectRepository } from '../projects/repository';
 import type { SessionController } from '../persistence/sessionController';
-import type { MetaValue } from '../projects/types';
+import type { MetaValue, ProjectDocument } from '../projects/types';
 import { ALTERNATIVE_IDS, ALTERNATIVE_TOTAL, NEIGHBOR_TESTS, type NeighborTest, type AlternativePcIdentity } from './alternativePathsChapter';
-import { emptyLpm, type LpmProgress } from './alternativeLpm';
+import { emptyLpm, emptyExperiment, type LpmProgress } from './alternativeLpm';
 
 export const ALTERNATIVE_PROGRESS_PREFIX = 'guided:alternative-paths:v1:draft:';
 export interface AlternativePathsProgress {
-  schemaVersion: 1; chapterId: 'alternative-paths'; chapterVersion: 3; draftId: string; attemptId: string;
+  schemaVersion: 1; chapterId: 'alternative-paths'; chapterVersion: 4; draftId: string; attemptId: string;
   prepared: boolean; stage: 'triangle' | 'adding-pcs' | 'lans'; step: number; completed: number[];
   extension: AlternativePcIdentity | null; neighbors: Record<NeighborTest, string | null>;
   remoteUnderstood: boolean; hopUnderstood: boolean; lpmUnderstood: boolean;
@@ -14,6 +14,7 @@ export interface AlternativePathsProgress {
   directReplies: Record<'ab' | 'ba', string | null>;
   investigated: string | null; returnInvestigated: string | null;
   lpm: LpmProgress;
+  storm: 'pending' | 'applied' | 'adopted' | 'legacy';
 }
 export const emptyNeighborProofs = () => Object.fromEntries(NEIGHBOR_TESTS.map(test => [test.key, null])) as AlternativePathsProgress['neighbors'];
 const digest = (value: unknown) => value === null || typeof value === 'string' && /^sha256-v1:[a-f0-9]{64}$/.test(value);
@@ -22,11 +23,11 @@ export const alternativeFinalProved = (p: AlternativePathsProgress) => p.stage =
 export function readAlternativeProgress(value: unknown, id: string): AlternativePathsProgress {
   const raw = value as AlternativePathsProgress | (Omit<AlternativePathsProgress, 'chapterVersion' | 'investigated' | 'returnInvestigated'> & { chapterVersion: 1 });
   const version = (raw as { chapterVersion?: number })?.chapterVersion;
-  const legacy = version === 1, total = legacy ? 8 : version === 2 ? 17 : ALTERNATIVE_TOTAL, triangleEnd = legacy ? 3 : 4;
+  const legacy = version === 1, total = legacy ? 8 : version === 2 ? 17 : version === 3 ? 20 : ALTERNATIVE_TOTAL, triangleEnd = legacy ? 3 : 4;
   // Validate the original contract before mapping any evidence. The key and
   // envelope stay unchanged, including checkpoints and CAS revision tracking.
   const p = raw as AlternativePathsProgress;
-  if (!p || p.schemaVersion !== 1 || p.chapterId !== 'alternative-paths' || ![1, 2, 3].includes(version!) || p.draftId !== id || typeof p.attemptId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(p.attemptId) ||
+  if (!p || p.schemaVersion !== 1 || p.chapterId !== 'alternative-paths' || ![1, 2, 3, 4].includes(version!) || p.draftId !== id || typeof p.attemptId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(p.attemptId) ||
       typeof p.prepared !== 'boolean' || !['triangle', 'adding-pcs', 'lans'].includes(p.stage) || !Number.isInteger(p.step) || p.step < 1 || p.step > total || !Array.isArray(p.completed) || p.completed.some(n => !Number.isInteger(n) || n < 1 || n > total) || new Set(p.completed).size !== p.completed.length ||
       !p.neighbors || !NEIGHBOR_TESTS.every(test => digest(p.neighbors[test.key])) || !p.viaReplies || !digest(p.viaReplies.ab) || !digest(p.viaReplies.ba) || !p.directReplies || !digest(p.directReplies.ab) || !digest(p.directReplies.ba) || !digest(p.viaBaseline) || !digest(p.failure) ||
       !['remoteUnderstood', 'hopUnderstood', 'lpmUnderstood'].every(key => typeof p[key as 'remoteUnderstood'] === 'boolean') || !(p.extension === null || mac(p.extension?.a) && mac(p.extension?.b)) ||
@@ -50,7 +51,7 @@ export function readAlternativeProgress(value: unknown, id: string): Alternative
       version === 2 && (p.completed.includes(14) && (!p.lpmUnderstood || !p.viaBaseline) || p.completed.includes(15) && !p.failure || p.completed.includes(17) && !alternativeFinalProved(p))) throw Error('Incompatible alternative paths progress.');
   if (version === 2) {
     const migrated = structuredClone(p);
-    migrated.chapterVersion = 3;
+    (migrated as unknown as { chapterVersion: number }).chapterVersion = 3;
     migrated.lpm = { ...emptyLpm(), legacy: p.completed.includes(14) };
     migrated.step = p.step <= 14 ? p.step : p.step + 3;
     migrated.completed = p.completed.filter(n => n !== 14).map(n => n < 14 ? n : n + 3);
@@ -64,14 +65,51 @@ export function readAlternativeProgress(value: unknown, id: string): Alternative
       l.stage === 'preparing' && (l.pc !== null || l.localReply !== null || l.pathReply !== null) || (l.localReply !== null || l.pathReply !== null) && !l.pc ||
       l.legacy && (!p.lpmUnderstood || !p.viaBaseline || l.stage !== 'unprepared') ||
       p.completed.includes(14) && !l.pc || p.completed.includes(15) && !l.localReply || p.completed.includes(16) && l.stage !== 'ready' ||
-      p.completed.includes(17) && (!l.pathReply || !p.lpmUnderstood || !p.viaBaseline) || p.completed.includes(18) && !p.failure || p.completed.includes(20) && !alternativeFinalProved(p)) throw Error('Incompatible alternative paths progress.');
-  return structuredClone(p);
+      version === 3 && (p.completed.includes(17) && (!l.pathReply || !p.lpmUnderstood || !p.viaBaseline) || p.completed.includes(18) && !p.failure || p.completed.includes(20) && !alternativeFinalProved(p))) throw Error('Incompatible alternative paths progress.');
+  if (version === 3) {
+    const migrated = structuredClone(p);
+    migrated.chapterVersion = 4;
+    delete (migrated as Partial<AlternativePathsProgress>).storm;
+    migrated.lpm.experiment = { ...emptyExperiment(), legacy: l.legacy || p.completed.includes(17) };
+    migrated.step = p.step <= 16 ? p.step : p.step === 17 ? migrated.lpm.experiment.legacy ? 19 : 16 : p.step + 2;
+    // The old combined configuration task proved neither R2's ping nor /24's
+    // path. Preserve completed LPM as explicit historical credit, not receipts.
+    migrated.completed = p.completed.filter(n => n !== 16 && n !== 17).map(n => n >= 18 ? n + 2 : n);
+    return readAlternativeProgress(migrated, id);
+  }
+  const e = l.experiment;
+  const receipt = (v: typeof e.r2) => v === null || !!v && typeof v.hash === 'string' && digest(v.hash) && Array.isArray(v.reply) && v.reply.length >= 2 && v.reply.every(id => typeof id === 'string' && id.length > 0) && v.reply[0] === l.pc?.id;
+  if (!e || typeof e.legacy !== 'boolean' || !receipt(e.r2) || !receipt(e.broad) || !receipt(e.specific) ||
+      [e.r2, e.broad, e.specific].some(Boolean) && (l.stage !== 'ready' || !l.pc) ||
+      e.r2 && e.r2.reply.at(-1) !== ALTERNATIVE_IDS.r2 || [e.broad, e.specific].some(v => v && v.reply.at(-1) !== ALTERNATIVE_IDS.a) ||
+      l.legacy && !e.legacy || e.legacy && (!p.lpmUnderstood || !p.viaBaseline || e.r2 !== null || e.broad !== null || e.specific !== null) ||
+      !e.legacy && (p.completed.includes(16) && !e.r2 || p.completed.includes(17) && !e.broad || p.completed.includes(18) && !e.specific ||
+      p.completed.includes(19) && (!e.r2 || !e.broad || !e.specific || !p.lpmUnderstood || !p.viaBaseline)) ||
+      p.completed.includes(20) && !p.failure || p.completed.includes(22) && !alternativeFinalProved(p)) throw Error('Incompatible alternative paths progress.');
+  // Older attempts already in Part 4 must never receive a retroactive incident.
+  const storm = p.storm === undefined ? (p.step >= 20 || p.failure || p.completed.some(n => n >= 20) ? 'legacy' : 'pending') : p.storm;
+  if (!['pending', 'applied', 'adopted', 'legacy'].includes(storm) || storm === 'pending' && (p.failure || p.completed.some(n => n >= 20))) throw Error('Incompatible alternative paths progress.');
+  return { ...structuredClone(p), storm };
 }
 /** Same repository/CAS and topology-before-evidence order as other chapters. */
 export class AlternativePathsProgressStore {
   private revisions = new Map<string, number | null>();
   private tail: Promise<unknown> = Promise.resolve(); private abort = new AbortController();
-  constructor(private repository: Pick<ProjectRepository, 'getMeta' | 'setMeta'>, private sessions: Pick<SessionController, 'flush' | 'getState'>) {}
+  constructor(private repository: Pick<ProjectRepository, 'getMeta' | 'setMeta'>, private sessions: Pick<SessionController, 'flush' | 'getState'> & Partial<Pick<SessionController, 'commitDocument'>>) {}
+  /** One CAS transaction contains both the port state and the consumed marker. */
+  commitStorm(record: AlternativePathsProgress, expected: ProjectDocument, document: ProjectDocument) {
+    const snapshot = structuredClone(record);
+    const work = this.tail.then(async () => {
+      if (this.abort.signal.aborted || !this.sessions.commitDocument) throw Error('Atomic incident unavailable.');
+      if (!this.revisions.has(snapshot.draftId)) await this.load(snapshot.draftId);
+      const revision = this.revisions.get(snapshot.draftId) ?? null;
+      const result = await this.sessions.commitDocument({ draftId: snapshot.draftId, expected, document,
+        control: [{ key: ALTERNATIVE_PROGRESS_PREFIX + snapshot.draftId, expectedRevision: revision, value: snapshot as unknown as MetaValue }], guards: [] });
+      if (!result.ok) throw Error(result.error.code);
+      this.revisions.set(snapshot.draftId, (revision ?? 0) + 1);
+    });
+    this.tail = work.catch(() => {}); return work;
+  }
   async load(id: string) {
     const result = await this.repository.getMeta(ALTERNATIVE_PROGRESS_PREFIX + id); if (!result.ok) throw Error(result.error.code);
     const record = result.value ? readAlternativeProgress(result.value.value, id) : null;

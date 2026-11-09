@@ -25,12 +25,12 @@ export const NEIGHBOR_TESTS = [
   { key: 'n13', from: I.r1, to: I.r3, target: '10.0.13.2', iface: 'eth1' }, { key: 'n31', from: I.r3, to: I.r1, target: '10.0.13.1', iface: 'eth1' },
 ] as const;
 export type NeighborTest = typeof NEIGHBOR_TESTS[number]['key'];
-export const ALTERNATIVE_TOTAL = 20;
+export const ALTERNATIVE_TOTAL = 22;
 export function alternativePart(step: number) {
   if (step <= 4) return { part: 1, start: 1, total: 4 };
   if (step <= 13) return { part: 2, start: 5, total: 9 };
-  if (step <= 17) return { part: 3, start: 14, total: 4 };
-  return { part: 4, start: 18, total: 3 };
+  if (step <= 19) return { part: 3, start: 14, total: 6 };
+  return { part: 4, start: 20, total: 3 };
 }
 export type AlternativeWarning = 'forms' | 'missing' | 'transit' | 'wiring' | 'port' | 'conflict' | 'lpmPort' | 'lpmIdentity';
 export interface AlternativePcIdentity { a: string; b: string }
@@ -129,8 +129,10 @@ export function alternativeConditions(net: Network) {
   const r3Back = !!lans && strict && selectedHop(net, I.r3, '192.168.10.0', 'eth0', '10.0.23.1');
   const backward = r3Back && selectedHop(net, I.r2, '192.168.10.0', 'eth0', '10.0.12.1');
   const via = forward && backward;
-  const direct = !!lans && selectedHop(net, I.r1, '192.168.20.0', 'eth1', '10.0.13.2') && selectedHop(net, I.r3, '192.168.10.0', 'eth1', '10.0.13.1');
-  return { strict, backbone, lanA: !!lanA, lanB: !!lanB, lans: !!lans, r1Forward, forward, r3Back, backward, via, direct, broken: backbone && usedPathBroken(net) };
+  const directForward = !!lans && selectedHop(net, I.r1, '192.168.20.0', 'eth1', '10.0.13.2');
+  const directBackward = !!lans && selectedHop(net, I.r3, '192.168.10.0', 'eth1', '10.0.13.1');
+  const direct = directForward && directBackward;
+  return { strict, backbone, lanA: !!lanA, lanB: !!lanB, lans: !!lans, r1Forward, forward, r3Back, backward, via, direct, directForward, directBackward, broken: backbone && usedPathBroken(net) };
 }
 export function expectedPcPath(direction: 'ab' | 'ba', route: 'via' | 'direct') {
   const forward = route === 'via' ? [I.a, I.r1, I.r2, I.r3, I.b] : [I.a, I.r1, I.r3, I.b];

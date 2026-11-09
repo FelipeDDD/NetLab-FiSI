@@ -6,11 +6,18 @@ import { ALTERNATIVE_IDS as I, ALTERNATIVE_ROUTERS, ALTERNATIVE_PCS } from './al
 
 export interface LpmProgress {
   stage: 'unprepared' | 'preparing' | 'ready'; baseline: string[] | null;
-  pc: { id: string; mac: string } | null; localReply: string | null; pathReply: string | null;
+  pc: { id: string; mac: string; nameChecked?: boolean } | null; localReply: string | null; pathReply: string | null;
   /** Credit for the old theoretical activity, never evidence of new packets. */
   legacy: boolean;
+  experiment: {
+    /** Explicit credit for a completed older LPM activity, never new packets. */
+    legacy: boolean;
+    r2: LpmReceipt | null; broad: LpmReceipt | null; specific: LpmReceipt | null;
+  };
 }
-export const emptyLpm = (): LpmProgress => ({ stage: 'unprepared', baseline: null, pc: null, localReply: null, pathReply: null, legacy: false });
+export interface LpmReceipt { hash: string; reply: string[] }
+export const emptyExperiment = (): LpmProgress['experiment'] => ({ legacy: false, r2: null, broad: null, specific: null });
+export const emptyLpm = (): LpmProgress => ({ stage: 'unprepared', baseline: null, pc: null, localReply: null, pathReply: null, legacy: false, experiment: emptyExperiment() });
 export const LPM_GATEWAY = '192.168.30.129', LPM_ADDRESS = '192.168.30.130';
 const ip = (s: string) => parseIp(s)!;
 const ranges = ['192.168.10.0/24', '192.168.20.0/24', '10.0.12.0/30', '10.0.23.0/30', '10.0.13.0/30'].map(s => parseCidr(s)!);
@@ -77,3 +84,31 @@ export function lpmPathSignature(net: Network, pcId: string) {
   return JSON.stringify(t);
 }
 export const lpmPaths = (pcId: string) => ({ request: [I.a, I.r1, I.r3, pcId], reply: [pcId, I.r3, I.r2, I.r1, I.a] });
+
+const routeIs = (net: Network, router: string, dest: string, prefix: number, via: string, iface: string) => {
+  const d = net.devices.get(router);
+  const entries = d instanceof IpDevice ? d.staticRoutes.filter(r => r.dest === ip(dest) && r.prefix === prefix) : [];
+  return entries.length === 1 && entries[0].via === ip(via) && entries[0].ifaceName === iface;
+};
+export function lpmExperimentConditions(net: Network, p: LpmProgress) {
+  const pc = lpmPcValid(net, p), r2 = net.devices.get(I.r2), r1 = net.devices.get(I.r1);
+  const r2Route = pc && routeIs(net, I.r2, '192.168.30.128', 25, '10.0.23.2', 'eth1') && r2 instanceof IpDevice && r2.lookupRoute(ip(LPM_ADDRESS))?.via === ip('10.0.23.2');
+  const broadRoute = routeIs(net, I.r1, '192.168.30.0', 24, '10.0.12.2', 'eth0');
+  const selected = r1 instanceof IpDevice ? r1.lookupRoute(ip(LPM_ADDRESS)) : null;
+  return { r2Route: !!r2Route, broadRoute, broadSelected: !!r2Route && broadRoute && selected?.prefix === 24 && selected.via === ip('10.0.12.2'),
+    specificRoute: routeIs(net, I.r1, '192.168.30.128', 25, '10.0.13.2', 'eth1'), specificSelected: !!r2Route && lpmRoutesReady(net, p) };
+}
+/** R2's local proof is independent of later R1 routes and LAN A/B experiments. */
+export function lpmR2Signature(net: Network, pcId: string) {
+  const t = serializeNetwork(net, {}), owned = [I.r2, I.r3, pcId];
+  return JSON.stringify({ devices: t.devices.filter(d => owned.includes(d.id)).map(d => ({ id: d.id, kind: d.kind, os: d.os, forwarding: d.forwarding, firewall: d.firewall,
+    ifaces: d.ifaces.filter(i => d.id === pcId || d.id === I.r2 && i.name === 'eth1' || d.id === I.r3 && ['eth0', 'eth3'].includes(i.name)),
+    routes: d.routes.filter(r => { const c = parseCidr(r.dest); return !c || networkOf(ip(d.id === I.r2 ? LPM_ADDRESS : '10.0.23.1'), c.prefix) === networkOf(c.addr, c.prefix); }) })),
+    links: t.links.filter(l => owned.includes(l.a[0]) && owned.includes(l.b[0])) });
+}
+/** Only the expected later /25 is omitted: adding it preserves the /24 witness. */
+export function lpmBroadSignature(net: Network, pcId: string) {
+  const t = JSON.parse(lpmPathSignature(net, pcId)) as SaveFile;
+  for (const d of t.devices) if (d.id === I.r1) d.routes = d.routes.filter(r => !(r.dest === '192.168.30.128/25' && r.via === '10.0.13.2' && r.dev === 'eth1'));
+  return JSON.stringify(t);
+}

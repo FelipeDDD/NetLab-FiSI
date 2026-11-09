@@ -2087,6 +2087,8 @@ body.packet-panel-resizing, body.packet-panel-resizing * { cursor: col-resize !i
 .ap-range-limits { display: flex; justify-content: space-between; color: var(--text-dim); font-size: 12px; margin-top: -5px; }
 .react-flow__edge-path.wlan-inactive { stroke: #53657c; opacity: 0.45; }
 .react-flow__edge-path.wlan-inactive.cable-emphasized { opacity: 0.85; }
+.react-flow__edge-path.cable-unavailable { opacity: 0.45; stroke-dasharray: 6 5; }
+.react-flow__edge-path.cable-unavailable.cable-emphasized { opacity: 0.85; }
 
 
 .device-node.has-device-artwork.kind-notebook { width: 128px; color: var(--host); }

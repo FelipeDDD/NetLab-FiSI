@@ -3,7 +3,7 @@ import { PRACTICAL_EXERCISES, practicalChecks } from '../exercises/beta';
 import { runPracticalChecks } from '../exercises/practicalChecker';
 import type { CheckResult } from '../labs/checker';
 import { RouterDevice } from '../engine/ipdevice';
-import { parseIp } from '../engine/ip';
+import { parseIp, ipToString } from '../engine/ip';
 import { restoreNetwork, serializeNetwork } from '../engine/serialize';
 import { disposeNetwork } from '../engine/networkLifecycle';
 import { Shell } from './shell';
@@ -23,20 +23,50 @@ function westFixture() {
   return { net, west, execute };
 }
 
-describe('static route destination normalization', () => {
+describe('canonical IPv4 route commands and legacy route restoration', () => {
+  it.each(['add', 'replace'])('rejects host bits in route %s atomically, including nonzero /0', operation => {
+    const { net, west, execute } = westFixture();
+    try {
+      expect(execute('ip route add 192.168.30.128/25 via 10.72.254.2 dev eth1')).toBe('');
+      const before = structuredClone(west.staticRoutes);
+      for (const destination of ['192.168.30.130/25', '192.168.30.131/31', '192.0.2.1/0']) {
+        expect(execute(`ip route ${operation} ${destination} via 10.72.254.2 dev eth1`)).toBe('Error: Invalid prefix for given prefix length.\n');
+        expect(west.staticRoutes).toEqual(before);
+      }
+      expect(execute(`ip route ${operation} 192.168.30.130/32 via 10.72.254.2 dev eth1`)).toBe('');
+      const previous = west.getInterface('eth0')!.ip!;
+      expect(execute(`ip address del ${ipToString(previous.addr)}/${previous.prefix} dev eth0`)).toBe('');
+      expect(execute('ip address add 192.168.30.130/25 dev eth0')).toBe('');
+      expect(west.getInterface('eth0')?.ip).toEqual({ addr: parseIp('192.168.30.130'), prefix: 25 });
+      expect(west.routes()).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'connected', dest: parseIp('192.168.30.128'), prefix: 25 })]));
+    } finally { disposeNetwork(net); }
+  });
+  it('restores an old noncanonical saved route without applying the new terminal restriction', () => {
+    const { net } = westFixture();
+    try {
+      const old = serializeNetwork(net, {});
+      old.devices.find(d => d.id === 'west')!.routes = [{ dest: '192.168.30.130/25', via: '10.72.254.2', dev: 'eth1' }];
+      const restored = restoreNetwork(old);
+      try {
+        const copy = restored.devices.get('west') as RouterDevice;
+        expect(copy.staticRoutes[0]).toMatchObject({ dest: parseIp('192.168.30.128'), prefix: 25 });
+        expect(copy.lookupRoute(parseIp('192.168.30.130')!)?.via).toBe(parseIp('10.72.254.2'));
+      } finally { disposeNetwork(restored); }
+    } finally { disposeNetwork(net); }
+  });
   it('replaces an equivalent destination in place and creates missing routes', () => {
     const { net, west, execute } = westFixture();
     try {
       expect(execute('ip route add 192.0.2.0/24 dev eth0')).toBe('');
-      expect(execute('ip route add 10.72.2.10/27 via 10.72.254.1 dev eth0')).toBe('');
+      expect(execute('ip route add 10.72.2.0/27 via 10.72.254.1 dev eth0')).toBe('');
       expect(execute('ip route add 198.51.100.0/24 dev eth1')).toBe('');
-      expect(execute('ip route replace 10.72.2.31/27 via 10.72.254.2 dev eth1')).toBe('');
+      expect(execute('ip route replace 10.72.2.0/27 via 10.72.254.2 dev eth1')).toBe('');
       expect(west.staticRoutes.map(r => [r.dest, r.prefix, r.via, r.ifaceName])).toEqual([
         [parseIp('192.0.2.0'), 24, null, 'eth0'],
         [parseIp('10.72.2.0'), 27, parseIp('10.72.254.2'), 'eth1'],
         [parseIp('198.51.100.0'), 24, null, 'eth1'],
       ]);
-      expect(execute('ip route replace 203.0.113.10/24 dev eth1')).toBe('');
+      expect(execute('ip route replace 203.0.113.0/24 dev eth1')).toBe('');
       expect(west.staticRoutes.at(-1)).toMatchObject({ dest: parseIp('203.0.113.0'), prefix: 24, ifaceName: 'eth1' });
     } finally { disposeNetwork(net); }
   });
@@ -48,7 +78,7 @@ describe('static route destination normalization', () => {
       iface.gateway = parseIp('10.72.1.254');
       const connected = west.routes().filter(r => r.kind === 'connected');
       expect(execute('ip route replace default via 10.72.254.1 dev eth0')).toBe('');
-      expect(execute('ip route replace 192.0.2.1/0 via 10.72.254.2 dev eth1')).toBe('');
+      expect(execute('ip route replace 0.0.0.0/0 via 10.72.254.2 dev eth1')).toBe('');
       expect(west.staticRoutes).toHaveLength(1);
       expect(west.staticRoutes[0]).toMatchObject({ dest: 0, prefix: 0, via: parseIp('10.72.254.2'), ifaceName: 'eth1' });
       expect(iface.gateway).toBe(parseIp('10.72.1.254'));
@@ -61,19 +91,19 @@ describe('static route destination normalization', () => {
     try {
       expect(execute('ip route add 10.72.2.0/27 via 10.72.254.2 dev eth1')).toBe('');
       const before = structuredClone(west.staticRoutes);
-      expect(execute('ip route replace 10.72.2.10/27 via 10.72.254.2 dev missing')).toContain('Cannot find device');
-      expect(execute('ip route replace 10.72.2.10/27 via 192.0.2.1')).toContain('Nexthop has invalid gateway');
+      expect(execute('ip route replace 10.72.2.0/27 via 10.72.254.2 dev missing')).toContain('Cannot find device');
+      expect(execute('ip route replace 10.72.2.0/27 via 192.0.2.1')).toContain('Nexthop has invalid gateway');
       expect(west.staticRoutes).toEqual(before);
       west.staticRoutes.push({ ...west.staticRoutes[0], ifaceName: 'eth0' });
       const duplicated = structuredClone(west.staticRoutes);
-      expect(execute('ip route replace 10.72.2.31/27 via 10.72.254.2 dev eth1'))
+      expect(execute('ip route replace 10.72.2.0/27 via 10.72.254.2 dev eth1'))
         .toBe('Error: multiple static routes match this destination; remove duplicates before replace.\n');
       expect(west.staticRoutes).toEqual(duplicated);
       const restored = restoreNetwork(JSON.parse(JSON.stringify(serializeNetwork(net, {}))));
       try {
         const copy = restored.devices.get('west') as RouterDevice;
         let output = '';
-        new Shell(copy).exec('ip route replace 10.72.2.1/27 dev eth1', { write: text => { output += text; } }, () => {});
+        new Shell(copy).exec('ip route replace 10.72.2.0/27 dev eth1', { write: text => { output += text; } }, () => {});
         expect(output).toContain('remove duplicates before replace');
         expect(copy.staticRoutes).toEqual(duplicated);
       } finally { disposeNetwork(restored); }
@@ -85,8 +115,8 @@ describe('static route destination normalization', () => {
   });
 
   it.each([
-    ['10.72.2.0/27', 'eth0', '10.72.2.10/27', 'eth1'],
-    ['10.72.2.10/27', 'eth1', '10.72.2.0/27', 'eth0'],
+    ['10.72.2.0/27', 'eth0', '10.72.2.0/27', 'eth1'],
+    ['10.72.2.0/27', 'eth1', '10.72.2.0/27', 'eth0'],
   ])('rejects an equivalent destination (%s on %s, then %s on %s)', (first, firstDev, second, secondDev) => {
     const { net, west, execute } = westFixture();
     try {
@@ -104,11 +134,11 @@ describe('static route destination normalization', () => {
   it('keeps distinct prefixes and host routes, and permits deletion and replacement', () => {
     const { net, execute } = westFixture();
     try {
-      expect(execute('ip route add 10.72.2.10/27 via 10.72.254.2 dev eth0')).toBe('');
-      expect(execute('ip route add 10.72.2.10/28 via 10.72.254.2 dev eth1')).toBe('');
+      expect(execute('ip route add 10.72.2.0/27 via 10.72.254.2 dev eth0')).toBe('');
+      expect(execute('ip route add 10.72.2.0/28 via 10.72.254.2 dev eth1')).toBe('');
       expect(execute('ip route add 10.72.2.10 via 10.72.254.2 dev eth1')).toBe('');
-      expect(execute('ip route del 10.72.2.31/27')).toBe('');
-      expect(execute('ip route add 10.72.2.20/27 via 10.72.254.2 dev eth1')).toBe('');
+      expect(execute('ip route del 10.72.2.0/27')).toBe('');
+      expect(execute('ip route add 10.72.2.0/27 via 10.72.254.2 dev eth1')).toBe('');
       const routes = execute('ip route show');
       expect(routes).toContain('10.72.2.0/27 via 10.72.254.2 dev eth1');
       expect(routes).toContain('10.72.2.0/28 via 10.72.254.2 dev eth1');
@@ -119,9 +149,9 @@ describe('static route destination normalization', () => {
   it('normalizes default routes and preserves existing duplicates when loading older documents', () => {
     const { net, west, execute } = westFixture();
     try {
-      expect(execute('ip route add 10.72.2.10/0 via 10.72.254.2 dev eth0')).toBe('');
+      expect(execute('ip route add 0.0.0.0/0 via 10.72.254.2 dev eth0')).toBe('');
       expect(execute('ip route add default via 10.72.254.2 dev eth1')).toBe('RTNETLINK answers: File exists\n');
-      expect(execute('ip route add 192.0.2.1/0 via 10.72.254.2 dev eth1')).toBe('RTNETLINK answers: File exists\n');
+      expect(execute('ip route add 0.0.0.0/0 via 10.72.254.2 dev eth1')).toBe('RTNETLINK answers: File exists\n');
       // Older documents may already contain duplicates; loading must not silently remove them.
       west.staticRoutes.push({ ...west.staticRoutes[0], via: parseIp('10.72.254.1'), ifaceName: 'eth1' });
       const saved = JSON.parse(JSON.stringify(serializeNetwork(net, {})));
@@ -142,12 +172,12 @@ describe('static route destination normalization', () => {
   it('preserves working D02 routes and real exercise checks through JSON save/load', () => {
     const { net, execute } = westFixture();
     try {
-      expect(execute('ip route add 10.72.2.10/27 via 10.72.254.2 dev eth0')).toBe('');
+      expect(execute('ip route add 10.72.2.0/27 via 10.72.254.2 dev eth0')).toBe('');
       expect(execute('ip route replace 10.72.2.0/27 via 10.72.254.2 dev eth1')).toBe('');
       const east = net.devices.get('east');
       if (!(east instanceof RouterDevice)) throw Error('D02 East router missing');
       let output = '';
-      new Shell(east).exec('ip route replace 10.72.1.10/26 via 10.72.254.1 dev eth0', { write: text => { output += text; } }, () => {});
+      new Shell(east).exec('ip route replace 10.72.1.0/26 via 10.72.254.1 dev eth0', { write: text => { output += text; } }, () => {});
       expect(output).toBe('');
       const saved = JSON.parse(JSON.stringify(serializeNetwork(net, {})));
       expect(saved.devices.find((d: { id: string }) => d.id === 'west').routes)

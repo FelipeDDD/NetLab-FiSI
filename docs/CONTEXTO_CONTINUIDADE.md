@@ -1,12 +1,166 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **09/11/2026**, para continuar entre notebook e desktop.
+Atualizado em **10/11/2026**, para continuar entre notebook e desktop.
 Este é o **arquivo único de continuidade**: atualizar este resumo nas próximas
 rodadas, sem criar cópias TXT ou documentos de contexto concorrentes.
 O código, os testes e o Git continuam sendo a fonte de verdade. As seções
 históricas abaixo registram decisões antigas e podem ter sido superadas.
 
-## Leia primeiro — auditoria e estado atual em 09/11/2026
+## Leia primeiro — auditoria e estado atual em 10/11/2026
+
+**Consolidação Git autorizada em 10/11/2026:** o usuário solicitou revisar os
+arquivos, atualizar este Markdown e, passando a auditoria, criar o commit e fazer
+push. Essa autorização substitui as proibições históricas de commit/push abaixo.
+Não autoriza merge, rebase, force push ou deploy. `vercel.json` continua com
+`git.deploymentEnabled: false`; nenhuma configuração de publicação foi alterada.
+Base conferida: `main`, HEAD `8f4dcdc`, remoto
+`https://github.com/FelipeDDD/NetLab-FiSI.git`; após fetch, sem divergência com
+`origin/main`. Confirmar o commit final com `git log -1`, `git status` e o remoto
+ao continuar em outro computador, sem presumir sincronização pelo texto histórico.
+
+O lote tem **24 arquivos**: capítulo 5 v4 com 22 tarefas (4 + 9 + 6 + 3),
+aprendizagem progressiva e antes/depois do LPM com provas ICMP reais, migrações,
+tempestade única e recuperação com `ip route replace`; nomes seguros de PC C,
+cores de sintaxe dos tutoriais, rejeição de destinos de rota com bits de host,
+testes e documentação. Os seis PNGs DE/EN/PT-BR já versionados e referenciados
+permanecem idênticos, 1672×941; não há novos assets nem mudanças no Studio.
+Capturas, comparações, perfis, logs, scripts auxiliares locais e `dist/` ficam
+ignorados e fora do commit. A triagem dos candidatos não encontrou padrões de
+credenciais/chaves privadas ou arquivos temporários inesperados.
+
+Próximos passos: concluir o teste manual didático do capítulo 5 com o usuário;
+tratar separadamente o futuro editor de rotas pela interface. Limitações mantidas:
+somente Linux na LAN C; nomes sem proveniência segura não são alterados; a
+transação da tempestade encerra processos transitórios, preservando configurações
+e histórico; comprovantes antigos recebem crédito histórico sem inventar pings.
+Capturas locais não viajam pelo Git e devem ser copiadas separadamente se forem
+necessárias no outro computador. Os detalhes e validações das rodadas seguem abaixo.
+
+Auditoria final em 10/11: **3.036 testes em 181 arquivos**, **251 verificações
+Chromium** do fluxo/persistência, TypeScript, build e `git diff --check` aprovados;
+sem falhas nem erros de navegador. Mantém-se o aviso conhecido de chunk JS acima
+de 500 kB. Não foi necessário corrigir código nesta auditoria. Logs e manifesto
+dos 24 candidatos em `.playwright-mcp/final-nov10-*` (locais, ignorados).
+
+**Revisão didática e comparações do capítulo 5, somente local:** enunciados
+14–18 deixam gateway/Next Hops para o aluno descobrir; IPv4 de PC C e a LAN
+física /25 permanecem iguais. Ajuda recolhida em 16 contém rede e sintaxe
+genérica, sem Next Hop resolvido. Em 17, a ajuda ensina a obter a rede /24;
+18 mantém explicitamente a /24. Em 19, antes/depois e retorno vêm dos caminhos
+já comprovados; a regra LPM continua na ajuda ou após a escolha correta.
+Etapas 20/21 não têm dropdown; recuperação explica add/replace sem comandos
+resolvidos, mantém exatamente dois checkpoints e distingue as duas rotas de
+R1 para PC C da LAN física. Tentativas legadas ainda sem prova de falha mantêm
+a orientação manual existente como nota, sem novo incidente.
+A renomeação segura já ocorria ao conectar o Linux-PC à eth3, antes de IPv4;
+essa lógica foi preservada e a ajuda esclarece a mudança do nome padrão.
+Sem histórico seguro, ou se houver nome personalizado/colisão, o nome real é mantido.
+As 22 tarefas, validadores, engine, persistência e tempestade não foram alterados.
+Capturas reais das sete etapas prioritárias, em DE/Graphite Dark e viewport
+1440×1000, ficam em `.playwright-mcp/reviews/chapter5-didactic/antes/` e
+`depois/`; comparações ANTES | DEPOIS ficam somente em
+`.playwright-mcp/reviews/chapter5-didactic/referencias-chatgpt/`.
+O harness opcional `NETLAB_DIDACTIC_CAPTURE=antes|depois` usa comandos e pings
+legítimos; não acrescenta atalhos ao produto. Sem commit/push/merge/deploy.
+Validação: **134 testes em 6 arquivos** e **251 verificações Chromium**,
+sem erros de navegador; três idiomas, Dark/Light, cores nos seis temas,
+700/1024/1440 px, F5, migração, provas históricas, tempestade e Undo/Redo.
+TypeScript, build e diff-check aprovados. As sete comparações foram inspecionadas;
+galeria em `.playwright-mcp/reviews/chapter5-didactic/index.html`.
+
+**Acabamento visual dos tutoriais, somente local:** `TutorialCommand` mantém
+apenas sintaxe/palavras-chave em âmbar; IPs, máscaras, interfaces, números e
+placeholders ficam neutros, sem alterar textos/parâmetros ou o terminal real.
+PC C recebe o nome `PC C` somente com vínculo ID/MAC, nome padrão e histórico de
+criação confirmados, sem renomeação manual ou colisão. `lpm.pc.nameChecked` opcional
+registra a decisão antes da ação para Undo/F5 não repetirem a renomeação. Nomes
+sem origem verificável (ex.: histórico perdido no F5 anterior ao vínculo),
+personalizados, com colisão ou com comprovantes antigos são mantidos por segurança.
+Renomear manualmente continua possível. Etapas, validadores, rotas, tempestade e
+as **22 tarefas** permanecem; Rodadas 1–3 preservadas. Sem commit/push/merge/deploy.
+Validação: **3.036 testes em 181 arquivos**, **203 verificações Chromium**,
+DE/EN/PT-BR e os seis temas, TypeScript, build e diff-check aprovados. Capturas
+organizadas em `.playwright-mcp/reviews/tutorial-polish/referencias-chatgpt/`.
+
+**Rodada 3 — Parte 4, somente local:** as Rodadas 1 e 2 foram preservadas.
+Continuam proibidos commit, push, merge e deploy. O capítulo 5 conserva
+**22 tarefas (4 + 9 + 6 + 3)** e o experimento LPM. Na primeira entrada em 20,
+a tempestade desativa R2 eth1, mantendo cabo R2–R3 e todas as configurações.
+A porta e o marcador `storm` são confirmados juntos pela transação CAS existente
+`SessionController.commitDocument`; não há mecanismo narrativo genérico.
+Marcadores `applied`/`adopted` impedem nova aplicação ao reabrir, navegar,
+usar F5, retry ou Undo/Redo. Enlace já indisponível é adotado sem novas mudanças.
+Tentativas v4 antigas já na Parte 4 recebem `legacy`, preservando a falha manual;
+as ainda nas partes anteriores recebem `pending`. O progresso permanece v4,
+sem novo banco ou schema de topologia. Marcadores inválidos são recusados.
+Etapa 20 exige falha real A → R1 → R2, antes da explicação sobre rotas antigas
+e falta de failover. Etapa 21 ensina add/replace e verifica duas rotas efetivas;
+22 exige novos pings diretos A ↔ B e mantém a exploração livre. /24 e /25 de LAN C
+e seus comprovantes permanecem; etapas LPM concluídas podem ser revisitadas como
+histórico, sem recalcular recibos contra a indisponibilidade posterior.
+Undo da tempestade restaura a porta sem repetir o incidente. Reinício explícito
+do capítulo restaura também o marcador inicial; Undo do reinício recupera o
+documento e marcador anteriores. Nova tentativa é independente.
+Cabos Ethernet indisponíveis recebem tracejado discreto, preservando a cor.
+**Limitação:** a transação reutilizada reativa o documento e encerra processos
+transitórios em andamento. Não restaura pings; configurações, posições, preferências
+salvas de UI e histórico de edição são preservados. Terminais podem ser reabertos.
+Em erro ambíguo após commit, usar a recuperação
+existente/F5, sem reaplicar a falha. Detalhes: `docs/alternative-paths-tutorial.md`.
+Validação final da Rodada 3: **3.015 testes em 180 arquivos**, **196 verificações
+Chromium**, TypeScript, build e diff-check aprovados. Cobre interrupção antes/depois
+do commit, edição concorrente antes do incidente, adoção de enlace já indisponível,
+estado legado, ida/retorno reais, navegação para LPM comprovado, F5, planos,
+Undo/Redo/reinício, DE/EN/PT-BR e ambos os temas. Capturas finais separadas em
+`.playwright-mcp/reviews/chapter5-round3/referencias-chatgpt/`. Nenhuma mudança na
+engine, dependências, configuração de deploy, assets ou na lógica do experimento LPM.
+O teste manual didático do usuário e o futuro editor visual de rotas seguem pendentes.
+
+**Rodada 2 — LPM progressivo e prefixos, somente local:** autorizada após a
+Rodada 1 abaixo, cujas alterações locais foram preservadas. Continuam proibidos
+commit, push, merge e deploy. O capítulo 5 agora tem **22 tarefas (4 + 9 + 6 + 3)**,
+progresso **v4**: etapa 16 configura R2 e comprova R2 → C; 17 configura a /24 em
+R1 e comprova A → R1 → R2 → R3 → C; 18 adiciona a /25 sem remover a /24 e exige
+novo ping A → R1 → R3 → C; 19 compara os caminhos e ensina LPM somente entre
+rotas correspondentes. Etapas 20–22 conservam falha de enlace/troca manual.
+Cada fase distingue rota e Echo Reply reais. Retornos assimétricos são aceitos
+e seus saltos observados são persistidos. A inclusão da /25 preserva a prova
+anterior da /24. API/texto isolado/ping de outra etapa não criam comprovantes.
+Rotas antecipadas não são apagadas: a interface orienta recuperação manual.
+Migração v1 → v2 → v3 → v4 conserva rede, IDs/MACs, checkpoints e tentativas
+concluídas. Da v3, etapas 16/17 parciais retomam em 16; antiga 17 concluída ganha
+`lpm.experiment.legacy`, com crédito explícito para 16–19 e três novos recibos
+nulos. A antiga teoria mantém `lpm.legacy`. Não inventar o caminho /24 a partir
+do `pathReply` antigo. Nova tentativa oferece o experimento completo.
+`ip route add/replace` agora rejeitam destino IPv4 com bits de host, conforme
+o Linux. Não mudar o parser CIDR global: `ip address add ...130/25`, /32,
+default canônico, rotas conectadas e importação de projetos antigos continuam
+válidos. Editor visual de rotas, métricas e redundância automática seguem fora
+do escopo. Detalhes e referência Linux em `docs/alternative-paths-tutorial.md`.
+Validação final da Rodada 2: **3.009 testes em 180 arquivos**, **176 verificações
+Chromium**, TypeScript, build e diff-check aprovados. Inclui migrações v1–v4,
+prefixos add/replace, /32/interface/default e restauração antiga, experimentos
+com pings reais/API recusada, provas históricas, retornos distintos, F5, troca de
+planos, reinício/Undo/Redo, DE/EN/PT-BR e Graphite Dark/Classic Light em 700–1440 px.
+Permanece o aviso conhecido de chunk JS acima de 500 kB. Capturas finais separadas:
+`.playwright-mcp/reviews/chapter5-round2/referencias-chatgpt/`. O teste manual
+didático do capítulo 5 pelo usuário e o editor visual de rotas continuam pendentes.
+
+**Rodada 1 didática/UX implementada, somente local:** a instrução atual proíbe
+commit, push, merge e deploy. Esta restrição prevalece sobre as autorizações
+históricas abaixo. No capítulo 5, ajuda de gateway também na LAN B (recolhida),
+feedback da falta de retorno somente após pacotes reais e rota ausente no ponto
+de parada, caminhos acima dos indicadores/pergunta e rótulo didático somente
+`PC C`, mantendo o nome real e ID/MAC do projeto. O feedback é transitório;
+progresso/validadores e F5 permanecem iguais. PC C ainda exige Linux pelo
+reconhecimento atual, agora explicado na ajuda; Windows não foi habilitado.
+Na Rodada 1, LPM/prefixos e editor visual de rotas ficaram fora do escopo;
+a Rodada 2 acima amplia somente LPM/prefixos. Validação da Rodada 1:
+**112 testes em 6 arquivos**, **149 verificações
+Chromium** (DE/EN/PT-BR, Graphite Dark/Classic Light, F5, Undo/Redo e fluxo completo),
+TypeScript, build e diff-check aprovados. Capturas finais em pasta separada:
+`.playwright-mcp/reviews/chapter5-round1/referencias-chatgpt/`.
+Ver `docs/alternative-paths-tutorial.md`.
 
 Este resumo prevalece sobre os registros históricos abaixo. O checkout foi
 conferido em 09/11: branch `main` limpa, HEAD **`2a1b91f`**, sincronizado com
@@ -88,18 +242,19 @@ e da posição do ping foram aprovadas nos bancos descartáveis. Dependências,
 
 ### Capítulo 5 — Alternative Wege
 
-- Ampliado para **20 etapas: 4 + 9 + 4 + 3**, progresso **versão 3**. Depois da
-  comprovação A ↔ B por R2 e de Next Hop, as tarefas 14–17 ensinam LPM com uma
-  LAN C real. As antigas tarefas de falha/alternativa de LAN B passam a 18–20.
+- Ampliado para **22 etapas: 4 + 9 + 6 + 3**, progresso **versão 4**. Depois da
+  comprovação A ↔ B por R2 e de Next Hop, as tarefas 14–19 ensinam LPM com uma
+  LAN C real e o experimento antes/depois. Falha/alternativa de LAN B ficam em 20–22.
 - Ao entrar na atividade, prepara somente R3 eth3 com `192.168.30.129/25`.
   O aluno cria um PC Linux, conecta à eth3 e configura `192.168.30.130/25`,
   gateway/default efetivo `192.168.30.129`. Nome/posição livres; vínculo por ID/MAC
   somente com host novo conectado à porta correta, usando baseline persistida.
-- Ping local C → R3 comprovado; depois R2 recebe rota para LAN C via `10.0.23.2`.
-  R1 usa `192.168.30.0/24 via 10.0.12.2` e `192.168.30.128/25 via 10.0.13.2`.
-  As duas alternativas encaminham de verdade. A pergunta de LPM aparece após
-  observar A → R1 → R3 → C e a resposta C → R3 → R2 → R1 → A. Maior CIDR vence
-  somente entre rotas correspondentes. Nenhuma mudança na engine/animação.
+- Ping local C → R3 comprovado; depois R2 recebe rota para LAN C via `10.0.23.2`
+  e o aluno comprova R2 → C. R1 usa primeiro `192.168.30.0/24 via 10.0.12.2`,
+  com ping por R2; depois acrescenta `192.168.30.128/25 via 10.0.13.2` e comprova
+  novo ping direto por R3. A pergunta de LPM aparece após observar ambos os
+  caminhos. Retorno é real e pode ser assimétrico. Maior CIDR vence somente
+  entre rotas correspondentes. Nenhuma mudança na engine/animação.
 - Provas A/B e local C–R3 têm escopos próprios; acrescentar LAN C ou suas rotas
   não invalida provas anteriores. Hashes globais antigos continuam reconhecidos;
   normalização de um par válido ocorre junta. A falha posterior de enlace conserva
@@ -108,7 +263,7 @@ e da posição do ping foram aprovadas nos bancos descartáveis. Dependências,
   interrompida. F5 não duplica PCs nem restaura processos. Checkpoint/reinício inclui
   C somente após vínculo seguro; equipamento independente ou identidade reutilizada
   não é apagado. PC ainda não vinculado permanece preservado, por segurança.
-- Migração v1 → v2 → v3 preserva rede e histórico. Antiga etapa 14 não concluída
+- Migração v1 → v2 → v3 → v4 preserva rede e histórico. Antiga etapa 14 não concluída
   abre a nova prática. Atividade teórica antiga já concluída recebe crédito
   histórico explícito (`lpm.legacy`), sem inventar PC/pings; conclusões anteriores
   continuam concluídas. Nova tentativa oferece o fluxo prático completo.
@@ -117,7 +272,7 @@ e da posição do ping foram aprovadas nos bancos descartáveis. Dependências,
   são independentes, com pacotes reais; configuração parcial não é sucesso final.
 - **O teste manual didático pelo usuário continua pendente**, agora incluindo
   criação de PC C, observação de ida/retorno distintos e conclusão da LAN B.
-- Validação da expansão: **487 testes em 18 arquivos**, TypeScript, build e
+- Histórico da expansão v3: **487 testes em 18 arquivos**, TypeScript, build e
   `git diff --check` aprovados. Chromium: **113 verificações** no roteiro completo
   com banco/perfil descartáveis, sem falhas ou erros de navegador. Inclui criação
   por arraste, /24 e /25 reais, F5 na criação, migração da antiga etapa 14, três

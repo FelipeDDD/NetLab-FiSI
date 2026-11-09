@@ -39,7 +39,9 @@
 [data-exercise="guided-first-connection"] footer { display: flex; justify-content: space-between; flex-shrink: 0; gap: 8px; }
 [data-exercise="guided-first-connection"] pre { padding: 8px; background: var(--ui-surface-card); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 [data-exercise="guided-first-connection"] [data-tutorial-passed="true"] { color: var(--ui-success); }
-.exercise-panel .guided-command, .exercise-panel .guided-shortcut { color: var(--ui-warning); font-family: var(--font-mono, monospace); }
+.exercise-panel .guided-command { color: var(--ui-text); font-family: var(--font-mono, monospace); }
+.exercise-panel .guided-command-syntax, .exercise-panel .guided-shortcut { color: var(--ui-warning); }
+.exercise-panel .guided-shortcut { font-family: var(--font-mono, monospace); }
 .guided-action-status { display: flex; align-items: flex-start; gap: 8px; }
 .guided-step-progress { display:flex; flex-direction:column; gap:4px; }
 .guided-step-progress progress { display:block; width:100%; max-width:230px; height:3px; border:0; accent-color:var(--ui-accent); }

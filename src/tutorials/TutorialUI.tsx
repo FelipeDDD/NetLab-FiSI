@@ -5,6 +5,8 @@ import type { SessionController } from '../persistence/sessionController';
 import type { ProjectRepository } from '../projects/repository';
 import { TutorialProgressStore } from './tutorialProgress';
 import { useStore } from '../store';
+import { recordOperation } from '../topologyHistory';
+import { canNameLanC } from './lanCPresentation';
 import { sim } from '../sim';
 import { serializeNetwork } from '../engine/serialize';
 import { hasPendingForms } from '../persistence/pendingForms';
@@ -113,6 +115,9 @@ function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:
     subscribe:listener=>{const a=useStore.subscribe(listener),b=restart.subscribe(listener);return()=>{a();b();};},observeCommands:observeTerminalCommands,observeActivity:observeNetworkActivity,
     insert:()=>useStore.getState().addAlternativeRoutingPCs(),started:requestExerciseViewport,
     prepareLpm:()=>useStore.getState().setInterfaceIpv4('tutorial-05-r3','eth3',{mode:'static',ip:parseCidr('192.168.30.129/25'),gateway:null,dns:null}) ? 'lpmPort' : null,
+    captureDocument:()=>useStore.getState().captureWorkspaceDocument(),
+    stormHistory:changed=>{const history=useStore.getState().topologyHistory;return()=>useStore.getState().installChapterHistory(changed?recordOperation(history,{type:'set-iface-state',label:'R2–R3: interface DOWN',deviceId:'tutorial-05-r2',ifaceName:'eth1',before:true,after:false}):history);},
+    nameLanC:pc=>{if(canNameLanC(sim.net,useStore.getState().topologyHistory,pc))useStore.getState().renameDevice(pc.id,'PC C');},
   },new AlternativePathsProgressStore(repository,sessions)));
   alternativeRef.current=alternative;
   const alternativeState=useSyncExternalStore(alternative.subscribe,alternative.getState);

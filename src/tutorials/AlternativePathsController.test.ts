@@ -11,6 +11,9 @@ import { observeNetworkActivity } from '../networkObservations';
 import type { MetaRecord, MetaValue, ProjectDocument } from '../projects/types';
 import type { ProjectRepository } from '../projects/repository';
 import type { SessionControllerState } from '../persistence/sessionTypes';
+import type { SessionController } from '../persistence/sessionController';
+import { recordOperation } from '../topologyHistory';
+import { canNameLanC } from './lanCPresentation';
 import type { TerminalCommandEvent } from '../terminalCommandEvents';
 import { AlternativePathsController } from './AlternativePathsController';
 import { AlternativePathsProgressStore, ALTERNATIVE_PROGRESS_PREFIX, readAlternativeProgress, emptyNeighborProofs } from './alternativePathsProgress';
@@ -24,15 +27,28 @@ vi.mock('../terminals', () => ({ disposeAllSessions: vi.fn(), disposeSession: vi
 vi.setConfig({ testTimeout: 15000 });
 beforeEach(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }));
 afterEach(() => { useStore.getState().flushAutosave(); disposeNetwork(sim.net); vi.unstubAllGlobals(); });
-function fixture() {
+function fixture(automaticStorm = false) {
   const meta = new Map<string, MetaRecord>(), docs = new Map<string, ProjectDocument>(), events = new Set<(event: TerminalCommandEvent) => void>(), listeners = new Set<() => void>();
   let id = 'personal', sequence = 0, forms = false, pending = false, fail = false, failReceipt = false, failLpm: 'preparing' | 'ready' | null = null;
+  let stormFailure: 'before' | 'after' | null = null, recoveryRequired = false, stormCommits = 0;
+  let nextFlush: (() => void) | undefined;
   useStore.getState().importJson(JSON.stringify(alternativePathsDocument().topology)); docs.set(id, useStore.getState().captureWorkspaceDocument());
   const notify = () => listeners.forEach(fn => fn());
   const sessions = {
     getState: (): SessionControllerState => ({ phase: 'ready', session: null, activeDraftId: id, error: null, pendingShare: false, drafts: [...docs.keys()].map(key => ({ id: key, revision: 1, editSequence: 0, persistedSequence: 0, pendingPersistence: false, saving: false, manualSavePending: true, base: null, error: null })) }),
     subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; }, hasPendingOperations: () => pending,
-    flush: async () => { docs.set(id, useStore.getState().captureWorkspaceDocument()); return { ok: true as const, value: undefined }; },
+    flush: async () => { if(recoveryRequired)return {ok:false as const,error:{code:'runtime-changed' as const,message:'Reload committed state.'}};const action=nextFlush;nextFlush=undefined;action?.();docs.set(id, useStore.getState().captureWorkspaceDocument()); return { ok: true as const, value: undefined }; },
+    commitDocument: async (input: Parameters<SessionController['commitDocument']>[0]) => {
+      stormCommits++;
+      if(stormFailure==='before')return {ok:false as const,error:{code:'quota-exceeded' as const,message:'Quota'}};
+      if(id!==input.draftId||JSON.stringify(input.expected)!==JSON.stringify(useStore.getState().captureWorkspaceDocument()))return {ok:false as const,error:{code:'runtime-changed' as const,message:'Changed'}};
+      for(const m of input.control)if((meta.get(m.key)?.revision??null)!==m.expectedRevision)throw Error('CAS mismatch');
+      for(const m of input.control)meta.set(m.key,{key:m.key,revision:(m.expectedRevision??0)+1,value:structuredClone(m.value)});
+      docs.set(id,structuredClone(input.document));
+      if(stormFailure==='after'){recoveryRequired=true;return {ok:false as const,error:{code:'runtime-changed' as const,message:'Committed; reload'}};}
+      useStore.getState().importJson(JSON.stringify(input.document.topology));notify();
+      return {ok:true as const,value:undefined};
+    },
     openDocument: async (document: ProjectDocument) => { await sessions.flush(); pending = true; id = 'alternative-' + docs.size; useStore.getState().importJson(JSON.stringify(document.topology)); docs.set(id, document); pending = false; notify(); return { ok: true as const, value: id }; },
   };
   const repository: Pick<ProjectRepository, 'getMeta' | 'setMeta'> = {
@@ -42,7 +58,10 @@ function fixture() {
       const record = { key: m.key, revision: (current?.revision ?? 0) + 1, value: structuredClone(m.value) }; meta.set(m.key, record); return { ok: true, value: record };
     },
   };
-  const make = () => new AlternativePathsController(sessions, { network: () => sim.net, activeDraftId: () => id, pendingForms: () => forms, subscribe: fn => useStore.subscribe(fn), observeCommands: fn => { events.add(fn); return () => { events.delete(fn); }; }, observeActivity: observeNetworkActivity, insert: () => useStore.getState().addAlternativeRoutingPCs(), prepareLpm: () => useStore.getState().setInterfaceIpv4(I.r3, 'eth3', { mode: 'static', ip: parseCidr('192.168.30.129/25'), gateway: null, dns: null }) ? 'lpmPort' : null }, new AlternativePathsProgressStore(repository, sessions));
+  const make = () => new AlternativePathsController(sessions, { network: () => sim.net, activeDraftId: () => id, pendingForms: () => forms, subscribe: fn => useStore.subscribe(fn), observeCommands: fn => { events.add(fn); return () => { events.delete(fn); }; }, observeActivity: observeNetworkActivity, insert: () => useStore.getState().addAlternativeRoutingPCs(), prepareLpm: () => useStore.getState().setInterfaceIpv4(I.r3, 'eth3', { mode: 'static', ip: parseCidr('192.168.30.129/25'), gateway: null, dns: null }) ? 'lpmPort' : null,
+    captureDocument:()=>useStore.getState().captureWorkspaceDocument(),stormHistory:changed=>{const history=useStore.getState().topologyHistory;return()=>useStore.getState().installChapterHistory(changed?recordOperation(history,{type:'set-iface-state',label:'Storm',deviceId:I.r2,ifaceName:'eth1',before:true,after:false}):history);},
+    nameLanC:pc=>{if(canNameLanC(sim.net,useStore.getState().topologyHistory,pc))useStore.getState().renameDevice(pc.id,'PC C');}
+  }, new AlternativePathsProgressStore(repository, sessions));
   let controller = make(), release = controller.connect();
   const settle = async () => { for (let i = 0; i < 6; i++) { await new Promise(r => setTimeout(r, 0)); await controller.flushProgress(); } };
   const command = (deviceId: string, line: string, source: 'keyboard' | 'quick-ping' | 'api' = 'keyboard') => {
@@ -56,6 +75,7 @@ function fixture() {
   const config = async (deviceId: string, name: string, address: string, gateway: string | null = null) => { expect(useStore.getState().setInterfaceIpv4(deviceId, name, { mode: 'static', ip: parseCidr(address), gateway: gateway ? parseIp(gateway) : null, dns: null })).toBeNull(); await settle(); };
   const triangle = async (start = true) => {
     if (start) await controller.begin(); await settle();
+    if(start&&!automaticStorm){const key=ALTERNATIVE_PROGRESS_PREFIX+id,entry=meta.get(key)!;meta.set(key,{...entry,value:{...(entry.value as object),storm:'legacy'}});release();controller=make();release=controller.connect();await settle();}
     for (let index = 0; index < 3; index++) {
       for (const row of TRANSIT_PLAN.slice(index * 2, index * 2 + 2)) { expect(command(row.device, `ip address add ${row.address} dev ${row.iface}`).output()).toBe(''); await settle(); }
       expect(controller.getState().passed).toBe(false);
@@ -69,7 +89,7 @@ function fixture() {
     await config(I.r1, 'eth2', '192.168.10.1/24'); await config(I.a, 'eth0', '192.168.10.10/24', '192.168.10.1'); await controller.next(); await settle();
     await config(I.r3, 'eth2', '192.168.20.1/24'); await config(I.b, 'eth0', '192.168.20.20/24', '192.168.20.1'); await controller.next(); await settle();
   };
-  const finishLpm = async () => {
+  const finishLpm = async (beforeStorm?: () => void) => {
     expect(controller.getState().record?.step).toBe(14);
     await settle();
     useStore.getState().setHostCreationMode('linux'); useStore.getState().addDeviceAt('host', { x: 1780, y: 900 });
@@ -78,10 +98,15 @@ function fixture() {
     await config(pc, 'eth0', '192.168.30.130/25', '192.168.30.129');
     expect(controller.getState().passed).toBe(true); await controller.next(); await settle();
     expect(await ping(pc, '192.168.30.129')).toContain('64 bytes from'); await controller.next(); await settle();
-    await route(I.r2, '192.168.30.128/25', '10.0.23.2'); await route(I.r1, '192.168.30.0/24', '10.0.12.2'); await route(I.r1, '192.168.30.128/25', '10.0.13.2');
+    await route(I.r2, '192.168.30.128/25', '10.0.23.2');
+    expect(controller.getState().passed).toBe(false); expect(await ping(I.r2, '192.168.30.130')).toContain('64 bytes from');
     expect(controller.getState().passed).toBe(true); await controller.next(); await settle();
-    expect(await ping(I.a, '192.168.30.130')).toContain('64 bytes from'); expect(controller.getState().lpmObserved).toBe(true);
-    controller.answer('lpm', 'specific'); await settle(); expect(controller.getState().passed).toBe(true); await controller.next(); await settle();
+    await route(I.r1, '192.168.30.0/24', '10.0.12.2');
+    expect(await ping(I.a, '192.168.30.130')).toContain('64 bytes from'); await controller.next(); await settle();
+    await route(I.r1, '192.168.30.128/25', '10.0.13.2');
+    expect(controller.getState().passed).toBe(false); expect(await ping(I.a, '192.168.30.130')).toContain('64 bytes from');
+    await controller.next(); await settle(); expect(controller.getState().lpmObserved).toBe(true);
+    controller.answer('lpm', 'specific'); await settle(); expect(controller.getState().passed).toBe(true); beforeStorm?.(); await controller.next(); await settle();
     return pc;
   };
   const toLpm = async (beforeEntry?: () => void) => {
@@ -94,22 +119,118 @@ function fixture() {
     await controller.next(); await settle(); beforeEntry?.(); await settle(); controller.answer('hop', 'r2'); await settle(); await controller.next(); await settle();
   };
   const via = async () => { await toLpm(); await finishLpm(); };
-  return { get controller() { return controller; }, get id() { return id; }, docs, meta, repository, settle, command, ping, route, config, triangle, lans, via, toLpm, finishLpm,
+  const replayLpm = async () => {
+    while (controller.getState().record!.step < 17) { expect(controller.getState().passed).toBe(true); await controller.next(); await settle(); }
+    command(I.r1, 'ip route del 192.168.30.128/25'); await settle();
+    await ping(I.a, '192.168.30.130'); expect(controller.getState().passed).toBe(true); await controller.next(); await settle();
+    await route(I.r1, '192.168.30.128/25', '10.0.13.2'); await ping(I.a, '192.168.30.130'); await controller.next(); await settle();
+    controller.answer('lpm','specific'); await settle(); await controller.next(); await settle();
+    expect(controller.getState().record?.step).toBe(20);
+  };
+  return { get controller() { return controller; }, get id() { return id; }, get stormCommits(){return stormCommits;}, failStorm(value: typeof stormFailure){stormFailure=value;}, beforeNextFlush(action:()=>void){nextFlush=action;}, docs, meta, repository, settle, command, ping, route, config, triangle, lans, via, toLpm, finishLpm, replayLpm,
     forgedReply(deviceId: string, target: string) { const command = { id: ++sequence, network: sim.net, deviceId, line: `ping -c 1 ${target}`, source: 'keyboard' as const }; events.forEach(fn => fn({ type: 'started', command })); events.forEach(fn => fn({ type: 'output', command, text: `64 bytes from ${target}: icmp_seq=1 ttl=64 time=1.0 ms\n` })); events.forEach(fn => fn({ type: 'finished', command, reason: 'completed' })); },
     forms(value: boolean) { forms = value; useStore.getState().refresh(); }, fail(value: boolean) { fail = value; }, failReceipt(value: boolean) { failReceipt = value; }, failLpm(value: typeof failLpm) { failLpm = value; },
     async switchTo(next: string) { await settle(); await sessions.flush(); id = next; useStore.getState().importJson(JSON.stringify(docs.get(id)!.topology)); notify(); await settle(); },
-    async reload() { await settle(); await sessions.flush(); release(); useStore.getState().importJson(JSON.stringify(docs.get(id)!.topology)); controller = make(); release = controller.connect(); await settle(); }, dispose() { release(); },
+    async reload() { await settle(); await sessions.flush(); release(); recoveryRequired=false;useStore.getState().importJson(JSON.stringify(docs.get(id)!.topology)); controller = make(); release = controller.connect(); await settle(); }, dispose() { release(); },
   };
 }
+it('names only the recognized generated PC and respects Undo/Redo and F5 without changing its identity or configuration',async()=>{
+  const f=fixture();try{
+    await f.toLpm();useStore.getState().setHostCreationMode('linux');useStore.getState().addDeviceAt('host',{x:1800,y:750});const id=useStore.getState().nodes.at(-1)!.id;
+    const before=serializeNetwork(sim.net,{}).devices.find(d=>d.id===id)!;
+    useStore.getState().onConnect({source:id,target:I.r3,sourceHandle:'eth0',targetHandle:'eth3'});await f.settle();
+    expect(sim.net.devices.get(id)!.name).toBe('PC C');
+    expect(serializeNetwork(sim.net,{}).devices.find(d=>d.id===id)).toEqual({...before,name:'PC C'});
+    expect(f.controller.getState().record?.lpm.pc).toMatchObject({id,nameChecked:true});
+    useStore.getState().undoTopology();await f.settle();expect(sim.net.devices.get(id)!.name).toBe(before.name);
+    useStore.getState().redoTopology();await f.settle();expect(sim.net.devices.get(id)!.name).toBe('PC C');
+    useStore.getState().undoTopology();await f.settle();await f.reload();expect(sim.net.devices.get(id)!.name).toBe(before.name);
+    expect(f.controller.getState().record?.lpm.pc).toMatchObject({id,nameChecked:true});
+  }finally{f.dispose();}
+});
+it.each(['Cliente personalizado','pc42','collision'])('preserves %s when PC C is recognized and resumed',async name=>{
+  const f=fixture();try{
+    await f.toLpm();useStore.getState().setHostCreationMode('linux');
+    let other='';if(name==='collision'){useStore.getState().addDeviceAt('host',{x:1900,y:50});other=useStore.getState().nodes.at(-1)!.id;useStore.getState().renameDevice(other,'PC C');}
+    useStore.getState().addDeviceAt('host',{x:1800,y:750});const id=useStore.getState().nodes.at(-1)!.id;
+    if(name!=='collision')useStore.getState().renameDevice(id,name);
+    const before=sim.net.devices.get(id)!.name;
+    useStore.getState().onConnect({source:id,target:I.r3,sourceHandle:'eth0',targetHandle:'eth3'});await f.settle();await f.reload();
+    expect(sim.net.devices.get(id)!.name).toBe(before);expect(f.controller.getState().record?.lpm.pc?.id).toBe(id);
+    if(other)expect(sim.net.devices.get(other)!.name).toBe('PC C');
+  }finally{f.dispose();}
+});
+it('applies one atomic storm, retains LPM and corrections across Undo/Redo, navigation and F5, then proves the recovered path', async () => {
+  const f=fixture(true);try {
+    await f.via();
+    const p=structuredClone(f.controller.getState().record!), lpm=structuredClone(p.lpm), r2=()=>sim.net.devices.get(I.r2)!.getInterface('eth1')!;
+    expect(p.storm).toBe('applied');expect(r2().up).toBe(false);expect(sim.net.links.has(L.right)).toBe(true);expect(f.stormCommits).toBe(1);
+    expect((sim.net.devices.get(I.r1) as IpDevice).staticRoutes).toEqual(expect.arrayContaining([expect.objectContaining({dest:parseIp('192.168.20.0'),via:parseIp('10.0.12.2')})]));
+    expect((sim.net.devices.get(I.r3) as IpDevice).staticRoutes).toEqual(expect.arrayContaining([expect.objectContaining({dest:parseIp('192.168.10.0'),via:parseIp('10.0.23.1')})]));
+    useStore.getState().undoTopology();await f.settle();expect(r2().up).toBe(true);expect(f.stormCommits).toBe(1);
+    useStore.getState().redoTopology();await f.settle();expect(r2().up).toBe(false);
+    f.controller.previous();await f.settle();expect(f.controller.getState().record?.step).toBe(19);expect(f.controller.getState().passed).toBe(true);
+    expect(f.controller.getState().record?.lpm).toEqual(lpm);await f.controller.next();await f.settle();await f.reload();
+    expect(f.stormCommits).toBe(1);expect(r2().up).toBe(false);expect(f.controller.getState().passed).toBe(false);
+    await f.ping(I.a,'192.168.20.20','api');expect(f.controller.getState().passed).toBe(false);
+    expect(await f.ping(I.a,'192.168.20.20')).not.toContain('64 bytes from');expect(f.controller.getState().passed).toBe(true);
+    const failure=f.controller.getState().record!.failure;
+    f.command(I.r2,'ip link set eth1 up');await f.settle();await f.reload();expect(r2().up).toBe(true);expect(f.stormCommits).toBe(1);expect(f.controller.getState().passed).toBe(true);
+    await f.controller.next();await f.settle();
+    expect(f.command(I.r1,'ip route add 192.168.20.0/24 via 10.0.13.2').output()).toContain('File exists');
+    await f.route(I.r1,'192.168.20.0/24','10.0.13.2');expect(f.controller.getState().passed).toBe(false);
+    await f.route(I.r3,'192.168.10.0/24','10.0.13.1');expect(f.controller.getState().passed).toBe(true);
+    await f.ping(I.a,'192.168.20.20');expect(f.controller.getState().record!.directReplies.ab).toBeNull();
+    await f.controller.next();await f.settle();f.forgedReply(I.a,'192.168.20.20');await f.settle();await f.ping(I.b,'192.168.10.10','api');expect(f.controller.getState().passed).toBe(false);
+    await f.ping(I.a,'192.168.20.20');expect(f.controller.getState().passed).toBe(false);await f.ping(I.b,'192.168.10.10','quick-ping');expect(f.controller.getState().passed).toBe(true);
+    expect(alternativePathsCompletion(f.controller.getState().record!)).toEqual({completed:22,total:22,complete:true});
+    await f.reload();expect(f.controller.getState().record?.failure).toBe(failure);expect(f.controller.getState().record?.lpm).toEqual(lpm);expect(f.stormCommits).toBe(1);
+    for(let i=0;i<3;i++)f.controller.previous();await f.settle();expect(f.controller.getState().passed).toBe(true);await f.controller.next();await f.settle();expect(r2().up).toBe(true);expect(f.stormCommits).toBe(1);
+  }finally{f.dispose();}
+});
+it.each(['before','after'] as const)('recovers an interrupted storm transaction (%s commit) without a half-written incident or repeated damage', async phase=>{
+  const f=fixture(true);try{
+    await f.toLpm();await f.finishLpm(()=>f.failStorm(phase));
+    expect(f.controller.getState().storageError).toBe(true);
+    expect(sim.net.devices.get(I.r2)!.getInterface('eth1')!.up).toBe(true);
+    const saved=f.meta.get(ALTERNATIVE_PROGRESS_PREFIX+f.id)!.value as unknown as {storm:string};
+    expect(saved.storm).toBe(phase==='before'?'pending':'applied');
+    f.failStorm(null);
+    if(phase==='before'){await f.controller.retryProgress();await f.settle();}else await f.reload();
+    expect(f.controller.getState().record?.storm).toBe('applied');expect(sim.net.devices.get(I.r2)!.getInterface('eth1')!.up).toBe(false);
+    const commits=f.stormCommits;await f.reload();expect(f.stormCommits).toBe(commits);
+  }finally{f.dispose();}
+});
+it('adopts an already unavailable R2–R3 connection without changing either port or the saved routes',async()=>{
+  const f=fixture(true);try{
+    await f.toLpm();await f.finishLpm(()=>f.failStorm('before'));
+    f.command(I.r3,'ip link set eth0 down');await f.settle();const before=serializeNetwork(sim.net,{});
+    f.failStorm(null);await f.controller.retryProgress();await f.settle();
+    expect(f.controller.getState().record?.storm).toBe('adopted');expect(serializeNetwork(sim.net,{})).toEqual(before);
+    expect(sim.net.devices.get(I.r2)!.getInterface('eth1')!.up).toBe(true);await f.reload();expect(f.controller.getState().record?.storm).toBe('adopted');expect(serializeNetwork(sim.net,{})).toEqual(before);
+  }finally{f.dispose();}
+});
+it('does not damage the link when the learner edits routes while the entry to Part 4 is being persisted',async()=>{
+  const f=fixture(true);try{
+    await f.toLpm();await f.finishLpm(()=>f.beforeNextFlush(()=>{
+      expect((sim.net.devices.get(I.r3) as IpDevice).replaceRoute(parseIp('192.168.10.0')!,24,parseIp('10.0.13.1')!,'eth1')).toBeNull();
+      useStore.getState().refresh();
+    }));
+    expect(f.stormCommits).toBe(0);expect(f.controller.getState().record?.storm).toBe('pending');
+    expect(sim.net.devices.get(I.r2)!.getInterface('eth1')!.up).toBe(true);
+    expect((sim.net.devices.get(I.r3) as IpDevice).lookupRoute(parseIp('192.168.10.10')!)?.via).toBe(parseIp('10.0.13.1'));
+    expect(f.controller.getState().warning).toBe('conflict');
+  }finally{f.dispose();}
+});
 it('completes a real manual path change, survives F5/plan switches and never modifies the original personal draft', async () => {
   const f = fixture(); try {
-    const personal = structuredClone(f.docs.get('personal')); await f.via(); expect(f.controller.getState().record?.step).toBe(18); expect(f.controller.getState().passed).toBe(false); expect(f.controller.getState().failureMismatch).toBe(false);
+    const personal = structuredClone(f.docs.get('personal')); await f.via(); expect(f.controller.getState().record?.step).toBe(20); expect(f.controller.getState().passed).toBe(false); expect(f.controller.getState().failureMismatch).toBe(false);
     f.command(I.r2, 'ip link set eth1 down'); await f.settle(); expect(await f.ping(I.a, '192.168.20.20')).not.toContain('64 bytes from'); expect(f.controller.getState().passed).toBe(true);
     await f.reload(); expect(f.controller.getState().passed).toBe(true); await f.controller.next(); await f.settle();
     await f.route(I.r1, '192.168.20.0/24', '10.0.13.2'); expect(await f.ping(I.a, '192.168.20.20')).not.toContain('64 bytes from'); expect(f.controller.getState().passed).toBe(false);
     await f.route(I.r3, '192.168.10.0/24', '10.0.13.1'); expect(f.controller.getState().passed).toBe(true); expect(f.controller.getState().pathStatus).toBe('expected'); await f.controller.next(); await f.settle();
     expect(await f.ping(I.a, '192.168.20.20')).toContain('64 bytes from'); expect(f.controller.getState().passed).toBe(false); expect(f.controller.getState().pathStatus).toBe('expected');
-    expect(await f.ping(I.b, '192.168.10.10', 'quick-ping')).toContain('64 bytes from'); expect(f.controller.getState().passed).toBe(true); expect(f.controller.getState().pathStatus).toBe('verified'); expect(alternativePathsCompletion(f.controller.getState().record!)).toEqual({ completed: 20, total: 20, complete: true });
+    expect(await f.ping(I.b, '192.168.10.10', 'quick-ping')).toContain('64 bytes from'); expect(f.controller.getState().passed).toBe(true); expect(f.controller.getState().pathStatus).toBe('verified'); expect(alternativePathsCompletion(f.controller.getState().record!)).toEqual({ completed: 22, total: 22, complete: true });
     const attempt = f.id, old = structuredClone(f.controller.getState().record); await f.reload(); expect(f.controller.getState().record).toEqual(old); expect(f.controller.getState().passed).toBe(true);
     await f.switchTo('personal'); expect(f.controller.getState().active).toBe(false); expect(f.docs.get('personal')).toEqual(personal); await f.switchTo(attempt); expect(f.controller.getState().passed).toBe(true);
     const menu = await loadTutorialMenuProgress(f.repository, [attempt, 'personal'], null, id => f.docs.get(id)!); expect(menu.alternative?.progress.complete).toBe(true); expect(menu.routing).toBeNull();
@@ -141,15 +262,14 @@ it('requires directly connected neighbor destinations, real packets and both act
 });
 it('revalidates concurrent PC pings after a route-table experiment without confusing their protocol identities', async () => {
   const f = fixture(); try {
-    await f.via(); for(let i=0;i<6;i++) f.controller.previous(); await f.settle(); expect(f.controller.getState().record?.step).toBe(12);
+    await f.via(); for(let i=0;i<8;i++) f.controller.previous(); await f.settle(); expect(f.controller.getState().record?.step).toBe(12);
     await f.route(I.r1, '192.168.0.0/16', '10.0.13.2'); expect(f.controller.getState().passed).toBe(false);
     expect(Object.values(f.controller.getState().neighbors).every(Boolean)).toBe(true);
     const ab = f.command(I.a, 'ping -c 1 192.168.20.20'), ba = f.command(I.b, 'ping -c 1 192.168.10.10', 'quick-ping');
     sim.net.scheduler.advanceTo(sim.net.now + 6000); await f.settle();
     expect(ab.output()).toContain('64 bytes from'); expect(ba.output()).toContain('64 bytes from'); expect(f.controller.getState().passed).toBe(true);
     await f.controller.next(); await f.settle(); await f.controller.next(); await f.settle();
-    for(let i=0;i<3;i++){await f.controller.next();await f.settle();}
-    await f.ping(I.a,'192.168.30.130'); await f.settle(); await f.controller.next(); await f.settle();
+    await f.replayLpm();
     f.command(I.r2, 'ip link set eth1 down'); await f.settle(); await f.ping(I.a, '192.168.20.20'); expect(f.controller.getState().passed).toBe(true);
   } finally { f.dispose(); }
 });
@@ -182,12 +302,12 @@ it('refuses pending forms and failed intent writes without adding PCs or replaci
 });
 it('accepts genuine Windows PC replies and link-failure output with the same protocol-path requirements', async () => {
   const f = fixture(); try {
-    await f.via(); for (let i=0;i<6;i++) f.controller.previous(); await f.settle();
+    await f.via(); for (let i=0;i<8;i++) f.controller.previous(); await f.settle();
     useStore.getState().setHostOs(I.a, 'windows'); useStore.getState().setHostOs(I.b, 'windows'); await f.settle();
     expect(await f.ping(I.a, '192.168.20.20')).toContain('Reply from 192.168.20.20: time=');
     expect(await f.ping(I.b, '192.168.10.10')).toContain('Reply from 192.168.10.10: time='); expect(f.controller.getState().passed).toBe(true);
-    for(let i=0;i<5;i++){await f.controller.next();await f.settle();}
-    expect(await f.ping(I.a,'192.168.30.130')).toContain('Reply from'); await f.controller.next(); await f.settle();
+    await f.controller.next(); await f.settle(); await f.controller.next(); await f.settle(); await f.replayLpm();
+    expect(await f.ping(I.a,'192.168.30.130')).toContain('Reply from');
     f.command(I.r2, 'ip link set eth1 down'); await f.settle(); expect(await f.ping(I.a, '192.168.20.20')).not.toContain('TTL='); expect(f.controller.getState().passed).toBe(true);
     await f.controller.next(); await f.settle(); await f.route(I.r1, '192.168.20.0/24', '10.0.13.2'); await f.route(I.r3, '192.168.10.0/24', '10.0.13.1'); await f.controller.next(); await f.settle();
     await f.ping(I.a, '192.168.20.20'); await f.ping(I.b, '192.168.10.10'); expect(f.controller.getState().passed).toBe(true); await f.reload(); expect(f.controller.getState().passed).toBe(true);
@@ -234,6 +354,41 @@ it('requires fresh observed diagnostic pings, keeps partial verification expecte
     await f.reload(); expect(f.controller.getState().passed).toBe(false);
   } finally { f.dispose(); }
 });
+it.each(['r3', 'r2'] as const)('explains the observed missing return route at %s only after real packets, without changing persisted proof', async missing => {
+  const f = fixture(); try {
+    await f.lans(); await f.ping(I.a, '192.168.20.20');
+    expect(f.controller.getState().investigationResult).toBe('missing-route');
+    await f.controller.next(); await f.settle();
+    await f.route(I.r1, '192.168.20.0/24', '10.0.12.2'); await f.controller.next(); await f.settle();
+    await f.route(I.r2, '192.168.20.0/24', '10.0.23.2'); await f.controller.next(); await f.settle();
+    if (missing === 'r2') await f.route(I.r3, '192.168.10.0/24', '10.0.23.1');
+    expect(f.controller.getState()).toMatchObject({ investigationResult: null, passed: false });
+    f.forgedReply(I.a, '192.168.20.20'); await f.settle();
+    await f.ping(I.a, '192.168.20.20', 'api');
+    expect(f.controller.getState()).toMatchObject({ investigationResult: null, passed: false });
+    expect(await f.ping(I.a, '192.168.20.20')).not.toContain('64 bytes from');
+    expect(f.controller.getState()).toMatchObject({ investigationResult: 'missing-return', passed: true });
+    const proof = f.controller.getState().record?.returnInvestigated;
+    await f.reload();
+    expect(f.controller.getState()).toMatchObject({ investigationResult: null, passed: true });
+    expect(f.controller.getState().record?.returnInvestigated).toBe(proof);
+    await f.route(I.r3, '192.168.10.0/24', '10.0.23.1'); await f.route(I.r2, '192.168.10.0/24', '10.0.12.1');
+    expect(await f.ping(I.a, '192.168.20.20')).toContain('64 bytes from');
+    expect(f.controller.getState().investigationResult).toBe('reply');
+    await f.controller.next(); await f.settle();
+    expect(f.controller.getState().investigationResult).toBeNull();
+  } finally { f.dispose(); }
+});
+it('does not attribute a real return loop to a missing return route', async () => {
+  const f = fixture(); try {
+    await f.lans(); await f.ping(I.a, '192.168.20.20'); await f.controller.next(); await f.settle();
+    await f.route(I.r1, '192.168.20.0/24', '10.0.12.2'); await f.controller.next(); await f.settle();
+    await f.route(I.r2, '192.168.20.0/24', '10.0.23.2'); await f.controller.next(); await f.settle();
+    await f.route(I.r3, '192.168.10.0/24', '10.0.23.1'); await f.route(I.r2, '192.168.10.0/24', '10.0.23.2');
+    expect(await f.ping(I.a, '192.168.20.20')).not.toContain('64 bytes from');
+    expect(f.controller.getState()).toMatchObject({ investigationResult: 'other', passed: true });
+  } finally { f.dispose(); }
+});
 it('resumes a partial v1 attempt with its real global neighbour receipt and preserves moved devices', async () => {
   const f = fixture(); try {
     await f.triangle();
@@ -242,12 +397,12 @@ it('resumes a partial v1 attempt with its real global neighbour receipt and pres
     const p = { ...structuredClone(f.controller.getState().record!), chapterVersion: 1, step: 2, completed: [1], remoteUnderstood: false,
       neighbors: { ...emptyNeighborProofs(), n12: await tutorialFingerprint(neighborSignature(sim.net)) } };
     f.meta.set(key, { ...entry, value: p as unknown as MetaValue });
-    await f.reload(); expect(f.controller.getState().record).toMatchObject({ chapterVersion: 3, step: 1, completed: [] });
+    await f.reload(); expect(f.controller.getState().record).toMatchObject({ chapterVersion: 4, step: 1, completed: [] });
     expect(useStore.getState().captureWorkspaceDocument()).toEqual(document);
     expect(f.controller.getState().neighbors).toMatchObject({ n12: true, n21: false });
     await f.ping(I.r2, '10.0.12.1'); expect(f.controller.getState().passed).toBe(true);
     await f.controller.next(); await f.settle(); expect(f.controller.getState().record?.step).toBe(2);
-    expect(f.meta.get(key)?.value).toMatchObject({ chapterVersion: 3, completed: [1] });
+    expect(f.meta.get(key)?.value).toMatchObject({ chapterVersion: 4, completed: [1] });
     expect(useStore.getState().captureWorkspaceDocument()).toEqual(document);
   } finally { f.dispose(); }
 });
@@ -291,23 +446,53 @@ it('requires real local and routed C replies, proves both /24 and /25 alternativ
     await f.route(I.r3,'192.168.30.130/32','10.0.23.1');expect(f.controller.getState().passed).toBe(false);
     f.command(I.r3,'ip route del 192.168.30.130/32');await f.settle();expect(f.controller.getState().passed).toBe(true);
     await f.controller.next();await f.settle();await f.route(I.r1,'192.168.30.0/24','10.0.12.2');await f.route(I.r1,'192.168.30.128/25','10.0.13.2');expect(f.controller.getState().passed).toBe(false);
-    await f.route(I.r2,'192.168.30.128/25','10.0.23.2');expect(f.controller.getState().passed).toBe(true);expect(f.controller.getState().record!.lpm.localReply).toBe(local);
+    await f.route(I.r2,'192.168.30.128/25','10.0.23.2');expect(f.controller.getState().passed).toBe(false);expect(f.controller.getState().record!.lpm.localReply).toBe(local);
+    f.forgedReply(I.r2,'192.168.30.130');await f.settle();await f.ping(I.r2,'192.168.30.130','api');expect(f.controller.getState().passed).toBe(false);
+    await f.ping(I.r2,'192.168.30.130','quick-ping');expect(f.controller.getState().passed).toBe(true);
+    await f.route(c,'10.0.23.1/32','192.168.30.131');expect(f.controller.getState().passed).toBe(false);
+    f.command(c,'ip route del 10.0.23.1/32');await f.settle();expect(f.controller.getState().passed).toBe(true);
+    await f.controller.next();await f.settle();
+    const early=serializeNetwork(sim.net,{});
+    expect(f.controller.getState().experiment.broadBlocked).toBe(true);
+    await f.ping(I.a,'192.168.30.130');expect(f.controller.getState().passed).toBe(false);
+    expect(serializeNetwork(sim.net,{})).toEqual(early); // The guide never deletes the early /25.
     const paths:{request:string[][];reply:string[][]}={request:[],reply:[]};const stop=observeNetworkActivity(event=>{if(event.kind==='icmp'&&[parseIp('192.168.30.130'),parseIp('192.168.10.10')].includes(event.destination))paths[event.direction].push([event.from,event.to]);});
     f.command(I.r1,'ip route del 192.168.30.128/25');await f.settle();expect(await f.ping(I.a,'192.168.30.130','api')).toContain('64 bytes from');expect(paths.request).toEqual([[I.a,I.r1],[I.r1,I.r2],[I.r2,I.r3],[I.r3,c]]);expect(f.controller.getState().passed).toBe(false);
-    await f.route(I.r1,'192.168.30.128/25','10.0.13.2');await f.controller.next();await f.settle();
+    paths.request=[];paths.reply=[];
+    await f.ping(I.a,'192.168.30.130','quick-ping');expect(f.controller.getState().passed).toBe(true);
+    expect(paths.request).toEqual([[I.a,I.r1],[I.r1,I.r2],[I.r2,I.r3],[I.r3,c]]);
+    const broad=structuredClone(f.controller.getState().record!.lpm.experiment.broad);
+    await f.reload();expect(f.controller.getState().experiment.broadPing).toBe(true);await f.controller.next();await f.settle();
+    await f.route(I.r1,'192.168.30.128/25','10.0.13.2');
+    expect(f.controller.getState().experiment).toMatchObject({r2Ping:true,broadPing:true,specificPing:false});
+    expect(f.controller.getState().record!.lpm.experiment.broad).toEqual(broad);
     f.controller.answer('lpm','specific');await f.settle();expect(f.controller.getState().passed).toBe(false);
     await f.ping(I.b,'192.168.30.130');expect(f.controller.getState().lpmObserved).toBe(false);
     f.forgedReply(I.a,'192.168.30.130');await f.settle();expect(f.controller.getState().lpmObserved).toBe(false);
     await f.ping(I.a,'192.168.30.130','api');expect(f.controller.getState().lpmObserved).toBe(false);
     paths.request=[];paths.reply=[];await f.ping(I.a,'192.168.30.130','quick-ping');stop();
     expect(paths.request).toEqual([[I.a,I.r1],[I.r1,I.r3],[I.r3,c]]);expect(paths.reply).toEqual([[c,I.r3],[I.r3,I.r2],[I.r2,I.r1],[I.r1,I.a]]);
-    expect(f.controller.getState().lpmObserved).toBe(true);expect(f.controller.getState().passed).toBe(false);
+    expect(f.controller.getState().lpmObserved).toBe(true);expect(f.controller.getState().passed).toBe(true);
+    await f.controller.next();await f.settle();expect(f.controller.getState().record?.step).toBe(19);expect(f.controller.getState().passed).toBe(false);
     f.controller.answer('lpm','cables');expect(f.controller.getState().passed).toBe(false);f.controller.answer('lpm','specific');await f.settle();expect(f.controller.getState().passed).toBe(true);
     await f.reload();expect(f.controller.getState().lpmObserved).toBe(true);expect(f.controller.getState().passed).toBe(true);
     await f.route(I.r2,'203.0.113.0/24','10.0.23.2');expect(f.controller.getState().lpmObserved).toBe(true);
   } finally {f.dispose();}
 });
 
+it('accepts a different real return path in both experiments and stores its observed hops',async()=>{
+  const f=fixture();try {
+    await f.via(); const pc=f.controller.getState().record!.lpm.pc!.id;
+    for(let i=0;i<6;i++)f.controller.previous(); await f.settle();
+    await f.route(I.r3,'192.168.10.0/24','10.0.13.1');
+    await f.replayLpm();
+    const e=f.controller.getState().record!.lpm.experiment;
+    expect(e.broad?.reply).toEqual([pc,I.r3,I.r1,I.a]);
+    expect(e.specific?.reply).toEqual([pc,I.r3,I.r1,I.a]);
+    expect(f.controller.getState().lpmObserved).toBe(true);
+    await f.reload();expect(f.controller.getState().record!.lpm.experiment).toEqual(e);
+  }finally{f.dispose();}
+});
 it.each(['preparing','ready'] as const)('recovers an interrupted LAN C %s write without adding PCs or overwriting existing data',async stage=>{
   const f=fixture();try {
     await f.toLpm(()=>f.failLpm(stage));

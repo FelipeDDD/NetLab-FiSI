@@ -1,5 +1,5 @@
 import type { IpDevice } from '../engine/ipdevice';
-import { cidrToString, ipToString, parseCidr, parseIp } from '../engine/ip';
+import { cidrToString, ipToString, parseCidr, parseIp, networkOf } from '../engine/ip';
 
 type Out = (s: string) => void;
 
@@ -136,6 +136,12 @@ function ipRoute(device: IpDevice, a: string[], out: Out): void {
     if (sub === 'del' || sub === 'delete') {
       const err = device.delRoute(target.addr, target.prefix);
       if (err) out(err + '\n');
+      return;
+    }
+    // Linux rejects RTA_DST with host bits for IPv4 route insertion/replacement.
+    // Keep interface CIDRs and legacy document restoration unchanged.
+    if (target.addr !== networkOf(target.addr, target.prefix)) {
+      out('Error: Invalid prefix for given prefix length.\n');
       return;
     }
     let via: number | null = null;
