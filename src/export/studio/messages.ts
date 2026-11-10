@@ -24,7 +24,7 @@ const en = {
   paper: 'Paper', orientation: 'Orientation', landscape: 'Landscape', portrait: 'Portrait', margin: 'Margins',
   textSize: 'Diagram text', small: 'Small', normal: 'Normal', large: 'Large', zoom: 'Preview zoom', fit: 'Fit width',
   visual: 'Diagram content', names: 'Device names', types: 'Device types', ipv4: 'IPv4 addresses', cidr: 'CIDR prefix',
-  tableScale: 'Table scale', scaleTable: 'Scale the whole table proportionally', restoreBlockSize: 'Restore default table size', tableScaleHint: 'Right edge: width. Bottom-right corner: proportional scale. Minimum printed header: 7 pt.',
+  tableScale: 'Table scale', scaleTable: 'Scale the whole table proportionally', restoreBlockSize: 'Restore default table size',
   gatewayInterfaces: 'Show gateway interfaces',
   interfaces: 'Interfaces', gateways: 'Gateways / default routes', cables: 'Connections', cableLabels: 'Cable interface labels',
   colored: 'Colour accents and cables', areas: 'Network areas', areaTitles: 'Area titles', devices: 'Devices',
@@ -50,9 +50,8 @@ const en = {
   blockDeviceMissing: 'Device removed or no routing data in this snapshot. No previous routes are shown.',
   blockOverlap: 'A block overlaps diagram content or another block. Reposition it, reduce diagram scale or use A3.',
   blockOversized: 'A table exceeds the printable area. Choose A3, fewer routes or fewer columns before exporting.',
-  blockReportNote: 'Blocks belong to the diagram page. Conventional report tables remain independent; both may be included.',
   blockDiagramHidden: 'Enable the diagram section to include these blocks in the report or printout.',
-  positionX: 'X (mm)', positionY: 'Y (mm)', blockDragHint: 'Drag the header to move a table; drag its right edge to reflow columns, or its bottom-right corner to scale. Escape cancels. Positions are relative to the printable page.',
+  positionX: 'X (mm)', positionY: 'Y (mm)',
 };
 const de: typeof en = {
   deviceOutside: 'Ein Gerät überschreitet den Druckbereich. Position oder Diagrammskalierung anpassen oder vor dem Export ein größeres Blatt wählen.',
@@ -78,7 +77,7 @@ const de: typeof en = {
   paper: 'Papier', orientation: 'Ausrichtung', landscape: 'Querformat', portrait: 'Hochformat', margin: 'Seitenränder',
   textSize: 'Diagrammtext', small: 'Klein', normal: 'Normal', large: 'Groß', zoom: 'Vorschauzoom', fit: 'Breite anpassen',
   visual: 'Diagramminhalte', names: 'Gerätenamen', types: 'Gerätetypen', ipv4: 'IPv4-Adressen', cidr: 'CIDR-Präfix',
-  tableScale: 'Tabellenskalierung', scaleTable: 'Gesamte Tabelle proportional skalieren', restoreBlockSize: 'Standardgröße der Tabelle wiederherstellen', tableScaleHint: 'Rechter Rand: Breite. Ecke unten rechts: proportionale Skalierung. Kleinster gedruckter Tabellenkopf: 7 pt.',
+  tableScale: 'Tabellenskalierung', scaleTable: 'Gesamte Tabelle proportional skalieren', restoreBlockSize: 'Standardgröße der Tabelle wiederherstellen',
   gatewayInterfaces: 'Gateway-Schnittstellen anzeigen',
   interfaces: 'Schnittstellen', gateways: 'Gateways / Default-Routen', cables: 'Verbindungen', cableLabels: 'Schnittstellen am Kabel',
   colored: 'Farbige Akzente und Kabel', areas: 'Markierungen', areaTitles: 'Bereichstitel', devices: 'Geräte',
@@ -103,9 +102,8 @@ const de: typeof en = {
   blockDeviceMissing: 'Gerät entfernt oder ohne Routing-Daten in dieser Aufnahme. Vorherige Routen werden nicht angezeigt.',
   blockOverlap: 'Ein Block überlappt Diagramminhalte oder einen anderen Block. Verschieben, Diagramm verkleinern oder A3 wählen.',
   blockOversized: 'Eine Tabelle überschreitet den Druckbereich. Vor dem Export A3, weniger Routen oder weniger Spalten wählen.',
-  blockReportNote: 'Blöcke gehören zur Diagrammseite. Reguläre Berichtstabellen bleiben unabhängig; beide können enthalten sein.',
   blockDiagramHidden: 'Den Diagrammabschnitt aktivieren, um diese Blöcke im Bericht oder Ausdruck anzuzeigen.',
-  positionX: 'X (mm)', positionY: 'Y (mm)', blockDragHint: 'Am Kopf verschieben; am rechten Rand die Breite ändern, unten rechts die ganze Tabelle skalieren. Escape bricht ab. Positionen beziehen sich auf die bedruckbare Seite.',
+  positionX: 'X (mm)', positionY: 'Y (mm)',
 };
 const ptBR: typeof en = {
   deviceOutside: 'Um dispositivo excede a área imprimível. Reposicione, reduza a escala do diagrama ou use uma folha maior antes de exportar.',
@@ -121,7 +119,7 @@ const ptBR: typeof en = {
   presentationNoPlan: 'Abra um plano para salvar a apresentação.', presentationSaved: 'Draft da apresentação salvo', presentationSaving: 'Salvando draft da apresentação…', presentationStorageError: 'Falha ao salvar. Os ajustes permanecem na memória. Tente novamente no workspace ou exporte o Topology JSON.',
   alignmentGuides: 'Guias de alinhamento',
   compactLayout: 'Compactar layout', undoCompact: 'Desfazer compactação', alreadyCompact: 'O layout já está compacto ou não permite ajustes seguros.',
-  tableScale: 'Escala da tabela', scaleTable: 'Escalar a tabela inteira proporcionalmente', restoreBlockSize: 'Restaurar tamanho padrão da tabela', tableScaleHint: 'Borda direita: largura. Canto inferior direito: escala proporcional. Cabeçalho impresso mínimo: 7 pt.',
+  tableScale: 'Escala da tabela', scaleTable: 'Escalar a tabela inteira proporcionalmente', restoreBlockSize: 'Restaurar tamanho padrão da tabela',
   gatewayInterfaces: 'Mostrar interfaces dos gateways',
   connectedShort: 'Conectado', advancedPositioning: 'Posicionamento avançado', customWidth: 'Personalizada', resizeTable: 'Redimensionar tabela horizontalmente', fitPage: 'Página inteira', maximize: 'Maximizar', restoreWindow: 'Restaurar',
   open: 'Topology Studio (Beta)', hint: 'Preparar diagramas e documentação técnica', close: 'Fechar',
@@ -156,9 +154,8 @@ const ptBR: typeof en = {
   blockDeviceMissing: 'Dispositivo removido ou sem dados de roteamento nesta captura. Rotas anteriores não são mostradas.',
   blockOverlap: 'Um bloco sobrepõe conteúdo do diagrama ou outro bloco. Reposicione, reduza a escala do diagrama ou use A3.',
   blockOversized: 'Uma tabela excede a área imprimível. Escolha A3, menos rotas ou menos colunas antes de exportar.',
-  blockReportNote: 'Os blocos pertencem à página do diagrama. Tabelas convencionais do relatório são independentes; ambas podem ser incluídas.',
   blockDiagramHidden: 'Ative a seção do diagrama para incluir estes blocos no relatório ou na impressão.',
-  positionX: 'X (mm)', positionY: 'Y (mm)', blockDragHint: 'Arraste o cabeçalho para mover; a borda direita para ajustar a largura e o canto inferior direito para escalar a tabela inteira. Escape cancela. As posições pertencem à área imprimível da página.',
+  positionX: 'X (mm)', positionY: 'Y (mm)',
 };
 export const studioMessages = { en, de, 'pt-BR': ptBR };
 export type StudioKey = keyof typeof en;

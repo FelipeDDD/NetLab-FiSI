@@ -68,6 +68,7 @@ export type RepositoryError =
 
 export type RepositoryResult<T> = { ok: true; value: T } | { ok: false; error: RepositoryError };
 export interface WriteOptions { signal?: AbortSignal }
+export interface MetaWriteOptions extends WriteOptions { guards?: readonly { key: string; expectedRevision: number | null }[] }
 export interface CreateProjectInput {
   /** Optional preallocated UUID permits a future atomic project + control marker. */
   id?: string;

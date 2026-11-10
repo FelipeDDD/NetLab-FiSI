@@ -13,6 +13,9 @@ import {staticBaseReady} from './staticRoutingChapter';
 import {triangleWiring} from './alternativePathsChapter';
 import {tutorialFingerprint} from './tutorialProgress';
 import {hasPendingForms} from '../persistence/pendingForms';
+import {prepareAlternativeEntryRestart} from './alternativeEntries';
+import type {AlternativePathsProgress} from './alternativePathsProgress';
+import {rememberAlternativeCompletion} from './alternativeLearning';
 
 export interface RestartTicket {draftId:string;chapter:ChapterId;document:ProjectDocument;checkpoint:MetaRecord;progress:MetaRecord;guards:{key:string;expectedRevision:number|null}[]}
 type HistoryEntry={draftId:string;chapter:ChapterId;before:ProjectDocument;after:ProjectDocument;beforeProgress:MetaValue;afterProgress:MetaValue;checkpoint:MetaValue};
@@ -28,6 +31,16 @@ export class ChapterRestartService {
   resume(){if(this.state.busy)this.publish({busy:false});}
   private active(id:string){if(this.sessions.getState().activeDraftId!==id||useStore.getState().workspaceIdentity?.draftId!==id)throw Error('checkpoint-conflict');}
   private async meta(key:string){const r=await this.repository.getMeta(key);if(!r.ok)throw Error(r.error.code);return r.value;}
+  /** A committed, automatic Part 4 incident consumes the reset's marker too.
+   * Undo the port first, then the reset. Redo keeps the incident consumed and
+   * replays the existing port operation, rather than scheduling another storm. */
+  recordEntryIncident(before:AlternativePathsProgress,after:AlternativePathsProgress,history:TopologyHistory){
+    if(before.entry?.point!=='part-4'||before.storm!=='pending'||!['applied','adopted'].includes(after.storm)||!same(after,{...before,storm:after.storm}))return;
+    const op=[...history.past].reverse().find(op=>op.type==='chapter-restore');
+    if(op?.type!=='chapter-restore')return;const item=this.history.get(op.id);
+    if(!item||item.chapter!=='alternative-paths'||item.draftId!==before.draftId||!same(item.afterProgress,before))return;
+    this.history.set(op.id,{...item,afterProgress:structuredClone(after) as unknown as MetaValue});
+  }
   async before(chapter:ChapterId,id:string){
     this.active(id);const before=useStore.getState().captureWorkspaceDocument(),key=checkpointKey(id,chapter);
     const flushed=await this.sessions.flush();if(!flushed.ok)throw Error(flushed.error.code);
@@ -63,10 +76,12 @@ export class ChapterRestartService {
     if(this.state.busy)return false;this.publish({busy:true,error:false});
     try{
       await this.flushControllers();const c=readChapterCheckpoint(ticket.checkpoint.value,ticket.draftId,ticket.chapter);
-      const after=chapterRestartDocument(c,ticket.document,ticket.progress.value),id=crypto.randomUUID(),history=useStore.getState().topologyHistory;
+      const restored=chapterRestartDocument(c,ticket.document,ticket.progress.value),planned=ticket.chapter==='alternative-paths'?await prepareAlternativeEntryRestart(restored,c.progress!):{document:restored,progress:c.progress!};
+      const after=planned.document,id=crypto.randomUUID(),history=useStore.getState().topologyHistory;
       await this.checkPlan(ticket.chapter,after,ticket.progress.value);
-      await this.commit(ticket.draftId,ticket.document,after,[{key:ticket.progress.key,expectedRevision:ticket.progress.revision,value:c.progress!},{key:ticket.checkpoint.key,expectedRevision:ticket.checkpoint.revision,value:ticket.checkpoint.value}],ticket.guards);
-      this.history.set(id,{draftId:ticket.draftId,chapter:ticket.chapter,before:ticket.document,after,beforeProgress:ticket.progress.value,afterProgress:c.progress!,checkpoint:ticket.checkpoint.value});
+      if(ticket.chapter==='alternative-paths')await rememberAlternativeCompletion(this.repository,ticket.draftId);
+      await this.commit(ticket.draftId,ticket.document,after,[{key:ticket.progress.key,expectedRevision:ticket.progress.revision,value:planned.progress},{key:ticket.checkpoint.key,expectedRevision:ticket.checkpoint.revision,value:ticket.checkpoint.value}],ticket.guards);
+      this.history.set(id,{draftId:ticket.draftId,chapter:ticket.chapter,before:ticket.document,after,beforeProgress:ticket.progress.value,afterProgress:planned.progress,checkpoint:ticket.checkpoint.value});
       const next=recordOperation(history,{type:'chapter-restore',label:'Kapitel neu starten',id});useStore.getState().installChapterHistory(next);
       const retained=new Set([...next.past,...next.future].flatMap(op=>op.type==='chapter-restore'?[op.id]:[]));for(const key of this.history.keys())if(!retained.has(key))this.history.delete(key);
       this.publish({generation:this.state.generation+1});return true;

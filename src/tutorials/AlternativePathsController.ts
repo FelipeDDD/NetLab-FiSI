@@ -8,8 +8,10 @@ import { IpDevice } from '../engine/ipdevice';
 import { networkOf, parseIp } from '../engine/ip';
 import type { ChapterCheckpointHooks } from './chapterCheckpoints';
 import { tutorialFingerprint } from './tutorialProgress';
-import { ALTERNATIVE_IDS as I, ALTERNATIVE_TOTAL, ALTERNATIVE_ROUTERS, ALTERNATIVE_PCS, ALTERNATIVE_LINKS as L, NEIGHBOR_TESTS, alternativePathsDocument, alternativeConditions, alternativeSignature, neighborSignature, neighborLinkSignature, failureBaselineSignature, triangleWiring, transitConfigured, transitLinkConfigured, pcIdentity, initialAlternativePcs, pcPreparationError, alternativeTarget, expectedPcPath, type AlternativeWarning, type NeighborTest } from './alternativePathsChapter';
-import { emptyNeighborProofs, AlternativePathsProgressStore, type AlternativePathsProgress } from './alternativePathsProgress';
+import { ALTERNATIVE_IDS as I, ALTERNATIVE_TOTAL, ALTERNATIVE_ROUTERS, ALTERNATIVE_PCS, ALTERNATIVE_LINKS as L, NEIGHBOR_TESTS, alternativeConditions, alternativeSignature, neighborSignature, neighborLinkSignature, failureBaselineSignature, triangleWiring, transitConfigured, transitLinkConfigured, pcIdentity, initialAlternativePcs, pcPreparationError, alternativeTarget, expectedPcPath, type AlternativeWarning, type NeighborTest } from './alternativePathsChapter';
+import { alternativeStepCompleted, alternativeFailureBaseline, AlternativePathsProgressStore, type AlternativePathsProgress } from './alternativePathsProgress';
+import { createAlternativeEntryAttempt, createAlternativeBeginningAttempt } from './alternativeEntries';
+import type { AlternativeEntryPoint } from './alternativeEntryContract';
 import { emptyLpm, abSignature, lpmPortError, findLpmPc, lpmPcValid, lpmLocalSignature, lpmPathSignature, lpmBroadSignature, lpmR2Signature, lpmExperimentConditions, lpmPaths, LPM_ADDRESS, LPM_GATEWAY } from './alternativeLpm';
 
 type Sessions = Pick<SessionController, 'getState' | 'subscribe' | 'hasPendingOperations' | 'openDocument'>;
@@ -21,12 +23,12 @@ export interface AlternativeRuntime {
   insert(): AlternativeWarning | null; started?(id: string): void;
   prepareLpm?(): AlternativeWarning | null;
   captureDocument?(): ProjectDocument;
-  stormHistory?(changed: boolean): () => void;
+  stormHistory?(changed: boolean, before:AlternativePathsProgress): (after:AlternativePathsProgress) => void;
   nameLanC?(pc: { id: string; mac: string }): void;
 }
 export interface AlternativeState {
   active: boolean; busy: boolean; saving: boolean; storageError: boolean; loadedDraft: string | null;
-  record: AlternativePathsProgress | null; passed: boolean; warning: AlternativeWarning | null; answerError: boolean;
+  record: AlternativePathsProgress | null; passed: boolean; historical: boolean; reviewing: boolean; canAdvance: boolean; warning: AlternativeWarning | null; answerError: boolean;
   neighbors: Record<NeighborTest, boolean>; replies: { ab: boolean; ba: boolean };
   pathStatus: 'expected' | 'verified' | 'invalidated'; failureMismatch: boolean;
   investigationResult: 'missing-route' | 'missing-return' | 'reply' | 'other' | null;
@@ -42,7 +44,8 @@ interface Candidate {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const lacksRoute = (device: IpDevice, target: number) => !device.routes().some(route => networkOf(target, route.prefix) === route.dest);
 export class AlternativePathsController {
-  private state: AlternativeState = { active: false, busy: false, saving: false, storageError: false, loadedDraft: null, record: null, passed: false, warning: null, answerError: false, neighbors: Object.fromEntries(NEIGHBOR_TESTS.map(test => [test.key, false])) as AlternativeState['neighbors'], replies: { ab: false, ba: false }, pathStatus: 'expected', failureMismatch: false, investigationResult: null, lpmObserved: false, experiment: { r2Route: false, broadRoute: false, specificRoute: false, r2Ping: false, broadPing: false, specificPing: false, broadBlocked: false } };
+  private state: AlternativeState = { active: false, busy: false, saving: false, storageError: false, loadedDraft: null, record: null, passed: false, historical: false, reviewing: false, canAdvance: false, warning: null, answerError: false, neighbors: Object.fromEntries(NEIGHBOR_TESTS.map(test => [test.key, false])) as AlternativeState['neighbors'], replies: { ab: false, ba: false }, pathStatus: 'expected', failureMismatch: false, investigationResult: null, lpmObserved: false, experiment: { r2Route: false, broadRoute: false, specificRoute: false, r2Ping: false, broadPing: false, specificPing: false, broadBlocked: false } };
+  private entry?: { draftId: string; attemptId: string; step: number; historical: boolean };
   // Presentation evidence only. Historical "investigated" does not encode a cause.
   private investigation?: { net: Network; signature: string; draftId: string; step: number; result: AlternativeState['investigationResult'] };
   private listeners = new Set<() => void>(); private releases: (() => void)[] = [];
@@ -51,8 +54,10 @@ export class AlternativePathsController {
   private pending = 0; private disposed = false; private restoring = false; private preparing = false;
   private lpmPreparing = false; private lpmAttempted = new WeakSet<Network>();
   private stormPreparing = false;
+  private focusedDraft: string | null = null;
   private validated?: { net: Network; signature: string; hash: string; abHash: string; neighborHash: string; neighborHashes: string[]; failureHash: string; pcId: string | null; localHash: string; lpmHash: string; r2Hash: string; broadHash: string };
   private candidates = new Map<number, Candidate>(); private awaiting?: number;
+  private repeatedReplies?: { net: Network; draftId: string; hash: string; field: 'viaReplies' | 'directReplies'; ab: boolean; ba: boolean };
   constructor(private sessions: Sessions, private runtime: AlternativeRuntime, private progress: AlternativePathsProgressStore) {}
   getState = () => this.state;
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
@@ -88,24 +93,23 @@ export class AlternativePathsController {
     if (this.readFailed.delete(id)) { this.records.delete(id); await this.load(id); }
     this.failed.delete(id); this.lpmAttempted.delete(this.runtime.network()); const r = this.records.get(id); if (r) await this.save(r); this.refresh();
   }
-  async begin() {
+  async begin(entry?: AlternativeEntryPoint) {
     if (this.state.busy || this.sessions.hasPendingOperations()) return;
     if (this.runtime.pendingForms()) { this.publish({ warning: 'forms' }); return; }
     this.publish({ busy: true, warning: null });
     try {
-      const result = await (this.runtime.openAttempt?.(alternativePathsDocument()) ?? this.sessions.openDocument(alternativePathsDocument()));
+      const initial=entry?await createAlternativeEntryAttempt(entry):createAlternativeBeginningAttempt();
+      initial.options.initialization!.control=[...initial.options.initialization!.control,await this.progress.openingSelection(initial.progress)];
+      const document=initial.document;
+      const result = await (this.runtime.openAttempt?.(document,initial.options) ?? this.sessions.openDocument(document,initial.options));
       if (!result.ok) { this.publish({ storageError: true }); return; }
       const id = result.value; this.runtime.started?.(id);
       if (this.runtime.activeDraftId() !== id || this.sessions.getState().activeDraftId !== id || this.runtime.pendingForms()) return;
       if (!this.records.has(id)) await this.load(id); if (this.readFailed.has(id)) return;
-      if (!this.records.get(id)) {
-        await this.runtime.checkpoint?.before(id);
-        const record: AlternativePathsProgress = { schemaVersion: 1, chapterId: 'alternative-paths', chapterVersion: 4, draftId: id, attemptId: crypto.randomUUID(), prepared: false, stage: 'triangle', step: 1, completed: [], extension: null, neighbors: emptyNeighborProofs(), remoteUnderstood: false, hopUnderstood: false, lpmUnderstood: false, viaReplies: { ab: null, ba: null }, viaBaseline: null, failure: null, directReplies: { ab: null, ba: null }, investigated: null, returnInvestigated: null, lpm: emptyLpm(), storm: 'pending' };
-        this.records.set(id, record); this.publish({ record }); if (!await this.save(record)) return;
-      }
+      if (!this.records.get(id)) throw Error('Atomic attempt progress missing.');
       await this.prepare();
-    } catch { const id = this.runtime.activeDraftId(); if (id) this.failed.add(id); this.publish({ storageError: true }); }
-    finally { this.publish({ busy: false }); this.refresh(); }
+    } catch { const id = this.runtime.activeDraftId(); if (id&&!entry) this.failed.add(id); this.publish({ storageError: true }); }
+    finally { this.refresh(); await this.progress.flush(); this.publish({ busy: false }); this.refresh(); }
   }
   async prepare() {
     const r = this.state.record, net = this.runtime.network();
@@ -126,16 +130,17 @@ export class AlternativePathsController {
     finally { this.preparing = false; }
     this.refresh();
   }
-  previous() { const r = this.state.record; if (!r || !this.state.active || this.state.busy || r.step === 1 || r.stage === 'adding-pcs') return; this.candidates.clear(); this.publish({ answerError: false }); void this.update({ step: r.step - 1 }); }
+  previous() { const r = this.state.record; if (!r || !this.state.active || this.state.busy || r.step <= (r.entry?.firstTask??1) || r.stage === 'adding-pcs') return; this.candidates.clear(); this.publish({ answerError: false }); void this.update({ step: r.step - 1 }); }
   async prepareLanC() {
     const r = this.state.record, net = this.runtime.network();
     if (!r || r.step !== 14 || r.lpm.legacy || r.lpm.stage === 'ready' || this.lpmPreparing || this.state.storageError || this.runtime.pendingForms() || this.runtime.restarting?.() || this.sessions.hasPendingOperations() || !this.state.active) return;
-    if (!alternativeConditions(net).via || !r.hopUnderstood || !this.proof(r.viaReplies.ab) || !this.proof(r.viaReplies.ba)) return;
+    const supplied = r.entry?.point === 'part-3';
+    if (!alternativeConditions(net).via || !supplied && (!r.hopUnderstood || !this.proof(r.viaReplies.ab) || !this.proof(r.viaReplies.ba))) return;
     this.lpmPreparing = true; this.lpmAttempted.add(net); this.publish({ busy: true });
     try {
       if (r.lpm.stage === 'unprepared') {
         if (lpmPortError(net)) { this.publish({ warning: 'lpmPort' }); return; }
-        if (!await this.update({ lpm: { ...emptyLpm(), stage: 'preparing', baseline: [...net.devices.keys()] }, viaReplies: { ab: this.validated!.abHash, ba: this.validated!.abHash } })) return;
+        if (!await this.update({ lpm: { ...emptyLpm(), stage: 'preparing', baseline: [...net.devices.keys()] }, viaReplies: supplied?r.viaReplies:{ ab: this.validated!.abHash, ba: this.validated!.abHash } })) return;
       }
       if (this.disposed || this.runtime.network() !== net || this.runtime.activeDraftId() !== r.draftId || this.runtime.pendingForms() || this.runtime.restarting?.() || this.sessions.hasPendingOperations()) return;
       const current = this.state.record!;
@@ -152,7 +157,7 @@ export class AlternativePathsController {
   private async prepareStorm() {
     const r = this.state.record, net = this.runtime.network();
     if (!r || r.step !== 20 || r.storm !== 'pending' || this.stormPreparing || this.state.busy || this.state.storageError || this.state.warning || this.runtime.pendingForms() || this.runtime.restarting?.() || this.sessions.hasPendingOperations() || !this.state.active) return;
-    if (!this.baselineMatches(r.viaBaseline) || !net.links.get(L.left)?.operational) { this.publish({ warning: 'conflict' }); return; }
+    if (!this.baselineMatches(alternativeFailureBaseline(r)) || !net.links.get(L.left)?.operational) { this.publish({ warning: 'conflict' }); return; }
     const signature = alternativeSignature(net);
     this.stormPreparing = true; this.publish({ busy: true }); this.candidates.clear();
     try {
@@ -161,15 +166,15 @@ export class AlternativePathsController {
       const expected = this.runtime.captureDocument?.(); if (!expected) throw Error('Atomic incident unavailable.');
       const alreadyDown = !net.links.get(L.right)?.operational;
       const next = { ...this.state.record!, storm: alreadyDown ? 'adopted' as const : 'applied' as const };
-      const finishHistory = this.runtime.stormHistory?.(!alreadyDown);
+      const finishHistory = this.runtime.stormHistory?.(!alreadyDown,this.state.record!);
       await this.progress.commitStorm(next, expected, alreadyDown ? expected : stormDocument(expected));
-      finishHistory?.();
+      finishHistory?.(next);
       this.records.set(r.draftId, next); this.publish({ record: next });
     } catch { this.failed.add(r.draftId); this.publish({ storageError: true }); }
     finally { this.stormPreparing = false; this.publish({ busy: false }); this.refresh(); }
   }
   async next() {
-    const r = this.state.record; if (!r || !this.state.active || !this.state.passed || this.state.busy || this.state.storageError || r.step === ALTERNATIVE_TOTAL) return;
+    const r = this.state.record; if (!r || !this.state.active || !this.state.canAdvance || this.state.busy || this.state.storageError || this.runtime.pendingForms() || r.step === ALTERNATIVE_TOTAL) return;
     this.candidates.clear(); this.publish({ answerError: false });
     if (r.step !== 4 || r.stage === 'lans') { await this.update({ step: r.step + 1 }); return; }
     if (ALTERNATIVE_PCS.some(id => this.runtime.network().devices.has(id)) || [L.a, L.b].some(id => this.runtime.network().links.has(id))) { this.publish({ warning: 'conflict' }); return; }
@@ -178,6 +183,8 @@ export class AlternativePathsController {
     finally { this.publish({ busy: false }); this.refresh(); }
   }
   answer(kind: 'remote' | 'hop' | 'lpm', value: string) {
+    // A review shows the saved answer, not a new answer graded against a later network.
+    if (this.state.historical && !this.state.passed) { this.publish({ answerError: false }); return; }
     const r = this.state.record; if (!r || !this.state.active || this.state.busy || this.state.storageError || this.state.warning) return;
     if (kind === 'remote' && r.step === 4) { const correct = value === '23' && transitConfigured(this.runtime.network()); this.publish({ answerError: !correct }); if (correct) void this.update({ remoteUnderstood: true }); }
     if (kind === 'hop' && r.step === 13 || kind === 'lpm' && r.step === 19 && !r.lpm.experiment.legacy && this.state.lpmObserved) { const correct = kind === 'hop' ? value === 'r2' && alternativeConditions(this.runtime.network()).via : value === 'specific'; this.publish({ answerError: !correct }); if (correct) void this.update(kind === 'hop' ? { hopUnderstood: true } : { lpmUnderstood: true }); }
@@ -194,10 +201,12 @@ export class AlternativePathsController {
   private refresh = () => {
     if (this.disposed || this.runtime.restarting?.()) { this.candidates.clear(); this.awaiting = undefined; return; }
     const id = this.sessions.getState().activeDraftId, net = this.runtime.network();
+    if (this.entry?.draftId !== id) this.entry = undefined;
     if (!id || this.runtime.activeDraftId() !== id || this.sessions.hasPendingOperations()) { this.candidates.clear(); this.awaiting = undefined; this.publish({ active: false }); return; }
     if (!this.records.has(id)) { this.publish({ active: false, record: null, storageError: this.readFailed.has(id) }); if (!this.readFailed.has(id)) void this.load(id); return; }
     const r = this.records.get(id) ?? null; this.publish({ record: r, storageError: this.failed.has(id) || this.readFailed.has(id) });
-    if (!r) { this.publish({ active: false }); return; } if (this.state.storageError) { this.publish({ active: true, passed: false }); return; }
+    if (!r) { this.focusedDraft=null;this.publish({ active: false }); return; } if (this.state.storageError) { this.publish({ active: true, passed: false, canAdvance: false }); return; }
+    if(this.focusedDraft!==id){this.focusedDraft=id;void this.progress.selectCurrent(r).catch(()=>{this.failed.add(id);this.focusedDraft=null;this.refresh();});}
     const signature = alternativeSignature(net);
     if (this.validated?.net !== net || this.validated.signature !== signature || this.validated.pcId !== (r.lpm.pc?.id ?? null)) { this.candidates.clear(); this.awaiting = undefined; this.publish({ active: false }); void this.restore(net, signature, id); return; }
     const c = alternativeConditions(net), identity = pcIdentity(net), lpmHistory = completedLpmBeforeStorm(r);
@@ -215,25 +224,33 @@ export class AlternativePathsController {
       broadBlocked: r.step === 17 && conditions.specificRoute && e.broad?.hash !== this.validated.broadHash };
     const lpmObserved = !warning && experiment.r2Ping && experiment.broadPing && experiment.specificPing && conditions.specificSelected;
     const local = (count: number) => Array.from({ length: count }, (_, i) => transitLinkConfigured(net, i)).every(Boolean) && NEIGHBOR_TESTS.slice(0, count * 2).every(test => neighbors[test.key]);
-    const passed = !warning && r.prepared && r.stage !== 'adding-pcs' && (lpmHistory || [local(1), local(2), local(3), c.strict && r.remoteUnderstood,
+    const historical = alternativeStepCompleted(r);
+    // Entering an already earned task is a review, even if it is still valid.
+    // First-time success stays ordinary feedback; no new metadata is persisted.
+    if (!this.entry || this.entry.draftId !== id || this.entry.attemptId !== r.attemptId || this.entry.step !== r.step || !historical)
+      this.entry = { draftId: id, attemptId: r.attemptId, step: r.step, historical };
+    const passed = !warning && r.prepared && r.stage !== 'adding-pcs' && [local(1), local(2), local(3), c.strict && r.remoteUnderstood,
       c.lanA, c.lans, c.lans && this.proof(r.investigated), c.r1Forward, c.forward, c.forward && this.proof(r.returnInvestigated),
       c.forward && c.r3Back, viaProved, viaProved && r.hopUnderstood,
-      r.lpm.legacy || lpmPcValid(net, r.lpm), r.lpm.legacy || lpmPcValid(net, r.lpm) && r.lpm.localReply === this.validated.localHash,
-      e.legacy || conditions.r2Route && experiment.r2Ping,
-      e.legacy || conditions.r2Route && conditions.broadRoute && experiment.broadPing,
-      e.legacy || conditions.specificSelected && experiment.specificPing,
-      e.legacy || lpmObserved && r.lpmUnderstood,
-      r.storm !== 'pending' && (r.storm !== 'legacy' && r.completed.includes(20) && !!r.failure || c.broken && r.failure === this.validated.hash), c.direct && !!r.failure, c.direct && !!r.failure && replies.ab && replies.ba][r.step - 1]);
+      lpmPcValid(net, r.lpm), lpmPcValid(net, r.lpm) && r.lpm.localReply === this.validated.localHash,
+      conditions.r2Route && experiment.r2Ping,
+      conditions.broadSelected && experiment.broadPing,
+      conditions.specificSelected && experiment.specificPing,
+      lpmObserved && r.lpmUnderstood,
+      r.storm !== 'pending' && c.broken && r.failure === this.validated.hash, c.direct && !!r.failure, c.direct && !!r.failure && replies.ab && replies.ba][r.step - 1];
+    // Reviewing earned credit may cross obsolete or damaged configurations.
+    // Never use that permission to record fresh technical completion below.
+    const canAdvance = !this.runtime.pendingForms() && r.prepared && r.stage !== 'adding-pcs' && (historical || passed);
     const pathValid = r.step >= 21 ? c.direct : c.via;
     const stale = Object.values(evidence).some(proof => proof !== null && (!this.proof(proof) || !pathValid));
     const pathStatus = pathValid && replies.ab && replies.ba ? 'verified' : stale ? 'invalidated' : 'expected';
     const observed = this.investigation;
     const investigationResult = !warning && [7, 10].includes(r.step) && observed?.step === r.step && observed.net === net && observed.signature === signature && observed.draftId === id ? observed.result : null;
-    this.publish({ active: true, warning, passed, pathStatus, investigationResult, lpmObserved, experiment: same(experiment, this.state.experiment) ? this.state.experiment : experiment, failureMismatch: r.step === 20 && (r.storm === 'legacy' || !r.failure) && c.broken && !!r.viaBaseline && !this.baselineMatches(r.viaBaseline),
+    this.publish({ active: true, warning, passed, historical, reviewing: historical && (this.entry.historical || !passed), canAdvance, pathStatus, investigationResult, lpmObserved, experiment: same(experiment, this.state.experiment) ? this.state.experiment : experiment, failureMismatch: r.step === 20 && (r.storm === 'legacy' || !r.failure) && c.broken && !!alternativeFailureBaseline(r) && !this.baselineMatches(alternativeFailureBaseline(r)),
       neighbors: same(neighbors, this.state.neighbors) ? this.state.neighbors : neighbors, replies: same(replies, this.state.replies) ? this.state.replies : replies });
     if ((!r.prepared || r.stage === 'adding-pcs') && !this.state.busy && !warning && !this.attempted.has(net)) void this.prepare();
     if (r.step === 20 && r.storm === 'pending' && !warning && !this.state.busy) void this.prepareStorm();
-    if (r.step === 14 && !r.lpm.legacy && !warning && !this.state.busy) {
+    if (r.step === 14 && !historical && !r.lpm.legacy && !warning && !this.state.busy) {
       if (r.lpm.stage !== 'ready' && !this.lpmAttempted.has(net)) void this.prepareLanC();
       else if (r.lpm.stage === 'ready' && !r.lpm.pc) {
         const pc = findLpmPc(net, r.lpm.baseline!);
@@ -270,6 +287,7 @@ export class AlternativePathsController {
     if (!r || !this.state.active || this.state.warning || !this.validated || this.runtime.pendingForms() || command.network !== net || !['keyboard', 'quick-ping'].includes(command.source)) return;
     if (event.type === 'started') {
       if (r.step === 20 && r.storm === 'pending') return;
+      if (r.entry?.point === 'part-3' && r.step === 14) return; // Earlier A/B tasks were supplied, not performed in this attempt.
       if (![1, 2, 3, 7, 10, 12, 13, 14, 15, 16, 17, 18, 20, 22].includes(r.step)) return;
       const args = command.line.trim().split(/\s+/); if (args.shift()?.toLowerCase() !== 'ping') return;
       const targets: string[] = []; for (let index = 0; index < args.length; index++) { if (['-c', '-n'].includes(args[index])) { index++; continue; } if (!args[index].startsWith('-')) targets.push(args[index]); }
@@ -298,7 +316,7 @@ export class AlternativePathsController {
       } else {
         const pair = command.deviceId === I.a && targets[0] === alternativeTarget(net, I.b) ? 'ab' : command.deviceId === I.b && targets[0] === alternativeTarget(net, I.a) ? 'ba' : null;
         const c = alternativeConditions(net);
-        if (!pair || r.step === 7 && (pair !== 'ab' || !c.lans || !c.strict) || r.step === 10 && (pair !== 'ab' || !c.forward) || [12, 13, 14].includes(r.step) && !c.via || r.step === 20 && (pair !== 'ab' || !c.broken || !this.baselineMatches(r.viaBaseline) || r.storm !== 'legacy' && (net.links.get(L.right)?.operational || !net.links.get(L.left)?.operational)) || r.step === 22 && (!c.direct || !r.failure)) return;
+        if (!pair || r.step === 7 && (pair !== 'ab' || !c.lans || !c.strict) || r.step === 10 && (pair !== 'ab' || !c.forward) || [12, 13, 14].includes(r.step) && !c.via || r.step === 20 && (pair !== 'ab' || !c.broken || !this.baselineMatches(alternativeFailureBaseline(r)) || r.storm !== 'legacy' && (net.links.get(L.right)?.operational || !net.links.get(L.left)?.operational)) || r.step === 22 && (!c.direct || !r.failure)) return;
         key = pair; path = expectedPcPath(pair, r.step === 22 ? 'direct' : 'via');
       }
       const firstRouter = net.devices.get(I.r1);
@@ -334,7 +352,7 @@ export class AlternativePathsController {
         if (m) return pathMatches(candidate.paths.get(seq));
         return /^(?:Request timed out\.|Reply from \d+\.\d+\.\d+\.\d+: Destination (?:net|host) unreachable\.)$/.test(line) && [...candidate.paths.values()].some(pathMatches);
       });
-      if (failed && (r.step !== 20 || alternativeConditions(net).broken && this.baselineMatches(r.viaBaseline))) {
+      if (failed && (r.step !== 20 || alternativeConditions(net).broken && this.baselineMatches(alternativeFailureBaseline(r)))) {
         if (r.step === 7 && !this.state.investigationResult) this.reportInvestigation('other');
         if (r.step === 10) {
           // Explain only this command's observed return failure. A timeout or
@@ -383,6 +401,17 @@ export class AlternativePathsController {
       void this.update({ [r.step === 7 ? 'investigated' : 'returnInvestigated']: this.validated.abHash });
     } else {
       const via = [12, 13, 14].includes(r.step), field = via ? 'viaReplies' : 'directReplies', keep = Object.values(r[field]).every(value => value === null || this.proof(value));
+      if (!keep && alternativeStepCompleted(r, via ? 12 : 22)) {
+        // Keep the certified old pair intact while only one new reply exists.
+        // Replace it atomically after both directions match the new configuration.
+        const old = this.repeatedReplies;
+        const fresh: NonNullable<typeof this.repeatedReplies> = old?.net === net && old.draftId === r.draftId && old.hash === this.validated.abHash && old.field === field
+          ? old : { net, draftId: r.draftId, hash: this.validated.abHash, field, ab: false, ba: false };
+        if (candidate.key !== 'ab' && candidate.key !== 'ba') return;
+        fresh[candidate.key] = true; this.repeatedReplies = fresh;
+        if (fresh.ab && fresh.ba) void this.update({ [field]: { ab: fresh.hash, ba: fresh.hash } });
+        return;
+      }
       // Normalize both still-valid legacy receipts together. Mixing an old full
       // hash with a new scoped hash would violate the persisted pair contract.
       const previous = keep ? { ab: r[field].ab ? this.validated.abHash : null, ba: r[field].ba ? this.validated.abHash : null } : { ab: null, ba: null };

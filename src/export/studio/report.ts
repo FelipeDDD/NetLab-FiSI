@@ -76,8 +76,8 @@ export function studioReport(snapshot: PrintSnapshot, options: PrintDocumentOpti
   const finalNote = `<svg class="print-footer-note" width="${page.width}" height="${page.footerHeight}" viewBox="0 0 ${page.width} ${page.footerHeight}" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif">${footerNoteMarkup(page.footerLines, page.footerHeight)}</svg>`;
   const html = `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(options.title)}</title><style>
 @page { size: ${options.paper} ${options.orientation}; margin: ${options.margin}mm; }
-* { box-sizing: border-box; } html { color-scheme: light; background:#e4e8ec; } body { margin:0; color:#1e293b; font:13px/1.4 Arial,sans-serif; }
-.print-page { background:#fff; width:${size.width}mm; min-height:${size.height}mm; padding:${options.margin}mm; margin:16px auto; box-shadow:0 2px 12px #0002; }
+* { box-sizing: border-box; } html { color-scheme: only light; background:#e4e8ec; } body { margin:0; color:#1e293b; background:#e4e8ec; font:13px/1.4 Arial,sans-serif; }
+.print-page { color-scheme:only light; color:#1e293b; background:#fff; width:${size.width}mm; min-height:${size.height}mm; padding:${options.margin}mm; margin:16px auto; box-shadow:0 2px 12px #0002; }
 .print-page--report { position:relative; }
 .print-page--report > footer { position:absolute; bottom:${options.margin}mm; left:calc(${options.margin}mm + 8px); right:calc(${options.margin}mm + 8px); height:18px; margin:0; padding-top:2px; }
 .print-footer-note { position:absolute; bottom:${options.margin}mm; left:${options.margin}mm; width:calc(100% - ${options.margin * 2}mm); height:${page.footerHeight}px; }
@@ -85,7 +85,7 @@ export function studioReport(snapshot: PrintSnapshot, options: PrintDocumentOpti
 h1 { font-size:${options.preset === 'presentation' ? 30 : 24}px; line-height:1.2; margin:0 0 6px; color:${accent}; overflow-wrap:anywhere; } .print-subtitle { font-size:14px; margin:4px 0; }
 .print-branding,footer { font-size:10px; color:#475569; } footer { border-top:1px solid #cbd5e1; margin-top:16px; padding-top:6px; }
 h2 { font-size:16px; margin:16px 0 7px; break-after:avoid; color:${accent}; } p { white-space:pre-wrap; overflow-wrap:anywhere; margin:6px 0; }
-table { width:100%; border-collapse:collapse; table-layout:fixed; margin-bottom:12px; font-size:12px; } th,td { border:1px solid #d4dce4; padding:6px 8px; text-align:left; vertical-align:top; overflow-wrap:anywhere; white-space:pre-wrap; }
+table { color:#1e293b; background:#fff; width:100%; border-collapse:collapse; table-layout:fixed; margin-bottom:12px; font-size:12px; } th,td { border:1px solid #d4dce4; padding:6px 8px; text-align:left; vertical-align:top; overflow-wrap:anywhere; white-space:pre-wrap; }
 th { background:#f1f4f7; font-size:11px; } td { font-family:ui-monospace,monospace; line-height:17px; } tr { break-inside:avoid; } thead { display:table-header-group; }
 .print-diagram svg { display:block; max-width:100%; height:auto; } aside { border-left:3px solid ${accent}; padding-left:10px; margin-top:10px; }
 @media print { html,body { background:white; margin:0; } .print-page { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; break-after:page; } .print-page:last-child { break-after:auto; } * { print-color-adjust:exact; -webkit-print-color-adjust:exact; } }

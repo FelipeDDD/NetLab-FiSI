@@ -8,6 +8,186 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 
 ## Leia primeiro — auditoria e estado atual em 10/11/2026
 
+**Consolidação em `main` — 10/11/2026:** este conjunto reúne revisão histórica
+do capítulo 5, PC C Linux/Windows, checkpoints e menu das Rodadas 1–3, progresso
+independente e refinamentos dos documentos/relatórios. As indicações “somente
+local” nas seções abaixo registram o estado anterior a esta consolidação.
+Capturas, logs, bancos descartáveis, backups e dependências instaladas ficam fora
+do commit. Stash existente preservado; nenhuma mudança de dependências ou deploy.
+Consulte o Git para o hash e a situação da publicação autorizada pelo usuário.
+Na revisão final, `documentAppearance.test.ts` foi alinhado ao padrão de coleta
+do Vitest; seus seis casos agora são executados. A checagem de consolidação
+aprovou **304 testes em 28 arquivos** de exportação, metadados e idiomas, além
+das validações completas das rodadas anteriores registradas abaixo.
+
+**Capítulo 5 — Rodada 3, somente local:** checkpoints disponibilizados no menu
+Übungen (Beta), pelo botão de nova tentativa. Quatro opções: início, Partes 2/3/4.
+`AlternativeEntryMenu` reutiliza `FloatingPopover`, com lateral direita/fallback
+à esquerda, teclado/Escape/clique fora e Voltar compacto até 760 px. Pai reconhece
+o popup filho por referência. Fortsetzen/Netzwerk öffnen preservados.
+
+Indicadores do capítulo 5: check verde para conclusão integral histórica, azul
+para tentativa sem conclusão integral histórica, neutro sem tentativa disponível
+nem histórico. Texto acessível acompanha as cores; verde prevalece sobre uma nova
+prática parcial, cujo contador fica separado. Práticas das Partes 2/3/4 encerram
+positivamente em **16/16, 9/9 e 3/3**; resultados integrais seguem **16/22, 9/22 e
+3/22**, sem crédito para tarefas fornecidas. Revisão histórica tem pequeno check
+verde no box existente, preservando enunciados/ajudas/evidências.
+
+`alternativeLearning.ts` mantém dois registros v1 em `meta`: conclusão independente
+e referência à tentativa atual. História só deriva de um único progresso integral
+persistido/validado, com origem/versão e data de registro; sem somar tentativas ou
+inventar datas/recibos antigos. `setMeta(...,{guards})` confere revisão da origem
+na mesma transação do CAS histórico. Falhas são recuperáveis; reinício preserva
+a conclusão antes de limpar a tentativa. Metadados não chamam `commitDocument()`.
+Falhas específicas do histórico não bloqueiam capítulos 1–4.
+
+As quatro aberturas públicas gravam rascunho/sessão/progresso/checkpoint/marcador
+atual juntos. Início normal usa o mesmo triângulo, agora com identidades/controles
+preparados antes da transação; não muda o cenário. Menu prefere o capítulo no plano
+ativo, depois a última seleção persistida, sem apagar tentativas anteriores.
+Histórico é local ao navegador e não acompanha JSON; capítulos 1–4 conservam os
+indicadores anteriores, sem novos checkpoints/histórico independente nesta rodada.
+
+**304 testes distintos em 23 arquivos**, **320 verificações Chromium**, TypeScript,
+build e diff-check aprovados. Sem erros de navegador; aviso conhecido de chunk
+grande permanece. Capturas: `.playwright-mcp/reviews/chapter5-entries-round3/`.
+Contratos: `docs/chapter-entry-points.md`. Alterações locais das rodadas anteriores
+e stash preservados; sem mudanças no editor de relatórios ou na engine nesta
+rodada, sem acesso aos dados reais, commit, push, merge ou deploy.
+
+**Cores dos documentos e controles de tabelas, somente local:** após concluir os
+checkpoints do capítulo 5, prévia A4/HTML multipágina receberam `color-scheme:
+only light` no documento isolado, esquema explícito de folhas/tabelas e proteção
+na raiz do SVG independente. Relatório HTML anterior também protegido. Nenhum
+tema global, dado técnico, tutorial ou mecanismo de rede foi alterado. Removidos
+os três parágrafos extensos das tabelas em DE/EN/PT-BR; seção expansível preserva
+restaurar, lista e controles, aberta inicialmente.
+
+Auto Dark reproduzido em Chromium descartável: sete páginas técnicas. Com
+preferência de sistema escura, cores permanecem idênticas ligado/desligado;
+com preferência clara, Chromium ignora o opt-out e ainda transforma o relatório.
+Limite documentado, sem filtros de compensação; Vivaldi não instalado/testado.
+Geometria e conteúdo HTML preservados; PNG exportado idêntico byte a byte.
+**269 testes em 24 arquivos**, TypeScript/build/diff-check aprovados, com o aviso
+conhecido de chunk grande. Capturas, exportações e PDF locais em
+`.playwright-mcp/reviews/document-colors/{before,after}/`; reprodução:
+`node scripts/test-document-colors.mjs`. Ver `docs/document-colors.md`.
+Alterações locais anteriores preservadas; sem commit, push, merge ou deploy.
+
+**Pontos de entrada do capítulo 5 — Rodada 2, somente local:** acrescentado
+`part-4`, tarefa 20, com LANs A/B via R2, PC C fornecido por ID/MAC, LAN C /25
+e rotas /24 via R2 e /25 via R3. Enlace R2–R3 inicialmente UP. O baseline técnico
+`scenarioBaseline` é separado de `viaBaseline` e dos recibos do aluno: tarefas
+1–19 fornecidas, `completed: []`, respostas/recibos nulos, sem `legacy`.
+Criação continua atômica com rascunho/sessão/progresso/checkpoint, sem novos stores.
+
+Na tarefa 20, `storm: pending` utiliza a transação existente que grava porta DOWN
+e marcador consumido juntos. F5/Undo/navegação não reaplicam o incidente. Reinício
+restaura o cenário próprio da Parte 4 antes da falha; consumo do novo incidente
+é conciliado com o ticket Undo/Redo. Equipamentos independentes são preservados;
+identidades conflitantes bloqueiam a restauração. Recuperação continua exigindo
+cobertura integral das LANs e pings reais bidirecionais pelo enlace R1–R3, aceitando
+`replace` ou `del` + `add`. Ao final, mensagem DE/EN/PT-BR identifica **conclusão da
+prática da Parte 4**, permite explorar a rede e mantém somente **3/22**, sem crédito
+retroativo ou conclusão histórica integral.
+
+Validação desta rodada: **277 testes distintos em 21 arquivos**, TypeScript,
+build e diff-check aprovados; **180 verificações Chromium**, sem erros, em perfil
+e bancos descartáveis. Incluem os três checkpoints avançados, falhas antes/depois
+do commit, F5, identidade de PC C, troca de planos, reinício, Undo/Redo, três idiomas
+e ambos os temas. Build conserva o aviso conhecido de chunk acima de 500 kB.
+Documentação: `docs/chapter-entry-points.md`. As três entradas permanecem somente
+na API/harness; faltam submenu, indicadores e conclusão histórica independente
+(Rodada 3). Preservadas alterações locais anteriores; sem commit/push/merge/deploy
+e sem acesso aos dados reais do usuário.
+
+**Pontos de entrada do capítulo 5 — Rodada 1, somente local:** entradas internas
+`part-2` (tarefa 7: transit e LANs A/B prontos, sem rotas entre LANs) e `part-3`
+(tarefa 14: A/B funcionando via R2, nenhum PC C). Catálogo tipado/versionado em
+`alternativeEntryContract.ts`; builders e inicialização em `alternativeEntries.ts`.
+O descritor `entry` identifica configurações/tarefas fornecidas, sem preencher
+`completed`, respostas ou recibos anteriores e sem usar `legacy`. Essas tentativas
+usam progresso `schemaVersion: 2`; início normal/antigos continuam v1, conteúdo
+do capítulo v4/22 tarefas. Isso também faz builds antigos recusarem o novo contrato.
+
+Rascunho, sessão, progresso e checkpoint de reinício são criados na mesma transação
+CAS antes da ativação, usando opções `initialization` de `openDocument()` e controles
+de `createDraft()`. Sem novos stores ou migração de dados reais. A Parte 3 pode
+preparar LAN C a partir da configuração fornecida, sem inventar A/B pings ou Next
+Hop respondido. Zurück respeita a primeira tarefa da entrada; nota DE/EN/PT-BR
+identifica tarefas fornecidas. PC C Linux/Windows continua exigindo identidade,
+conexão, configuração e pings reais. A preparação de R3 eth3 no reinício da entrada
+da Parte 3 integra documento/progresso na mesma restauração, preservando Undo/Redo.
+
+Disponível somente por API/harness descartável; nenhum submenu/URL pública ou
+novo fluxo de boot. Pendentes: menu, apresentação da conclusão de prática parcial,
+conclusão histórica independente e entrada da Parte 4. Terminar as tarefas restantes
+não concede 22/22. Ver `docs/chapter-entry-points.md`. Chromium direcionado: **167
+verificações aprovadas**, sem erros, incluindo falhas nativas, quota/abort/conflito,
+F5 imediato, ambos os cenários até o final, reinício e Undo/Redo. TypeScript/build
+aprovados; **269 testes em 22 arquivos** e diff-check aprovados. Preservadas
+alterações locais anteriores; sem commit, push, merge ou deploy.
+
+**Revisão didática e PC C Linux/Windows, somente local:** capítulo 5 mantém os
+enunciados, sintaxes e Ajuda original recolhida ao revisitar tarefas, inclusive
+LPM após a tempestade. Um único box neutro distingue revisão de execução normal;
+o primeiro sucesso não é rotulado como revisão. `alternativeReviewEvidence`
+seleciona explicações e percursos sustentados por recibos; a volta vem do caminho
+registrado, sem presumir simetria. Créditos legados permitem navegar e consultar
+a ajuda, mas não inventam pacotes, causas ou comandos exatos. Indicadores e tabela
+ao vivo continuam mostrando o estado atual. Sem novos metadados ou migração.
+
+LAN C aceita novo Host Linux **ou Windows**, também no modo aleatório. Mantidos
+ID/MAC, baseline de PCs anteriores, eth3 de R3, /25, gateway, nome seguro e
+proteção de nomes personalizados. IPv4/Gateway pelo Inspector em ambos; nenhum
+comando Windows novo. Superada a limitação histórica de somente Linux na LAN C.
+As 22 tarefas, capítulos 1–4, rotas, engine, tempestade e recuperação permanecem.
+Chromium: **288 verificações**, sem erros, incluindo Windows até a conclusão,
+revisão 13–19, F5, DE/EN/PT-BR, temas e 700 px. TypeScript/build aprovados.
+Testes finais: **118 aprovados em 3 arquivos** (controller, seleção de evidências
+e idiomas); as demais regressões dos tutoriais passaram na rodada anterior.
+Capturas reais e três comparações em `.playwright-mcp/reviews/chapter5-history/`;
+abra `index.html`. Preservadas as alterações locais anteriores. Sem commit,
+push, merge, deploy ou acesso aos dados reais do usuário.
+
+**Correção do bloqueio de revisão do capítulo 5, somente local:** reproduzido no
+Chromium: após a tempestade e F5 na etapa 20 (Parte 4, 1/3), voltar à etapa 13
+(Parte 2, 9/9) bloqueava Weiter, embora 1–19 já estivessem concluídas. O controller
+exigia novamente o caminho via R2, cuja eth1 agora estava DOWN. Separados crédito
+histórico, validade técnica atual (`passed`) e permissão de avanço (`canAdvance`).
+A revisão usa somente conclusões registradas e créditos legados já validados;
+tarefas nunca comprovadas continuam exigindo condições e evidências reais.
+Uma nota DE/EN/PT-BR distingue revisão de aprovação técnica atual. Repetir apenas
+um ping não apaga o par histórico de comprovantes; sua atualização exige os dois
+sentidos na mesma configuração. Navegar não reaplica a tempestade nem prepara
+novamente a LAN C já concluída. Mantidas as 22 tarefas, critérios, engine e dados.
+
+Tentativas afetadas com crédito válido podem ser retomadas sem reiniciar ou
+migrar o banco. Se o aluno removeu/recriou PC C, a revisão continua disponível,
+mas o vínculo original ID/MAC é preservado: nenhum host é adotado ou equipamento
+restaurado silenciosamente. Etapas ainda não concluídas permanecem bloqueadas
+quando a rede está danificada; esta correção não reconstrói a topologia do aluno.
+Regressões incluem /24 após /25, etapas 13–22, F5, tentativas antigas, recuperação,
+créditos ausentes e PC C removido/recriado. Validação: **237 testes em 18 arquivos**,
+**252 verificações Chromium**, sem erros de navegador, TypeScript e build aprovados
+(somente aviso conhecido de chunk >500 kB). Bancos e tentativas de teste isolados;
+nenhum dado real do navegador alterado. Sem commit, push, merge ou deploy.
+
+**Ajustes após a auditoria, somente local:** base `main`, HEAD `07d4ee6`, limpa
+ao início. A instrução atual proíbe **commit, push, merge e deploy**, prevalecendo
+sobre autorizações históricas abaixo. Etapa 17 esclarece LAN C física /25 versus
+rota /24 mais abrangente, sem fornecer rede calculada ou Next Hop. Etapa 21
+distingue as rotas para LAN C/LAN B e o retorno para toda LAN A; ensina `replace`
+e reconhece `del` + `add` equivalente. DE/EN/PT-BR. Sete casos da auditoria foram
+incorporados aos testes existentes: cobertura integral, /32 isoladas/exceções,
+Next Hop/interface e pings diretos nos dois sentidos. As 22 tarefas, validadores,
+máscaras, rotas, tempestade, LPM e simulação permanecem inalterados.
+Validação: **134 testes direcionados em 5 arquivos**, **251 verificações Chromium**
+sem erros de navegador, TypeScript, build e diff-check aprovados. O teste visual
+permite a LAN física /25 no enunciado 17, mantendo a proibição de rede /24 resolvida
+e Next Hops; etapa 21 conserva os dois checkpoints e reconhece `del` + `add`.
+
 **Consolidação Git autorizada em 10/11/2026:** o usuário solicitou revisar os
 arquivos, atualizar este Markdown e, passando a auditoria, criar o commit e fazer
 push. Essa autorização substitui as proibições históricas de commit/push abaixo.

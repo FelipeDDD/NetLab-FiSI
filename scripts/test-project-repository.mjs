@@ -428,6 +428,14 @@ try {
     await runTutorialMenuReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_DOCUMENT_COLOR_REVIEW) {
+    const { runDocumentColorReview } = await import('./document-color-review.mjs');
+    const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+    await runDocumentColorReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report, downloads: path.join(scratch, 'downloads'),
+      openPage: async () => { const target = await (await fetch(currentDebug + '/json/new?about:blank', { method: 'PUT' })).json(); return connect(target.webSocketDebuggerUrl); },
+    });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_TOPOLOGY_STUDIO_REVIEW === '1') {
     const { runTopologyStudioReview } = await import('./topology-studio-review.mjs');
     const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];

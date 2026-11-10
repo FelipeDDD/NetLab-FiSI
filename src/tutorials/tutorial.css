@@ -24,6 +24,11 @@
 .guided-alternative-table :is(th, td) { text-align: left; padding: 4px; white-space: nowrap; }
 .guided-alternative-choice { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
 .guided-menu-progress { display: flex; flex-direction: column; gap: 2px; margin: 7px 0; }
+.guided-alternative-indicator { font-size:12px; }
+.guided-alternative-indicator.is-complete,.guided-history-check { color:var(--ui-success); }
+.guided-alternative-indicator.is-in-progress > span { color:#3b82f6; }
+.guided-alternative-indicator.is-not-started { color:var(--ui-text-muted); }
+.alternative-entry-menu { z-index:1100; }
 .guided-progress { color: var(--ui-text-muted); font-size: 12px; }
 .guided-progress.is-complete { color: var(--ui-success); }
 .guided-completion .guided-action-indicator { border-color: var(--ui-success); color: var(--ui-surface-card); background: var(--ui-success); }

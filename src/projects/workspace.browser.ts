@@ -9,6 +9,27 @@ const token = (d: DraftVersion): DraftVersion => ({ revision: d.revision, editSe
 const sameDocument = (a: unknown, b: unknown) => equal(encodeDraftDocument(a).json, encodeDraftDocument(b).json);
 
 export const workspaceBrowserCases: Record<string, () => Promise<void>> = {
+  'workspace: initial draft controls commit with the draft and session, or roll back together': () => fixture(async ({open,raw})=>{
+    const repo=await open(),w=repo.workspace,s=take(await w.createSession()),db=await raw(),put=IDBObjectStore.prototype.put;
+    for(const mode of ['quota','abort','conflict']){
+      const key='guided:entry-test:'+mode,checkpoint=key+':checkpoint';
+      if(mode==='conflict')take(await repo.setMeta({key,expectedRevision:null,value:{existing:true}}));
+      const before=await dump(db);
+      IDBObjectStore.prototype.put=function(...args:Parameters<typeof put>){
+        const value=args[0] as MetaRecord;
+        if(this.name==='meta'&&value.key===checkpoint&&mode==='quota')throw new DOMException('Injected quota.','QuotaExceededError');
+        const request=put.apply(this,args);
+        if(this.name==='meta'&&value.key===checkpoint&&mode==='abort')request.addEventListener('success',()=>this.transaction.abort());
+        return request;
+      };
+      try{code(await w.createDraft(s.session.id,1,{document:document(),control:[{key,expectedRevision:null,value:{ready:true}},{key:checkpoint,expectedRevision:null,value:{ready:true}}]}),mode==='quota'?'quota-exceeded':mode==='abort'?'aborted':'meta-conflict');}
+      finally{IDBObjectStore.prototype.put=put;}
+      equal(await dump(db),before);
+    }
+    const id=crypto.randomUUID(),key='guided:entry-test:success';
+    const created=take(await w.createDraft(s.session.id,1,{id,document:document(),control:[{key,expectedRevision:null,value:{draftId:id,ready:true}}]}));
+    equal(created.session.draftIds,[id]);equal(take(await repo.getMeta(key))!.value,{draftId:id,ready:true});
+  }),
   'workspace: independent drafts and empty sessions create no saved plans': () => fixture(async ({ open, raw }) => {
     const repo = await open(), w = repo.workspace;
     const empty = take(await w.createSession()); equal(empty.drafts, []); equal(empty.session.activeDraftId, null);

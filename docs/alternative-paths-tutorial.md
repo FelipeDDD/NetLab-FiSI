@@ -68,18 +68,19 @@ TypeScript e build passaram. Capturas finais organizadas separadamente em
 
 Somente ao chegar à etapa 14, após Next Hop e a prova A ↔ B, o controller prepara
 **R3 eth3 com 192.168.30.129/25**. Não cria host ou cabo. O aluno arrasta um novo
-PC Linux e o conecta a essa interface, sem requisito de nome ou posição.
+PC Linux ou Windows e o conecta a essa interface, sem requisito de nome ou posição.
 
 Antes da preparação, uma intenção persistida registra os IDs existentes. O host
 só é vinculado quando está fisicamente conectado à eth3, é novo em relação a essa
-lista, tem tipo Host/Linux e uma única eth0. O vínculo guarda **ID e MAC**. Um PC
-independente que já existia, um Windows ou apenas o primeiro host criado não é
+lista, tem tipo Host (Linux ou Windows) e uma única eth0. O vínculo guarda **ID e MAC**. Um PC
+independente que já existia ou apenas o primeiro host criado não é
 adotado. O painel e os caminhos didáticos mostram o papel **PC C**. O nome padrão
 é renomeado para `PC C` quando o histórico de criação confirma sua origem e não
 há nome personalizado ou colisão; ID/MAC e configuração permanecem. A decisão
 opcional `pc.nameChecked` impede reaplicação após Undo/F5. Sem histórico seguro
-ou com comprovantes antigos, o nome existente é preservado. A exigência de Linux
-continua explícita: o reconhecimento atual não aceita Windows nesta atividade.
+ou com comprovantes antigos, o nome existente é preservado. A escolha aleatória
+do catálogo também pode produzir um Windows válido. O Inspector configura IPv4
+e Gateway em ambos; nenhum comando Windows novo foi necessário.
 
 PC C precisa de **192.168.30.130/25**, enlace ativo e gateway/default efetivo
 **192.168.30.129 via eth0**. Aceita o campo Gateway ou uma rota default Linux
@@ -241,9 +242,21 @@ restaurar o enlace antes da primeira observação, não há falha fictícia: o p
 orienta Redo ou desativação manual para observar o problema. Após a prova real,
 restaurar o enlace não apaga o aprendizado nem provoca nova tempestade.
 
-As etapas LPM já comprovadas podem ser revisitadas como histórico, com nota
-explícita de que o estado atual inclui a Parte 4. Seus recibos não são regravados
-nem usados para inventar novos pings. O baseline não é substituído após o incidente.
+As etapas já comprovadas podem ser revisitadas como histórico, sem repetir as
+condições antigas. O enunciado, a sintaxe e a Ajuda original recolhida continuam
+disponíveis, inclusive após a tempestade e em tentativas legadas. Ao retornar a
+uma tarefa concluída, um único box discreto sinaliza a revisão; os checkpoints e a tabela
+de rotas ao vivo continuam representando o estado atual, sem novos créditos.
+
+`alternativeReviewEvidence` seleciona apenas explicações sustentadas pelo registro:
+a resposta de Next Hop exige o par A/B comprovado e a resposta salva; a comparação
+de LPM exige os três recibos do experimento e sua conclusão. Os caminhos de ida
+correspondem ao percurso exato exigido pelo verificador original; o caminho de
+volta vem de `receipt.reply`, podendo ser assimétrico. Não se atribui um comando
+exato ao aluno: os exemplos são didáticos. Créditos legados sem recibos não geram
+caminhos fictícios; os digests das etapas 7/10 não identificam a causa de uma falha
+após F5. A explicação histórica da tempestade exige também seu marcador conhecido
+e a falha comprovada. Os recibos e o baseline não são substituídos pela navegação.
 Reinício **explícito** do capítulo restaura o checkpoint inicial e reinicia também
 o incidente; Undo do reinício recupera o documento e o marcador anteriores.
 Uma nova tentativa possui seu próprio marcador.
@@ -324,3 +337,17 @@ sem erros de navegador. Capturas em
 `.playwright-mcp/reviews/chapter5-round3/referencias-chatgpt/`; logs locais
 `.playwright-mcp/round3-*.log`. Permanece o aviso conhecido de chunk acima de 500 kB.
 Sem commit, push, merge ou deploy.
+
+## Entradas predefinidas — Parte 4 (10/11/2026)
+
+A API interna oferece agora `part-4` na tarefa 20, além de `part-2`/7 e `part-3`/14.
+O cenário prepara LANs A/B via R2, PC C/LAN C e as alternativas LPM /24 e /25,
+com R2–R3 operacional. `scenarioBaseline` representa somente essa configuração;
+as tarefas 1–19 não recebem respostas, recibos ou crédito. A tempestade começa
+pendente e reutiliza a transação atômica existente. Reinício recupera o cenário
+anterior à falha, com proteção de identidade e Undo/Redo sem reaplicar incidentes.
+
+Completar as tarefas 20–22 encerra explicitamente a **prática da Parte 4** e permite
+explorar a rede, mantendo **3/22** e nenhuma conclusão integral. Não há submenu,
+indicadores novos ou registro independente de conclusão histórica. Ver os contratos
+e limites em [chapter-entry-points.md](chapter-entry-points.md).

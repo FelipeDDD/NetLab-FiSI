@@ -297,10 +297,17 @@ export class ProjectRepository {
     return this.execute('readonly', tx => this.readMeta(tx, key));
   }
 
-  async setMeta(mutation: MetaMutation, options?: WriteOptions): Promise<RepositoryResult<MetaRecord>> {
+  async setMeta(mutation: MetaMutation, options?: import('./types').MetaWriteOptions): Promise<RepositoryResult<MetaRecord>> {
     try {
       const control = this.prepareControl([mutation]);
-      return await this.execute('readwrite', async tx => (await this.writeControl(tx, control))[0], options);
+      const guards = this.prepareControl((options?.guards ?? []).map(guard => ({ ...guard, value: null })));
+      return await this.execute('readwrite', async tx => {
+        for (const guard of guards) {
+          const current = await this.readMeta(tx, guard.key);
+          if ((current?.revision ?? null) !== guard.expectedRevision) fail({ code: 'meta-conflict', key: guard.key, expectedRevision: guard.expectedRevision, current, message: 'Source metadata changed.' });
+        }
+        return (await this.writeControl(tx, control))[0];
+      }, options);
     } catch (error) { return errorResult(error); }
   }
 }

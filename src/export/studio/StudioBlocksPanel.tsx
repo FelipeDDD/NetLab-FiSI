@@ -40,11 +40,10 @@ export function StudioBlocksPanel({ snapshot, options, layout, language, onChang
       <label>{t('routeFilter')}<select data-studio-new-block-filter value={filter} onChange={e => setFilter(e.target.value as BlockRouteFilter)}>{filters.map(([value, key]) => <option key={value} value={value}>{t(key)}</option>)}</select></label>
       <button type="button" className="btn" data-studio-add-block disabled={!device} onClick={add}>{t('addBlock')}</button>
     </details>
-    {options.routingBlocks.length > 0 && <>
-      <details className="studio-submenu"><summary>{t('blockHelp')}</summary><p className="studio-note">{t('blockDragHint')}</p><p className="studio-note">{t('blockReportNote')}</p><p className="studio-note">{t('tableScaleHint')}</p></details>
+    {options.routingBlocks.length > 0 && <details className="studio-submenu" data-studio-block-controls open>
+      <summary>{t('blockHelp')}</summary>
       {!options.sections.diagram.enabled && <p className="studio-warning">{t('blockDiagramHidden')}</p>}
       <button type="button" className="btn btn--ghost" data-studio-reset-blocks onClick={() => restore()}>{t('restoreBlocks')}</button>
-    </>}
     {options.routingBlocks.map((block, index) => {
       const current = devices.find(d => d.id === block.deviceId), box = layout.blocks.find(b => b.content.block.id === block.id)!;
       const scales = [...[.8, .85, .95, 1, 1.15, 1.3, 1.5].filter(s => Math.abs(s - box.content.scale) > .001), box.content.scale].filter(s => s >= blockScaleLimits(options).min).sort((a, b) => a - b);
@@ -72,6 +71,6 @@ export function StudioBlocksPanel({ snapshot, options, layout, language, onChang
         <button type="button" className="btn btn--ghost" data-block-reset-size onClick={() => patch(block.id, { width: 'compact', customWidth: undefined, scale: undefined })}>{t('restoreBlockSize')}</button>
         <div className="studio-block-actions"><button type="button" className="btn btn--ghost" data-block-reset onClick={() => restore(block.id)}>{t('restoreBlock')}</button><button type="button" className="btn btn--ghost" data-block-remove onClick={() => onChange(options.routingBlocks.filter(b => b.id !== block.id))}>{t('removeBlock')}</button></div>
       </details>;
-    })}
+    })}</details>}
   </div></StudioSection>;
 }

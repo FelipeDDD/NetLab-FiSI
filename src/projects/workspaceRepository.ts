@@ -122,6 +122,7 @@ export class WorkspaceRepository {
   async createDraft(sessionId: string, expectedSessionRevision: number, input: CreateDraftInput, options?: WriteOptions): Promise<RepositoryResult<SessionDraftResult>> {
     try {
       const id = this.validId(input.id ?? createProjectId()), document = encodeDraftDocument(input.document).document, activate = input.activate, now = this.host.timestamp();
+      const control = this.host.prepareControl(input.control);
       return await this.host.execute('readwrite', async tx => {
         const current = await this.session(tx, sessionId, expectedSessionRevision);
         await this.sessionDrafts(tx, current);
@@ -129,6 +130,7 @@ export class WorkspaceRepository {
         const session: SessionRecord = { ...current, revision: current.revision + 1, draftIds: [...current.draftIds, id],
           activeDraftId: activate === false && current.activeDraftId ? current.activeDraftId : id, updatedAt: Math.max(now, current.updatedAt) };
         await Promise.all([issueRequest(() => tx.objectStore('meta').add(workspaceMeta(draft))), issueRequest(() => tx.objectStore('meta').put(workspaceMeta(session)))]);
+        await this.host.writeControl(tx, control);
         return { ...this.receipt(draft), session };
       }, options);
     } catch (error) { return errorResult(error); }

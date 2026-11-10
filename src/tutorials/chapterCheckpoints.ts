@@ -13,6 +13,7 @@ import { STATIC_BASE_IDS, STATIC_EXTENSION_IDS, STATIC_IDS } from './staticRouti
 import { readAlternativeProgress, ALTERNATIVE_PROGRESS_PREFIX, type AlternativePathsProgress } from './alternativePathsProgress';
 import { ALTERNATIVE_ROUTERS, ALTERNATIVE_PCS, ALTERNATIVE_IDS } from './alternativePathsChapter';
 import { emptyLpm } from './alternativeLpm';
+import { readAlternativeEntry, alternativeEntryInitialValid, suppliedAlternativeLpm } from './alternativeEntryContract';
 
 export type ChapterId='first-connection'|'subnet-mask'|'two-networks'|'static-routing'|'alternative-paths';
 export const CHAPTERS:ChapterId[]=['first-connection','subnet-mask','two-networks','static-routing','alternative-paths'];
@@ -36,16 +37,21 @@ export function readChapterCheckpoint(value:unknown,id:string,chapter:ChapterId)
   let progress:MetaValue|null;try{progress=c.progress===null?null:validateProgress(chapter,c.progress,id);}catch{throw Error('checkpoint-invalid');}
   if(initial){
     const p=progress as unknown as Record<string,unknown>,added=chapter==='first-connection'||chapter==='static-routing'||chapter==='alternative-paths'?[]:chapter==='subnet-mask'?[SUBNET_PC_ID]:Object.values(ROUTER_IDS);
-    if(p.step!==1||initial.topology.devices.length!==before.topology.devices.length+added.length||added.some(key=>before.topology.devices.some(d=>d.id===key)||!initial!.topology.devices.some(d=>d.id===key)))throw Error('checkpoint-invalid');
+    const entry=chapter==='alternative-paths'&&p.entry!==undefined?readAlternativeEntry(p.entry):undefined;
+    if(p.step!==(entry?.firstTask??1)||initial.topology.devices.length!==before.topology.devices.length+added.length||added.some(key=>before.topology.devices.some(d=>d.id===key)||!initial!.topology.devices.some(d=>d.id===key)))throw Error('checkpoint-invalid');
     if(before.topology.devices.some(d=>!initial!.topology.devices.some(n=>same(d,n))))throw Error('checkpoint-invalid');
     if(chapter==='first-connection'&&(!same(before,initial)||p.a!==null||p.c!==null||p.ipv4Applied!==false||(p.devices as {c:unknown}).c!==null))throw Error('checkpoint-invalid');
     if(chapter==='first-connection'&&!same(p.completed,[])||chapter==='two-networks'&&!same(p.completed,[1]))throw Error('checkpoint-invalid');
     if(chapter==='subnet-mask'&&['inspected','answerAccepted','demoClaimed','demoPassed','unreachable'].some(key=>p[key]!==false))throw Error('checkpoint-invalid');
     if(chapter==='two-networks'&&(!same(p.replies,{a:null,f:null})||!same(p.diagnosis,{failure:false,reply:null})))throw Error('checkpoint-invalid');
     if(chapter==='static-routing'&&(!same(before,initial)||!p.prepared||p.stage!=='line'||!same(p.completed,[])||p.investigated!==null||p.missingAnswer!==null||p.inspectedR1!==false||p.retested!==null||p.returnInvestigated!==null||p.extension!==null||Object.values(p.lineReplies as object).some(Boolean)||Object.values(p.finalReplies as object).some(Boolean)||!STATIC_BASE_IDS.every(id=>initial!.topology.devices.some(d=>d.id===id))))throw Error('checkpoint-invalid');
-    if(chapter==='alternative-paths'&&(!same(before,initial)||!p.prepared||p.stage!=='triangle'||!same(p.completed,[])||p.remoteUnderstood!==false||p.hopUnderstood!==false||p.lpmUnderstood!==false||p.extension!==null||p.failure!==null||p.viaBaseline!==null||Object.values(p.neighbors as object).some(Boolean)||Object.values(p.viaReplies as object).some(Boolean)||Object.values(p.directReplies as object).some(Boolean)||!ALTERNATIVE_ROUTERS.every(id=>initial!.topology.devices.some(d=>d.id===id))))throw Error('checkpoint-invalid');
+    if(chapter==='alternative-paths'&&(!same(before,initial)||!p.prepared||p.stage!==(entry?'lans':'triangle')||!same(p.completed,[])||p.remoteUnderstood!==false||p.hopUnderstood!==false||p.lpmUnderstood!==false||(!entry&&p.extension!==null)||entry&&(p.investigated!==null||p.returnInvestigated!==null||p.storm!=='pending')||p.failure!==null||p.viaBaseline!==null||Object.values(p.neighbors as object).some(Boolean)||Object.values(p.viaReplies as object).some(Boolean)||Object.values(p.directReplies as object).some(Boolean)||!ALTERNATIVE_ROUTERS.every(id=>initial!.topology.devices.some(d=>d.id===id))))throw Error('checkpoint-invalid');
+    if(entry&&(!alternativeEntryInitialValid(initial,entry)||!same(p.extension,Object.fromEntries((['a','b'] as const).map(key=>[key,initial!.topology.devices.find(d=>d.id===ALTERNATIVE_IDS[key])?.ifaces[0]?.mac])))))throw Error('checkpoint-invalid');
   }
-  if(initial&&chapter==='alternative-paths'&&!same((progress as unknown as AlternativePathsProgress).lpm,emptyLpm()))throw Error('checkpoint-invalid');
+  if(initial&&chapter==='alternative-paths'){
+    const p=progress as unknown as AlternativePathsProgress;
+    if(!same(p.lpm,p.entry?.point==='part-4'?suppliedAlternativeLpm(initial):emptyLpm()))throw Error('checkpoint-invalid');
+  }
   return {...c,before,initial,progress};
 }
 const identity=(a:SavedDevice,b:SavedDevice)=>a.kind===b.kind&&a.ifaces.every(i=>b.ifaces.some(j=>j.name===i.name&&j.mac===i.mac));
@@ -56,6 +62,7 @@ export function chapterRestartDocument(c:ChapterCheckpoint,current:ProjectDocume
   if(!c.initial||!c.progress)throw Error('checkpoint-missing');
   const progress=validateProgress(c.chapter,rawProgress,c.draftId) as unknown as Record<string,unknown>;
   const original=c.progress as unknown as Record<string,unknown>;
+  if(c.chapter==='alternative-paths'&&!same(progress.entry,original.entry))throw Error('checkpoint-conflict');
   if(c.chapter==='first-connection'?progress.startedAt!==original.startedAt:c.chapter==='static-routing'||c.chapter==='alternative-paths'?progress.attemptId!==original.attemptId:progress.pcC!==original.pcC||progress.baseFingerprint!==original.baseFingerprint||progress.source!==original.source)throw Error('checkpoint-conflict');
   const baseline=c.before.topology,initial=c.initial.topology,result=structuredClone(current),now=result.topology;
   const lpmPc=c.chapter==='alternative-paths'?(progress as unknown as AlternativePathsProgress).lpm.pc:null;

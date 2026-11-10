@@ -18,6 +18,11 @@ function fault(code: 'not-started' | 'disposed' | 'runtime-changed' | 'unapplied
 const failure = (error: unknown): SessionError => error instanceof SessionFault ? error.detail : classifyError(error);
 const empty: ProjectDocument = createEmptyProjectDocument();
 export type SessionStartOptions = SessionBootstrapOptions & { discardStartupChanges?: boolean; expectedRuntimeDocument?: ProjectDocument };
+export interface OpenDocumentOptions {
+  discardUnappliedForms?: boolean;
+  /** New draft and its initial control records commit together, before activation. */
+  initialization?: { id: string; control: readonly MetaMutation[] };
+}
 
 interface Entry {
   persisted: OpenDraft;
@@ -284,14 +289,14 @@ export class SessionController {
     });
   }
   /** New/imported configuration enters as a separate unnamed working copy. */
-  openDocument(input: ProjectDocument, options: { discardUnappliedForms?: boolean } = {}): Promise<SessionResult<string>> {
+  openDocument(input: ProjectDocument, options: OpenDocumentOptions = {}): Promise<SessionResult<string>> {
     const discard = options.discardUnappliedForms === true;
-    let document: ProjectDocument;
-    try { document = encodeDraftDocument(input).document; }
+    let document: ProjectDocument, initialization: OpenDocumentOptions['initialization'];
+    try { document = encodeDraftDocument(input).document; initialization = options.initialization && structuredClone(options.initialization); }
     catch (error) { return Promise.resolve({ ok: false, error: failure(error) }); }
     return this.command(async () => {
       this.ready(); this.guardForms(discard); take(await this.flush());
-      const added = take(await this.workspace.createDraft(this.session!.id, this.session!.revision, { document, activate: false }, { signal: this.writes.signal }));
+      const added = take(await this.workspace.createDraft(this.session!.id, this.session!.revision, { document, activate: false, id: initialization?.id, control: initialization?.control }, { signal: this.writes.signal }));
       this.checkAlive(); this.session = added.session; this.entries.set(added.draft.id, this.entry(added.draft)); this.publish();
       await this.switchTo(added.draft.id, discard); return added.draft.id;
     });

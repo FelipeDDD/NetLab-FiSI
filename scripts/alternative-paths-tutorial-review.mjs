@@ -7,10 +7,16 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
   const database = 'netlab-idb-test-' + crypto.randomUUID(), directory = path.join(root, '.playwright-mcp/reviews/raw/alternative-paths-staging');
   await mkdir(directory, { recursive: true });
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const wait = async condition => { for (let i = 0; i < 300; i++) { if (await page.evaluate(`return !!(${condition});`)) return; await delay(40); } throw Error('Alternative paths: ' + condition); };
+  const wait = async condition => { for (let i = 0; i < 300; i++) {
+    try { if (await page.evaluate(`return !!(${condition});`)) return; }
+    catch(error){if(!/Inspected target navigated or closed|Execution context was destroyed|Cannot find context with specified id/.test(String(error)))throw error;}
+    await delay(40);
+  } throw Error('Alternative paths: ' + condition); };
   const click = async (selector, text) => {
-    const p = await page.evaluate(`const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&(${text ? `e.textContent.trim()===${JSON.stringify(text)}` : 'true'}));if(!e)throw Error('Missing '+${JSON.stringify(selector)});e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};`);
+    const p = await page.evaluate(`const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&(${text ? `e.textContent.trim().replace(/\\s*[▾›]$/,'')===${JSON.stringify(text)}` : 'true'}));if(!e)throw Error('Missing '+${JSON.stringify(selector)});e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};`);
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...p, ...(type === 'mouseMoved' ? {} : { button: 'left', clickCount: 1 }) }); await delay(100);
+    // Existing scenarios still start normally, now through the public submenu.
+    if(selector==='[data-alternative-direct]')await click('[data-alternative-entry-choice="beginning"]');
   };
   const mount = async (reload = false) => {
     const previous = crypto.randomUUID(); await page.evaluate(`window.previousReviewDocument=${JSON.stringify(previous)};`);
@@ -24,6 +30,13 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
   const step = n => wait(`document.querySelector('[data-alternative-step="${n}"]')`), passed = () => wait("document.querySelector('[data-alternative-passed=true]')");
   // Optional review artifacts only; progression still uses real commands and packets.
   const reviewStage = process.env.NETLAB_DIDACTIC_CAPTURE;
+  const historyStage = process.env.NETLAB_HISTORY_CAPTURE;
+  const historyCapture = async name => {
+    if (!historyStage) return;
+    await page.evaluate("store.getState().setTerminalDockCollapsed(true);document.querySelector('.exercise-body').scrollTop=0;"); await delay(180);
+    const folder=path.join(root,'.playwright-mcp/reviews/chapter5-history',historyStage);await mkdir(folder,{recursive:true});
+    const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(folder,name+'.png'),Buffer.from(png.data,'base64'));
+  };
   const capturedSteps = new Set();
   const compareCapture = async n => {
     if (!reviewStage || ![14, 16, 17, 18, 19, 20, 21].includes(n) || capturedSteps.has(n)) return;
@@ -47,13 +60,13 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
         if(help?.open||p.querySelectorAll('details').length>1||p.innerText.includes('guidedAlternative.'))return false;
         if(n===14&&(!main.includes('192.168.30.130/25')||main.includes('192.168.30.129')||!help.textContent.includes('192.168.30.129/25')))return false;
         if(n===15&&(/192\\.168\\.|real|echt/.test(main)||p.querySelector(':scope > pre')))return false;
-        if(n>=16&&n<=18&&(/(?:192\\.168\\.|10\\.0\\.)/.test(main)||p.querySelector(':scope > pre')||/10\\.0\\.(?:12|13|23)\\.2/.test(help.textContent)))return false;
+        if(n>=16&&n<=18&&(/(?:192\\.168\\.|10\\.0\\.)/.test(n===17?main.replaceAll('192.168.30.128/25',''):main)||p.querySelector(':scope > pre')||/10\\.0\\.(?:12|13|23)\\.2/.test(help.textContent)))return false;
         if(n===16&&(!main.includes('ip route add')||!help.textContent.includes('192.168.30.128/25')||!help.querySelector('pre code').textContent.includes('<')))return false;
-        if(n===17&&(!main.includes('/24')||!help.textContent.includes('/25')))return false;
+        if(n===17&&(!main.includes('192.168.30.128/25')||!main.includes('/24')||!help.textContent.includes('/25')))return false;
         if(n===18&&(!main.includes('/25')||!main.includes('/24')))return false;
         if(n===19&&(!p.querySelector('[data-lpm-before]')||!p.querySelector('[data-lpm-path=request]')||!p.querySelector('[data-lpm-path=reply]')||p.querySelector('[data-alternative-feedback=lpm]')))return false;
         if(n===20&&help)return false;
-        if(n===21&&(help||/10\\.0\\.13\\.[12]/.test(visible)||!visible.includes('ip route add')||!visible.includes('ip route replace')||p.querySelectorAll('[data-alternative-recovery]').length!==2))return false;
+        if(n===21&&(help||/10\\.0\\.13\\.[12]/.test(visible)||!visible.includes('ip route add')||!visible.includes('ip route replace')||!visible.includes('ip route del')||p.querySelectorAll('[data-alternative-recovery]').length!==2))return false;
         return true;
       `));
       report.results[`alternative paths: didactic task ${n}, ${language}, ${themeName}`] = { passed: true };
@@ -69,7 +82,7 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
     for (const language of ['de', 'en', 'pt-BR']) for (const themeName of ['graphite-dark', 'classic-light']) {
       await page.evaluate(`lang.getState().setLanguage(${JSON.stringify(language)});theme.getState().setTheme(${JSON.stringify(themeName)});`); await delay(70);
       await check(language, themeName);
-      assert(await page.evaluate('const p=document.querySelector("[data-alternative-step]"),step=Number(p.dataset.alternativeStep),instruction=p.querySelector(":scope > p").textContent;return step<16||step>18||!/(?:192\\.168\\.|10\\.0\\.)/.test(instruction)&&!p.querySelector(":scope > pre");'));
+      assert(await page.evaluate('const p=document.querySelector("[data-alternative-step]"),step=Number(p.dataset.alternativeStep),instruction=p.querySelector(":scope > p").textContent;return step<16||step>18||!/(?:192\\.168\\.|10\\.0\\.)/.test(step===17?instruction.replaceAll("192.168.30.128/25",""):instruction)&&!p.querySelector(":scope > pre");'));
       report.results[`alternative paths: round 1 scene ${scene}, ${language}, ${themeName}`] = { passed: true };
     }
     await page.evaluate("lang.getState().setLanguage('de');theme.getState().setTheme('graphite-dark');"); await delay(70);
@@ -80,7 +93,7 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
     const png = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(path.join(folder, name + '.png'), Buffer.from(png.data, 'base64'));
   };
-  const next = async n => { await wait("document.querySelector('[data-alternative-next]:not(:disabled)')"); await click('[data-alternative-next]'); await step(n); await saved(); await minimalPanel(n); if(n>=14&&n<=21)await checkDidacticCopy(n); await compareCapture(n); };
+  const next = async n => { await wait("document.querySelector('[data-alternative-next]:not(:disabled)')"); await click('[data-alternative-next]'); await step(n); await saved(); await minimalPanel(n); if(n>=14&&n<=21)await checkDidacticCopy(n); await compareCapture(n); if(n===17)await historyCapture('step-17-normal'); };
   const answer = async (kind, value) => { await page.evaluate(`const input=document.querySelector('[data-alternative-answer=${kind}]');input.value=${JSON.stringify(value)};input.dispatchEvent(new Event('change',{bubbles:true}));`); await delay(120); };
   const command = async (id, line, advance = false) => {
     await page.evaluate(`store.getState().terminals.filter(key=>key!==${JSON.stringify(id)}).forEach(key=>store.getState().closeTerminal(key));store.getState().openTerminal(${JSON.stringify(id)});window.commandStart=records.length;`);
@@ -114,15 +127,22 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
   const I = { r1: 'tutorial-05-r1', r2: 'tutorial-05-r2', r3: 'tutorial-05-r3', a: 'tutorial-05-a', b: 'tutorial-05-b' };
   let personal, original, attempt, legacyNeighborHash, pcC;
   const captures = [];
+  const entryOnly=process.env.NETLAB_ENTRY_ONLY==='1';
+  const entryCapture=async name=>{
+    const folder=path.join(root,'.playwright-mcp/reviews/chapter5-entries-round3');await mkdir(folder,{recursive:true});
+    await delay(160);const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(folder,name+'.png'),Buffer.from(png.data,'base64'));
+  };
+  const key=async name=>{for(const type of ['keyDown','keyUp'])await page.send('Input.dispatchKeyEvent',{type,key:name,code:name,windowsVirtualKeyCode:{Escape:27,ArrowRight:39,ArrowLeft:37,ArrowDown:40,ArrowUp:38,Enter:13}[name]});await delay(100);};
   const capturePanel = async (name, state, width = 1440, variant = 'graphite-dark') => {
     await page.evaluate('store.getState().setTerminalDockCollapsed(true);'); await delay(180);
     captures.push(await shot(name, state, width, variant));
   };
   try {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false }); await mount();
+    if(!entryOnly){
     await page.evaluate("theme.getState().setTheme('graphite-dark');store.getState().addDeviceAt('host',{x:300,y:200});store.getState().setTerminalLayoutMode('by-type');store.getState().setTerminalDockCollapsed(true);await ws.controller.flush();"); personal = await receipt();
     await test('independent unconfigured triangle, one scenario counter and collapsed contextual help', async () => {
-      await menu(); assert.equal(await page.evaluate('return document.querySelector("[data-alternative-direct]").textContent;'), 'Kapitel starten'); await click('[data-alternative-direct]'); await step(1); await saved(); attempt = (await receipt()).id; assert.notEqual(attempt, personal.id);
+      await menu();assert(await page.evaluate('return !!document.querySelector("[data-alternative-indicator=not-started]");')); assert.equal(await page.evaluate('return document.querySelector("[data-alternative-direct]").textContent;'), 'Kapitel starten'); await click('[data-alternative-direct]'); await step(1); await saved(); attempt = (await receipt()).id; assert.notEqual(attempt, personal.id);
       assert(await page.evaluate("return sim.net.devices.size===3&&sim.net.links.size===3&&[...sim.net.devices.values()].every(d=>d.kind==='router'&&d.interfaces.every(i=>!i.ip))&&store.getState().terminalLayoutMode==='by-type';"));
       assert(await page.evaluate("return document.querySelector('.guided-scenario').textContent.includes('Nachbarn verbinden')&&document.querySelector('.guided-step-progress').textContent.includes('Schritt 1 von 4')&&!document.querySelector('[data-alternative-help]').open;"));
       await minimalPanel(1);
@@ -131,6 +151,28 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       await click('[data-alternative-help] > summary');
       assert(await page.evaluate("const h=document.querySelector('[data-alternative-help]');return !h.querySelector('details')&&h.innerText.includes('ip address add')&&h.innerText.includes('/30')&&!h.innerText.includes('ip route add');"));
       await capturePanel('02-first-link-help', 'help');
+    });
+    await test('public entries: desktop/left fallback, compact Back, keyboard, real starts and current attempt after F5',async()=>{
+      await menu();await page.evaluate('document.querySelector("[data-alternative-direct]").focus();');await key('ArrowRight');await wait('document.querySelector("#alternative-entry-menu")');
+      assert(await page.evaluate('return !!document.querySelector("#toolbar-exercises-menu")&&document.querySelectorAll("[data-alternative-entry-choice]").length===4&&document.activeElement.dataset.alternativeEntryChoice==="beginning";'));await entryCapture('01-desktop-submenu');
+      await key('ArrowUp');assert.equal(await page.evaluate('return document.activeElement.dataset.alternativeEntryChoice;'),'part-4');await key('Escape');assert(await page.evaluate('return !document.querySelector("#alternative-entry-menu")&&!!document.querySelector("#toolbar-exercises-menu")&&document.activeElement.hasAttribute("data-alternative-direct");'));
+      // Move only the disposable menu element near the right edge to exercise flip.
+      const left=await page.evaluate('const p=document.querySelector("#toolbar-exercises-menu"),old=p.style.left;p.style.left=(innerWidth-p.offsetWidth-12)+"px";return old;');
+      await key('ArrowRight');await wait('document.querySelector("#alternative-entry-menu")');assert(await page.evaluate('const c=document.querySelector("#alternative-entry-menu").getBoundingClientRect(),a=document.querySelector("[data-alternative-direct]").getBoundingClientRect();return c.right<=a.left+1;'));await key('ArrowLeft');await page.evaluate(`document.querySelector('#toolbar-exercises-menu').style.left=${JSON.stringify(left)};`);await key('Escape');
+      await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:1000,deviceScaleFactor:1,mobile:false});await wait('[...document.querySelectorAll(".toolbar-menu-trigger")].some(e=>e.textContent.trim().startsWith("Menü"))');await menu();await click('[data-alternative-direct][aria-haspopup=menu]');await wait('document.querySelector("[data-alternative-entry-compact]")');
+      for(const language of ['de','en','pt-BR'])for(const themeName of ['graphite-dark','classic-light']){await page.evaluate(`lang.getState().setLanguage(${JSON.stringify(language)});theme.getState().setTheme(${JSON.stringify(themeName)});`);assert(await page.evaluate('const s=document.querySelector("[data-alternative-entry-compact]");return s.querySelectorAll("[data-alternative-entry-choice]").length===4&&!s.textContent.includes("guidedAlternative.")&&!!s.querySelector("[data-alternative-entry-back]");'));}
+      await page.evaluate('lang.getState().setLanguage("de");');await entryCapture('02-compact-submenu');await click('[data-alternative-entry-back]');await wait('document.querySelector("[data-alternative-direct]")');
+      await click('[data-alternative-direct][aria-haspopup=menu]');await key('Escape');assert(await page.evaluate('return !document.querySelector("[data-alternative-entry-compact]")&&!!document.querySelector("#toolbar-exercises-menu");'));
+      await click('[data-alternative-direct][aria-haspopup=menu]');await click('[data-alternative-entry-choice=part-2]');await step(7);await saved();await reloadAt(7);
+      assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);await passed();await next(8);await menu();assert(await page.evaluate('return !!document.querySelector("[data-alternative-indicator=in-progress]")&&document.querySelector("[data-alternative-practice-progress]").textContent.includes("1/16");'));await entryCapture('03-partial-progress');
+      await click('[data-alternative-direct][aria-haspopup=menu]');await click('[data-alternative-entry-choice=part-3]');await step(14);await wait('sim.net.devices.get("tutorial-05-r3").getInterface("eth3").ip?.prefix===25');await saved();await reloadAt(14);assert.equal((await receipt()).progress.completed.length,0);
+      await menu();await click('[data-alternative-direct][aria-haspopup=menu]');await click('[data-alternative-entry-choice=part-4]');await step(20);await wait('document.querySelector("[data-alternative-storm=down]")');await saved();const last=(await receipt()).id;await reloadAt(20);
+      await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(personal.id)});`);await mount(true);await menu();await click('[data-alternative-resume]');await step(20);assert.equal((await receipt()).id,last);
+      await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(attempt)});`);await step(1);await saved();
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await page.evaluate('theme.getState().setTheme("graphite-dark");');
+    });
+    await test('native metadata guards reject a changed source and keep the running simulation intact',async()=>{
+      assert(await page.evaluate(`const prefix='review-guard:'+crypto.randomUUID(),source=prefix+':source',target=prefix+':history',net=sim.net;const a=await ws.repository.setMeta({key:source,expectedRevision:null,value:'complete'});if(!a.ok)return false;await ws.repository.setMeta({key:source,expectedRevision:1,value:'changed'});const refused=await ws.repository.setMeta({key:target,expectedRevision:null,value:'credit'},{guards:[{key:source,expectedRevision:1}]});if(refused.ok||refused.error.code!=='meta-conflict'||(await ws.repository.getMeta(target)).value)return false;const accepted=await ws.repository.setMeta({key:target,expectedRevision:null,value:'credit'},{guards:[{key:source,expectedRevision:2}]});return accepted.ok&&sim.net===net;`));
     });
     await test('three progressive links preserve earlier real bidirectional proofs across addressing and F5', async () => {
       for (let index = 0; index < 3; index++) {
@@ -221,7 +263,7 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
         await mount(true);await step(14);await saved();
       };
       for(const kind of ['generated','custom','collision']){
-        const created=await page.evaluate(`store.getState().setHostCreationMode('linux');let other=null;if(${JSON.stringify(kind)}==='collision'){store.getState().addDeviceAt('host',{x:1900,y:100});other=store.getState().nodes.at(-1).id;store.getState().renameDevice(other,'PC C');}store.getState().addDeviceAt('host',{x:1800,y:750});const id=store.getState().nodes.at(-1).id;if(${JSON.stringify(kind)}==='custom')store.getState().renameDevice(id,'Cliente especial');const d=sim.net.devices.get(id),before={id,name:d.name,mac:d.getInterface('eth0').mac,other};store.getState().onConnect({source:id,target:'tutorial-05-r3',sourceHandle:'eth0',targetHandle:'eth3'});return before;`);
+        const created=await page.evaluate(`store.getState().setHostCreationMode(${JSON.stringify(kind==='generated'?'linux':'windows')});let other=null;if(${JSON.stringify(kind)}==='collision'){store.getState().addDeviceAt('host',{x:1900,y:100});other=store.getState().nodes.at(-1).id;store.getState().renameDevice(other,'PC C');}store.getState().addDeviceAt('host',{x:1800,y:750});const id=store.getState().nodes.at(-1).id;if(${JSON.stringify(kind)}==='custom')store.getState().renameDevice(id,'Cliente especial');const d=sim.net.devices.get(id),before={id,name:d.name,mac:d.getInterface('eth0').mac,other};store.getState().onConnect({source:id,target:'tutorial-05-r3',sourceHandle:'eth0',targetHandle:'eth3'});return before;`);
         await wait('(document.querySelector("[data-alternative-saving=false]"))');await saved();
         const expected=kind==='generated'?'PC C':created.name;
         assert.equal(await page.evaluate(`return sim.net.devices.get(${JSON.stringify(created.id)}).name;`),expected);
@@ -247,11 +289,13 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       await mount(true);await step(14);await saved();
       assert.deepEqual((await receipt()).document,before.document);assert.equal((await receipt()).progress.chapterVersion,4);
       assert.equal((await receipt()).progress.lpm.pc,null);assert.equal((await receipt()).document.topology.devices.length,5);
-      await page.evaluate("store.getState().setHostCreationMode('linux');store.getState().setTerminalDockCollapsed(true);store.getState().select(null);");
+      await page.evaluate("store.getState().setHostCreationMode('mixed');store.getState().setTerminalDockCollapsed(true);store.getState().select(null);window.reviewRandom=Math.random;Math.random=()=>0.9;");
       const drop=await page.evaluate("const r=document.querySelector('.react-flow').getBoundingClientRect();for(let y=r.bottom-130;y>r.top+20;y-=40)for(let x=r.right-180;x>r.left+20;x-=40)if(document.elementFromPoint(x,y)?.classList.contains('react-flow__pane'))return{x,y};throw Error('No canvas drop target');");
       for(const type of ['dragEnter','dragOver','drop'])await page.send('Input.dispatchDragEvent',{type,...drop,data:{items:[{mimeType:'application/netsim',data:'host'}],dragOperationsMask:16}});
+      await page.evaluate('Math.random=reviewRandom;delete window.reviewRandom;');
       await wait('sim.net.devices.size===6');
       pcC=await page.evaluate('return store.getState().nodes.at(-1).id;');
+      assert.equal(await page.evaluate(`return sim.net.devices.get(${JSON.stringify(pcC)}).os;`),'windows');
       assert.equal((await receipt()).progress.lpm.pc,null);await reloadAt(14);
       await page.evaluate('store.getState().onConnect({source:'+JSON.stringify(pcC)+',target:"tutorial-05-r3",targetHandle:"eth3"});');
       await wait('(document.querySelector("[data-alternative-saving=false]")&&sim.net.devices.get("tutorial-05-r3").getInterface("eth3").link)');await saved();
@@ -260,12 +304,20 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
         assert.equal(await page.evaluate('return document.querySelector("[data-alternative-host]").textContent;'), 'PC C');
       });
       await roundOneCapture('03-pc-c-recognised');
-      assert.equal(await command(pcC,'ip address add 192.168.30.130/24 dev eth0'),'');await configureGateway(pcC,'192.168.30.129');
+      await page.evaluate(`store.getState().select(${JSON.stringify(pcC)});`);
+      await click('.inspector-tabs button','Netzwerk');
+      await wait('document.querySelector(".ipv4-form input[name=ip]")');
+      const fillIpv4 = async (ip, gateway) => {
+        await page.evaluate(`const form=document.querySelector('.ipv4-form'),set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [name,value] of [['ip',${JSON.stringify(ip)}],['gateway',${JSON.stringify(gateway)}]]){const input=form.elements.namedItem(name);set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));}form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));`);await delay(180);
+      };
+      await fillIpv4('192.168.30.130/24','192.168.30.129');
       assert(await page.evaluate('return !document.querySelector("[data-alternative-passed=true]");'));
-      await command(pcC,'ip address del 192.168.30.130/24 dev eth0');await command(pcC,'ip address add 192.168.30.130/25 dev eth0');await configureGateway(pcC,'192.168.30.129');await passed();
+      await fillIpv4('192.168.30.130/25','192.168.30.129');await passed();
+      await historyCapture('windows-pc-c');
+      await page.evaluate('store.getState().select(null);');
       await reloadAt(14);await capturePanel('05a-lan-c','question');await next(15);
       await command(I.b,'ping -c 1 192.168.30.129',true);assert(await page.evaluate('return !document.querySelector("[data-alternative-passed=true]");'));
-      assert.match(await command(pcC,'ping -c 1 192.168.30.129',true),/64 bytes from/);await passed();await reloadAt(15);await next(16);
+      assert.match(await command(pcC,'ping -n 1 192.168.30.129',true),/Reply from/);await passed();await reloadAt(15);await next(16);
     });
     await test('R2 route and its own real ping have independent checkpoints',async()=>{
       for(const operation of ['add','replace']) {
@@ -343,12 +395,49 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       await roundOneVariants(async()=>{assert(await page.evaluate('return !!document.querySelector("[data-alternative-storm=down]")&&!document.querySelector("[data-alternative-failure-explanation]")&&!document.querySelector("[data-alternative-step]").textContent.includes("ip route replace");'));});
       await roundOneCapture('07-storm-before-observation');
       await page.evaluate('store.getState().undoTopology();');await wait('document.querySelector("[data-alternative-storm=restored]")');
-      await click('.exercise-panel footer button','Zurück');await step(19);await passed();
+      await click('.exercise-panel footer button','Zurück');await step(19);await wait('document.querySelector("[data-alternative-next]:not(:disabled)")');
       assert.deepEqual((await receipt()).progress.lpm,lpm);await next(20);
       assert(await page.evaluate('return sim.net.links.get("tutorial-05-23").operational;'));
       await page.evaluate('store.getState().redoTopology();');await wait('document.querySelector("[data-alternative-storm=down]")');
       await reloadAt(20);assert.equal((await receipt()).progress.storm,'applied');
       assert(await page.evaluate('return !sim.net.links.get("tutorial-05-23").operational&&!document.querySelector("[data-alternative-failure-explanation]");'));
+    });
+    await test('saved storm: Back to task 13 and forward review do not require repairing the old path', async () => {
+      const before=await receipt();
+      for(let n=19;n>=13;n--){await click('.exercise-panel footer button','Zurück');await step(n);}
+      await reloadAt(13);
+      await answer('hop','r2');
+      await command(I.a,'ping -c 1 192.168.20.20',true);
+      report.alternativeNavigationReproduction={step:(await receipt()).progress.step,completed:(await receipt()).progress.completed,
+        via:await page.evaluate('return chapter.alternativeConditions(sim.net).via;'),
+        r2Down:await page.evaluate('return !sim.net.devices.get("tutorial-05-r2").getInterface("eth1").up;'),
+        nextDisabled:await page.evaluate('return document.querySelector("[data-alternative-next]").disabled;')};
+      assert.equal(report.alternativeNavigationReproduction.nextDisabled,false);
+      assert(await page.evaluate('return !!document.querySelector("[data-alternative-history]")&&document.querySelector("[data-alternative-passed]").dataset.alternativePassed==="false";'));
+      await historyCapture('step-13-review');
+      assert(await page.evaluate('return !!document.querySelector("[data-alternative-feedback=hop]")&&!!document.querySelector("[data-alternative-help]:not([open])")&&!document.querySelector("[data-alternative-proven-path=invalidated]");'));
+      for(let n=14;n<=20;n++){
+        await click('[data-alternative-next]');await step(n);await saved();
+        if(n<=19){
+          await roundOneVariants(async()=>{
+            assert(await page.evaluate(`const p=document.querySelector('[data-alternative-step]'),h=p.querySelector('[data-alternative-help]'),{translate}=await import('/src/i18n/index.ts');return !!h&&!h.open&&p.querySelector(':scope > p').textContent===translate(lang.getState().language,'guidedAlternative.step${n}Text')&&p.querySelectorAll('[data-alternative-history]').length===1&&!p.querySelector('[data-lpm-recovery]');`));
+            await click('[data-alternative-help] > summary');
+            assert(await page.evaluate(`return document.querySelector('[data-alternative-help]').open&&document.querySelector('[data-alternative-help]').textContent.includes((await import('/src/i18n/index.ts')).translate(lang.getState().language,'guidedAlternative.step${n}Help'));`));
+            await click('[data-alternative-help] > summary');
+          });
+          if(n===17){
+            assert(await page.evaluate('return !!document.querySelector("[data-lpm-covered]")&&document.querySelector("[data-lpm-path=reply]").textContent.includes("R2");'));await historyCapture('step-17-review');
+            await click('[data-alternative-help] > summary');await historyCapture('step-17-review-help');await click('[data-alternative-help] > summary');
+            await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:1000,deviceScaleFactor:1,mobile:false});await page.evaluate("theme.getState().setTheme('classic-light');");await delay(160);
+            assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth+1&&!document.querySelector("[data-alternative-next]").disabled;'));await historyCapture('step-17-review-light-700');
+            await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await page.evaluate("theme.getState().setTheme('graphite-dark');");await delay(160);
+          }
+          if(n===19)assert(await page.evaluate('return !!document.querySelector("[data-alternative-feedback=lpm]")&&!!document.querySelector("[data-lpm-before]")&&document.querySelector("[data-alternative-answer=lpm]").value==="specific";'));
+        }
+      }
+      assert.deepEqual((await receipt()).document,before.document);assert.deepEqual((await receipt()).progress.completed,before.progress.completed);
+      assert.equal((await receipt()).progress.storm,'applied');
+      assert(await page.evaluate('return !document.querySelector("[data-alternative-next]:not(:disabled)");')); // Task 20 has never been proved.
     });
     await test('failure is witnessed before explanations, without automatic failover or recovery spoilers', async () => {
       assert(await page.evaluate("return !document.querySelector('[data-alternative-failure-mismatch]');"));
@@ -381,12 +470,24 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       const before = await receipt(); await click('[data-explore-network]'); await wait("!document.querySelector('[data-alternative-step]')"); assert.deepEqual(await receipt(),before);
       await menu(); await click('[data-alternative-resume]'); await step(22); await reloadAt(22); await passed();
     });
+    await test('full historical completion stays green with a new practice, survives F5 and never credits supplied tasks',async()=>{
+      const readHistory=()=>page.evaluate('return (await ws.repository.getMeta("guided:chapter-completion:v1:alternative-paths")).value;');
+      await menu();await wait('document.querySelector("[data-alternative-indicator=complete]")');const verified=await readHistory();assert.equal(verified.value.source.draftId,attempt);assert.equal(verified.revision,1);
+      await click('[data-alternative-direct][aria-haspopup=menu]');await click('[data-alternative-entry-choice=part-4]');await step(20);await wait('document.querySelector("[data-alternative-storm=down]")');await saved();
+      assert.deepEqual((await receipt()).progress.completed,[]);assert.equal((await receipt()).progress.failure,null);await menu();await wait('document.querySelector("[data-alternative-indicator=complete]")');
+      assert(await page.evaluate('const p=document.querySelector("[data-alternative-indicator=complete]");return p.dataset.chapterCompleted==="false"&&p.dataset.chapterHistoricallyCompleted==="true"&&document.querySelector("[data-alternative-practice-progress]").textContent.includes("0/3");'));await entryCapture('04-history-complete-new-practice');await key('Escape');await reloadAt(20);assert.deepEqual(await readHistory(),verified);
+      await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(attempt)});`);await step(22);await passed();await saved();assert.deepEqual(await readHistory(),verified);
+    });
     await test('a completed v4 attempt without a storm marker is preserved without retroactive damage',async()=>{
       const before=await receipt();
       await page.evaluate('const id=ws.controller.getState().activeDraftId,key="guided:alternative-paths:v1:draft:"+id,entry=(await ws.repository.getMeta(key)).value,p=structuredClone(entry.value);delete p.storm;const written=await ws.repository.setMeta({key,expectedRevision:entry.revision,value:p});if(!written.ok)throw Error(written.error.code);');
       await mount(true);await step(22);await passed();
       assert.deepEqual((await receipt()).document,before.document);
-      await click('.exercise-panel footer button','Zurück');await step(21);await passed();await next(22);await passed();
+      for(let n=21;n>=13;n--){await click('.exercise-panel footer button','Zurück');await step(n);}
+      await reloadAt(13);
+      assert(await page.evaluate('return !!document.querySelector("[data-alternative-history]")&&!document.querySelector("[data-alternative-next]").disabled;'));
+      for(let n=14;n<=22;n++){await click('[data-alternative-next]');await step(n);await saved();}
+      await passed();
       assert.equal((await receipt()).progress.storm,'legacy');assert.deepEqual((await receipt()).document,before.document);
       assert.deepEqual((await receipt()).progress.lpm,before.progress.lpm);
     });
@@ -416,6 +517,94 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
       await page.evaluate('store.getState().redoTopology();'); await step(1); await saved(); await reloadAt(1);
       await menu(); assert.equal(await page.evaluate('return document.querySelector("[data-alternative-direct]").textContent;'), 'Neuen Versuch starten'); await click('[data-alternative-direct]'); await step(1); await saved(); assert.notEqual((await receipt()).id,attempt); assert.equal((await receipt()).tabs,before.tabs+1);
     });
+    }else{await menu();await click('[data-alternative-direct]');await step(1);await wait("(await ws.repository.getMeta('guided:alternative-paths:v1:draft:'+ws.controller.getState().activeDraftId)).value?.value.prepared");await saved();}
+    for(const [point,os] of [['part-2','linux'],['part-3','windows']])await test(`preset ${point}: atomic F5, real tasks with ${os} C, no skipped credit and safe restart`,async()=>{
+      const old=await receipt(),first=point==='part-2'?7:14;
+      await page.evaluate(`const {createAlternativeEntryAttempt}=await import('/src/tutorials/alternativeEntries.ts'),{openNewLearningAttempt}=await import('/src/exercises/newAttempt.ts'),a=createAlternativeEntryAttempt(${JSON.stringify(point)});const opened=await openNewLearningAttempt(ws.controller,a.document,a.options);if(!opened.ok)throw Error(opened.error.code);`);
+      // Reload immediately after the creation commit, without waiting for a panel save.
+      await mount(true);await step(first);await saved();const preset=await receipt();
+      assert.equal(preset.progress.entry.point,point);assert.deepEqual(preset.progress.completed,[]);assert.deepEqual(preset.progress.viaReplies,{ab:null,ba:null});
+      assert(await page.evaluate('return document.querySelector(".exercise-panel footer button").disabled&&!!document.querySelector("[data-alternative-entry]");'));
+      await roundOneVariants(async()=>{assert(await page.evaluate('return !!document.querySelector("[data-alternative-entry]")&&!document.querySelector("[data-alternative-history]")&&!document.querySelector("[data-alternative-step]").textContent.includes("guidedAlternative.");'));});
+      await capturePanel('preset-'+point,'initial');
+      if(point==='part-2'){
+        assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);await passed();await next(8);
+        assert.equal(await command(I.r1,'ip route add 192.168.20.0/24 via 10.0.12.2'),'');await next(9);
+        assert.equal(await command(I.r2,'ip route add 192.168.20.0/24 via 10.0.23.2'),'');await next(10);
+        assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);await next(11);
+        assert.equal(await command(I.r3,'ip route add 192.168.10.0/24 via 10.0.23.1'),'');await next(12);
+        assert.equal(await command(I.r2,'ip route add 192.168.10.0/24 via 10.0.12.1'),'');
+        assert.match(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);assert.match(await command(I.b,'ping -c 1 192.168.10.10',true),/64 bytes from/);
+        await next(13);await answer('hop','r2');await next(14);
+      }else{
+        assert.match(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);assert.deepEqual((await receipt()).progress.viaReplies,{ab:null,ba:null});
+      }
+      await wait('sim.net.devices.get("tutorial-05-r3").getInterface("eth3").ip?.prefix===25');
+      const c=await page.evaluate(`store.getState().setHostCreationMode(${JSON.stringify(os)});store.getState().addDeviceAt('host',{x:1780,y:900});const id=store.getState().nodes.at(-1).id;store.getState().onConnect({source:id,target:'tutorial-05-r3',sourceHandle:'eth0',targetHandle:'eth3'});return id;`);
+      await page.evaluate(`const {parseCidr,parseIp}=await import('/src/engine/ip.ts');const error=store.getState().setInterfaceIpv4(${JSON.stringify(c)},'eth0',{mode:'static',ip:parseCidr('192.168.30.130/25'),gateway:parseIp('192.168.30.129'),dns:null});if(error)throw Error(error);`);
+      await passed();await reloadAt(14);await next(15);
+      assert.match(await command(c,`ping ${os==='windows'?'-n':'-c'} 1 192.168.30.129`,true),os==='windows'?/Reply from/:/64 bytes from/);await next(16);
+      assert.equal(await command(I.r2,'ip route add 192.168.30.128/25 via 10.0.23.2'),'');assert.match(await command(I.r2,'ping -c 1 192.168.30.130',true),/64 bytes from/);await next(17);
+      assert.equal(await command(I.r1,'ip route add 192.168.30.0/24 via 10.0.12.2'),'');assert.match(await command(I.a,'ping -c 1 192.168.30.130',true),/64 bytes from/);await next(18);
+      assert.equal(await command(I.r1,'ip route add 192.168.30.128/25 via 10.0.13.2'),'');assert.match(await command(I.a,'ping -c 1 192.168.30.130',true),/64 bytes from/);await next(19);await answer('lpm','specific');await next(20);
+      await wait('document.querySelector("[data-alternative-storm=down]")');await reloadAt(20);
+      assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);await next(21);
+      assert.equal(await command(I.r1,'ip route replace 192.168.20.0/24 via 10.0.13.2'),'');assert.equal(await command(I.r3,'ip route replace 192.168.10.0/24 via 10.0.13.1'),'');await next(22);
+      assert.match(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);assert.match(await command(I.b,'ping -c 1 192.168.10.10',true),/64 bytes from/);await passed();await saved();
+      const finished=await receipt();assert.deepEqual(finished.progress.completed,Array.from({length:23-first},(_,n)=>n+first));assert(!finished.progress.lpm.legacy&&!finished.progress.lpm.experiment.legacy);
+      assert(await page.evaluate('return !document.querySelector("[data-chapter-finished]");')); // A supplied start is not full chapter completion.
+      assert(await page.evaluate(`return document.querySelector('[data-alternative-practice-finished]').textContent.includes('${23-first}/${23-first}');`));await page.evaluate('document.querySelector(".exercise-body").scrollTop=100000;');await entryCapture('05-'+point+'-practice-complete');
+      await page.evaluate(`const r=await ws.controller.switchDraft(${JSON.stringify(old.id)});if(!r.ok)throw Error(r.error.code);`);await step(old.progress.step);await saved();const restored=await receipt();assert.deepEqual(restored.document,old.document);assert.deepEqual(restored.progress,old.progress);
+      await page.evaluate(`const r=await ws.controller.switchDraft(${JSON.stringify(finished.id)});if(!r.ok)throw Error(r.error.code);`);await step(22);await reloadAt(22);
+      await click('[data-chapter-restart="alternative-paths"]');await wait('document.querySelector("[data-chapter-restart-confirm]:not(:disabled)")');await click('[data-chapter-restart-confirm]');await step(first);await saved();
+      assert.deepEqual((await receipt()).progress.completed,[]);assert.equal((await receipt()).progress.entry.point,point);
+      // Preparation may add a normal Inspector operation above the restart.
+      const undoCount=await page.evaluate('const past=store.getState().topologyHistory.past,index=past.findLastIndex(op=>op.type==="chapter-restore");if(index<0)throw Error("Missing restart history");return past.length-index;');
+      for(let i=0;i<undoCount;i++){await page.evaluate('store.getState().undoTopology();');await delay(160);}await step(22);await saved();
+      await page.evaluate('store.getState().redoTopology();');await step(first);await saved();await reloadAt(first);
+    });
+    await test('preset part-4: pending F5, atomic storm, real partial completion, reset and Undo/Redo',async()=>{
+      const old=await receipt();
+      // Fail the first atomic incident before commit. Creation remains complete,
+      // pending and reloadable; this disposable browser never touches real data.
+      await page.evaluate(`ws.controller.commitDocument=async()=>({ok:false,error:{code:'quota-exceeded',message:'Injected incident failure'}});const {createAlternativeEntryAttempt}=await import('/src/tutorials/alternativeEntries.ts'),{openNewLearningAttempt}=await import('/src/exercises/newAttempt.ts'),a=await createAlternativeEntryAttempt('part-4');const opened=await openNewLearningAttempt(ws.controller,a.document,a.options);if(!opened.ok)throw Error(opened.error.code);`);
+      await step(20);await wait('document.querySelector(".exercise-panel [role=alert]")');
+      const pending=await receipt();assert.equal(pending.progress.storm,'pending');assert.deepEqual(pending.progress.completed,[]);assert.equal(pending.progress.failure,null);assert.equal(pending.progress.viaBaseline,null);
+      assert(await page.evaluate('return sim.net.devices.get("tutorial-05-r2").getInterface("eth1").up;'));
+      await mount(true);await step(20);await wait('document.querySelector("[data-alternative-storm=down]")');await saved();await reloadAt(20);
+      assert.equal((await receipt()).progress.storm,'applied');assert.deepEqual((await receipt()).progress.completed,[]);
+      await roundOneVariants(async()=>{assert(await page.evaluate('return !!document.querySelector("[data-alternative-entry]")&&!document.querySelector("[data-chapter-finished]")&&!document.querySelector("[data-alternative-practice-finished]");'));});
+      await capturePanel('preset-part-4-storm','failure');
+      assert.doesNotMatch(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);await passed();await next(21);
+      // An isolated /32 can make this ping work without recovering the LAN.
+      assert.equal(await command(I.r1,'ip route add 192.168.20.20/32 via 10.0.13.2'),'');assert.equal(await command(I.r3,'ip route replace 192.168.10.0/24 via 10.0.13.1'),'');
+      assert.match(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);assert(await page.evaluate('return document.querySelector("[data-alternative-next]").disabled;'));
+      assert.equal(await command(I.r1,'ip route del 192.168.20.20/32'),'');assert.equal(await command(I.r1,'ip route del 192.168.20.0/24'),'');assert.equal(await command(I.r1,'ip route add 192.168.20.0/24 via 10.0.13.2'),'');await next(22);
+      await observeLpm();assert.match(await command(I.a,'ping -c 1 192.168.20.20',true),/64 bytes from/);assert.match(await command(I.b,'ping -c 1 192.168.10.10',true),/64 bytes from/);await passed();await saved();
+      assert(await page.evaluate('return lpmWires.some(e=>e.from==="tutorial-05-r1"&&e.to==="tutorial-05-r3")&&lpmWires.some(e=>e.from==="tutorial-05-r3"&&e.to==="tutorial-05-r1")&&!lpmWires.some(e=>e.from==="tutorial-05-r2"||e.to==="tutorial-05-r2");'));
+      const finished=await receipt();assert.deepEqual(finished.progress.completed,[20,21,22]);assert.equal(finished.progress.lpm.localReply,null);assert.deepEqual(finished.progress.lpm.experiment,{legacy:false,r2:null,broad:null,specific:null});
+      assert(await page.evaluate('return document.querySelector("[data-alternative-practice-finished]").textContent.includes("3/3");'));await page.evaluate('document.querySelector(".exercise-body").scrollTop=100000;');await entryCapture('05-part-4-practice-complete');
+      await roundOneVariants(async()=>{assert(await page.evaluate('return !!document.querySelector("[data-alternative-practice-finished]")&&!document.querySelector("[data-chapter-finished]")&&!document.querySelector("[data-alternative-practice-finished]").textContent.includes("guidedAlternative.");'));});
+      await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:1000,deviceScaleFactor:1,mobile:false});await page.evaluate("theme.getState().setTheme('classic-light');");await delay(150);assert(await page.evaluate('return document.documentElement.scrollWidth<=innerWidth+1;'));await capturePanel('preset-part-4-completed-mobile','completed',700,'classic-light');
+      await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await page.evaluate("theme.getState().setTheme('graphite-dark');");await reloadAt(22);
+      await page.evaluate(`const r=await ws.controller.switchDraft(${JSON.stringify(old.id)});if(!r.ok)throw Error(r.error.code);`);await step(old.progress.step);assert.deepEqual((await receipt()).document,old.document);
+      await page.evaluate(`const r=await ws.controller.switchDraft(${JSON.stringify(finished.id)});if(!r.ok)throw Error(r.error.code);`);await step(22);
+      await click('[data-chapter-restart="alternative-paths"]');await wait('document.querySelector("[data-chapter-restart-confirm]:not(:disabled)")');
+      await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await wait('!document.querySelector("[data-chapter-restart-popover]")');assert.deepEqual((await receipt()).progress,finished.progress);
+      await page.evaluate('window.originalIncidentCommit=ws.controller.commitDocument.bind(ws.controller);ws.controller.commitDocument=async()=>({ok:false,error:{code:"quota-exceeded",message:"Injected reset failure"}});');
+      await click('[data-chapter-restart="alternative-paths"]');await wait('document.querySelector("[data-chapter-restart-confirm]:not(:disabled)")');await click('[data-chapter-restart-confirm]');await wait('document.querySelector("[data-chapter-restart-popover] [role=alert]")');await saved();
+      assert.deepEqual((await receipt()).document,finished.document);assert.deepEqual((await receipt()).progress,finished.progress);
+      await page.evaluate('ws.controller.commitDocument=originalIncidentCommit;');await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await wait('!document.querySelector("[data-chapter-restart-popover]")');
+      await click('[data-chapter-restart="alternative-paths"]');await wait('document.querySelector("[data-chapter-restart-confirm]:not(:disabled)")');await click('[data-chapter-restart-confirm]');await step(20);await wait('document.querySelector("[data-alternative-storm=down]")');await saved();
+      assert.deepEqual((await receipt()).progress.completed,[]);assert.equal((await receipt()).progress.failure,null);assert.equal((await receipt()).progress.lpm.pc.id,finished.progress.lpm.pc.id);
+      await page.evaluate('store.getState().undoTopology();');await saved();assert(await page.evaluate('return sim.net.devices.get("tutorial-05-r2").getInterface("eth1").up;'));
+      await page.evaluate('store.getState().undoTopology();');await step(22);await saved();assert.deepEqual((await receipt()).progress,finished.progress);
+      await page.evaluate('store.getState().redoTopology();');await step(20);await saved();assert(await page.evaluate('return sim.net.devices.get("tutorial-05-r2").getInterface("eth1").up;'));assert.equal((await receipt()).progress.storm,'applied');
+      await page.evaluate('store.getState().redoTopology();');await saved();assert(await page.evaluate('return !sim.net.devices.get("tutorial-05-r2").getInterface("eth1").up;'));await reloadAt(20);
+      // Undoing the port and F5 must preserve UP with the incident consumed.
+      assert.equal(await command(I.r2,'ip link set eth1 up'),'');await saved();await reloadAt(20);assert(await page.evaluate('return sim.net.devices.get("tutorial-05-r2").getInterface("eth1").up;'));assert.deepEqual((await receipt()).progress.completed,[]);
+    });
+    if(entryOnly)return;
     const manifest=path.join(directory,'manifest.json');
     await writeFile(manifest,JSON.stringify({id:'chapter-5-minimal-instructions',title:'Kapitel 5 · Instruções e ajuda simplificadas',variants:[{id:'graphite-dark',label:'Graphite Dark'},{id:'classic-light',label:'Classic Light'}],states:['initial','help','question','diagnosis','explanation','failure','completed'],captures,share:captures.filter(c=>c.scene!=='08-dark-tablet').map(c=>({...c,name:c.scene.replace(/^\d+-/, '')})),shareContactSheet:false}));
     const references=path.join(root,'.playwright-mcp/reviews/chapter5-minimal/referencias-chatgpt'); await mkdir(references,{recursive:true});
@@ -423,6 +612,19 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
     report.alternativePathsReview=await generateReview(manifest);
   } finally {
     await page.evaluate('window.releaseLpm?.();window.releaseObserver?.();window.ws?.dispose();'); await page.evaluate(`await new Promise((resolve,reject)=>{const request=indexedDB.deleteDatabase(${JSON.stringify(database)});request.onsuccess=resolve;request.onerror=()=>reject(request.error);request.onblocked=()=>reject(Error('Alternative chapter cleanup blocked'));});`);
+  }
+  if (historyStage === 'depois') {
+    const folder=path.join(root,'.playwright-mcp/reviews/chapter5-history'), comparisons=path.join(folder,'comparacoes');await mkdir(comparisons,{recursive:true});
+    const pairs=[['revisao-etapa-17','Etapa 17 · revisão após a tempestade','antes/step-17-review.png','depois/step-17-review.png','ANTES','DEPOIS'],['normal-e-revisao','Etapa 17 · instruções preservadas','depois/step-17-normal.png','depois/step-17-review.png','EXECUÇÃO NORMAL','REVISÃO'],['revisao-etapa-13','Etapa 13 · explicação de Next Hop','antes/step-13-review.png','depois/step-13-review.png','ANTES','DEPOIS']];
+    for(const [name,title,left,right,leftLabel,rightLabel] of pairs){
+      const a=await readFile(path.join(folder,left)),b=await readFile(path.join(folder,right)),width=a.readUInt32BE(16)+b.readUInt32BE(16)+48,height=Math.max(a.readUInt32BE(20),b.readUInt32BE(20))+100;
+      await page.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+      const html=`<style>body{margin:0;padding:16px;background:#101619;color:#e4e9ec;font:15px Arial}h1{font-size:18px;margin:0 0 16px}main{display:flex;gap:16px}p{margin:0 0 8px;font-weight:bold}img{display:block}</style><h1>${title} · capturas reais</h1><main><section><p>${leftLabel}</p><img src="data:image/png;base64,${a.toString('base64')}"></section><section><p>${rightLabel}</p><img src="data:image/png;base64,${b.toString('base64')}"></section></main>`;
+      await page.evaluate(`document.open();document.write(${JSON.stringify(html)});document.close();await Promise.all([...document.images].map(img=>img.decode()));`);
+      const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(comparisons,name+'.png'),Buffer.from(png.data,'base64'));
+    }
+    await writeFile(path.join(folder,'index.html'),'<!doctype html><meta charset="utf-8"><title>Capítulo 5 — revisão histórica e Windows</title><style>body{margin:24px;background:#101619;color:#e4e9ec;font:16px Arial}img{max-width:100%;display:block;margin:24px 0}a{color:#8ed0ff}</style><h1>Capítulo 5 — revisão histórica e Windows</h1>'+pairs.map(([name,title])=>`<h2>${title}</h2><img alt="${title}" src="comparacoes/${name}.png">`).join('')+'<h2>PC C Windows · configuração pelo Inspector</h2><img alt="PC C Windows reconhecido" src="depois/windows-pc-c.png"><h2>Ajuda original na revisão</h2><img alt="Revisão com Ajuda aberta" src="depois/step-17-review-help.png"><h2>Classic Light · 700 px</h2><img alt="Revisão em janela pequena" src="depois/step-17-review-light-700.png">');
+    report.alternativeHistoryReview={directory:folder,comparisons:pairs.length,windowsPc:true,syntheticImages:false};
   }
   if (reviewStage === 'depois') {
     const folder = path.join(root, '.playwright-mcp/reviews/chapter5-didactic'), references = path.join(folder, 'referencias-chatgpt');

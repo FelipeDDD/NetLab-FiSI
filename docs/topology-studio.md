@@ -1,5 +1,18 @@
 # Topology Studio (Beta)
 
+### Cores do documento e controles de tabelas — 10/11/2026
+
+Prévia e relatórios usam um esquema claro explícito somente dentro do documento,
+com `color-scheme: only light`; o SVG independente também declara a proteção.
+O tema do editor permanece intacto. Há um limite comprovado no Chromium quando
+o escurecimento forçado é combinado com preferência de sistema clara; Vivaldi
+não foi validado neste ambiente. Diagnóstico, testes e capturas antes/depois:
+[document-colors.md](document-colors.md).
+
+Removidos os parágrafos de instruções de arraste/escala. A seção de tabelas
+continua expansível, contendo restaurar posições, lista e todos os controles,
+sem alterar geometria, mecanismos de redimensionamento ou dados exportados.
+
 ### Simplificação final do snapshot — 08/11/2026
 
 Após a auditoria abaixo, foi decidido usar somente a captura feita na abertura.

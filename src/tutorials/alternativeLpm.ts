@@ -42,18 +42,18 @@ export function lpmPortError(net: Network) {
   return !(r instanceof RouterDevice) || !p || !p.up || !!p.link || !!p.ip && (p.ip.addr !== ip(LPM_GATEWAY) || p.ip.prefix !== 25) || !!p.gateway;
 }
 /** Binding requires an explicit physical connection to the reserved port, not
- * merely the first new Linux host. Pre-existing independent PCs are excluded. */
+ * merely the first new host. Pre-existing independent PCs are excluded. */
 export function findLpmPc(net: Network, baseline: readonly string[]) {
   const port = net.devices.get(I.r3)?.getInterface('eth3'), link = port?.link;
   if (!link || link.medium !== 'ethernet') return null;
   const peer = link.a === port ? link.b : link.a, pc = peer.device;
-  return pc instanceof Host && pc.kind === 'host' && pc.os === 'linux' && pc.interfaces.length === 1 && peer.name === 'eth0' && !baseline.includes(pc.id) ? { id: pc.id, mac: peer.mac } : null;
+  return pc instanceof Host && pc.kind === 'host' && (pc.os === 'linux' || pc.os === 'windows') && pc.interfaces.length === 1 && peer.name === 'eth0' && !baseline.includes(pc.id) ? { id: pc.id, mac: peer.mac } : null;
 }
 export function lpmPcValid(net: Network, p: LpmProgress) {
   const pc = net.devices.get(p.pc?.id ?? ''), i = pc?.getInterface('eth0'), r = net.devices.get(I.r3)?.getInterface('eth3');
   const unique = (addr: number) => [...net.devices.values()].flatMap(d => d.interfaces).filter(i => i.ip?.addr === addr).length === 1;
   const gateway = pc instanceof IpDevice ? pc.lookupRoute(ip('192.168.10.10')) : null;
-  return !!(p.stage === 'ready' && pc instanceof Host && pc.kind === 'host' && pc.os === 'linux' && pc.interfaces.length === 1 && !!i && i.mac === p.pc?.mac &&
+  return !!(p.stage === 'ready' && pc instanceof Host && pc.kind === 'host' && (pc.os === 'linux' || pc.os === 'windows') && pc.interfaces.length === 1 && !!i && i.mac === p.pc?.mac &&
     i.up && r?.up && i.link?.operational && i.link === r.link && i.ip?.addr === ip(LPM_ADDRESS) && i.ip.prefix === 25 &&
     r.ip?.addr === ip(LPM_GATEWAY) && r.ip.prefix === 25 && gateway?.prefix === 0 && gateway.ifaceName === 'eth0' && gateway.via === ip(LPM_GATEWAY) && unique(i.ip.addr) && unique(r.ip.addr));
 }

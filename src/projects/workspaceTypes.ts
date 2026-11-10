@@ -58,7 +58,7 @@ export interface CreateSessionInput {
   id?: string;
   initialTab?: { kind: 'new'; document: ProjectDocument; id?: string } | { kind: 'plan'; planId: string; id?: string };
 }
-export interface CreateDraftInput { id?: string; document: ProjectDocument; activate?: boolean }
+export interface CreateDraftInput { id?: string; document: ProjectDocument; activate?: boolean; control?: readonly MetaMutation[] }
 export interface DraftUpdateInput { expectedRevision: number; editSequence: number; document: ProjectDocument; control?: readonly MetaMutation[]; guards?: readonly {key:string;expectedRevision:number|null}[] }
 export interface SessionLayoutInput {
   draftIds?: readonly string[];

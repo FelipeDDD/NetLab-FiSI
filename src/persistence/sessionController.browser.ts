@@ -31,6 +31,21 @@ export function memoryRuntime(initial = document()) {
 }
 
 export const controllerBrowserCases: Record<string, () => Promise<void>> = {
+  'controller: atomic document initialization survives reload and refuses a conflicting control without replacing the active network': () => fixture(async({open})=>{
+    const repo=await open(),runtime=memoryRuntime(),c=new SessionController(repo,runtime.api);
+    try{
+      take(await c.start());const id=crypto.randomUUID(),key='guided:controller-entry:'+id;
+      const initialization={id,control:[{key,expectedRevision:null,value:{draftId:id,ready:true}}],document:changed('must not override the input'),activate:true};
+      const opening=c.openDocument(changed('prepared entry'),{initialization});initialization.control[0].value.ready=false;
+      equal(take(await opening),id);equal(takeRepository(await repo.getMeta(key))!.value,{draftId:id,ready:true});
+      const sessionId=c.getState().session!.id,net=runtime.network;
+      code(await c.openDocument(changed('must not open'),{initialization:{id:crypto.randomUUID(),control:[{key,expectedRevision:null,value:null}]}}),'meta-conflict');
+      assert(runtime.network===net);equal(c.getState().drafts.length,2);c.dispose();
+      const fresh=memoryRuntime(),restored=new SessionController(repo,fresh.api);
+      try{take(await restored.start({sessionId}));equal(restored.getState().activeDraftId,id);equal(name(fresh.api.capture()),'prepared entry');}
+      finally{restored.dispose();fresh.dispose();}
+    }finally{c.dispose();runtime.dispose();}
+  }),
   'controller UI: Save on an inactive draft preserves the active network and closing chooses its neighbor': () => fixture(async ({ open }) => {
     const repo = await open(), runtime = memoryRuntime(), c = new SessionController(repo, runtime.api);
     try {

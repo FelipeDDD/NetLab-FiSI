@@ -58,7 +58,7 @@ export function ExerciseProvider({ sessions, repository, children }: { sessions:
   return <Context.Provider value={{ controller, state }}><ExerciseViewportContext.Provider value={viewport}><GuidedTutorialProvider sessions={sessions} repository={repository}>{children}</GuidedTutorialProvider></ExerciseViewportContext.Provider></Context.Provider>;
 }
 
-export function ExerciseMenu({ close }: { close(): void }) {
+export function ExerciseMenu({ close,entryPopup }: { close(): void;entryPopup?:React.MutableRefObject<HTMLDivElement|null> }) {
   const ui = useContext(Context);
   const { t, language } = useTranslation();
   useEffect(() => { if (ui) void ui.controller.refresh(); }, [ui?.controller]);
@@ -66,7 +66,7 @@ export function ExerciseMenu({ close }: { close(): void }) {
   const { controller, state } = ui;
   return <>
     <PracticeLauncher close={close} />
-    <GuidedTutorialMenu close={close} />
+    <GuidedTutorialMenu close={close} entryPopup={entryPopup}/>
     <p className="exercise-note">{t('exercises.note')}</p>
     {state.error && <p role="alert">{state.error} <button className="btn" onClick={() => void controller.retry()}>{t('common.retry')}</button></p>}
     {EXERCISE_MENU_GROUPS.map(group => <details className="exercise-menu-group" key={group.id} open>

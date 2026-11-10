@@ -55,6 +55,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const exportAnchor = useRef<HTMLButtonElement>(null);
   const parentPopup = useRef<HTMLDivElement | null>(null);
   const exportPopup = useRef<HTMLDivElement | null>(null);
+  const tutorialEntryPopup = useRef<HTMLDivElement | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rootMenu = useRef<MenuId>('file');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -249,7 +250,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
 
     {menu && <FloatingPopover key={menu} anchor={anchor} id={'toolbar-' + menu + '-menu'} label={t(popupLabel ?? 'navigation.menu')}
       role="menu" width={menu === 'labs' || menu === 'exercises' ? 360 : menu === 'help' ? 200 : 210} initialFocus={menuFocus}
-      popupRef={parentPopup} relatedRefs={[exportPopup]} className="labs-menu toolbar-command-menu"
+      popupRef={parentPopup} relatedRefs={[exportPopup,tutorialEntryPopup]} className="labs-menu toolbar-command-menu"
       onClose={() => closeMenu()} onKeyDown={menuKeys}
       onPointerLeave={event => { if (event.pointerType === 'mouse' && exportOpen) scheduleExportClose(); }}>
       {compact && menu !== 'compact' && <button type="button" role="menuitem" className="labs-menu-item toolbar-menu-back"
@@ -258,7 +259,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         aria-haspopup={item.id === 'settings' ? 'dialog' : 'menu'} key={item.id} onClick={() => openMenu(item.id)}>
         <span>{t(item.label)}</span><span aria-hidden="true">{item.id === 'settings' ? '' : '›'}</span>
       </button>)}
-      {menu === 'exercises' && <ExerciseMenu close={() => closeMenu(true)} />}
+      {menu === 'exercises' && <ExerciseMenu close={() => closeMenu(true)} entryPopup={tutorialEntryPopup}/>}
       {menu === 'file' && <>
         {workspace ? <>
           {action(t('navigation.new'), workspace.newPlan)}
