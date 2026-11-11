@@ -1,12 +1,22 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **10/11/2026**, para continuar entre notebook e desktop.
+Atualizado em **11/11/2026**, para continuar entre notebook e desktop.
 Este é o **arquivo único de continuidade**: atualizar este resumo nas próximas
 rodadas, sem criar cópias TXT ou documentos de contexto concorrentes.
 O código, os testes e o Git continuam sendo a fonte de verdade. As seções
 históricas abaixo registram decisões antigas e podem ter sido superadas.
 
-## Leia primeiro — auditoria e estado atual em 10/11/2026
+## Leia primeiro — auditoria e estado atual em 11/11/2026
+
+**Refinamento pontual de redação — 11/11/2026:** Parte 1, tarefas 1–3,
+pede explicitamente ping nos dois sentidos (DE/EN/PT-BR), usando o destaque
+âmbar existente. Parte 2, 7/9, cita apenas LAN A; 9/9 mantém IPs e valores
+internos das alternativas, retirando os nomes R2/R3. As 16 tarefas, validadores,
+checkpoints, progresso, tempestade, engine e imagens permanecem iguais.
+Validação: 108 testes em 7 arquivos, 167 verificações Chromium, TypeScript,
+build e diff-check aprovados. Commit pontual autorizado somente para redação
+e esta nota; alterações locais anteriores de v5/menu/ajudas não são incluídas.
+Sem push, merge ou deploy. Logs locais em .playwright-mcp/chapter5-wording-*.
 
 **Consolidação em `main` — 10/11/2026:** este conjunto reúne revisão histórica
 do capítulo 5, PC C Linux/Windows, checkpoints e menu das Rodadas 1–3, progresso
