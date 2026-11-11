@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n';
 import { useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { useStore } from '../store';
@@ -8,11 +9,12 @@ import { interfaceCableColor } from '../cableAppearance';
 import { useCableAppearances } from './useCableAppearances';
 
 export function NodeNetworkLabel({ id, name }: { id: string; name: string }) {
+  const { t, language } = useTranslation();
   const colors = useCableAppearances();
   useStore(s => s.uiPulse);
   const previous = useRef<string>();
   const device = sim.net.devices.get(id);
-  const summary = canvasNetwork(device, previous.current);
+  const summary = canvasNetwork(device, previous.current, language);
   const color = (name?: string) => interfaceCableColor(name ? device?.getInterface(name) : undefined, colors);
   if (summary?.interfaceName) previous.current = summary.interfaceName;
   return <div className="dev-ip">{summary && <span className={`node-network-label${summary.stored ? ' is-stored' : ''}${summary.addresses.length > 1 ? ' is-multiple' : ''}`}
@@ -29,10 +31,10 @@ export function NodeNetworkLabel({ id, name }: { id: string; name: string }) {
       key={row.interfaceName} className={`node-network-row${row.stored ? ' is-stored' : ''}`} data-interface-name={row.interfaceName} data-operational={row.active}
       data-cable-color={color(row.interfaceName)} style={{ '--interface-cable-color': color(row.interfaceName) ?? 'var(--canvas-text-muted)' } as CSSProperties} title={row.tooltip}>
       <span className="node-network-interface">{row.interfaceName}</span>
-      <CopyIpButton address={row.address} context={`${name} ${row.interfaceName}`} title={`${row.tooltip}\nKlicken: IPv4 kopieren`}><span className="node-ip-value">{row.address}</span></CopyIpButton>
+      <CopyIpButton address={row.address} context={`${name} ${row.interfaceName}`} title={`${row.tooltip}\n${t('navigation.canvasCopyIpv4')}`}><span className="node-ip-value">{row.address}</span></CopyIpButton>
     </span>)}</span> : summary.address ? <><span className="node-single-address-marker" aria-hidden="true" data-cable-color={color(summary.interfaceName)}
       style={{ background: color(summary.interfaceName) ?? 'var(--canvas-text-muted)' }} />
-      <CopyIpButton address={summary.address} context={name} title={`${summary.tooltip}\nKlicken: IPv4 kopieren`}><span className="node-ip-value">{summary.address}</span></CopyIpButton></>
-      : <span>{summary.state === 'DHCP ausstehend' ? 'DHCP…' : 'Kein IPv4'}</span>}
+      <CopyIpButton address={summary.address} context={name} title={`${summary.tooltip}\n${t('navigation.canvasCopyIpv4')}`}><span className="node-ip-value">{summary.address}</span></CopyIpButton></>
+      : <span>{summary.icon === 'pending' ? 'DHCP…' : t('navigation.linkNoIpv4')}</span>}
   </span>}</div>;
 }

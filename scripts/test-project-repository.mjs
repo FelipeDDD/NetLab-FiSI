@@ -507,6 +507,26 @@ try {
     await runEditorMessagesReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_BASIC_EDITOR_REVIEW === '1') {
+    const { runBasicEditorReview } = await import('./basic-editor-review.mjs');
+    await runBasicEditorReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_IPV4_I18N_REVIEW === '1') {
+    const { runIpv4I18nReview } = await import('./ipv4-i18n-review.mjs');
+    await runIpv4I18nReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_TABLES_I18N_REVIEW === '1') {
+    const { runTablesI18nReview } = await import('./tables-i18n-review.mjs');
+    await runTablesI18nReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_SERVICES_I18N_REVIEW === '1') {
+    const { runServicesI18nReview } = await import('./services-i18n-review.mjs');
+    await runServicesI18nReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_WORKSPACE_UI_REVIEW === '1') {
     const { runWorkspaceUIReview } = await import('./workspace-ui-review.mjs');
     const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];

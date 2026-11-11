@@ -1,12 +1,265 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **11/11/2026**, para continuar entre notebook e desktop.
+Atualizado em **12/11/2026**, para continuar entre notebook e desktop.
 Este é o **arquivo único de continuidade**: atualizar este resumo nas próximas
 rodadas, sem criar cópias TXT ou documentos de contexto concorrentes.
 O código, os testes e o Git continuam sendo a fonte de verdade. As seções
 históricas abaixo registram decisões antigas e podem ter sido superadas.
 
-## Leia primeiro — auditoria e estado atual em 11/11/2026
+## Leia primeiro — auditoria e estado atual em 12/11/2026
+
+**Consolidação final i18n 3A + 3B + 3C1 + 3C2 (12/11/2026):**
+as quatro rodadas foram auditadas em conjunto, partindo de `9576ab9` em
+`main`. Após `git fetch origin`, HEAD e `origin/main` eram idênticos
+(0 commits de diferença nos dois sentidos). Nenhuma mudança adicional de
+produto foi necessária nesta consolidação. Checkpoint autorizado para um
+único commit local: **`Internationalize network inspector and device services`**.
+Consultar `git log` para o hash; nenhum push, merge, rebase ou deploy autorizado.
+
+Revalidação completa: **3.074 testes em 186 arquivos**, TypeScript (`tsc
+--noEmit`, executado no build), build e `git diff --check` aprovados. Os cinco
+roteiros Chromium foram executados juntos no mesmo harness, com bancos e
+perfil descartáveis: **396 verificações aprovadas, zero falhas e zero erros
+de navegador**. São 105 verificações base + 66 da 3A + 84 da 3B + 48 da 3C1 +
+86 da 3C2 + 7 da regressão DNS/WLAN. Cobertura dos três idiomas, Graphite Dark
+e Classic Light/menu compacto, troca dinâmica com formulários/tabelas abertos,
+Unicode, F5, associação WLAN, lease DHCP real, DNS/HTTP reais, Firewall,
+rascunhos inválidos e conflitos de edição. O aviso de chunks >500 kB no build
+é preexistente. Logs de consolidação estão ignorados em `.playwright-mcp/`.
+
+Auditoria: **304 novas chaves por idioma**, paridade de placeholders e todas
+as chaves anteriores preservadas. PT-BR mantém `Network` na aba do Host.
+`deviceLabelLayout`, `interfaceConnection` e `selectedDefaultGateway` são
+idênticos ao HEAD anterior. Chamadas/argumentos dos helpers técnicos e handlers
+de Palette, ações dos dispositivos, abas e alcance do AP também foram
+comparados. Sem alterações em engine, store, protocolos, schemas, persistência,
+Undo/Redo, tutoriais, exercícios, geometria, CSS, dependências ou assets.
+As limitações de textos livres dos validadores e saída CLI registradas abaixo
+continuam intencionais: nenhuma tradução por comparação de frases.
+
+Manifesto selecionado para o commit: **37 arquivos**, exclusivamente das quatro
+rodadas; capturas, galerias, relatórios, logs, caches e cópias de trabalho ficam
+fora do versionamento.
+
+- Produção (17): `src/canvasNetwork.ts`, `src/hostNetworkSummary.ts`,
+  `src/i18n/catalogs/navigation.ts`; em `src/components/`: `Palette.tsx`,
+  `DeviceActions.tsx`, `Inspector.tsx`, `InspectorTabs.tsx`,
+  `InterfaceIpv4Panel.tsx`, `InterfaceGatewayRoutes.tsx`,
+  `InterfaceConnection.tsx`, `NodeNetworkLabel.tsx`, `DiagnosticTables.tsx`,
+  `HostWireless.tsx`, `ApRangeControl.tsx`, `ClientDiagnostics.tsx`,
+  `DhcpPoolsPanel.tsx` e `FirewallInfo.tsx`.
+- Testes (8): `src/canvasNetwork.test.ts`, `src/hostNetworkSummary.test.ts`,
+  `src/i18n/i18n.test.ts`; em `src/components/`: `Inspector.test.ts`,
+  `InterfaceConnection.test.ts`, `DiagnosticTables.test.ts`,
+  `DhcpPoolsPanel.test.ts` e `FirewallInfo.test.ts`.
+- Roteiros (11), em `scripts/`: `test-project-repository.mjs`,
+  `workspace-ui-review.mjs` (espera específica pelo plano salvo, eliminando
+  corrida do teste), `dns-wifi-review.mjs` (nome acessível traduzido),
+  `basic-editor-review.mjs`, `test-basic-editor.mjs`, `ipv4-i18n-review.mjs`,
+  `test-ipv4-i18n.mjs`, `tables-i18n-review.mjs`, `test-tables-i18n.mjs`,
+  `services-i18n-review.mjs` e `test-services-i18n.mjs`.
+- Documentação (1): este `docs/CONTEXTO_CONTINUIDADE.md`.
+
+**i18n 3C2 — WLAN, DHCP, Firewall e serviços, somente local (12/11/2026):**
+preservadas todas as alterações locais da 3A/3B/3C1; HEAD continua `9576ab9`.
+Acrescentadas 127 chaves ao catálogo navigation existente. Traduzidos busca,
+associação/desconexão WLAN, estados e instruções do Host; configurações de AP,
+alcance/aria, SSID, bridging, clientes, dados importados e avisos de segurança.
+Autenticação/criptografia continuam não simuladas: somente os avisos existentes
+foram traduzidos, sem novos controles. Corrigidos os três textos danificados
+com “?” nas explicações dos clientes WLAN ao movê-los para os catálogos.
+
+DHCP: pools por interface, ativação global do Router, campos, leases,
+avisos de pool legado, IPv4 ausente e erro local de sintaxe. DNS/HTTP: estados,
+ações, campos, placeholders, orientações e portas adicionais. Firewall:
+explicações de hooks/origem/destino, política padrão, contagens de regras,
+logs, estados vazios e avisos específicos do Host Windows. O Inspector não
+possui editor de regras: nftables/iptables, regras/políticas ACCEPT/DROP,
+Conntrack e logs técnicos continuam literais. “Network” permanece a aba PT-BR;
+Clients passa a Clientes em PT-BR, preservando IDs e grupos internos.
+
+Mensagens locais de WLAN/DHCP/diagnóstico e conflito de rascunho DNS usam o
+`EditorMessage` já existente, apenas em estado volátil. Respostas de ping e
+avisos abertos acompanham a troca de idioma, sem repetir a ação. Nenhum valor
+de formulário, SSID, nome Unicode, porta, domínio ou corpo HTTP é traduzido.
+Rascunhos e seleções permanecem montados; identidade, debounce, condições de
+confirmação, agrupamento e efeitos técnicos dos handlers não mudaram.
+
+Arquivos desta rodada: `Inspector.tsx`, `HostWireless.tsx`,
+`ApRangeControl.tsx`, `ClientDiagnostics.tsx`, `DhcpPoolsPanel.tsx`,
+`FirewallInfo.tsx`, catálogo `navigation.ts`; testes `Inspector.test.ts`,
+`DhcpPoolsPanel.test.ts`, `FirewallInfo.test.ts` e `i18n.test.ts`; novos roteiros
+`scripts/services-i18n-review.mjs` e `scripts/test-services-i18n.mjs`, integração
+no harness `scripts/test-project-repository.mjs` e este contexto. O roteiro
+antigo `scripts/dns-wifi-review.mjs` passou a buscar o nome acessível alemão
+de DNS-A-Records na fase “after”, mantendo o seletor histórico na fase “before”.
+
+Validação: **3.074 testes em 186 arquivos**, incluindo nove novos casos
+multilíngues e um contrato de vocabulário técnico/hardcodes; **116 testes
+direcionados**, TypeScript,
+build e diff-check. Chromium nativo: **86 cenários específicos / 191
+verificações totais**, três idiomas, Graphite Dark 1440 px e Classic Light
+900 px/menu compacto. Cobertos Linux/Windows, Server, Router, Firewall, AP e
+Smartphone, descoberta/associação/desconexão, clientes ativos/inativos, DHCP
+com lease real e renovação pela ação existente, resolução DNS e resposta HTTP
+reais, pools on/off, regras vazias/preenchidas, ajuda/Escape, rascunhos parciais,
+conflito DNS traduzido dinamicamente e preservação do documento após F5.
+Snapshots de documento e histórico foram comparados durante as mudanças de
+idioma; nomes e conteúdo Unicode preservados. Perfis e bancos descartáveis,
+sem acesso ao IndexedDB real. **48 capturas reais** organizadas em
+`.playwright-mcp/reviews/services-3c2/referencias-chatgpt/`, com galeria
+`index.html` na pasta superior. Reproduzir com
+`node scripts/test-services-i18n.mjs`; logs/capturas/cópias iniciais ignorados.
+O roteiro legado `node scripts/test-dns-wifi.mjs` também passou: sete cenários
+específicos / 112 verificações totais, cobrindo digitação nativa, CRLF/linhas
+vazias, rascunhos inválidos, conflito de DNS, Undo/Redo, autosave e descoberta
+WLAN após alterações/remoção de AP, sem regressões da apresentação traduzida.
+
+Pendências intencionais: strings livres de `validateDhcpPool`,
+`associateWireless`, `wirelessError`, parse/validação de registros DNS, portas
+HTTP/adicionais, VLAN/capacidade de Switch e validações IPv4 profundas. Essas
+APIs não oferecem códigos semânticos estáveis; seus retornos originais foram
+preservados, sem comparação de frases, duplicação de validações nem alterações
+de engine/store. A notificação de renovação DHCP reutiliza saída de dhclient
+(por exemplo “bound to …”); permanece CLI original. O produto não recebeu
+alterações em protocolos, serviços, associação/alcance, persistência, schemas,
+Undo/Redo, tutoriais, exercícios, geometria ou CSS. Build mantém somente o
+aviso preexistente de chunks >500 kB. **Sem commit, push, merge ou deploy;
+nenhuma rodada posterior iniciada.**
+
+**i18n 3C1 — tabelas e resumos técnicos, somente local (11/11/2026):**
+preservadas integralmente as rodadas 3A/3B; HEAD continua `9576ab9`.
+Acrescentadas 71 chaves ao catálogo navigation existente para tabelas
+ARP/MAC/rotas, tipos de rota e sua ajuda, estados físicos/administrativos,
+conexões por cabo/WLAN, ausência de IPv4, endereços armazenados e contagens
+de portas/conexões/rotas. A aba do Host agora usa **Network** em PT-BR
+(DE Netzwerk, EN Network), preservando o ID `network` e a palavra “rede”
+nas explicações. PT-BR mantém Router, Switch, Gateway, Next Hop, VLAN e RIP;
+tipos de rota são Conectada/Estática/RIP, com identificação separada da rota
+padrão. DE mantém Connected/Static/RIP como antes.
+
+DiagnosticTables localiza títulos, cabeçalhos, estados vazios, ajuda/aria,
+idade da entrada e ação de limpar ARP, sem mudar chaves, ordenação, métricas,
+endereços ou formatação CLI. InterfaceConnection/InterfaceSummary usam o
+estado estrutural já existente para compor a apresentação traduzida, sem
+interpretar textos antigos. O helper legado `interfaceConnection` permanece
+idêntico. CanvasNetwork aceita idioma opcional (DE por padrão) e NodeNetworkLabel
+o acompanha; seleção de interface/IP, ícones, dimensões e posicionamento
+continuam iguais. DHCP pendente com cabo desconectado mantém o indicador de
+desconexão. Os 78 handlers JSX do Inspector foram comparados com a cópia da 3B
+e permanecem idênticos, assim como `deviceLabelLayout` em relação ao HEAD.
+
+Validação: **3.064 testes em 186 arquivos**, incluindo nove novos casos
+parametrizados de apresentação/imutabilidade; **111 testes direcionados**,
+TypeScript, build e diff-check. Chromium nativo: **48 cenários específicos /
+153 verificações totais**, DE/EN/PT-BR, Graphite Dark em 1440 px e Classic Light
+em 900 px com menu compacto. Cobertos Host Linux/Windows, Router, Switch,
+Server e AP; tabelas vazias/preenchidas, ARP/MAC aprendidos por Echo real,
+rotas conectadas/estáticas/RIP, ajuda e Escape, estados DOWN/desconexão,
+contagem de portas, seleção/aba estáveis e dados técnicos idênticos ao trocar
+idioma. F5 mantém o documento/configuração; caches ARP/MAC e rotas aprendidas
+continuam com seu ciclo de vida volátil existente, sem nova persistência.
+Roteiro reproduzível: `node scripts/test-tables-i18n.mjs`. Perfil e bancos
+IndexedDB descartáveis, sem acesso aos dados reais do usuário. **30 capturas reais**
+organizadas separadamente em
+`.playwright-mcp/reviews/tables-3c1/referencias-chatgpt/`; galeria `index.html`
+na pasta superior. Logs, capturas e cópias iniciais estão ignorados.
+
+Arquivos desta rodada: `DiagnosticTables.tsx`, `InterfaceConnection.tsx`,
+`Inspector.tsx`, `NodeNetworkLabel.tsx`, `canvasNetwork.ts`, catálogo
+`navigation.ts`, testes `DiagnosticTables.test.ts`, `InterfaceConnection.test.ts`,
+`canvasNetwork.test.ts` e `i18n.test.ts`; novos roteiros
+`scripts/tables-i18n-review.mjs` e `scripts/test-tables-i18n.mjs`, integração em
+`scripts/test-project-repository.mjs` e este contexto. Demais arquivos locais
+pertencem às rodadas 3A/3B e foram preservados.
+
+Pendências **3C2**: controles/diagnósticos completos de WLAN/AP, DHCP,
+firewall e serviços; textos de configuração VLAN ainda não abrangidos por
+resumos/tabelas; falhas livres de `portChangeError` e `wirelessError`.
+Estas últimas continuam originais quando apresentadas: não foram ocultadas
+nem traduzidas por comparação de frases. ARP/MAC não oferecem um estado
+“expirado” separado: após aging a entrada desaparece e o estado vazio já é
+traduzido, sem inventar novos estados. Sem alterações em engine, store,
+protocolos, schemas, persistência, histórico, tutoriais ou geometria. Build
+mantém somente o aviso preexistente de chunks >500 kB. Sem commit, push,
+merge ou deploy; **3C2 não iniciada**.
+
+**i18n 3B — IPv4, gateway e DNS, somente local (11/11/2026):** preservada a
+3A. Acrescentadas 33 chaves ao catálogo navigation para campos/aria/placeholders,
+DHCP do cliente (solicitação, lease, valores salvos e renovação), erros locais do
+formulário, alerta de gateway fora da sub-rede, DNS efetivo e configuração global.
+InterfaceGatewayRoutes traduz as explicações sem copiar rotas para o campo do
+gateway. hostNetworkSummary aceita idioma opcional (DE por padrão), localizando
+somente a origem: interface estática/DHCP, rota explícita, RIP e override global.
+Endereços, interface proprietária, prioridade DNS e seleção de rota não mudam.
+Uma rota conectada /0 é agora identificada como conectada na apresentação, em
+vez de receber o rótulo de gateway de interface; lookup e encaminhamento intactos.
+
+Erros gerados no próprio formulário guardam chaves voláteis pelo mecanismo
+editorMessages já existente. A troca de idioma não recria o formulário nem muda
+debounce, agrupamento de edição, campos/cursor, DHCP ou Undo/Redo. Falhas livres
+retornadas por setInterfaceIpv4/setNameserver/renovação DHCP continuam originais:
+não há código estável para interpretá-las com segurança. Sem comparação de
+frases, sem alterações no parser, nas validações ou na resolução DNS simulada.
+Nota de independência entre IPv4 por interface, rotas estáticas e DNS global
+também traduzida. A tabela completa continua com seu conteúdo para 3C.
+
+Validação: **3.055 testes em 186 arquivos**, TypeScript, build e diff-check;
+**84 cenários específicos / 189 verificações Chromium totais**, Graphite Dark e
+Classic Light, três idiomas, Host Linux/Windows, Notebook, Server, Router,
+Firewall e Smartphone. Cobertos preenchimento real do formulário, gateway e
+rota explícita independentes, erros, rascunho parcial, DHCP on/off, DNS, ausência
+de gravações técnicas/histórico ao trocar idioma e configuração após F5. Testes
+parametrizados também conferem origens de gateway/DNS e rota conectada /0.
+No roteiro antigo de Workspace, a espera da lista foi tornada específica para
+o plano recém-salvo antes do clique, corrigindo uma corrida de teste sem mudar
+o produto. 21 capturas reais em
+`.playwright-mcp/reviews/ipv4-3b/referencias-chatgpt/`; galeria index.html na pasta
+superior. Logs `i18n3b-*` e cópias da 3A continuam ignorados em `.playwright-mcp/`.
+
+Pendências 3C mantidas: conteúdo de tabelas ARP/MAC/rotas, resumos de conexão,
+Wi-Fi AP, firewall, DHCP avançado e diagnósticos. Textos livres dos validadores
+profundos exigem contratos semânticos futuros. CLI e valores técnicos não são
+traduzidos. Nenhuma alteração em engine, store, persistência, schemas, tutoriais,
+geometria ou histórico. Sem commit, push, merge ou deploy; 3C não iniciada.
+
+**i18n 3A — Palette e Inspector básico, somente local (11/11/2026):** iniciada
+com árvore limpa e `9576ab9` sincronizado com origin/main. Acrescentadas 73
+chaves ao catálogo navigation existente para categorias/descrições da Palette,
+instruções de clique/arraste, ferramentas vazias, abas, nome/SO, títulos e ações
+comuns do Inspector. Router, Switch, Server, Host, WLAN, Linux e Windows mantidos
+como termos técnicos; PT-BR usa Geral/Rede/Segurança, Editar, Excluir dispositivo,
+Sistema operacional, AP Wi-Fi e Infraestrutura. Resumos básicos de portas,
+contagens e serviços também localizados. DeviceActions acompanha o idioma,
+preservando nomes personalizados/Unicode. CopyIpButton e OpenDesktopButton já
+estavam internacionalizados e foram preservados.
+
+IDs de abas, MIME e payload de drag, preferências, nomes e valores internos
+permanecem iguais. Os 98 handlers JSX dos quatro componentes foram comparados
+com HEAD e continuam idênticos. Grupos do resumo de Switch usam identidade
+estável, independente do título traduzido. Trocar idioma não troca a seleção,
+a aba ativa nem perde o rascunho do nome. Ausência de seleção continua sem
+Inspector; nenhum estado/tela novo. Sem alterações em store, engine, schemas,
+persistência, histórico, geometria, handles/badges ou tutoriais.
+
+Reservado à 3B: formulários e explicações IPv4/Gateway/DNS. Reservado à 3C:
+conteúdo das tabelas ARP/MAC/rotas, resumos técnicos de interfaces/conexões,
+WLAN/DHCP, firewall detalhado e diagnósticos. Esses conteúdos ainda podem
+aparecer no idioma original dentro das abas traduzidas. Não foram corrigidos
+os textos danificados dessas seções nem a sobreposição preexistente de ícones.
+
+Validação: **3.052 testes em 186 arquivos**, TypeScript, build e diff-check;
+**66 cenários específicos / 171 verificações Chromium totais**, perfil e bancos
+descartáveis, DE/EN/PT-BR, Dark/Light, 1440/900 px (barra normal/compacta), oito
+tipos de dispositivo, nomes Unicode, rascunho aberto e troca de idioma, seleção,
+tooltips/aria e eventos dragstart/drop com o mesmo MIME. O DataTransfer sintético
+não reproduz o effectAllowed de uma sessão nativa; payload, adição pelo drop e
+handlers originais foram verificados sem alterar o drag do produto.
+30 capturas reais em `.playwright-mcp/reviews/basic-editor-3a/referencias-chatgpt/`,
+galeria index.html na pasta superior. Logs `i18n3a-*`, imagens e arquivos de
+revisão permanecem ignorados. Testes antigos do Inspector foram alinhados aos
+rótulos DE, mantendo as verificações de serviços/editores. Sem commit, push,
+merge ou deploy; 3B não iniciada automaticamente.
 
 **Consolidação i18n 2A + 2B — commit local autorizado (11/11/2026):** revisão
 conjunta dos 24 arquivos aprovados, incluindo os sete novos arquivos de helper,

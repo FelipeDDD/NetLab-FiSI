@@ -109,7 +109,7 @@ export async function runWorkspaceUIReview({ page, url, root, report, openPage }
       await click('.workspace-tab-wrap[data-active="true"] .workspace-tab-close'); await textButton('Verwerfen', 'dialog[open]'); await tabs(2);
       await menu('Neu'); await tabs(3); await page.evaluate(`store.getState().addDeviceAt('host',{x:0,y:0});`); await click('.workspace-tab-wrap[data-active="true"] .workspace-tab-close'); await textButton('Speichern', 'dialog[open]');
       await input('.workspace-name-label input', 'Versuch'); await textButton('Speichern', 'dialog[open]'); await tabs(2);
-      await menu('Öffnen…'); await wait(`document.querySelector('.workspace-plan-row')`);
+      await menu('Öffnen…'); await wait(`[...document.querySelectorAll('.workspace-plan-open')].some(e=>e.querySelector('strong').textContent==='Versuch')`);
       await page.evaluate(`[...document.querySelectorAll('.workspace-plan-open')].find(e=>e.querySelector('strong').textContent==='Versuch').click();`); await tabs(3);
     });
     await test('ui: order, focus and unsaved edits survive F5', async () => {

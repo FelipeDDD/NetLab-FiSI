@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+import * as i18n from '../i18n';
 import { Network } from '../engine/network';
 import { createDevice } from '../engine/factory';
 import type { IpDevice } from '../engine/ipdevice';
@@ -14,6 +15,7 @@ const text = (html: string) => html.replace(/<[^>]*>/g, '');
 const arp = (device: IpDevice) => renderToStaticMarkup(createElement(ArpTable, { device }));
 const routes = (device: IpDevice) => renderToStaticMarkup(createElement(RoutingTable, { device }));
 const mac = (device: SwitchDevice) => renderToStaticMarkup(createElement(MacTable, { device }));
+afterEach(() => vi.restoreAllMocks());
 function pair() {
   const net = new Network(), a = createDevice(net, 'host') as IpDevice, b = createDevice(net, 'host') as IpDevice;
   const sw = createDevice(net, 'switch') as SwitchDevice;
@@ -120,4 +122,21 @@ it.each(['host', 'server', 'router', 'firewall'] as const)('includes route help 
   const device = createDevice(net, kind) as IpDevice;
   device.interfaces[0].ip = parseCidr('192.0.2.10/24');
   expect(routes(device)).toContain('Routentyp erklären'); expect(text(routes(device))).toContain('Connected');
+});
+
+it.each([
+  ['de', 'ARP-Tabelle', 'MAC-Tabelle', 'Standardroute', 'Connected', 'Static'],
+  ['en', 'ARP table', 'MAC table', 'Default route', 'Connected', 'Static'],
+  ['pt-BR', 'Tabela ARP', 'Tabela MAC', 'Rota padrão', 'Conectada', 'Estática'],
+] as const)('localizes learned tables in %s without touching caches, routes or CLI output', (language, arpLabel, macLabel, defaultLabel, connectedLabel, staticLabel) => {
+  vi.spyOn(i18n, 'useTranslation').mockReturnValue({ language, t: (key, values) => i18n.translate(language, key, values) });
+  const { a, b, sw, net } = pair();
+  a.sendEcho(ip('192.168.1.20'), 1, 1); net.scheduler.advanceTo(1000);
+  a.addRoute(0, 0, ip('192.168.1.1'), 'eth0');
+  const before = { arp: [...a.arpTable], mac: [...sw.macTable], routes: a.routes(), cli: formatNeigh(a) + formatRoutes(a) };
+  const arpHtml = arp(a), macHtml = mac(sw), routeHtml = routes(a);
+  expect(arpHtml).toContain(`aria-label="${arpLabel}"`); expect(macHtml).toContain(`aria-label="${macLabel}"`);
+  expect(text(arpHtml)).toContain(b.interfaces[0].mac); expect(text(macHtml)).toContain(a.interfaces[0].mac);
+  for (const value of [defaultLabel, connectedLabel, staticLabel, '192.168.1.0/24', '192.168.1.1', 'eth0']) expect(text(routeHtml)).toContain(value);
+  expect({ arp: [...a.arpTable], mac: [...sw.macTable], routes: a.routes(), cli: formatNeigh(a) + formatRoutes(a) }).toEqual(before);
 });

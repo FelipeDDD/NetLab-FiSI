@@ -1,8 +1,10 @@
 import { useStore } from '../store';
 import { useLayoutEffect, useRef } from 'react';
 import { useViewport } from '@xyflow/react';
+import { useTranslation } from '../i18n';
 
 export function DeviceActions({ id, name }: { id: string; name: string }) {
+  const { t } = useTranslation();
   const openTerminal = useStore(s => s.openTerminal);
   const pingSource = useStore(s => s.quickPing?.sourceId === id);
   const actions = useRef<HTMLDivElement>(null), { zoom } = useViewport();
@@ -25,9 +27,9 @@ export function DeviceActions({ id, name }: { id: string; name: string }) {
     measure(); const observer = new ResizeObserver(measure); observer.observe(region);
     return () => observer.disconnect();
   }, [zoom]);
-  return <div ref={actions} className="device-actions" role="group" aria-label={`Aktionen für ${name}`}>
+  return <div ref={actions} className="device-actions" role="group" aria-label={t('navigation.basicActionsFor', { name })}>
     <button type="button" className="device-terminal device-action nodrag nopan nowheel"
-      aria-label={`Terminal öffnen: ${name}`} title={`Terminal öffnen: ${name}`}
+      aria-label={t('navigation.basicTerminalFor', { name })} title={t('navigation.basicTerminalFor', { name })}
       onPointerDown={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} onKeyUp={e => e.stopPropagation()}
       onDoubleClick={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); openTerminal(id); }}>
       <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
@@ -35,7 +37,7 @@ export function DeviceActions({ id, name }: { id: string; name: string }) {
       </svg>
     </button>
     <button type="button" className="device-ping device-action nodrag nopan nowheel"
-      aria-label={`Ping von ${name}`} title={pingSource ? 'Ping abbrechen' : `Ping von ${name}`} aria-pressed={pingSource}
+      aria-label={t('navigation.basicPingFrom', { name })} title={pingSource ? t('navigation.basicCancelPing') : t('navigation.basicPingFrom', { name })} aria-pressed={pingSource}
       onPointerDown={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} onKeyUp={e => e.stopPropagation()}
       onDoubleClick={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); useStore.getState().beginQuickPing(id); }}>
       <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

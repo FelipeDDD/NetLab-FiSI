@@ -1,4 +1,5 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import * as i18n from '../i18n';
 import { Children, createElement, isValidElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ReactFlowProvider } from '@xyflow/react';
@@ -17,6 +18,7 @@ const view = vi.hoisted(() => ({ selected: null as string | null, nodes: [], edg
   toggleDhcpServer: vi.fn(), toggleDnsServer: vi.fn(), toggleHttpServer: vi.fn() }));
 vi.mock('../store', () => ({ useStore: Object.assign((select: (s: typeof view) => unknown) => select(view), { getState: () => view }) }));
 beforeEach(() => { sim.net = new Network(); view.selected = null; vi.clearAllMocks(); });
+afterEach(() => vi.restoreAllMocks());
 const render = () => renderToStaticMarkup(createElement(Inspector));
 
 it('keeps the interface gateway input empty while explaining an independently configured default route', () => {
@@ -36,10 +38,10 @@ it('keeps Allgemein concise while Netzwerk retains gateway origins, including co
   sim.net.connect(host.id, peer.id); host.interfaces[0].configureIpv4(parseStaticIpv4('192.168.10.50', '24', '', '')!);
   host.addRoute(0, 0, parseIp('192.168.10.254')!, 'eth0');
   const overview = () => renderToStaticMarkup(createElement(HostOverview, { device: host, onEdit: vi.fn() }));
-  expect(overview()).toContain('<dt>Gateway</dt><dd>192.168.10.254</dd>');
+  expect(overview()).toContain('<dt>Standardgateway</dt><dd>192.168.10.254</dd>');
   expect(overview()).not.toContain('Explizite Route');
   host.interfaces[0].gateway = parseIp('192.168.10.1');
-  expect(overview()).toContain('<dt>Gateway</dt><dd>—</dd>');
+  expect(overview()).toContain('<dt>Standardgateway</dt><dd>—</dd>');
   const network = renderToStaticMarkup(createElement(InterfaceIpv4Panel, { deviceId: host.id, ifaceName: 'eth0' }));
   expect(network).toContain('192.168.10.254'); expect(network).toContain('192.168.10.1');
   expect(network).toContain('Explizite Route'); expect(network).toContain('Mehrere Standardwege');
@@ -74,17 +76,17 @@ it('organizes the AP into three persistent pages with existing settings and no i
   expect(tabs[0]).toContain('Allgemein'); expect(tabs[0]).toContain('aria-selected="true"');
   expect(tabs[1]).toContain('WLAN'); expect(tabs[2]).toContain('Clients');
   expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(2);
-  expect(html.match(/aria-label="Access point SSID"/g)).toHaveLength(1);
+  expect(html.match(/aria-label="SSID des Access Points"/g)).toHaveLength(1);
   expect(html).toContain('NetLab WLAN'); expect(html).toContain('VLAN 20');
   expect(html).toContain('Nicht belegt'); expect(html).not.toContain('Kein Kabel');
   for (const iface of ap.interfaces) {
     expect(html).not.toContain(`aria-label="IP-Adresse ${iface.name}"`);
-    expect(html).toContain(`aria-label="Access VLAN for ${iface.name}"`);
+    expect(html).toContain(`aria-label="Access-VLAN für ${iface.name}"`);
     expect(html).toContain(`aria-label="Admin ${iface.name}"`);
   }
   for (const value of ['Gespeicherte IPv4-Daten', '192.0.2.1/24', '192.0.2.254', '192.0.2.53']) expect(html).toContain(value);
   expect(html).not.toContain('automatisch beziehen');
-  for (const label of ['SSID erklären', 'Bridging erklären', 'Port-Konfiguration erklären', 'Gelernte MAC-Adressen', 'Delete device']) expect(html).toContain(label);
+  for (const label of ['SSID erklären', 'Bridging erklären', 'Port-Konfiguration erklären', 'Gelernte MAC-Adressen', 'Gerät löschen']) expect(html).toContain(label);
   expect(html).toContain('Authentifizierung und Verschlüsselung werden nicht simuliert');
   for (const label of ['WPA', 'RSSI', 'Open terminal', 'IP forwarding:', 'RIP routing', 'role="switch"']) expect(html).not.toContain(label);
 });
@@ -154,7 +156,7 @@ it('starts hosts on Allgemein and keeps all three pages mounted with matching ac
   }
   expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(2);
   expect(html).toContain('aria-label="IP-Adresse eth0"'); // Mounted despite being hidden.
-  expect(html).not.toContain('Open terminal'); expect(html).toContain('Delete device');
+  expect(html).not.toContain('Open terminal'); expect(html).toContain('Gerät löschen');
   expect(html).not.toContain('IP forwarding:');
 });
 
@@ -164,8 +166,8 @@ it('preserves services, ports, routing, ARP, global DNS, simulated rules, conntr
   host.dnsServer = { enabled: true, records: new Map() };
   host.httpServer = { enabled: true, port: 8080, body: 'Saved draft' };
   const html = render();
-  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'DNS global override', 'Erweiterte Einstellungen', 'DHCP · Schnittstellen', 'DNS server', 'Web server',
-    'Additional TCP ports', 'Additional UDP ports', 'HTTP response body', 'Conntrack', 'Firewall log', 'Copy firewall config']) expect(html).toContain(label);
+  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'Globaler DNS-Override', 'Erweiterte Einstellungen', 'DHCP · Schnittstellen', 'DNS-Server', 'HTTP-Server',
+    'Zusätzliche TCP-Ports', 'Zusätzliche UDP-Ports', 'HTTP-Antwortinhalt', 'Conntrack', 'Firewall-Protokoll', 'Firewall-Konfiguration kopieren']) expect(html).toContain(label);
   expect(html).toContain('Saved draft'); expect(html).toContain('8080');
   expect(html).toMatch(/<details class="host-inspector-details"><summary>Erweiterte Einstellungen/);
 });
@@ -219,13 +221,13 @@ it('starts routers on Allgemein with five accessible, mounted pages and one IPv4
   expect(html).toContain('aria-label="Router-Einstellungen"');
   const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
   expect(tabs).toHaveLength(5); expect(tabs[0]).toContain('aria-selected="true"');
-  for (const [index, label] of ['Allgemein', 'Interfaces', 'Routing', 'Dienste', 'Firewall'].entries()) expect(tabs[index]).toContain(label);
+  for (const [index, label] of ['Allgemein', 'Schnittstellen', 'Routing', 'Dienste', 'Firewall'].entries()) expect(tabs[index]).toContain(label);
   expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(4);
   for (const iface of router.interfaces) expect(html.match(new RegExp(`aria-label="IP-Adresse ${iface.name}"`, 'g'))).toHaveLength(1);
-  expect(html.match(/aria-label="Device name"/g)).toHaveLength(1);
+  expect(html.match(/aria-label="Gerätename"/g)).toHaveLength(1);
   expect(html).not.toMatch(/<details class="router-interface-editor" open/);
   expect(html).not.toContain('aria-label="DHCP Server"');
-  expect(html).not.toContain('Open terminal'); expect(html).toContain('Delete device');
+  expect(html).not.toContain('Open terminal'); expect(html).toContain('Gerät löschen');
 });
 
 it('shows actual router interfaces, neighbors, forwarding and RIP without an extra form or diagnostics on Allgemein', () => {
@@ -248,8 +250,8 @@ it('preserves router services, diagnostics, filtering, logs and DNS override in 
   router.services.tcp.add(2222); router.services.udp.add(5353); router.nameserver = parseIp('203.0.113.53');
   router.fw.tables.filter = true; router.fw.declareFilter('forward', 'forward', 'accept');
   const html = render();
-  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'RIP aktivieren', 'Firewall (nftables)', 'Copy config', 'Conntrack',
-    'Firewall logs', 'DHCP · Schnittstellen', 'DNS server', 'Web server', 'DNS global override', 'Additional TCP ports', 'Additional UDP ports']) expect(html).toContain(label);
+  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'RIP aktivieren', 'Firewall (nftables)', 'Konfiguration kopieren', 'Conntrack',
+    'Firewall-Protokoll', 'DHCP · Schnittstellen', 'DNS-Server', 'HTTP-Server', 'Globaler DNS-Override', 'Zusätzliche TCP-Ports', 'Zusätzliche UDP-Ports']) expect(html).toContain(label);
   for (const value of ['Router response draft', '8080', '2222', '5353', '203.0.113.53', 'chain forward']) expect(html).toContain(value);
 });
 
@@ -265,9 +267,9 @@ it('starts servers on Allgemein with four mounted pages and no duplicate configu
     expect(html).toContain(`id="${panel}" aria-labelledby="${id}"`);
   }
   expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(3);
-  expect(html.match(/aria-label="Device name"/g)).toHaveLength(1);
+  expect(html.match(/aria-label="Gerätename"/g)).toHaveLength(1);
   expect(html.match(/aria-label="IP-Adresse eth0"/g)).toHaveLength(1);
-  expect(html).not.toContain('Open terminal'); expect(html).toContain('Delete device');
+  expect(html).not.toContain('Open terminal'); expect(html).toContain('Gerät löschen');
   expect(html).not.toContain('Betriebssystem'); expect(html).not.toContain('RIP aktivieren');
 });
 
@@ -292,7 +294,8 @@ it.each(['server', 'router', 'firewall'] as const)('dispatches each %s quick swi
     if (node.props.role === 'switch') switches.push(node.props);
     visit(node.props.children);
   });
-  visit(OverviewServices({ device: server, onServices: vi.fn() }));
+  function Probe() { const nodes = OverviewServices({ device: server, onServices: vi.fn() }); visit(nodes); return nodes; }
+  renderToStaticMarkup(createElement(Probe));
   expect(switches).toHaveLength(2); switches.forEach(control => control.onClick?.());
   expect(view.toggleDhcpServer).not.toHaveBeenCalled();
   for (const action of [view.toggleDnsServer, view.toggleHttpServer]) {
@@ -320,10 +323,10 @@ it('preserves every existing server editor and diagnostic with independent servi
   server.httpServer = { enabled: true, port: 8080, body: 'Server response draft' };
   server.services.tcp.add(2222); server.services.udp.add(5353); server.nameserver = parseIp('203.0.113.53');
   const html = render();
-  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'DNS global override', 'IP forwarding:', 'DHCP · Schnittstellen', 'DNS server', 'Web server',
-    'Additional TCP ports', 'Additional UDP ports', 'Firewall (nftables)', 'Conntrack', 'Firewall log', 'Copy firewall config']) expect(html).toContain(label);
+  for (const label of ['Routing-Tabelle', 'ARP-Tabelle', 'Globaler DNS-Override', 'IP-Forwarding:', 'DHCP · Schnittstellen', 'DNS-Server', 'HTTP-Server',
+    'Zusätzliche TCP-Ports', 'Zusätzliche UDP-Ports', 'Firewall (nftables)', 'Conntrack', 'Firewall-Protokoll', 'Firewall-Konfiguration kopieren']) expect(html).toContain(label);
   for (const value of ['10.0.0.100', '10.0.0.150', 'web.lan', 'Server response draft', '8080', '2222', '5353', '203.0.113.53']) expect(html).toContain(value);
-  for (const label of ['DNS A records', 'HTTP port', 'HTTP response body', 'eth0 Pool-Anfang']) expect(html.match(new RegExp(`aria-label="${label}"`, 'g'))).toHaveLength(1);
+  for (const label of ['DNS-A-Records', 'HTTP-Port', 'HTTP-Antwortinhalt', 'eth0 Pool-Anfang']) expect(html.match(new RegExp(`aria-label="${label}"`, 'g'))).toHaveLength(1);
   expect(html).toContain('aria-label="Firewall-Begriffe erklären"'); expect(html).toContain('aria-label="Conntrack erklären"');
 });
 
@@ -336,12 +339,12 @@ it('keeps four switch pages mounted with only supported port controls and one VL
   expect(tabs[0]).toContain('aria-selected="true"');
   expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(3);
   for (const port of device.interfaces) {
-    expect(html.match(new RegExp(`aria-label="Access VLAN for ${port.name}"`, 'g'))).toHaveLength(1);
+    expect(html.match(new RegExp(`aria-label="Access-VLAN für ${port.name}"`, 'g'))).toHaveLength(1);
     expect(html).toContain(`aria-label="Admin ${port.name}"`);
   }
   expect(html).toContain('Keine MAC-Adressen gelernt'); expect(html).toContain('Access-VLAN erklären');
   expect(html).not.toContain('IP-Adresse'); expect(html).not.toContain('DHCP'); expect(html).not.toContain('Trunk');
-  expect(html).toContain('Delete device'); expect(html).not.toContain('Open terminal');
+  expect(html).toContain('Gerät löschen'); expect(html).not.toContain('Open terminal');
 });
 
 it('derives the switch overview from ports, configured VLANs and current MAC learning', () => {
@@ -351,7 +354,7 @@ it('derives the switch overview from ports, configured VLANs and current MAC lea
   const link = sim.net.connect(device.id, host.id); device.vlans.set('eth0', 20);
   device.macTable.set(`20|${host.interfaces[0].mac}`, device.interfaces[0]);
   const html = summary();
-  for (const value of ['1 von 8', '1, 20', `Verbunden mit ${host.name}`, 'VLAN 20', 'Gelernte MACs', 'Port eth0 bearbeiten']) expect(html).toContain(value);
+  for (const value of ['1 von 8', '1, 20', `Verbunden mit ${host.name}`, 'VLAN 20', 'Gelernte MACs', 'Bearbeiten eth0']) expect(html).toContain(value);
   expect(html).not.toContain('<input class="iface-ip"');
   sim.net.disconnect(link.id); expect(summary()).toContain('0 von 8');
 });
@@ -384,7 +387,7 @@ it('organizes the dedicated Firewall into five persistent pages without duplicat
   device.dnsServer = { enabled: true, records: new Map([['lab.local', parseIp('10.0.0.10')!]]) };
   const html = render();
   const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>(.*?)<\/button>/g)].map(match => match[1]);
-  expect(tabs).toEqual(['Allgemein', 'Interfaces', 'Firewall', 'Routing', 'Dienste']);
+  expect(tabs).toEqual(['Allgemein', 'Schnittstellen', 'Firewall', 'Routing', 'Dienste']);
   expect(html).toContain('aria-label="Firewall Inspector"');
   expect(html.match(/role="tabpanel"[^>]* hidden=""/g)).toHaveLength(4);
   const general = html.slice(html.indexOf('role="tabpanel"'), html.indexOf('-panel-interfaces" aria-labelledby'));
@@ -392,9 +395,9 @@ it('organizes the dedicated Firewall into five persistent pages without duplicat
   for (const iface of device.interfaces) expect(html.match(new RegExp(`aria-label="IP-Adresse ${iface.name}"`, 'g'))).toHaveLength(1);
   expect(html.match(/<details class="router-interface-editor"/g)).toHaveLength(4);
   expect(html).not.toMatch(/<details class="router-interface-editor" open/);
-  expect(html.match(/role="switch" aria-label="DNS Server" aria-checked="true"/g)).toHaveLength(2);
-  for (const value of ['Firewall (nftables)', 'Copy config', 'Conntrack erklären', 'Firewall-Begriffe erklären', 'Firewall logs', 'Routing-Tabelle', 'ARP-Tabelle', 'RIP aktivieren',
-    'IP-Forwarding aktivieren', 'DHCP · Schnittstellen', 'DNS server', 'Web server', 'lab.local', 'Delete device']) expect(html).toContain(value);
+  expect(html.match(/role="switch" aria-label="DNS-Server" aria-checked="true"/g)).toHaveLength(2);
+  for (const value of ['Firewall (nftables)', 'Konfiguration kopieren', 'Conntrack erklären', 'Firewall-Begriffe erklären', 'Firewall-Protokoll', 'Routing-Tabelle', 'ARP-Tabelle', 'RIP aktivieren',
+    'IP-Forwarding aktivieren', 'DHCP · Schnittstellen', 'DNS-Server', 'HTTP-Server', 'lab.local', 'Gerät löschen']) expect(html).toContain(value);
   const routing = html.slice(html.indexOf('-panel-routing" aria-labelledby'), html.indexOf('-panel-services" aria-labelledby'));
   expect(routing).toMatch(/<input type="checkbox" checked=""\/>IP-Forwarding aktivieren/);
   device.forwarding = false;
@@ -410,7 +413,7 @@ it('reports actual per-hook Firewall policies and declared filter/NAT rules, inc
   device.fw.addFilterRule('forward', { proto: 'icmp' }, 'accept');
   device.fw.declareNat('postrouting', 'postrouting'); device.fw.addNatRule('postrouting', {}, { type: 'masquerade' });
   let html = summary(); expect(html.match(/<code>ACCEPT<\/code>/g)).toHaveLength(2);
-  expect(html).toContain('<code>DROP</code>'); expect(html).toContain('1 Filterregeln · 1 NAT-Regeln');
+  expect(html).toContain('<code>DROP</code>'); expect(html).toContain('Filterregeln: 1 · NAT-Regeln: 1');
   device.fw.filter.input.declared = false; html = summary();
   expect(html).toContain('Keine Basiskette'); expect(html.match(/<code>ACCEPT<\/code>/g)).toHaveLength(1);
 });
@@ -426,4 +429,25 @@ it('uses shared interface states and live Firewall information in Allgemein', ()
   device.interfaces[1].up = false; device.forwarding = false; device.enableRip(true);
   html = summary();
   for (const value of ['Admin: DOWN', 'IP-Forwarding: <strong>Inaktiv', 'RIP: <strong>Aktiv']) expect(html).toContain(value);
+});
+
+it.each([
+  ['de', 'DNS-Server', 'HTTP-Server', 'Standardpolitik', 'WLAN-Einstellungen'],
+  ['en', 'DNS server', 'HTTP server', 'Default policy', 'WLAN settings'],
+  ['pt-BR', 'Servidor DNS', 'Servidor HTTP', 'Política padrão', 'Configurações WLAN'],
+] as const)('localizes advanced Inspector panels in %s and preserves user content', (language, dns, http, policy, wlan) => {
+  vi.spyOn(i18n, 'useTranslation').mockReturnValue({ language, t: (key, values) => i18n.translate(language, key, values) });
+  for (const kind of ['host', 'server', 'router', 'firewall', 'ap'] as const) {
+    const device = createDevice(sim.net, kind); device.name = 'São Paulo 東京'; view.selected = device.id;
+    if (device instanceof IpDevice) {
+      device.dnsServer = { enabled: true, records: new Map([['web.lan', parseIp('192.0.2.1')!]]) };
+      device.httpServer = { enabled: true, port: 8080, body: 'Olá 東京' };
+    }
+    const before = device.interfaces.map(i => ({ mac: i.mac, ipv4: structuredClone(i.ipv4) }));
+    const html = render(); expect(html).toContain('São Paulo 東京');
+    if (device instanceof IpDevice) for (const value of [dns, http, 'web.lan', '192.0.2.1', '8080', 'Olá 東京']) expect(html).toContain(value);
+    if (kind === 'firewall') expect(html).toContain(policy);
+    if (kind === 'ap') expect(html).toContain(wlan);
+    expect(device.interfaces.map(i => ({ mac: i.mac, ipv4: i.ipv4 }))).toEqual(before);
+  }
 });

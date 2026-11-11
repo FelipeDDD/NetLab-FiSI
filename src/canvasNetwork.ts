@@ -1,3 +1,4 @@
+import { translate, type Language } from './i18n';
 import type { Device } from './engine/device';
 import { IpDevice } from './engine/ipdevice';
 import { cidrToString, ipToString } from './engine/ip';
@@ -27,7 +28,8 @@ export function deviceLabelLayout(node: VisualNode, nodes: readonly VisualNode[]
   });
   return { scale, maxWidth: Math.max(24, Math.min(180, ...available)) };
 }
-export function canvasNetwork(device: Device | undefined, previousInterface?: string) {
+export function canvasNetwork(device: Device | undefined, previousInterface?: string, language: Language = 'de') {
+  const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
   if (!(device instanceof IpDevice)) return null;
   const live = device.interfaces.filter(i => i.up && i.link?.operational);
   const configured = device.interfaces.filter(i => i.ip);
@@ -37,12 +39,12 @@ export function canvasNetwork(device: Device | undefined, previousInterface?: st
   const wireless = main?.medium === 'wireless';
   const noLink = !live.length;
   const pending = !!main?.cancelDhcp || (main?.ipv4Mode === 'dhcp' && !main.ip);
-  const state = noLink ? (wireless ? main?.link?.wirelessError ?? (main?.up ? 'Kein Link' : 'Admin DOWN') : main?.up ? 'Kein Link' : 'Admin DOWN')
-    : pending ? 'DHCP ausstehend' : !main?.ip ? 'IPv4 nicht konfiguriert' : 'Link aktiv';
+  const state = noLink ? (wireless ? main?.link?.wirelessError ?? (main?.up ? t('navigation.canvasNoLink') : 'Admin DOWN') : main?.up ? t('navigation.canvasNoLink') : 'Admin DOWN')
+    : pending ? t('navigation.canvasDhcpPending') : !main?.ip ? t('navigation.canvasIpv4Missing') : t('navigation.linkActive');
   const lines = device.interfaces.map(i => {
     const active = !!i.up && !!i.link?.operational;
-    const reason = active ? 'Link aktiv' : !i.up ? 'Admin DOWN' : i.link?.wirelessError ?? 'Kein Link';
-    return `${i.name}: ${i.ip ? cidrToString(i.ip.addr, i.ip.prefix) : 'Kein IPv4'} · ${reason}${i.ip && !active ? ' · gespeichert' : ''}${i.cancelDhcp || (i.ipv4Mode === 'dhcp' && !i.ip) ? ' · DHCP ausstehend' : ''}`;
+    const reason = active ? t('navigation.linkActive') : !i.up ? 'Admin DOWN' : i.link?.wirelessError ?? t('navigation.canvasNoLink');
+    return `${i.name}: ${i.ip ? cidrToString(i.ip.addr, i.ip.prefix) : t('navigation.linkNoIpv4')} · ${reason}${i.ip && !active ? ' · ' + t('navigation.canvasStored') : ''}${i.cancelDhcp || (i.ipv4Mode === 'dhcp' && !i.ip) ? ' · ' + t('navigation.canvasDhcpPending') : ''}`;
   });
   // Presentation only: keep the operational/main interface first, and show
   // other stored addresses explicitly rather than treating them as live.
@@ -54,6 +56,6 @@ export function canvasNetwork(device: Device | undefined, previousInterface?: st
   }));
   return { address: addressOwner?.ip ? ipToString(addressOwner.ip.addr) : null,
     addresses,
-    interfaceName: addressOwner?.name, stored, state, tooltip: `${state}${stored ? ' · IPv4 gespeichert' : ''}\n${lines.join('\n')}`,
+    interfaceName: addressOwner?.name, stored, state, tooltip: `${state}${stored ? ' · ' + t('navigation.canvasIpv4Stored') : ''}\n${lines.join('\n')}`,
     icon: noLink ? wireless ? 'wifi-off' : 'unplug' : pending ? 'pending' : !main?.ip ? 'address' : null } as const;
 }

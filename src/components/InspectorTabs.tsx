@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useId, useRef, type ReactNode } from 'react';
+import { useTranslation } from '../i18n';
 
 export interface InspectorTab { id: string; label: string; content: ReactNode }
 const useTabLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 // Keep each page mounted: hiding a tab must not dispose form drafts or debounce
 // timers. Only an actual device selection change creates a new inspector.
-export function InspectorTabs({ tabs, active, onChange, label = 'Host-Einstellungen' }: {
+export function InspectorTabs({ tabs, active, onChange, label }: {
   tabs: InspectorTab[]; active: string; onChange: (id: string) => void; label?: string;
 }) {
+  const { t } = useTranslation();
   const prefix = useId();
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const container = useRef<HTMLDivElement>(null);
@@ -39,7 +41,7 @@ export function InspectorTabs({ tabs, active, onChange, label = 'Host-Einstellun
     }
   }, [activeIndex]);
   return <div ref={container}>
-    <div ref={strip} className="inspector-tabs" data-tab-count={tabs.length} role="tablist" aria-label={label}>
+    <div ref={strip} className="inspector-tabs" data-tab-count={tabs.length} role="tablist" aria-label={label ?? t('navigation.basicDeviceSettings')}>
       {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab"
         id={`${prefix}-tab-${tab.id}`} aria-controls={`${prefix}-panel-${tab.id}`}
         aria-selected={active === tab.id} tabIndex={active === tab.id ? 0 : -1}

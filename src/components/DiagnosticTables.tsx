@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n';
 import { Fragment, type ReactNode } from 'react';
 import { InfoTooltip } from './InfoTooltip';
 import type { IpDevice } from '../engine/ipdevice';
@@ -53,54 +54,58 @@ function IpAddress({ value }: { value: string }) {
 }
 
 export function ArpTable({ device, onClear }: { device: IpDevice; onClear?: () => void }) {
+  const { t } = useTranslation();
   const rows: DiagnosticRow[] = [...device.arpTable].sort(([a], [b]) => a - b).map(([ip, entry]) => ({
     key: String(ip),
     cells: [<IpAddress value={ipToString(ip)} />, <MacAddress value={entry.mac} />],
     details: [
-      { label: 'Schnittstelle', value: <code>{entry.ifaceName}</code> },
-      { label: 'Aktualisiert vor', value: `${Math.max(0, Math.floor((device.network.now - entry.at) / 1000))} s` },
+      { label: t('navigation.tableInterface'), value: <code>{entry.ifaceName}</code> },
+      { label: t('navigation.tableAge'), value: `${Math.max(0, Math.floor((device.network.now - entry.at) / 1000))} s` },
     ],
   }));
   return <>
-    {onClear && <button type="button" className="mini-btn" title="Löscht die dynamisch gelernten ARP-Einträge dieses Geräts."
-      onClick={onClear}>ARP-Cache leeren</button>}
-    <DiagnosticTable label="ARP-Tabelle" columns={['IP-Adresse', 'MAC-Adresse']}
-      variant="arp" rows={rows} empty="Keine ARP-Einträge. Sie werden beim Austausch von ARP-Nachrichten gelernt." />
+    {onClear && <button type="button" className="mini-btn" title={t('navigation.tableClearArpHint')}
+      onClick={onClear}>{t('navigation.tableClearArp')}</button>}
+    <DiagnosticTable label={t('navigation.tableArp')} columns={[t('navigation.tableIp'), t('navigation.tableMacAddress')]}
+      variant="arp" rows={rows} empty={t('navigation.tableEmptyArp')} />
   </>;
 }
 
 export function RouteTypeInfo() {
-  return <InfoTooltip label="Routentyp erklären" title="Routentyp erklärt">
-    <dl><dt>Connected</dt><dd>Direkt angeschlossenes Netzwerk.</dd>
-        <dt>Static</dt><dd>Manuell konfigurierte Route.</dd>
-        <dt>RIP</dt><dd>Automatisch von anderen Routern gelernte Route.</dd></dl>
+  const { t } = useTranslation();
+  return <InfoTooltip label={t('navigation.tableTypeExplain')} title={t('navigation.tableTypeTitle')}>
+    <dl><dt>{t('navigation.tableConnected')}</dt><dd>{t('navigation.tableConnectedHint')}</dd>
+        <dt>{t('navigation.tableStatic')}</dt><dd>{t('navigation.tableStaticHint')}</dd>
+        <dt>RIP</dt><dd>{t('navigation.tableRipHint')}</dd></dl>
   </InfoTooltip>;
 }
 
 export function RoutingTable({ device }: { device: IpDevice }) {
+  const { t } = useTranslation();
   const rows: DiagnosticRow[] = device.routes().map(route => ({
     key: `${route.kind}:${route.dest}/${route.prefix}:${route.via}:${route.ifaceName}`,
-    cells: [<>{route.prefix === 0 && <span className="diagnostic-secondary">Standardroute</span>}
+    cells: [<>{route.prefix === 0 && <span className="diagnostic-secondary">{t('navigation.tableDefault')}</span>}
       <IpAddress value={cidrToString(route.dest, route.prefix)} /></>,
-      route.via === null ? <span>Direkt · ohne Gateway</span> : <IpAddress value={ipToString(route.via)} />],
+      route.via === null ? <span>{t('navigation.tableDirect')}</span> : <IpAddress value={ipToString(route.via)} />],
     details: [
-      { label: 'Schnittstelle', value: <code>{route.ifaceName}</code> },
-      { label: 'Routentyp', value: <span className={`diagnostic-route-type is-${route.kind}`}>
-        {{ connected: 'Connected', static: 'Static', rip: 'RIP' }[route.kind]}</span> },
-      ...(route.metric === undefined ? [] : [{ label: 'Metrik', value: route.metric }]),
+      { label: t('navigation.tableInterface'), value: <code>{route.ifaceName}</code> },
+      { label: t('navigation.tableType'), value: <span className={`diagnostic-route-type is-${route.kind}`}>
+        {{ connected: t('navigation.tableConnected'), static: t('navigation.tableStatic'), rip: 'RIP' }[route.kind]}</span> },
+      ...(route.metric === undefined ? [] : [{ label: t('navigation.tableMetric'), value: route.metric }]),
     ],
   }));
-  return <DiagnosticTable label="Routing-Tabelle" columns={['Zielnetz / Prefix', 'Gateway']}
-    help={<span>Routentyp<RouteTypeInfo /></span>} rows={rows} empty="Keine Routen vorhanden." />;
+  return <DiagnosticTable label={t('navigation.tableRoutes')} columns={[t('navigation.tableDestination'), t('navigation.tableGateway')]}
+    help={<span>{t('navigation.tableType')}<RouteTypeInfo /></span>} rows={rows} empty={t('navigation.tableEmptyRoutes')} />;
 }
 
 export function MacTable({ device }: { device: SwitchDevice }) {
+  const { t } = useTranslation();
   const rows: DiagnosticRow[] = [...device.macTable].map(([key, port]) => {
     const separator = key.indexOf('|');
     return { key, vlan: Number(key.slice(0, separator)), mac: key.slice(separator + 1), port: port.name };
   }).sort((a, b) => a.vlan - b.vlan || a.mac.localeCompare(b.mac)).map(entry => ({
     key: entry.key, cells: [<MacAddress value={entry.mac} />, entry.vlan, <code>{entry.port}</code>],
   }));
-  return <DiagnosticTable label="MAC-Tabelle" columns={['MAC-Adresse', 'VLAN', 'Port']}
-    variant="mac" rows={rows} empty="Keine MAC-Adressen gelernt. Die Tabelle füllt sich beim Empfang von Frames." />;
+  return <DiagnosticTable label={t('navigation.tableMac')} columns={[t('navigation.tableMacAddress'), 'VLAN', t('navigation.tablePort')]}
+    variant="mac" rows={rows} empty={t('navigation.tableEmptyMac')} />;
 }

@@ -1,4 +1,5 @@
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+import * as i18n from '../i18n';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Network } from '../engine/network';
@@ -8,6 +9,7 @@ import type { CableAppearances } from '../cableAppearance';
 
 const view = vi.hoisted(() => ({ hoveredLinkId: null as string | null, edges: [] as { id: string; selected?: boolean }[], cableColors: {} as CableAppearances }));
 vi.mock('../store', () => ({ useStore: Object.assign((select: (s: typeof view) => unknown) => select(view), { getState: () => view }) }));
+afterEach(() => vi.restoreAllMocks());
 
 it('marks only the matching real interface for hovered or selected cables', () => {
   const { a, link } = pair();
@@ -111,4 +113,20 @@ it('keeps an unclassified empty port neutral without changing known wired ports 
   expect(render()).toContain('Nicht belegt'); expect(render()).toContain('is-disconnected');
   expect(render()).toContain('Admin: DOWN'); expect(render()).not.toContain('Kabel');
   expect(renderToStaticMarkup(createElement(InterfaceSummary, { iface: a, medium: 'wired' }))).toContain('Kein Kabel');
+});
+
+it.each([
+  ['de', 'Link aktiv', 'Gegenstelle DOWN', 'Kein Kabel', 'Keine Verbindung'],
+  ['en', 'Link active', 'peer DOWN', 'No cable', 'No connection'],
+  ['pt-BR', 'Link ativo', 'interface remota DOWN', 'Sem cabo', 'Sem conexão'],
+] as const)('localizes structural connection states in %s and preserves peer identity', (language, active, down, noCable, disconnected) => {
+  vi.spyOn(i18n, 'useTranslation').mockReturnValue({ language, t: (key, values) => i18n.translate(language, key, values) });
+  const { a, b, net, link } = pair(); b.device.name = 'São Paulo 東京';
+  const render = () => renderToStaticMarkup(createElement(InterfaceSummary, { iface: a }));
+  const before = { id: a.device.id, mac: a.mac, name: b.device.name, up: a.up, link: a.link };
+  expect(render()).toContain(active); expect(render()).toContain('São Paulo 東京');
+  b.up = false; expect(render()).toContain(down); expect(render()).toContain('is-inactive');
+  expect({ id: a.device.id, mac: a.mac, name: b.device.name, up: a.up, link: a.link }).toEqual(before);
+  net.disconnect(link.id); expect(render()).toContain(noCable); expect(render()).toContain(disconnected);
+  expect(render()).not.toContain('São Paulo 東京');
 });

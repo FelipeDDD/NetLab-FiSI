@@ -17,7 +17,7 @@ export async function runDnsWifiReview({page,url,root,report}) {
     await page.send('Input.dispatchMouseEvent',{type:'mousePressed',...p,button:'left',clickCount:1});
     await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',...p,button:'left',clickCount:1});await delay(90);
   };
-  const field='textarea[aria-label="DNS A records"]';
+  const field=baseline?'textarea[aria-label="DNS A records"]':'textarea[aria-label="DNS-A-Records"]';
   const value=()=>page.evaluate(`return document.querySelector(${JSON.stringify(field)}).value;`);
   const replace=async text=>{
     await click(field);await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65});

@@ -75,3 +75,23 @@ it('uses available room beside short bridge captions instead of truncating IPv4 
   const ap = { id: 'ap1', position: { x: 250, y: 12 }, measured: { width: 124, height: 115 }, data: { kind: 'ap' as const } };
   expect(deviceLabelLayout(router, [router, ap], .5).maxWidth).toBe(180);
 });
+
+it.each([
+  ['de', 'Kein Link', 'gespeichert', 'DHCP ausstehend'],
+  ['en', 'No link', 'stored', 'DHCP pending'],
+  ['pt-BR', 'Sem link', 'salvo', 'DHCP pendente'],
+] as const)('localizes canvas states in %s without changing addresses or operational status', (language, noLink, stored, pending) => {
+  const net = new Network(), host = createDevice(net, 'host'), sw = createDevice(net, 'switch');
+  host.interfaces[0].ip = parseCidr('192.0.2.10/24');
+  const original = canvasNetwork(host)!;
+  const summary = canvasNetwork(host, undefined, language)!;
+  expect(summary.state).toBe(noLink); expect(summary.tooltip).toContain(stored);
+  expect(summary.addresses.map(({ tooltip, ...address }) => address)).toEqual(original.addresses.map(({ tooltip, ...address }) => address));
+  expect(summary.icon).toBe('unplug'); expect(host.interfaces[0].ip).toEqual(parseCidr('192.0.2.10/24'));
+  host.interfaces[0].configureIpv4({ mode: 'dhcp', ip: null, gateway: null, dns: null });
+  // Pending DHCP on an unplugged host must keep the disconnected indicator.
+  expect(canvasNetwork(host, undefined, language)!.icon).toBe('unplug');
+  net.connect(host.id, sw.id);
+  expect(canvasNetwork(host, undefined, language)!.state).toBe(pending);
+  expect(canvasNetwork(host, undefined, language)!.icon).toBe('pending');
+});

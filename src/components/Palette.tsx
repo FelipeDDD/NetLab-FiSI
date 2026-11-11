@@ -1,3 +1,4 @@
+import { useTranslation, type TranslationKey } from '../i18n';
 import { useId, useState, type DragEvent } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { canvasWorldBounds } from '../devicePlacement';
@@ -8,26 +9,27 @@ import { InspectorTabs } from './InspectorTabs';
 import { effectiveHostCreationMode, type HostCreationMode } from '../hostOs';
 import { loadPalettePreference, savePalettePreference, type PaletteCategory, type PalettePreference } from '../paletteLayout';
 
-const CATEGORIES: { id: PaletteCategory; label: string; items: { kind: DeviceKind; label: string; blurb: string }[] }[] = [
-  { id: 'basic', label: 'Grundausstattung', items: [
-    { kind: 'host', label: 'Host', blurb: 'Arbeitsstation' },
-    { kind: 'server', label: 'Server', blurb: 'DHCP / DNS / Web' },
-    { kind: 'switch', label: 'Switch', blurb: 'Layer-2-Switch' },
-    { kind: 'router', label: 'Router', blurb: 'IP-Routing' },
+const CATEGORIES: { id: PaletteCategory; label: TranslationKey; items: { kind: DeviceKind; label: TranslationKey; blurb: TranslationKey }[] }[] = [
+  { id: 'basic', label: 'navigation.paletteBasic', items: [
+    { kind: 'host', label: 'navigation.paletteHost', blurb: 'navigation.paletteWorkstation' },
+    { kind: 'server', label: 'navigation.paletteServer', blurb: 'navigation.paletteServerHint' },
+    { kind: 'switch', label: 'navigation.paletteSwitch', blurb: 'navigation.paletteSwitchHint' },
+    { kind: 'router', label: 'navigation.paletteRouter', blurb: 'navigation.paletteRouterHint' },
   ] },
-  { id: 'clients', label: 'Endgeräte', items: [
-    { kind: 'notebook', label: 'Notebook', blurb: 'Ethernet / WLAN' },
-    { kind: 'smartphone', label: 'Smartphone', blurb: 'WLAN-Client' },
+  { id: 'clients', label: 'navigation.paletteClients', items: [
+    { kind: 'notebook', label: 'navigation.paletteNotebook', blurb: 'navigation.paletteNotebookHint' },
+    { kind: 'smartphone', label: 'navigation.paletteSmartphone', blurb: 'navigation.palettePhoneHint' },
   ] },
-  { id: 'wlan', label: 'WLAN', items: [
-    { kind: 'ap', label: 'Wi-Fi AP', blurb: 'Wireless Bridge (SSID)' },
+  { id: 'wlan', label: 'navigation.paletteWlan', items: [
+    { kind: 'ap', label: 'navigation.paletteAp', blurb: 'navigation.paletteApHint' },
   ] },
-  { id: 'security', label: 'Sicherheit', items: [
-    { kind: 'firewall', label: 'Firewall', blurb: 'Router mit nftables' },
+  { id: 'security', label: 'navigation.basicSecurity', items: [
+    { kind: 'firewall', label: 'navigation.paletteFirewall', blurb: 'navigation.paletteFirewallHint' },
   ] },
 ];
 
 export function Palette({ compact = false }: { compact?: boolean } = {}) {
+  const { t } = useTranslation();
   const addDeviceSmart = useStore((s) => s.addDeviceSmart);
   const { screenToFlowPosition } = useReactFlow();
   const add = (kind: DeviceKind) => {
@@ -51,10 +53,10 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
   };
 
   const toggleCollapsed = () => compact ? setCompactExpanded(!compactExpanded) : update({ ...preference, collapsed: !preference.collapsed });
-  const toggleLabel = collapsed ? 'Seitenleiste erweitern' : 'Seitenleiste einklappen';
-  return <aside className={`palette${collapsed ? ' is-collapsed' : ''}`} aria-label="Geräte und Werkzeuge">
+  const toggleLabel = t(collapsed ? 'navigation.paletteExpand' : 'navigation.paletteCollapse');
+  return <aside className={`palette${collapsed ? ' is-collapsed' : ''}`} aria-label={t('navigation.paletteLabel')}>
     <div className="palette-header">
-      <span className="palette-title" hidden={collapsed}>Katalog</span>
+      <span className="palette-title" hidden={collapsed}>{t('navigation.paletteCatalog')}</span>
       <button type="button" className="palette-toggle" aria-label={toggleLabel} title={toggleLabel}
         aria-expanded={!collapsed} aria-controls={`${prefix}-content`}
         onClick={toggleCollapsed}>
@@ -63,19 +65,19 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
         </svg>
       </button>
     </div>
-    {collapsed && <button type="button" className="palette-expand-area" aria-label="Seitenleiste erweitern — gesamte Leiste"
-      title="Seitenleiste erweitern" aria-expanded="false" aria-controls={`${prefix}-content`}
+    {collapsed && <button type="button" className="palette-expand-area" aria-label={t('navigation.paletteExpandArea')}
+      title={t('navigation.paletteExpand')} aria-expanded="false" aria-controls={`${prefix}-content`}
       onClick={toggleCollapsed}>
       <span aria-hidden="true" />
     </button>}
     <div id={`${prefix}-content`} className="palette-content" hidden={collapsed}>
-      <InspectorTabs active={preference.tab} label="Geräte und Werkzeuge"
+      <InspectorTabs active={preference.tab} label={t('navigation.paletteLabel')}
         onChange={tab => update({ ...preference, tab: tab as PalettePreference['tab'] })}
         tabs={[
-          { id: 'devices', label: 'Geräte', content: <>
-            <label className="host-creation-mode">Neue Hosts / Notebooks
+          { id: 'devices', label: t('navigation.paletteDevices'), content: <>
+            <label className="host-creation-mode">{t('navigation.paletteHostMode')}
               <select value={hostMode} onChange={(e) => useStore.getState().setPaletteHostCreationMode(e.target.value as HostCreationMode)}>
-                <option value="linux">Linux</option><option value="windows">Windows</option><option value="mixed">Mixed (50/50)</option>
+                <option value="linux">Linux</option><option value="windows">Windows</option><option value="mixed">{t('navigation.paletteMixed')}</option>
               </select>
             </label>
             {CATEGORIES.map(category => {
@@ -85,22 +87,22 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
                   aria-controls={`${prefix}-${category.id}`} onClick={() => toggleCategory(category.id)}>
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                     <path d={expanded ? 'm3 4 3 3 3-3' : 'm4 3 3 3-3 3'} />
-                  </svg>{category.label}
+                  </svg>{t(category.label)}
                 </button></h2>
                 <div id={`${prefix}-${category.id}`} className="palette-grid" hidden={!expanded}>
                   {category.items.map(it => <button type="button" key={it.kind}
-                    className={`palette-item kind-${it.kind}`} draggable aria-label={it.label}
+                    className={`palette-item kind-${it.kind}`} draggable aria-label={t(it.label)}
                     onDragStart={e => onDragStart(e, it.kind)}
                     onClick={() => add(it.kind)}
-                    title={`${it.blurb} · Zum Hinzufügen klicken oder auf die Arbeitsfläche ziehen`}>
+                    title={t('navigation.paletteAddHint', { description: t(it.blurb) })}>
                     <span className="palette-item-icon"><DeviceIcon kind={it.kind} size={26} /></span>
-                    <span className="palette-item-label">{it.label}</span>
+                    <span className="palette-item-label">{t(it.label)}</span>
                   </button>)}
                 </div>
               </section>;
             })}
           </> },
-          { id: 'tools', label: 'Werkzeuge', content: <p className="palette-empty">Hier ist Platz für zukünftige visuelle Werkzeuge. Derzeit sind keine verfügbar.</p> },
+          { id: 'tools', label: t('navigation.paletteTools'), content: <p className="palette-empty">{t('navigation.paletteEmpty')}</p> },
         ]} />
     </div>
   </aside>;

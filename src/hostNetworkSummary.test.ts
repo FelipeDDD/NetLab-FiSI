@@ -1,10 +1,32 @@
 import { expect, it, vi } from 'vitest';
+import { translate } from './i18n';
 import { Network } from './engine/network';
 import { createDevice } from './engine/factory';
 import { IpDevice } from './engine/ipdevice';
 import { parseIp } from './engine/ip';
 import { emptyIpv4, parseStaticIpv4 } from './engine/ipv4Config';
 import { defaultRouteSummary, hostDnsSummary, hostGatewaySummary, selectedDefaultGateway } from './hostNetworkSummary';
+
+it.each(['de', 'en', 'pt-BR'] as const)('localizes origins without changing values or ownership in %s', language => {
+  const net = new Network(), device = createDevice(net, 'host') as IpDevice, peer = createDevice(net, 'router');
+  net.connect(device.id, peer.id);
+  const iface = device.interfaces[0];
+  iface.configureIpv4(parseStaticIpv4('192.0.2.10', '/24', '192.0.2.1', '192.0.2.53')!);
+  device.addRoute(0, 0, parseIp('192.0.2.254')!, iface.name);
+  const before = structuredClone({ config: iface.ipv4, routes: device.staticRoutes });
+  expect(hostGatewaySummary(device, iface, language)).toEqual([
+    { value: parseIp('192.0.2.254'), source: translate(language, 'navigation.gatewayExplicit') },
+    { value: parseIp('192.0.2.1'), source: translate(language, 'navigation.gatewayStaticInterface') },
+  ]);
+  expect(hostDnsSummary(device, iface, language)?.source).toBe(translate(language, 'navigation.gatewayStaticInterface'));
+  device.manualNameserver = parseIp('203.0.113.53');
+  expect(hostDnsSummary(device, iface, language)).toEqual({ value: parseIp('203.0.113.53'), source: translate(language, 'navigation.dnsOverrideSource') });
+  expect({ config: iface.ipv4, routes: device.staticRoutes }).toEqual(before);
+  device.staticRoutes.length = 0;
+  iface.configureIpv4(parseStaticIpv4('192.0.2.10', '/0', '', '')!);
+  expect(defaultRouteSummary(device, iface, language).selected?.kind).toBe('connected');
+  expect(defaultRouteSummary(device, iface, language).selectedSource).toBe(translate(language, 'navigation.gatewayConnected'));
+});
 
 it('shows only an unambiguous selected gateway on the matching interface without changing independent settings', () => {
   const net = new Network(), d = createDevice(net, 'router') as IpDevice;
