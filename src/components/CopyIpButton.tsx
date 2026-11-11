@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { copyIpv4, ipv4WithoutPrefix } from '../clipboard';
+import { useTranslation } from '../i18n';
 
 export function CopyIpButton({ address, context, children, title }: {
   address: string;
@@ -8,12 +9,13 @@ export function CopyIpButton({ address, context, children, title }: {
   children?: ReactNode;
   title?: string;
 }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const sequence = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ip = ipv4WithoutPrefix(address);
   const iconOnly = children === undefined;
-  const label = `Copy IPv4 address ${ip ?? address} (${context})`;
+  const label = t('navigation.copyIpv4Label', { ip: ip ?? address, context });
 
   useEffect(() => {
     setStatus('idle');
@@ -69,7 +71,7 @@ export function CopyIpButton({ address, context, children, title }: {
         </svg>
       ) : children}
       <span className="copy-ip-feedback" role="status" aria-live="polite" aria-atomic="true">
-        {status === 'copied' ? 'Copied' : status === 'failed' ? 'Copy failed. Select the address and press Ctrl+C (Cmd+C on Mac).' : ''}
+        {status === 'copied' ? t('navigation.copied') : status === 'failed' ? t('navigation.copyFailedHint') : ''}
       </span>
     </button>
   );

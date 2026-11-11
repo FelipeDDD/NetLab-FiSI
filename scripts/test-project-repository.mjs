@@ -497,6 +497,16 @@ try {
     });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_WORKSPACE_I18N_REVIEW === '1') {
+    const { runWorkspaceI18nReview } = await import('./workspace-i18n-review.mjs');
+    await runWorkspaceI18nReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
+  if (process.env.NETLAB_EDITOR_MESSAGES_REVIEW === '1') {
+    const { runEditorMessagesReview } = await import('./editor-messages-review.mjs');
+    await runEditorMessagesReview({ page: pageOne, url: new URL('/__application_boot_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_WORKSPACE_UI_REVIEW === '1') {
     const { runWorkspaceUIReview } = await import('./workspace-ui-review.mjs');
     const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];

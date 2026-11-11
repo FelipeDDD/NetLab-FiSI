@@ -8,6 +8,107 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 
 ## Leia primeiro — auditoria e estado atual em 11/11/2026
 
+**Consolidação i18n 2A + 2B — commit local autorizado (11/11/2026):** revisão
+conjunta dos 24 arquivos aprovados, incluindo os sete novos arquivos de helper,
+testes e roteiros. Commit `Internationalize workspace and editor feedback`,
+preservando `9d9d345` como antecessor. Nenhum artefato, captura, log, cache ou
+arquivo não relacionado selecionado. Traduções anteriores dos catálogos
+preservadas; compatibilidade com texto livre e histórico volátil mantida.
+Revalidação: **3.051 testes em 186 arquivos**, **357 verificações Chromium**
+(57 específicas da 2A, 195 da 2B e 105 da base compartilhada), sem erros de
+navegador, além de TypeScript, build e diff-check. Condições do store e chamadas
+auditadas de rede/histórico/salvamento permanecem iguais. Logs locais em
+`.playwright-mcp/consolidation-i18n2-*`. As notas “somente local / sem commit”
+abaixo registram o estado anterior à consolidação. Pendências documentadas
+mantidas; nenhuma rodada nova iniciada. Sem push, merge, rebase ou deploy.
+
+**i18n 2B — mensagens dinâmicas e Undo/Redo, somente local (11/11/2026):**
+preservados `9d9d345` e todas as alterações da 2A. Acrescentadas 75 chaves ao
+catálogo navigation existente. `editorMessages.ts` formata os tipos/snapshots
+que o histórico já possui: dispositivos, conexões/WLAN, propriedades, serviços,
+IPv4, cabos e marcações. Nenhum formato, payload ou execução de Undo/Redo mudou.
+Os rótulos brutos continuam nos registros. Tipos conhecidos antigos são
+apresentados pelo seu significado; texto livre, tipos futuros e contexto livre
+de `chapter-restore` são preservados sem interpretação ou comparação de frases.
+Corrigidos apenas os dois literais danificados `WLAN hinzuf?gen` e
+`WLAN zuerst hinzuf?gen.` no store.
+
+Notificações novas e erros legados identificáveis carregam `{ key, values }`
+voláteis, renderizados pelo mesmo `t()` central; strings antigas continuam
+aceitas literalmente. Cobertos clipboard/Share Link/configuração nftables,
+copiar IPv4, colagem, exportações, falha de PNG, leitura/importação de arquivo,
+erro genérico de ação e proteção/falhas de autosave. A troca de idioma não
+reinicia o prazo de quatro segundos das notificações. O texto completo das
+notificações pode quebrar linha, restaurando a prioridade
+da regra específica da toolbar sobre o ellipsis genérico. A importação mantém o
+texto original, o diagnóstico bruto e o retorno anterior; sua apresentação
+localizada é opcional e separada. Exceções sem código recebem orientação
+genérica completa, sem prefixo traduzido concatenado a detalhes estrangeiros.
+A cópia de configuração usa o mesmo tratamento para clipboard ausente, erro
+síncrono e Promise rejeitada; o conteúdo copiado e o documento não mudam.
+
+Limites preservados: nenhuma alteração em engine, comandos, schemas/IndexedDB,
+CAS, validação de tutoriais, geometria, serialização ou mecanismos de recovery.
+O histórico comum já era **volátil**: F5 mantém o documento, limpa as pilhas e
+permite novas operações; não foi adicionada persistência de histórico. As notas
+de pendências 2B na nota da 2A descrevem o estado antes desta rodada.
+Auditoria AST: 295 condições do store e 261 chamadas de rede/histórico/salvamento
+preservadas, normalizando somente a correção literal do rótulo WLAN.
+Continuam fora do escopo os textos livres de validadores profundos de IPv4,
+DHCP e associação WLAN, saídas CLI e mensagens de outros painéis sem códigos;
+traduzir essas frases por comparação seria inseguro. Exigem contratos semânticos
+próprios numa revisão futura, sem ampliar esta rodada.
+
+Validação: **3.051 testes em 186 arquivos**, TypeScript, build e diff-check.
+Chromium em perfil/bancos descartáveis: **195 cenários específicos / 300
+verificações totais**, operações reais com Undo/Redo em
+DE/EN/PT-BR, Dark/Light e 1440/700 px; nomes Unicode, conexões Ethernet/WLAN,
+marcações, notificações ainda abertas, importação inválida e falha de PNG,
+compatibilidade histórica, barra legada de recuperação e F5. 12 capturas reais em
+`.playwright-mcp/reviews/editor-2b/referencias-chatgpt/`; galeria `index.html`
+registra também os titles nativos de Undo nas legendas, sem inserir tooltips
+artificiais no aplicativo. Logs `workspace-2b-*` e cópias de referência da 2A
+permanecem ignorados em `.playwright-mcp/`. Sem commit, push, merge ou deploy.
+
+**i18n 2A — Workspace e salvamento, somente local (11/11/2026):** preservado
+o commit `9d9d345`. Acrescentadas 59 chaves ao catálogo workspace existente
+(DE/EN/PT-BR): abas, nomes padrão, salvamento local, confirmações, formulários
+pendentes, compartilhamento, erros por código e recuperação na abertura.
+`Unbenannt` é apenas fallback para base nula; nomes persistidos/personalizados,
+inclusive `Unbenannt`, `Neuer Plan` e Unicode, nunca são traduzidos ou regravados.
+O sufixo sugerido de Save As é localizado somente ao abrir o formulário; mudar
+o idioma não altera o texto que já está sendo editado.
+
+Os indicadores distinguem rascunho local, alterações pendentes e plano salvo
+localmente; não afirmam que houve exportação de arquivo. `saving` cobre tanto
+autosave quanto Save, por isso a mensagem em andamento é genérica. Ordem e
+condições dos estados preservadas. O status longo usa ellipsis e tooltip para
+não causar overflow no menu compacto; a identificação do software e o status
+ocupam linhas separadas. A recuperação inicial acompanha mudanças
+de idioma, guardando chaves/códigos em vez de mensagens já traduzidas.
+`replacement.ts` e controles legados sem WorkspaceProvider também localizados,
+com as mesmas condições e callbacks de confirmação. Sem mudanças em schema,
+IndexedDB, CAS, autosave, recovery, undo/redo, rede, geometria ou tutoriais.
+Comparadas 57 chamadas de controller/store: operações e argumentos preservados,
+com exceção apenas do texto localizado da confirmação de substituição.
+
+Validação: **3.040 testes em 185 arquivos**, TypeScript, build e diff-check;
+**57 cenários específicos / 162 verificações Chromium totais**, três idiomas,
+Dark/Light e menus normal/compacto, em perfil e bancos descartáveis. Inclui
+F5, Unicode, nomes salvos que parecem defaults, Cancel/Discard, importações,
+escrita realmente pendente, quota/retry, compartilhamento e startup indisponível.
+33 capturas em `.playwright-mcp/reviews/workspace-2a/referencias-chatgpt/`,
+galeria `index.html` na pasta superior e logs locais `workspace-2a-*`.
+Nas capturas de plano salvo, `Unbenannt` é um nome personalizado intencional
+do teste, mantido idêntico nos três idiomas. Capturas/logs não entram no Git.
+
+Reservado à **2B**: `store.notice`, `autosaveError` e `rejectedDocument.error`
+legados chegam como texto pronto sem códigos estáveis; seus diagnósticos
+(incluindo o bloco legado de importação recusada) permanecem no idioma original,
+sem mapear frases nem combinar prefixos traduzidos com erros alemães. Também
+pendentes descrições internas de Undo/Redo e `WLAN hinzuf?gen`. Rodada 2B não
+iniciada. Sem commit, push, merge ou deploy nesta rodada.
+
 **Consolidação i18n 1A + 1B — commit local autorizado (11/11/2026):** as duas
 rodadas foram revisadas em conjunto para o commit
 `Internationalize toolbar settings and area markings`. Selecionados somente os

@@ -6,7 +6,7 @@ import type { ProjectRepository } from '../projects/repository';
 import type { ProjectDocument, ProjectMetadata } from '../projects/types';
 import { hasPendingForms } from '../persistence/pendingForms';
 import { encodeDraftDocument } from '../projects/workspaceDocument';
-import { useTranslation } from '../i18n';
+import { translate, useLanguage, useTranslation, type Language } from '../i18n';
 import { createEmptyProjectDocument } from '../projects/projectDocument';
 
 export const emptyPlan: ProjectDocument = createEmptyProjectDocument();
@@ -17,24 +17,24 @@ export function canCloseEmptyDraft(draft: DraftControllerState, document: Projec
   try { return encodeDraftDocument(document).json === encodeDraftDocument(emptyPlan).json; }
   catch { return false; } // An unreadable copy must remain recoverable.
 }
-export function workspaceStatus(state: SessionControllerState): string {
+export function workspaceStatus(state: SessionControllerState, language: Language = useLanguage.getState().language): string {
   const draft = state.drafts.find(d => d.id === state.activeDraftId);
-  if (state.error || draft?.error) return 'Speicherfehler';
-  if (!draft) return 'Kein Plan geöffnet';
-  if (draft.saving) return 'Wird gesichert…';
-  if (draft.pendingPersistence) return 'Änderungen werden gesichert…';
-  return draft.manualSavePending ? 'Entwurf gesichert · nicht gespeichert' : 'Gespeichert';
+  if (state.error || draft?.error) return translate(language, 'workspace.statusError');
+  if (!draft) return translate(language, 'workspace.noPlan');
+  if (draft.saving) return translate(language, 'workspace.statusSaving');
+  if (draft.pendingPersistence) return translate(language, 'workspace.statusPending');
+  return translate(language, draft.manualSavePending ? (draft.base ? 'workspace.statusDraftChanged' : 'workspace.statusDraft') : 'workspace.statusSaved');
 }
-export function sessionErrorMessage(error: SessionError): string {
-  if (['conflict', 'draft-conflict', 'session-conflict', 'meta-conflict', 'stale-edit'].includes(error.code)) return 'In einem anderen Tab geändert. Ihre lokale Kopie bleibt erhalten. Bitte zuerst ein Backup exportieren.';
-  if (error.code === 'quota-exceeded') return 'Der Speicher ist voll. Ihre Änderungen bleiben geöffnet. Exportieren Sie ein Backup oder versuchen Sie es erneut.';
-  if (error.code === 'legacy-recovery-required') return 'Die bisherige Topologie konnte nicht sicher übernommen werden. Das Original bleibt erhalten und kann exportiert werden.';
-  if (['incompatible-document', 'incompatible-database', 'corrupt-data', 'invalid-document'].includes(error.code)) return 'Dieser Plan kann nicht sicher geöffnet werden. Vorhandene Daten bleiben unverändert.';
-  if (['unavailable', 'blocked', 'closed', 'version-changed'].includes(error.code)) return 'Der lokale Speicher ist nicht verfügbar. Ihre geöffnete Topologie bleibt erhalten. Exportieren Sie ein Backup.';
-  if (error.code === 'deleted' || error.code === 'draft-closed') return 'Dieser Plan wurde in einem anderen Tab geschlossen oder gelöscht. Exportieren Sie Ihre lokale Kopie.';
-  if (error.code === 'unapplied-forms') return 'Es gibt noch nicht übernommene Formulareingaben. Bitte übernehmen oder ausdrücklich verwerfen.';
-  if (error.code === 'runtime-changed') return 'Während des Vorgangs wurden neue Änderungen erkannt. Die geöffnete Topologie bleibt erhalten. Bitte prüfen und erneut versuchen.';
-  return 'Der Vorgang konnte nicht abgeschlossen werden. Ihre lokale Kopie bleibt erhalten.';
+export function sessionErrorMessage(error: SessionError, language: Language = useLanguage.getState().language): string {
+  if (['conflict', 'draft-conflict', 'session-conflict', 'meta-conflict', 'stale-edit'].includes(error.code)) return translate(language, 'workspace.errorConflict');
+  if (error.code === 'quota-exceeded') return translate(language, 'workspace.errorQuota');
+  if (error.code === 'legacy-recovery-required') return translate(language, 'workspace.errorLegacy');
+  if (['incompatible-document', 'incompatible-database', 'corrupt-data', 'invalid-document'].includes(error.code)) return translate(language, 'workspace.errorDocument');
+  if (['unavailable', 'blocked', 'closed', 'version-changed'].includes(error.code)) return translate(language, 'workspace.errorUnavailable');
+  if (error.code === 'deleted' || error.code === 'draft-closed') return translate(language, 'workspace.errorDeleted');
+  if (error.code === 'unapplied-forms') return translate(language, 'workspace.errorForms');
+  if (error.code === 'runtime-changed') return translate(language, 'workspace.errorChanged');
+  return translate(language, 'workspace.errorGeneric');
 }
 export function exportWorkspaceDocument(document: ProjectDocument, name = 'NetLab-Backup'): void {
   const url = URL.createObjectURL(new Blob([JSON.stringify(document.topology, null, 2)], { type: 'application/json' }));
@@ -112,7 +112,7 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
   const save = (as = false, id = controller.getState().activeDraftId) => {
     if (!id) return;
     const draft = controller.getState().drafts.find(d => d.id === id); if (!draft) return;
-    if (as || !draft.base) { setName(as && draft.base ? draft.base.planName + ' – Kopie' : draft.base?.planName ?? ''); setDialog({ kind: 'name', id }); }
+    if (as || !draft.base) { setName(as && draft.base ? t('workspace.copyName', { name: draft.base.planName }) : draft.base?.planName ?? ''); setDialog({ kind: 'name', id }); }
     else void run(() => controller.saveOpenDraft(id), id);
   };
   const close = (id = controller.getState().activeDraftId ?? undefined) => {
@@ -142,7 +142,7 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
     void run(async () => { const listed = await repository.listProjects(); if (listed.ok) setPlans(listed.value); return listed; });
   };
   const active = state.drafts.find(d => d.id === state.activeDraftId), problem = error ?? (state.error?.message !== muted ? state.error : null);
-  const value: WorkspaceUIValue = { state, busy, status: workspaceStatus(state), newPlan: () => openDocument(emptyPlan), loadPlans, save, close, openDocument,
+  const value: WorkspaceUIValue = { state, busy, status: workspaceStatus(state, language), newPlan: () => openDocument(emptyPlan), loadPlans, save, close, openDocument,
     openPlan: id => guarded(discard => controller.openPlan(id, { discardUnappliedForms: discard })),
     switchTo: id => { if (id !== controller.getState().activeDraftId) guarded(discard => controller.switchDraft(id, { discardUnappliedForms: discard })); },
     importJson: text => { try { openDocument({ schemaVersion: 1, topology: JSON.parse(text) }); } catch { retry.current = null; setErrorDraftId(undefined); setError({ code: 'invalid-document', message: 'Invalid JSON.' }); } },
@@ -159,26 +159,26 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
     {children}
     {!state.activeDraftId && <aside className="workspace-empty-state"><h2>{t('workspace.noPlan')}</h2><p>{t('workspace.newNote')}</p><button className="btn btn--primary" onClick={value.newPlan}>{t('workspace.new')}</button><button className="btn" onClick={loadPlans}>{t('navigation.plans')}</button></aside>}
     {problem && <aside className="workspace-recovery" role="alert" data-error-code={problem.code}>
-      <div><strong>Änderungen bleiben erhalten</strong><p>{sessionErrorMessage(problem)}</p></div>
-      {retryOperation && <button type="button" className="btn" disabled={busy} onClick={() => void run(retryOperation.work, retryOperation.draftId)}>Erneut versuchen</button>}
-      <button type="button" className="btn" onClick={backup}>Backup exportieren</button>
-      <button type="button" className="btn" onClick={() => { setError(null); setMuted(state.error?.message ?? ''); }}>Abbrechen</button>
+      <div><strong>{t('workspace.changesKept')}</strong><p>{sessionErrorMessage(problem, language)}</p></div>
+      {retryOperation && <button type="button" className="btn" disabled={busy} onClick={() => void run(retryOperation.work, retryOperation.draftId)}>{t('workspace.retry')}</button>}
+      <button type="button" className="btn" onClick={backup}>{t('workspace.exportBackup')}</button>
+      <button type="button" className="btn" onClick={() => { setError(null); setMuted(state.error?.message ?? ''); }}>{t('common.cancel')}</button>
     </aside>}
-    {state.pendingShare && <aside className="workspace-share" role="status"><span>Geteilte Topologie öffnen? Ihre Pläne bleiben erhalten.</span><button className="btn" onClick={() => guarded(discard => controller.acceptShare({ discardUnappliedForms: discard }))}>In neuer Registerkarte öffnen</button><button className="btn" onClick={() => controller.dismissShare()}>Abbrechen</button></aside>}
-    {dialog && <Modal key={dialog.kind} title={dialog.kind === 'name' ? t('workspace.saveTitle') : dialog.kind === 'load' ? t('workspace.plans') : dialog.kind === 'forms' ? 'Nicht übernommene Eingaben' : dialog.kind === 'delete' ? t('workspace.deleteTitle') : 'Plan schließen?'} cancel={() => setDialog(null)} busy={busy}>
-      {problem && <div className="workspace-dialog-error" role="alert"><p>{sessionErrorMessage(problem)}</p><button className="btn" type="button" onClick={backup}>Backup exportieren</button></div>}
+    {state.pendingShare && <aside className="workspace-share" role="status"><span>{t('workspace.shareOffer')}</span><button className="btn" onClick={() => guarded(discard => controller.acceptShare({ discardUnappliedForms: discard }))}>{t('workspace.openNewTab')}</button><button className="btn" onClick={() => controller.dismissShare()}>{t('common.cancel')}</button></aside>}
+    {dialog && <Modal key={dialog.kind} title={t(dialog.kind === 'name' ? 'workspace.saveTitle' : dialog.kind === 'load' ? 'workspace.plans' : dialog.kind === 'forms' ? 'workspace.formsTitle' : dialog.kind === 'delete' ? 'workspace.deleteTitle' : 'workspace.closeTitle')} cancel={() => setDialog(null)} busy={busy}>
+      {problem && <div className="workspace-dialog-error" role="alert"><p>{sessionErrorMessage(problem, language)}</p><button className="btn" type="button" onClick={backup}>{t('workspace.exportBackup')}</button></div>}
       {dialog.kind === 'name' && <form onSubmit={event => { event.preventDefault(); if (!name.trim() || busy) return; if (dialog.closeSequence !== undefined) void saveThenClose(dialog.id, dialog.closeSequence, !!dialog.forms, name.trim()); else void run(() => controller.saveOpenDraft(dialog.id, name.trim()), dialog.id).then(r => { if (r?.ok) setDialog(null); }); }}>
         <label className="workspace-name-label">{t('workspace.name')}<input autoFocus maxLength={200} value={name} placeholder={t('workspace.placeholder')} onChange={e => setName(e.target.value)} /></label>
         <p className="workspace-dialog-note">{t('workspace.saveNote')}</p>
         <footer><button type="button" className="btn" disabled={busy} onClick={() => setDialog(null)}>{t('common.cancel')}</button><button className="btn btn--primary" disabled={busy || !name.trim()}>{t(busy ? 'common.loading' : 'navigation.save')}</button></footer>
       </form>}
       {dialog.kind === 'close' && <>
-        <p>Änderungen an „{state.drafts.find(d => d.id === dialog.id)?.base?.planName ?? 'Unbenannt'}“ vor dem Schließen speichern?</p>
-        {dialog.forms && <p className="workspace-dialog-warning">Nicht übernommene Formulareingaben werden verworfen. Speichern sichert nur bereits übernommene Einstellungen.</p>}
-        <footer><button className="btn" disabled={busy} onClick={() => setDialog(null)}>Abbrechen</button><button className="btn" disabled={busy} onClick={() => void finishClose(dialog.id, dialog.sequence, true, dialog.forms)}>Verwerfen</button>
-          <button className="btn btn--primary" disabled={busy} onClick={() => { const draft = state.drafts.find(d => d.id === dialog.id); if (!draft?.base) { setName(''); setDialog({ kind: 'name', id: dialog.id, closeSequence: dialog.sequence, forms: dialog.forms }); } else void saveThenClose(dialog.id, dialog.sequence, dialog.forms); }}>Speichern</button></footer>
+        <p>{t('workspace.closeNote', { name: state.drafts.find(d => d.id === dialog.id)?.base?.planName ?? t('workspace.untitled') })}</p>
+        {dialog.forms && <p className="workspace-dialog-warning">{t('workspace.closeFormsWarning')}</p>}
+        <footer><button className="btn" disabled={busy} onClick={() => setDialog(null)}>{t('common.cancel')}</button><button className="btn" disabled={busy} onClick={() => void finishClose(dialog.id, dialog.sequence, true, dialog.forms)}>{t('workspace.discard')}</button>
+          <button className="btn btn--primary" disabled={busy} onClick={() => { const draft = state.drafts.find(d => d.id === dialog.id); if (!draft?.base) { setName(''); setDialog({ kind: 'name', id: dialog.id, closeSequence: dialog.sequence, forms: dialog.forms }); } else void saveThenClose(dialog.id, dialog.sequence, dialog.forms); }}>{t('navigation.save')}</button></footer>
       </>}
-      {dialog.kind === 'forms' && <><p>Einige Eingaben wurden noch nicht übernommen. Übernehmen Sie diese im Formular oder verwerfen Sie sie ausdrücklich.</p><footer><button className="btn" onClick={() => setDialog(null)}>Abbrechen</button><button className="btn btn--primary" onClick={dialog.proceed}>Verwerfen und fortfahren</button></footer></>}
+      {dialog.kind === 'forms' && <><p>{t('workspace.formsNote')}</p><footer><button className="btn" onClick={() => setDialog(null)}>{t('common.cancel')}</button><button className="btn btn--primary" onClick={dialog.proceed}>{t('workspace.discardContinue')}</button></footer></>}
       {dialog.kind === 'load' && <><p className="workspace-dialog-note">{t('workspace.loadNote')}</p><div className="workspace-plan-list">
         {!plans.length && <p className="workspace-empty-list">{t('workspace.empty')}</p>}
         {plans.map(plan => <div className="workspace-plan-row" key={plan.id}><button className="workspace-plan-open" disabled={busy} onClick={() => { setDialog(null); value.openPlan(plan.id); }}><strong>{plan.name}</strong><span>{new Date(plan.updatedAt).toLocaleString(language)} · {t(state.drafts.some(d => d.base?.planId === plan.id) ? 'workspace.opened' : 'workspace.saved')}</span></button><button className="btn" disabled={busy} aria-label={t('workspace.deleteNamed', { name: plan.name })} onClick={() => setDialog({ kind: 'delete', plan })}>{t('workspace.delete')}</button></div>)}
@@ -189,21 +189,22 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
 }
 
 export function WorkspaceTabs() {
+  const { t } = useTranslation();
   const ui = useWorkspaceUI(); const focus = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { focus.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); focus.current?.focus({ preventScroll: true }); }, [ui?.state.activeDraftId]);
   if (!ui) return null;
   const ids = ui.state.session?.draftIds ?? [];
-  return <div className="workspace-tabs-bar"><div role="tablist" aria-label="Geöffnete Pläne" className="workspace-tabs">
+  return <div className="workspace-tabs-bar"><div role="tablist" aria-label={t('workspace.openPlans')} className="workspace-tabs">
     {ui.state.drafts.map((draft, index) => <div className="workspace-tab-wrap" key={draft.id} data-active={draft.id === ui.state.activeDraftId} draggable={!ui.busy}
       onDragStart={e => e.dataTransfer.setData('application/x-netlab-draft', draft.id)} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('application/x-netlab-draft'); if (ids.includes(id) && id !== draft.id) ui.reorder(id, draft.id); }}>
       <button role="tab" aria-selected={draft.id === ui.state.activeDraftId} tabIndex={draft.id === ui.state.activeDraftId ? 0 : -1}
         ref={element => { if (draft.id === ui.state.activeDraftId) focus.current = element; }}
-        onMouseDown={e => e.preventDefault()} onClick={() => ui.switchTo(draft.id)} title={`${draft.base?.planName ?? 'Unbenannt'}${draft.manualSavePending ? ' · Nicht gespeichert' : ''}`}
+        onMouseDown={e => e.preventDefault()} onClick={() => ui.switchTo(draft.id)} title={`${draft.base?.planName ?? t('workspace.untitled')}${draft.manualSavePending ? ' · ' + t('workspace.unsaved') : ''}`}
         onKeyDown={e => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { e.preventDefault(); if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { const next = ids[index + (e.key === 'ArrowLeft' ? -1 : 1)]; if (next) ui.reorder(e.key === 'ArrowLeft' ? draft.id : next, e.key === 'ArrowLeft' ? next : draft.id); } else { const next = e.key === 'Home' ? ids[0] : e.key === 'End' ? ids.at(-1)! : ids[(index + (e.key === 'ArrowLeft' ? -1 : 1) + ids.length) % ids.length]; ui.switchTo(next); } } }}>
         <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" aria-hidden="true"><rect x="2" y="2" width="4" height="4" rx="1"/><rect x="12" y="12" width="4" height="4" rx="1"/><path d="M4 6v8h8M6 4h8v8"/></svg>
-        <span className="workspace-tab-name">{draft.base?.planName ?? 'Unbenannt'}</span>{draft.manualSavePending && <span className="workspace-dirty" aria-label="Nicht gespeichert">●</span>}
-      </button><button className="workspace-tab-close" aria-label={`${draft.base?.planName ?? 'Unbenannt'} schließen`} onMouseDown={e => e.preventDefault()} onClick={() => ui.close(draft.id)}>×</button>
+        <span className="workspace-tab-name">{draft.base?.planName ?? t('workspace.untitled')}</span>{draft.manualSavePending && <span className="workspace-dirty" aria-label={t('workspace.unsaved')}>●</span>}
+      </button><button className="workspace-tab-close" aria-label={t('workspace.closeNamed', { name: draft.base?.planName ?? t('workspace.untitled') })} onMouseDown={e => e.preventDefault()} onClick={() => ui.close(draft.id)}>×</button>
     </div>)}
-    {!ids.length && <span className="workspace-no-tabs">Kein Plan geöffnet</span>}
-  </div><button type="button" className="workspace-add" title="Neuer Plan" aria-label="Neuer Plan" disabled={ui.busy} onMouseDown={e => e.preventDefault()} onClick={ui.newPlan}>+<span> Neuer Plan</span></button></div>;
+    {!ids.length && <span className="workspace-no-tabs">{t('workspace.noPlan')}</span>}
+  </div><button type="button" className="workspace-add" title={t('workspace.new')} aria-label={t('workspace.new')} disabled={ui.busy} onMouseDown={e => e.preventDefault()} onClick={ui.newPlan}>+<span> {t('workspace.new')}</span></button></div>;
 }

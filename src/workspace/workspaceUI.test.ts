@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
+import { LANGUAGES, translate, useLanguage } from '../i18n';
 import { canCloseEmptyDraft, emptyPlan, sessionErrorMessage, workspaceStatus } from './WorkspaceUI';
 import { encodeDraftDocument } from '../projects/workspaceDocument';
 import type { SessionControllerState } from '../persistence/sessionTypes';
@@ -9,11 +10,34 @@ import type { SessionControllerState } from '../persistence/sessionTypes';
 const state = (): SessionControllerState => ({ phase: 'ready', activeDraftId: 'draft', session: null, pendingShare: false, error: null,
   drafts: [{ id: 'draft', revision: 2, editSequence: 1, persistedSequence: 1, pendingPersistence: false, saving: false, manualSavePending: true, base: null, error: null }] });
 it('distinguishes a persisted draft from manual Save and an uncommitted edit', () => {
-  const s = state(); expect(workspaceStatus(s)).toBe('Entwurf gesichert · nicht gespeichert');
-  s.drafts[0].manualSavePending = false; expect(workspaceStatus(s)).toBe('Gespeichert');
-  s.drafts[0].pendingPersistence = true; expect(workspaceStatus(s)).toBe('Änderungen werden gesichert…');
-  s.drafts[0].saving = true; expect(workspaceStatus(s)).toBe('Wird gesichert…');
+  const s = state(); expect(workspaceStatus(s)).toBe('Entwurf lokal gesichert · Plan nicht gespeichert');
+  s.drafts[0].manualSavePending = false; expect(workspaceStatus(s)).toBe('Plan lokal gespeichert');
+  s.drafts[0].pendingPersistence = true; expect(workspaceStatus(s)).toBe('Lokaler Entwurf wird gesichert…');
+  s.drafts[0].saving = true; expect(workspaceStatus(s)).toBe('Wird lokal gesichert…');
   s.error = { code: 'quota-exceeded', message: 'failure' }; expect(workspaceStatus(s)).toBe('Speicherfehler');
+});
+afterEach(() => useLanguage.setState({ language: 'de' }));
+it.each(Object.keys(LANGUAGES) as (keyof typeof LANGUAGES)[])('localizes status precedence and coded recovery in %s without exposing internal text', language => {
+  useLanguage.setState({ language });
+  const s = state(), t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+  expect(workspaceStatus(s)).toBe(t('workspace.statusDraft'));
+  s.drafts[0].pendingPersistence = true; expect(workspaceStatus(s)).toBe(t('workspace.statusPending'));
+  s.drafts[0].saving = true; expect(workspaceStatus(s)).toBe(t('workspace.statusSaving'));
+  s.drafts[0].error = { code: 'quota-exceeded', message: 'German internal detail' };
+  expect(workspaceStatus(s)).toBe(t('workspace.statusError'));
+  s.drafts = []; expect(workspaceStatus(s)).toBe(t('workspace.noPlan'));
+  s.error = { code: 'storage-error', message: 'internal' }; expect(workspaceStatus(s)).toBe(t('workspace.statusError'));
+  const errors = {
+    conflict: 'errorConflict', 'draft-conflict': 'errorConflict', 'session-conflict': 'errorConflict', 'meta-conflict': 'errorConflict', 'stale-edit': 'errorConflict',
+    'quota-exceeded': 'errorQuota', 'legacy-recovery-required': 'errorLegacy', 'incompatible-document': 'errorDocument', 'incompatible-database': 'errorDocument',
+    'corrupt-data': 'errorDocument', 'invalid-document': 'errorDocument', unavailable: 'errorUnavailable', blocked: 'errorUnavailable', closed: 'errorUnavailable',
+    'version-changed': 'errorUnavailable', deleted: 'errorDeleted', 'draft-closed': 'errorDeleted', 'unapplied-forms': 'errorForms', 'runtime-changed': 'errorChanged', 'storage-error': 'errorGeneric',
+  } as const;
+  for (const [code, key] of Object.entries(errors)) {
+    const error = { code, message: 'Untranslated secret diagnostic', id: 'test', expectedRevision: 1, actualRevision: 2 } as Parameters<typeof sessionErrorMessage>[0];
+    expect(sessionErrorMessage(error)).toBe(translate(language, `workspace.${key}`));
+    expect(sessionErrorMessage(error)).not.toContain(error.message);
+  }
 });
 it('gives recoverable German messages without exposing storage internals', () => {
   expect(sessionErrorMessage({ code: 'quota-exceeded', message: 'internal exception' })).toContain('Backup');

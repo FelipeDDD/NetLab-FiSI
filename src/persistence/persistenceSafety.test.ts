@@ -5,7 +5,9 @@ import { sim } from '../sim';
 import { serializeNetwork } from '../engine/serialize';
 import { LABS } from '../labs/library';
 import { disposeAllSessions } from '../terminals';
-import { confirmReplacement } from './replacement';
+import { confirmReplacement, replacementWarning } from './replacement';
+import { LANGUAGES, translate, useLanguage } from '../i18n';
+import { editorMessageText } from '../editorMessages';
 
 vi.mock('../terminals', () => ({ disposeAllSessions: vi.fn(), disposeSession: vi.fn(), getSession: vi.fn(), refreshSessionProfile: vi.fn() }));
 const values = new Map<string, string>();
@@ -33,7 +35,7 @@ it.each(['{broken', '', JSON.stringify({ app: 'netsim', version: 2, devices: [],
   values.set(key, original); store().boot();
   expect(store().nodes).toHaveLength(5);
   expect(store().autosaveBlocked).toBe(true); expect(store().protectedAutosave).toBe(original);
-  expect(store().autosaveError).toContain('Original');
+  expect(editorMessageText(store().autosaveError!, (key, values) => translate('de', key, values))).toContain('Original');
   store().addDeviceAt('host', { x: 0, y: 0 }); vi.advanceTimersByTime(1000); store().flushAutosave();
   expect(values.get(key)).toBe(original); expect(store().autosavePending).toBe(true);
   store().boot(); store().flushAutosave(); expect(values.get(key)).toBe(original);
@@ -63,7 +65,7 @@ it('keeps failed writes pending and retries the latest in-memory configuration',
   const original = values.get(key);
   setItem.mockImplementation(() => { throw Error('quota'); });
   store().addDeviceAt('host', { x: 1, y: 2 }); vi.advanceTimersByTime(500);
-  expect(store().autosavePending).toBe(true); expect(store().autosaveError).toContain('Autosave fehlgeschlagen');
+  expect(store().autosavePending).toBe(true); expect(editorMessageText(store().autosaveError!, (key, values) => translate('de', key, values))).toContain('Autosave fehlgeschlagen');
   expect(values.get(key)).toBe(original);
   const id = store().nodes[0].id; store().renameDevice(id, 'Emergency');
   setItem.mockImplementation((name, text) => { values.set(name, text); }); store().retryAutosave();
@@ -158,4 +160,28 @@ it('validates import before asking to replace, and cancellation leaves pending w
 it('requires conscious confirmation before UI replacement actions', () => {
   const action = vi.fn(); confirmReplacement(action, () => false); expect(action).not.toHaveBeenCalled();
   confirmReplacement(action, () => true); expect(action).toHaveBeenCalledOnce();
+});
+it.each(['missing', 'synchronous', 'rejected'] as const)('presents %s clipboard failures without losing the current document', async mode => {
+  store().addDeviceAt('host', { x: 0, y: 0 });
+  const before = store().captureWorkspaceDocument();
+  vi.stubGlobal('navigator', { clipboard: mode === 'missing' ? undefined : { writeText: () => {
+    if (mode === 'synchronous') throw Error('Private browser diagnostic');
+    return Promise.reject(Error('Private browser diagnostic'));
+  } } });
+  store().copyDeviceConfig(store().nodes[0].id);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(store().notice).toEqual({ key: 'navigation.clipboardFailed' });
+  expect(store().captureWorkspaceDocument()).toEqual(before);
+});
+it.each(Object.keys(LANGUAGES) as (keyof typeof LANGUAGES)[])('uses the current %s confirmation and keeps cancel non-destructive', language => {
+  const previous = useLanguage.getState().language;
+  try {
+    useLanguage.setState({ language });
+    expect(replacementWarning()).toBe(translate(language, 'workspace.replacementWarning'));
+    const action = vi.fn(), cancel = vi.fn(() => false), accept = vi.fn(() => true);
+    confirmReplacement(action, cancel); expect(action).not.toHaveBeenCalled();
+    confirmReplacement(action, accept); expect(action).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledWith(translate(language, 'workspace.replacementWarning'));
+    expect(accept).toHaveBeenCalledWith(translate(language, 'workspace.replacementWarning'));
+  } finally { useLanguage.setState({ language: previous }); }
 });

@@ -198,7 +198,7 @@ export async function runApplicationBootReview({ page, url, root, report, restar
         await page.send('Page.navigate', { url: new URL('/app.html', url).href }); await wait(`document.querySelector('.workspace-tabs [role=tab]')`);
         assert.equal(await page.evaluate(`const s=(await import('/src/store.ts')).useStore.getState();return s.paused&&s.topologyGeneration===1&&s.workspaceIdentity!==null;`), true);
         await page.evaluate(`const s=(await import('/src/store.ts')).useStore.getState();s.renameDevice(s.nodes[0].id,'Normal boot saved draft');`);
-        await wait(`document.querySelector('.autosave-state')?.textContent==='Entwurf gesichert · nicht gespeichert'`);
+        await wait(`document.querySelector('.autosave-state')?.textContent==='Entwurf lokal gesichert · Änderungen am Plan nicht gespeichert'`);
         const realm = await page.evaluate(`return performance.timeOrigin;`);
         await page.send('Page.reload'); await wait(`performance.timeOrigin!==${realm}&&document.querySelector('.workspace-tabs [role=tab]')`);
         assert.equal(await page.evaluate(`const s=(await import('/src/store.ts')).useStore.getState();return s.captureWorkspaceDocument().topology.devices[0].name;`), 'Normal boot saved draft');

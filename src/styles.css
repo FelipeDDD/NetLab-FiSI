@@ -50,6 +50,7 @@ body,
 .toolbar > * {
   flex-shrink: 0;
 }
+.toolbar .brand { min-width: 0; flex-shrink: 1; }
 
 .toolbar-navigation, .toolbar-navigation [role="menubar"] { display: flex; align-items: center; min-width: 0; gap: 2px; }
 .language-selector--compact select { width: 76px; min-width: 0; height: 30px; padding: 3px 5px; font-size: 12px; }
@@ -79,7 +80,7 @@ body,
 .toolbar-command-menu .toolbar-menu-back { border-bottom: 1px solid var(--border); margin-bottom: 4px; border-radius: 0; color: var(--text-dim); }
 .toolbar-help-link { font-size: 12px; text-decoration: none; }
 .toolbar-dialog-title { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
-.toolbar-notice { position: fixed; right: 12px; top: 60px; z-index: 1100; max-width: min(360px, calc(100vw - 24px)); white-space: normal; overflow-wrap: anywhere; }
+.toolbar .toolbar-notice { position: fixed; right: 12px; top: 60px; z-index: 1100; max-width: min(360px, calc(100vw - 24px)); white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 1200px) { .toolbar-clock { display: none; } }
 @media (max-width: 1280px) {
   .toolbar .toolbar-history-button { min-width: 32px; width: 32px; padding: 6px; }
@@ -102,6 +103,7 @@ body,
 }
 
 .brand-name {
+  display: block;
   font-weight: 700;
   font-size: 17px;
   letter-spacing: 0.4px;
@@ -2183,4 +2185,4 @@ input:not(.xterm-helper-textarea)::placeholder, textarea:not(.xterm-helper-texta
 .persistence-status-row > span { flex: 1 1 320px; overflow-wrap: anywhere; }
 .persistence-status-row label { display: flex; flex: 1 1 320px; align-items: center; gap: 8px; }
 .persistence-status-row input { flex: 1; min-width: 0; color: var(--ui-form-text); background: var(--ui-form-surface); border: 1px solid var(--ui-form-border); padding: 5px; }
-.autosave-state { display: block; color: var(--text-dim); font-size: 11px; line-height: 14px; }
+.autosave-state { display: block; color: var(--text-dim); font-size: 11px; line-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

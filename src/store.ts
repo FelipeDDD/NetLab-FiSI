@@ -1,4 +1,5 @@
 import { parseDnsRecords } from './dnsRecords';
+import { editorMessage, type EditorMessage } from './editorMessages';
 import { dhcpConfiguration, applyDhcpConfiguration, legacyPoolInterface, validateDhcpPool, type PoolSettings } from './engine/dhcpPools';
 import { hasTerminalKind } from './engine/device';
 import { normalizeWifiRange } from './engine/wirelessRange';
@@ -124,9 +125,9 @@ interface NetsimState {
   topologyGeneration: number;
   autosavePending: boolean;
   autosaveBlocked: boolean;
-  autosaveError: string | null;
+  autosaveError: EditorMessage | null;
   protectedAutosave: string | null;
-  rejectedDocument: { text: string; error: string } | null;
+  rejectedDocument: { text: string; error: string; presentation?: EditorMessage } | null;
   pendingShare: string | null;
   shareLink: string | null;
   retryAutosave(): void;
@@ -226,7 +227,7 @@ interface NetsimState {
   // Runtime UI intent only; not part of topology/session serialization.
   pauseReason: 'activation' | 'manual' | null;
   speed: number;
-  notice: string | null;
+  notice: EditorMessage | null;
 
   lab: LabDef | null;
   labStep: number;
@@ -298,7 +299,7 @@ interface NetsimState {
   tick(dtMs: number): void;
   setPaused(p: boolean, reason?: 'activation' | 'manual'): void;
   setSpeed(s: number): void;
-  setNotice(msg: string | null): void;
+  setNotice(msg: EditorMessage | null): void;
   newTopology(): void;
   loadDemo(): void;
   createDemoDocument(): ProjectDocument;
@@ -458,7 +459,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (markings && JSON.stringify(get().areaMarkings) !== JSON.stringify(direction === 'undo' ? markings.after : markings.before)) { get().invalidateTopologyHistory(); return; }
       if (restoring) {
         if (get().nodes.some((n) => ids.includes(n.id)) || !restoreDeletedDevices(sim.net, operation.devices, operation.links)) {
-          get().invalidateTopologyHistory(); get().setNotice('Cannot restore devices: topology conflicts with this operation.'); return;
+          get().invalidateTopologyHistory(); get().setNotice(editorMessage('navigation.restoreDevicesFailed')); return;
         }
         const nodes = [...get().nodes];
         for (const { saved, index } of [...operation.devices].sort((a, b) => a.index - b.index)) {
@@ -595,7 +596,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(currentSave()));
       set({ autosavePending: false, autosaveError: null });
     } catch (error) {
-      set({ autosavePending: true, autosaveError: 'Autosave fehlgeschlagen. Änderungen sind nur im Arbeitsspeicher. Bitte erneut versuchen oder JSON exportieren. ' + String(error) });
+      set({ autosavePending: true, autosaveError: editorMessage('navigation.autosaveFailed') });
     }
   };
 
@@ -753,12 +754,12 @@ export const useStore = create<NetsimState>()((set, get) => {
         try {
           const original = localStorage.getItem(AUTOSAVE_KEY);
           if (original !== null) {
-            set({ protectedAutosave: original, autosaveError: 'Der vorhandene Autosave bleibt geschützt. Original exportieren, bevor die temporäre Topologie ausdrücklich gespeichert wird.' });
+            set({ protectedAutosave: original, autosaveError: editorMessage('navigation.autosaveProtected') });
             return;
           }
           set({ autosaveBlocked: false });
         } catch (error) {
-          set({ autosaveError: 'Autosave kann weiterhin nicht gelesen werden. JSON exportieren. ' + String(error) });
+          set({ autosaveError: editorMessage('navigation.autosaveUnreadable') });
           return;
         }
       }
@@ -770,14 +771,14 @@ export const useStore = create<NetsimState>()((set, get) => {
       try {
         const original = localStorage.getItem(AUTOSAVE_KEY);
         if (original !== get().protectedAutosave) {
-          set({ autosaveError: 'Der gespeicherte Inhalt hat sich geändert. Bitte erneut lesen und das Original exportieren.' });
+          set({ autosaveError: editorMessage('navigation.autosaveChanged') });
           return;
         }
         set({ autosaveBlocked: false });
         saveNow();
         if (!get().autosavePending) set({ protectedAutosave: null });
       } catch (error) {
-        set({ autosaveError: 'Der vorhandene Autosave konnte nicht geprüft werden. ' + String(error) });
+        set({ autosaveError: editorMessage('navigation.autosaveUnchecked') });
       }
     },
     exportProtectedAutosave() {
@@ -802,7 +803,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         if (!json) throw new Error('Share Link konnte nicht gelesen werden.');
         set({ pendingShare: json });
       } catch (error) {
-        set({ rejectedDocument: { text: original, error: String(error) } });
+        set({ rejectedDocument: { text: original, error: String(error), presentation: editorMessage('navigation.shareInvalid') } });
       }
       history.replaceState(null, '', location.pathname + (location.search ?? ''));
     },
@@ -1292,14 +1293,14 @@ export const useStore = create<NetsimState>()((set, get) => {
       prepareEdit();
       const bounds=groupBounds(deviceClipboard.boxes), position=freePosition(deviceClipboard.boxes,state.nodes.map(placementBox),desired,visible);
       const batch=prepareDevicePaste(sim.net,deviceClipboard,{x:position.x-bounds.x,y:position.y-bounds.y},state.nodes.length);
-      if (!restoreDeletedDevices(sim.net,batch.devices,batch.links)) { get().setNotice('Einfügen nicht möglich. Die Topologie bleibt unverändert.'); return false; }
+      if (!restoreDeletedDevices(sim.net,batch.devices,batch.links)) { get().setNotice(editorMessage('navigation.pasteFailed')); return false; }
       const added=batch.devices.map(({saved})=>({...deviceNode(saved.id,saved.kind,saved.name,saved.x,saved.y),selected:true}));
       set({nodes:[...get().nodes.map(n=>({...n,selected:false})),...added],edges:edgesFromEngine(),selected:null,
         terminalColors:{...state.terminalColors,...batch.colors},cableColors:{...state.cableColors,...batch.cableColors}});
       lastCreatedId=added.at(-1)!.id;
       get().refresh();
       commitEdit({type:'paste-devices',label:`${added.length} Geräte einfügen`,...batch});
-      get().setNotice(`${added.length} Kopien · IPv4 leer · DHCP-Pools/RIP aus.`);
+      get().setNotice(editorMessage(added.length === 1 ? 'navigation.pastedOne' : 'navigation.pastedMany', { count: added.length }));
       saveSoon(); return true;
     },
 
@@ -1343,7 +1344,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         commitEdit({ type: 'add-links', label: 'Connect devices', links: [captureLink(link)], cableColors });
         saveSoon();
       } catch (e) {
-        get().setNotice(e instanceof Error ? e.message : String(e));
+        get().setNotice(editorMessage('navigation.connectionFailed'));
       }
     },
 
@@ -1470,10 +1471,9 @@ export const useStore = create<NetsimState>()((set, get) => {
       const d = sim.net.devices.get(deviceId);
       if (!(d instanceof IpDevice)) return;
       const text = listRuleset(d.fw);
-      navigator.clipboard
-        .writeText(text)
-        .then(() => get().setNotice(`${d.name} nftables config copied — paste into /etc/nftables.conf`))
-        .catch(() => get().setNotice('Could not access clipboard'));
+      Promise.resolve().then(() => navigator.clipboard.writeText(text))
+        .then(() => get().setNotice(editorMessage('navigation.configCopied', { name: d.name })))
+        .catch(() => get().setNotice(editorMessage('navigation.clipboardFailed')));
     },
 
     setNameserver(deviceId, text) {
@@ -1684,11 +1684,11 @@ export const useStore = create<NetsimState>()((set, get) => {
       prepareEdit();
       const iface = sim.net.enableWireless(deviceId);
       get().refresh();
-      commitEdit({ type: 'enable-wireless', label: 'WLAN hinzuf?gen', deviceId, mac: iface.mac }); saveSoon();
+      commitEdit({ type: 'enable-wireless', label: 'WLAN hinzufügen', deviceId, mac: iface.mac }); saveSoon();
     },
     associateWireless(deviceId, apId) {
       const host = sim.net.devices.get(deviceId), wlan = host?.getInterface('wlan0');
-      if (!wlan) return 'WLAN zuerst hinzuf?gen.';
+      if (!wlan) return 'WLAN zuerst hinzufügen.';
       if (apId && (wlan.link || host!.interfaces.some(i => i.medium === 'ethernet' && i.link))) return 'Zuerst bestehende Verbindung trennen.';
       prepareEdit();
       try {
@@ -2067,17 +2067,17 @@ export const useStore = create<NetsimState>()((set, get) => {
       for (const f of files) entries[`netsim-configs/${f.path}`] = strToU8(f.content);
       const zipped = zipSync(entries);
       download('netsim-configs.zip', new Blob([zipped.slice().buffer], { type: 'application/zip' }));
-      get().setNotice('Config bundle exported — real iproute2/nftables/dnsmasq files');
+      get().setNotice(editorMessage('navigation.configsExported'));
     },
 
     exportContainerlab() {
       download('netsim.clab.yml', new Blob([containerlabYaml(sim.net)], { type: 'text/yaml' }));
-      get().setNotice('containerlab topology exported — deploy with: containerlab deploy -t netsim.clab.yml');
+      get().setNotice(editorMessage('navigation.containerlabExported'));
     },
 
     exportCompose() {
       download('docker-compose.yml', new Blob([composeYaml(sim.net)], { type: 'text/yaml' }));
-      get().setNotice('docker-compose exported (approximate L2 — see header note)');
+      get().setNotice(editorMessage('navigation.composeExported'));
     },
 
     exportSvg() {
@@ -2087,7 +2087,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     exportPng() {
       svgToPngBlob(currentSvg())
         .then((blob) => download('netsim-topology.png', blob))
-        .catch(() => get().setNotice('PNG export failed in this browser — try the SVG export'));
+        .catch(() => get().setNotice(editorMessage('navigation.pngFailed')));
     },
 
     exportReport() {
@@ -2105,7 +2105,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         return null;
       } catch (e) {
         const error = e instanceof Error ? e.message : 'invalid file';
-        set({ rejectedDocument: { text, error } });
+        set({ rejectedDocument: { text, error, presentation: editorMessage('navigation.importFailed') } });
         return error;
       }
     },
@@ -2115,8 +2115,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       const url = `${location.origin}${location.pathname}#t=${compressed}`;
       set({ shareLink: url });
       Promise.resolve().then(() => navigator.clipboard.writeText(url))
-        .then(() => get().setNotice('Share link copied to clipboard'))
-        .catch(() => get().setNotice('Could not access clipboard — copy the link shown in the recovery bar'));
+        .then(() => get().setNotice(editorMessage('navigation.shareCopied')))
+        .catch(() => get().setNotice(editorMessage('navigation.shareCopyFailed')));
     },
 
     boot() {
@@ -2134,11 +2134,11 @@ export const useStore = create<NetsimState>()((set, get) => {
             adoptSave(JSON.parse(saved) as SaveFile);
             return;
           } catch (error) {
-            set({ autosaveBlocked: true, protectedAutosave: saved, autosaveError: 'Autosave konnte nicht geladen werden. Das Original bleibt unverändert; die Demo ist temporär. Original zur Wiederherstellung exportieren. ' + String(error) });
+            set({ autosaveBlocked: true, protectedAutosave: saved, autosaveError: editorMessage('navigation.autosaveInvalid') });
           }
         }
       } catch (error) {
-        set({ autosaveBlocked: true, autosaveError: 'Autosave konnte nicht gelesen werden. Die Demo ist temporär; Änderungen werden nicht gespeichert. ' + String(error) });
+        set({ autosaveBlocked: true, autosaveError: editorMessage('navigation.autosaveUnavailable') });
       }
       get().loadDemo();
     },
@@ -2203,7 +2203,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       a.download = `netsim-attempt-${lab.id}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      get().setNotice('Attempt exported — submit the JSON file');
+      get().setNotice(editorMessage('navigation.attemptExported'));
     },
 
     closeLab() {

@@ -5,7 +5,8 @@ import { EXAMPLES } from '../labs/examples';
 import { FloatingPopover } from './FloatingPopover';
 import { InspectorSettingsContent } from './InspectorLayoutSettings';
 import type { InspectorLayoutPreference } from '../inspectorLayout';
-import { confirmReplacement, REPLACEMENT_WARNING } from '../persistence/replacement';
+import { confirmReplacement, replacementWarning } from '../persistence/replacement';
+import { editorMessage, editorMessageText, historyOperationLabel } from '../editorMessages';
 import { useWorkspaceUI } from '../workspace/WorkspaceUI';
 import { ExerciseMenu } from '../exercises/ExerciseUI';
 import { MarkingsButton } from './AreaMarkings';
@@ -115,7 +116,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   }, [!!workspace]);
   const perform = (action: () => void) => {
     try { action(); }
-    catch (error) { useStore.getState().setNotice('Aktion fehlgeschlagen: ' + (error instanceof Error ? error.message : String(error))); }
+    catch { useStore.getState().setNotice(editorMessage('navigation.actionFailed')); }
     finally { closeMenu(true); }
   };
   const replace = (action: () => void) => confirmReplacement(action, message => window.confirm(message));
@@ -155,10 +156,10 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
     if (!file) return;
     try {
       if (workspace) { workspace.importJson(await file.text()); return; }
-      const error = useStore.getState().importJson(await file.text(), () => window.confirm(REPLACEMENT_WARNING));
-      if (error) useStore.getState().setNotice('Import failed: ' + error);
-    } catch (error) {
-      useStore.getState().setNotice('Datei konnte nicht gelesen werden: ' + String(error));
+      const error = useStore.getState().importJson(await file.text(), () => window.confirm(replacementWarning()));
+      if (error) useStore.getState().setNotice(editorMessage('navigation.importFailed'));
+    } catch {
+      useStore.getState().setNotice(editorMessage('navigation.fileReadFailed'));
     } finally { if (fileRef.current) fileRef.current.value = ''; }
   };
   const action = (label: string, handler: () => void, disabled = false) =>
@@ -169,10 +170,11 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const openPacketSettings = () => { closeMenu(); setDialog(current => current === 'packets' ? null : 'packets'); };
   const runTitle = t(paused ? 'navigation.runHint' : 'navigation.pauseHint');
   const popupLabel = menu === 'compact' ? 'navigation.menu' : MENUS.find(item => item.id === menu)?.label;
+  const saveStatus = workspace ? workspace.status : t(autosaveBlocked ? 'workspace.legacyProtected' : autosaveError ? 'workspace.statusError' : autosavePending ? 'workspace.legacyPending' : 'workspace.legacySaved');
 
   return <header className="toolbar">
     <div className="brand"><span className="brand-name">NetLab - FiSi</span>
-      <span className="autosave-state" role="status">{workspace ? workspace.status : autosaveBlocked ? 'Temporär · Autosave geschützt' : autosaveError ? 'Speicherfehler' : autosavePending ? 'Nicht gespeichert' : 'Gespeichert'}</span>
+      <span className="autosave-state" role="status" title={saveStatus}>{saveStatus}</span>
     </div>
     <nav className="toolbar-navigation" aria-label={t('navigation.main')}>
       {compact ? <button type="button" className="toolbar-menu-trigger" ref={el => { triggers.current.compact = el; }}
@@ -215,14 +217,14 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
       <MarkingsButton onOpen={() => { closeMenu(); setDialog(null); }} />
       <div className="toolbar-group toolbar-quick-history">
         <button type="button" className="btn topology-history-action toolbar-history-button" data-history-action="undo" disabled={!history.past.length} aria-label={t('navigation.undo')}
-          title={(history.past.length ? t('navigation.undoAction', { action: history.past.at(-1)!.label }) : t('navigation.undo')) + ' (Ctrl+Z / Cmd+Z)'}
+          title={(history.past.length ? t('navigation.undoAction', { action: historyOperationLabel(history.past.at(-1)!, t) }) : t('navigation.undo')) + ' (Ctrl+Z / Cmd+Z)'}
           onClick={() => useStore.getState().undoTopology()}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2l-3 3" />
           </svg><span className="toolbar-history-label">{t('navigation.undo')}</span>
         </button>
         <button type="button" className="btn topology-history-action toolbar-history-button" data-history-action="redo" disabled={!history.future.length} aria-label={t('navigation.redo')}
-          title={(history.future.length ? t('navigation.redoAction', { action: history.future.at(-1)!.label }) : t('navigation.redo')) + ' (Ctrl+Shift+Z / Cmd+Shift+Z)'}
+          title={(history.future.length ? t('navigation.redoAction', { action: historyOperationLabel(history.future.at(-1)!, t) }) : t('navigation.redo')) + ' (Ctrl+Shift+Z / Cmd+Shift+Z)'}
           onClick={() => useStore.getState().redoTopology()}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2l3 3" />
@@ -342,6 +344,6 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         disabled={item.disabled} onClick={() => { item.run(); setDialog(null); }}>{item.label}</button>)}
     </FloatingPopover>}
     <input ref={fileRef} type="file" accept="application/json" hidden onChange={event => onFile(event.target.files?.[0])} />
-    {notice && <div className="notice toolbar-notice" role="status" aria-live="polite">{notice}</div>}
+    {notice && <div className="notice toolbar-notice" role="status" aria-live="polite">{editorMessageText(notice, t)}</div>}
   </header>;
 }

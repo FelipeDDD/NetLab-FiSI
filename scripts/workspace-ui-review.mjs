@@ -68,7 +68,7 @@ export async function runWorkspaceUIReview({ page, url, root, report, openPage }
       await page.send('Page.navigate', { url }); await wait(`document.readyState==='complete'&&location.pathname==='/__workspace_ui_test__'`);
       await page.evaluate(`const m=await import('/src/projects/index.ts');const fixtures=await import('/src/projects/browserFixtures.ts');const opened=await m.openProjectRepository({databaseName:${JSON.stringify(mainDatabase)}});if(!opened.ok)throw Error(JSON.stringify(opened));const repo=opened.value;const doc=fixtures.document();delete doc.topology.lab;delete doc.topology.labProgress;const p=await repo.createProject({name:'Büro-Netz',document:doc});if(!p.ok)throw Error(JSON.stringify(p));await repo.workspace.createSession({initialTab:{kind:'plan',planId:p.value.project.id}});window.originalPlanId=p.value.project.id;repo.close();`);
       await prepare(page, mainDatabase); await tabs(1); await wait(`document.querySelectorAll('.react-flow__node').length===3`);
-      assert.equal(await page.evaluate(`return document.querySelector('.autosave-state').textContent;`), 'Gespeichert');
+      assert.equal(await page.evaluate(`return document.querySelector('.autosave-state').textContent;`), 'Plan lokal gespeichert');
       await capture('01-one-plan-graphite-1440.png');
     });
     await test('ui: manual Save and Save As use the current draft', async () => {

@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import type { ReactNode } from 'react';
 import LZString from 'lz-string';
 import App from '../App';
 import { ExerciseProvider } from '../exercises/ExerciseUI';
@@ -17,8 +18,15 @@ import type { SessionController } from '../persistence/sessionController';
 import type { ProjectRepository } from '../projects/repository';
 import type { SessionError, SessionRuntime } from '../persistence/sessionTypes';
 import './workspace.css';
-import { installLanguageDocument } from '../i18n';
+import { installLanguageDocument, useTranslation, type Language, type TranslationKey } from '../i18n';
+import { editorMessage } from '../editorMessages';
 import { HomeLink } from '../i18n/HomeLink';
+
+/** Subscribe only the startup presentation to language changes, including errors. */
+function StartupTranslation({ children }: { children(t: ReturnType<typeof useTranslation>['t'], language: Language): ReactNode }) {
+  const { t, language } = useTranslation();
+  return children(t, language);
+}
 
 export function mountWorkspaceApplication(element: HTMLElement, options: {
   repositoryOptions?: RepositoryOptions;
@@ -37,7 +45,7 @@ export function mountWorkspaceApplication(element: HTMLElement, options: {
   const previousWork = !!runtime.identity() || baseline.document.topology.devices.length > 0;
   let controller: SessionController | undefined, repository: ProjectRepository | undefined;
   let disposed = false, starting = false, cancelled = false, recoveryBusy = false;
-  let error: SessionError | null = null, recoveryError = '';
+  let error: SessionError | null = null, recoveryError: TranslationKey | SessionError | null = null;
   let attempt = new AbortController();
   const localStartupEdits = () => {
     if (controller) return false;
@@ -50,38 +58,38 @@ export function mountWorkspaceApplication(element: HTMLElement, options: {
   };
   const backupCurrent = () => {
     try { exportWorkspaceDocument(runtime.capture()); }
-    catch { recoveryError = 'Die lokale Kopie konnte nicht exportiert werden. Das Original und der Speicher bleiben unverändert.'; draw(); }
+    catch { recoveryError = 'workspace.errorExportLocal'; draw(); }
   };
   const backupStorage = async () => {
     if (recoveryBusy) return;
-    recoveryBusy = true; recoveryError = ''; draw();
+    recoveryBusy = true; recoveryError = null; draw();
     try {
       const result = await readRecoveryArchive(options.repositoryOptions);
-      if (!result.ok) recoveryError = sessionErrorMessage(result.error);
+      if (!result.ok) recoveryError = result.error;
       else download('netlab-storage-recovery.json', new Blob([JSON.stringify(result.value, null, 2)], { type: 'application/json' }));
-    } catch { recoveryError = 'Speicher-Backup konnte nicht gelesen werden. Es wurden keine Daten verändert.'; }
+    } catch { recoveryError = 'workspace.errorExportStorage'; }
     finally { recoveryBusy = false; if (!disposed) draw(); }
   };
   const cancel = () => { cancelled = true; attempt.abort(); starting = false; draw(); };
   const draw = () => {
     if (disposed || controller) return;
-    root.render(<main className="workspace-start"><section role={error ? 'alert' : undefined} data-error-code={error?.code} aria-busy={starting || recoveryBusy}>
-      <h1>{starting ? 'Pläne werden wiederhergestellt…' : cancelled ? 'Wiederherstellung abgebrochen' : 'Sitzung konnte nicht geöffnet werden'}</h1>
-      <p>{starting ? 'Ihre Entwürfe werden geladen. Die Simulation startet pausiert.' : error ? sessionErrorMessage(error) : 'Ihre gespeicherten Daten bleiben unverändert.'}</p>
-      {!starting && <><p>Kein automatischer Wechsel zum alten Autosave. Vorhandene Pläne und das Original bleiben geschützt.</p>
-        {localStartupEdits() && <p>Lokale Änderungen zuerst exportieren. Erneut versuchen verwirft diese Änderungen nicht; zum Wiederherstellen anschließend neu laden.</p>}
-        {recoveryError && <p role="alert">{recoveryError}</p>}
+    root.render(<StartupTranslation>{(t, language) => <main className="workspace-start"><section role={error ? 'alert' : undefined} data-error-code={error?.code} aria-busy={starting || recoveryBusy}>
+      <h1>{t(starting ? 'workspace.startupRestoring' : cancelled ? 'workspace.startupCancelled' : 'workspace.startupFailed')}</h1>
+      <p>{starting ? t('workspace.startupLoading') : error ? sessionErrorMessage(error, language) : t('workspace.dataUnchanged')}</p>
+      {!starting && <><p>{t('workspace.startupProtection')}</p>
+        {localStartupEdits() && <p>{t('workspace.startupEdits')}</p>}
+        {recoveryError && <p role="alert">{typeof recoveryError === 'string' ? t(recoveryError) : sessionErrorMessage(recoveryError, language)}</p>}
         <footer>
-          <button className="btn btn--primary" disabled={recoveryBusy} onClick={() => void start()}>Erneut versuchen</button>
+          <button className="btn btn--primary" disabled={recoveryBusy} onClick={() => void start()}>{t('workspace.retry')}</button>
           {original.status === 'present' && <button className="btn" onClick={() => {
             const file = createLegacyRecoveryFile(original.original.rawText); download(file.filename, new Blob([file.bytes], { type: file.mimeType }));
-          }}>Original exportieren</button>}
-          <button className="btn" onClick={backupCurrent}>Lokale Kopie exportieren</button>
-          <button className="btn" disabled={recoveryBusy} onClick={() => void backupStorage()}>Speicher-Backup exportieren</button>
-          <button className="btn" disabled={recoveryBusy} onClick={cancel}>Abbrechen</button>
-        </footer><p>Das Speicher-Backup enthält rohe Datensätze zur Wiederherstellung, kein direkt importierbares Topologie-JSON.</p></>}
-      {starting && <button className="btn" onClick={cancel}>Abbrechen</button>}
-    </section><HomeLink /></main>);
+          }}>{t('workspace.exportOriginal')}</button>}
+          <button className="btn" onClick={backupCurrent}>{t('workspace.exportLocal')}</button>
+          <button className="btn" disabled={recoveryBusy} onClick={() => void backupStorage()}>{t('workspace.exportStorage')}</button>
+          <button className="btn" disabled={recoveryBusy} onClick={cancel}>{t('common.cancel')}</button>
+        </footer><p>{t('workspace.storageBackupNote')}</p></>}
+      {starting && <button className="btn" onClick={cancel}>{t('common.cancel')}</button>}
+    </section><HomeLink /></main>}</StartupTranslation>);
   };
   const receiveShare = () => {
     if (!controller || !location.hash.startsWith('#t=')) return;
@@ -91,11 +99,11 @@ export function mountWorkspaceApplication(element: HTMLElement, options: {
       const offered = controller.offerShare({ schemaVersion: 1, topology: JSON.parse(json) });
       if (!offered.ok) throw Error(offered.error.message);
       history.replaceState(null, '', location.pathname + location.search);
-    } catch { useStore.getState().setNotice('Share Link konnte nicht geöffnet werden. Ihre Pläne bleiben unverändert.'); }
+    } catch { useStore.getState().setNotice(editorMessage('workspace.errorShare')); }
   };
   async function start() {
     if (disposed || starting || controller) return;
-    cancelled = false; recoveryError = '';
+    cancelled = false; recoveryError = null;
     if (localStartupEdits()) { error = { code: 'runtime-changed', message: 'Startup work must be recovered before restoration.' }; draw(); return; }
     starting = true; error = null; attempt = new AbortController();
     const currentAttempt = attempt;
