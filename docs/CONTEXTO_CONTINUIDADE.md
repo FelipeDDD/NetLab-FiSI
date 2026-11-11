@@ -8,6 +8,28 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 
 ## Leia primeiro — auditoria e estado atual em 11/11/2026
 
+**Consolidação final autorizada — 11/11/2026:** reúne a implementação do
+capítulo 5 v5 (16 tarefas, 4 + 9 + 3), os três pontos de entrada, isolamento
+de progresso, tempestade/recuperação, histórico independente do capítulo 4,
+prioridade do menu e reaproveitamento das ajudas visuais. O commit de redação
+`2c0511a — Polish Chapter 5 tutorial instructions` permanece intacto e anterior
+ao novo commit `Finalize Chapter 5 v5 and tutorial progress improvements`.
+As indicações “somente local” e “sem commit/push” nas notas abaixo descrevem
+o estado anterior a esta consolidação. Consultar o Git para hashes e publicação.
+
+Auditoria: 39 arquivos relacionados selecionados explicitamente; nenhum arquivo
+temporário, captura, cache ou segredo identificado nesse conjunto. Os seis PNGs
+DE/EN/PT-BR já estavam versionados, continuam referenciados e não foram alterados.
+Logs, capturas, galerias e backups permanecem ignorados em `.playwright-mcp/`.
+Sem mudanças na engine, dependências, Topology Studio ou configuração de deploy.
+Validação repetida: **3.028 testes em 185 arquivos**, **270 verificações Chromium**
+(118 do capítulo 4 e 152 do capítulo 5), sem erros de navegador; TypeScript,
+build e diff-check aprovados. Inclui capítulos 1–5, DE/EN/PT-BR, temas, F5,
+histórico, entradas parciais, tempestade e recuperação real. Permanece o aviso
+conhecido de chunk JS acima de 500 kB. Logs locais: `.playwright-mcp/consolidation-*`.
+Push normal de `main` para `origin/main` autorizado após nova conferência do
+remoto; nenhuma autorização para merge, rebase, force push ou deploy.
+
 **Refinamento pontual de redação — 11/11/2026:** Parte 1, tarefas 1–3,
 pede explicitamente ping nos dois sentidos (DE/EN/PT-BR), usando o destaque
 âmbar existente. Parte 2, 7/9, cita apenas LAN A; 9/9 mantém IPs e valores
@@ -17,6 +39,63 @@ Validação: 108 testes em 7 arquivos, 167 verificações Chromium, TypeScript,
 build e diff-check aprovados. Commit pontual autorizado somente para redação
 e esta nota; alterações locais anteriores de v5/menu/ajudas não são incluídas.
 Sem push, merge ou deploy. Logs locais em .playwright-mcp/chapter5-wording-*.
+
+**Menu do capítulo 4 e ajuda visual do capítulo 5, somente local:** corrigida a
+seleção que parava no primeiro draft de capítulo 4 e escondia conclusão anterior.
+O capítulo 4 não tinha histórico independente: `staticRoutingLearning.ts` agora
+preserva conclusão integral verificada no `meta` existente, com CAS/guard da
+revisão da origem. Salvar, carregar uma conclusão antiga válida e reiniciar
+conservam o registro. O menu prioriza o check histórico, mantendo Retomar e o
+contador da tentativa atual separados. Não soma tentativas nem presume sucesso
+pela etapa final. Sem origem persistida verificável, não inventa crédito antigo.
+
+Capítulo 5: removido o aviso de tarefas fornecidas do corpo principal, sem mudar
+o contrato ou os créditos das entradas. Parte 2 4/9 e 5/9 têm o botão de imagem
+junto de Ajuda; 7/9 o inclui somente dentro de Ajuda. Reutiliza os mesmos PNGs
+de rotas estáticas DE/EN/PT-BR e o visualizador existente, sem criar/editar assets.
+Sem alterações na engine, validações, Studio ou nos fluxos dos capítulos 1–3.
+Detalhes: docs/static-routing-tutorial.md e docs/guided-visual-help.md.
+Capturas em `.playwright-mcp/reviews/chapter-menu-help/`; alterações v5 anteriores
+preservadas. Sem commit, push, merge ou deploy.
+Validação: **3.028 testes em 185 arquivos**, **270 verificações Chromium**
+(118 no roteiro do capítulo 4 e 152 no do capítulo 5), sem erros de navegador.
+Inclui histórico/nova tentativa/F5/fechamento do draft, entradas parciais,
+DE/EN/PT-BR, Graphite Dark/Classic Light, imagem/zoom/Escape/foco/navegação.
+TypeScript, build e diff-check aprovados; aviso conhecido de chunk grande mantido.
+Oito PNGs selecionados em
+`.playwright-mcp/reviews/chapter-menu-help/referencias-chatgpt/selecionadas/`;
+galeria em `.playwright-mcp/reviews/chapter-menu-help/index.html`.
+
+**Capítulo 5 v5 — simplificação, somente local (11/11):** 16 tarefas, 4 + 9 + 3.
+Partes 1/2 mantidas; antigas 20–22 são 14–16. Sem PC C, LAN C ou experimento
+LPM no fluxo. Baseline real capturado na primeira transição 13 → 14, sem refazer
+após tempestade/revisão. Incidente atômico reutilizado: R2 eth1 DOWN e marcador
+applied/adopted juntos. Falha real antes da explicação, duas rotas efetivas e
+novas respostas bidirecionais diretas. Aceita replace ou del + add; /32 isolada
+não satisfaz cobertura das LANs. Prefixos canônicos e engine permanecem intactos.
+
+Entradas públicas: início/tarefa 1, part-2/tarefa 7 e part-3/tarefa 14. Part-3 tem
+scenarioVersion 2, somente cinco dispositivos e baseline técnico sem evidências.
+Práticas encerram em 16/16, 10/10 ou 3/3; só início integral concede histórico
+verde v5. Abertura atômica, seleção, revisão, F5 e reinício/Undo/Redo preservados.
+
+Namespaces v5 do capítulo 5 isolam progresso, checkpoint, seleção e conclusão.
+Nenhum reset/remoção de dados reais, draft ou IndexedDB. Chaves antigas intactas;
+redes antigas ficam editáveis, sem painel, automação ou reinício v5. Histórico
+antigo não vira crédito moderno. Não há migração complexa nem novo store.
+abSignature mudou para alternativePathsChapter.ts; código LPM removido do produto
+permanece no Git (referência 8d13379). Futuro capítulo LPM continua pendente.
+Capturas reais em .playwright-mcp/reviews/chapter5-v5/referencias-chatgpt/.
+Ver docs/chapter-entry-points.md e docs/alternative-paths-tutorial.md para contratos.
+Sem commit, push, merge ou deploy; stash e alterações não relacionadas preservados.
+Validação final: **3.020 testes em 184 arquivos**, **134 verificações Chromium**
+no roteiro v5, sem erros de navegador; TypeScript, build e diff-check aprovados.
+Os testes incluem capítulos 1–4, três entradas, pings reais, /32 insuficiente,
+rotas completas, F5, reinício/Undo/Redo, metadados antigos, DE/EN/PT-BR e temas
+Dark/Light. Sete capturas reais inspecionadas; galeria em
+`.playwright-mcp/reviews/chapter5-v5/index.html`. Logs ignorados em
+`.playwright-mcp/v5-*`. Mantém-se o aviso conhecido de chunk JS acima de 500 kB.
+As seções abaixo descrevem estados anteriores, superados por esta edição.
 
 **Consolidação em `main` — 10/11/2026:** este conjunto reúne revisão histórica
 do capítulo 5, PC C Linux/Windows, checkpoints e menu das Rodadas 1–3, progresso

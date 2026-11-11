@@ -20,6 +20,13 @@ export const staticRoutingVisualHelp: Partial<Record<number, TutorialVisualHelp>
   } },
 };
 
+/** Reuse the approved static-route illustration; no duplicated assets. */
+export const alternativeRoutingVisualHelp: Partial<Record<number, TutorialVisualHelp>> = {
+  8: staticRoutingVisualHelp[4],
+  9: staticRoutingVisualHelp[4],
+  11: staticRoutingVisualHelp[4],
+};
+
 export function visualHelpPosition(panelRight: number, panelTop: number, width: number, height: number) {
   const left = Math.max(12, panelRight + 12), available = width - left - 12;
   return available >= 760 && height >= 560

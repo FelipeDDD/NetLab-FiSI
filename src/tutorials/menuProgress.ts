@@ -13,12 +13,15 @@ import { ALTERNATIVE_PROGRESS_PREFIX, readAlternativeProgress } from './alternat
 import { alternativePathsCompletion, alternativePracticeCompletion } from './completion';
 import { ALTERNATIVE_COMPLETION_KEY, ALTERNATIVE_CURRENT_KEY, readAlternativeCompletion, readAlternativeCurrent, rememberAlternativeCompletion, type AlternativeChapterCompletion } from './alternativeLearning';
 import type { AlternativeEntryPoint } from './alternativeEntryContract';
+import { STATIC_COMPLETION_KEY, readStaticCompletion, rememberStaticCompletion, type StaticChapterCompletion } from './staticRoutingLearning';
 
 export interface TutorialMenuProgress {
   first: { draftId: string; progress: ChapterCompletion } | null;
   subnet: { draftId: string; step: number; progress: ChapterCompletion } | null;
   router: { draftId: string; step: number; progress: ChapterCompletion } | null;
   routing: { draftId: string; progress: ChapterCompletion } | null;
+  routingHistory?: StaticChapterCompletion;
+  routingError?: boolean;
   alternative: { draftId: string; progress: ChapterCompletion; practice: ChapterCompletion; entry?:AlternativeEntryPoint } | null;
   alternativeHistory?:AlternativeChapterCompletion;
   alternativeError?:boolean;
@@ -63,10 +66,22 @@ export async function loadTutorialMenuProgress(repository: Pick<ProjectRepositor
     result.router = { draftId, step: record.step, progress: routerChapterCompletion(record) };
     break;
   }
-  for (const draftId of draftIds) {
-    const raw = await read(STATIC_PROGRESS_PREFIX + draftId); if (!raw) continue;
-    result.routing = { draftId, progress: staticRoutingCompletion(readStaticRoutingProgress(raw, draftId)) }; break;
-  }
+  try {
+    const history = await read(STATIC_COMPLETION_KEY);
+    if (history) result.routingHistory = readStaticCompletion(history);
+    for (const draftId of draftIds) {
+      const raw = await read(STATIC_PROGRESS_PREFIX + draftId); if (!raw) continue;
+      const progress = staticRoutingCompletion(readStaticRoutingProgress(raw, draftId));
+      // Retain the active/first attempt for Resume, but scan all attempts for completion.
+      if (!result.routing) result.routing = { draftId, progress };
+      if (!result.routingHistory && progress.complete && repository.setMeta) {
+        const saved = await rememberStaticCompletion(repository as Pick<ProjectRepository, 'getMeta' | 'setMeta'>, draftId);
+        if (saved) result.routingHistory = saved;
+      }
+      // Read-only consumers can still display a verified completed attempt.
+      if (!repository.setMeta && progress.complete) result.routing = { draftId, progress };
+    }
+  } catch { result.routingError = true; }
   try {
   const historical=await read(ALTERNATIVE_COMPLETION_KEY),current=await read(ALTERNATIVE_CURRENT_KEY);
   if(historical)result.alternativeHistory=readAlternativeCompletion(historical);

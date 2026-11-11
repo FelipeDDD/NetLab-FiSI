@@ -1,212 +1,115 @@
-# Capítulo 5 — pontos de entrada e progresso (Rodadas 1–3)
+# Capítulo 5 v5 — pontos de entrada e progresso
 
-As quatro opções estão disponíveis em **Übungen (Beta) → Geführte Tutorials →
-Kapitel 5 → Neuen Versuch starten / Kapitel starten**. Não há URL experimental
-ou criação automática de tentativas no boot. O início normal continua pela Parte 1.
+O submenu em **Übungen (Beta) → Geführte Tutorials → Kapitel 5** oferece
+somente início, Parte 2 e Parte 3. Não há criação de tentativas no boot nem URL
+experimental. FloatingPopover, fallback lateral, teclado/Escape e Voltar em telas
+estreitas permanecem; o menu não foi redesenhado.
 
-## Cenários disponíveis
+| Entrada | Primeira tarefa | Configuração fornecida | Prática |
+|---|---:|---|---:|
+| Início | 1 | Triângulo R1/R2/R3 sem IPv4 | 16/16 |
+| part-2 | 7 | Transit /30, LANs A/B /24 e gateways; sem rotas entre LANs | 10/10 |
+| part-3 | 14 | A/B funcionais via R2, quatro rotas estáticas, enlaces UP | 3/3 |
 
-| Ponto | Primeira tarefa | Configuração fornecida |
-|---|---|---|
-| `part-2` | 7 | Triângulo IPv4 e LANs A/B, PCs com gateways; sem rotas estáticas entre as LANs. |
-| `part-3` | 14 | Mesma rede, com as quatro rotas estáticas para A/B via R2; nenhum PC C ou cabo para ele. |
-| `part-4` | 20 | A/B via R2, LAN C com PC C e gateway, rotas /24 via R2 e /25 via R3, enlace R2–R3 operacional; tempestade pendente. |
+As tarefas 1–4 formam a Parte 1; 5–13, a Parte 2; 14–16, a Parte 3.
+As antigas tarefas 20–22 passaram a 14–16. Não há LAN C, PC C ou atividade LPM.
+O descritor de part-3 usa **scenarioVersion: 2**; part-4 não existe no catálogo.
 
-`alternativeEntryContract.ts` define um catálogo fechado e versionado: capítulo,
-ponto, versão do cenário, primeira tarefa, configuração, tarefas fornecidas e
-pré-requisitos técnicos. O leitor recusa versões desconhecidas, listas arbitrárias
-e mistura com créditos `legacy`. Fornecimento não é comprovação do aluno.
+## Contrato e abertura atômica
 
-`alternativeEntries.ts` gera documentos com as APIs normais de serialização,
-materializando os MACs antes de persistir. A construção usa uma rede temporária,
-descartada sem executar o Scheduler. Não executa comandos ou pings pelo aluno.
+alternativeEntryContract.ts define os dois descritores fechados e valida os
+pré-requisitos reais do documento inicial. alternativeEntries.ts monta a rede
+usando serialização normal e materializa MACs antes de gravar. A rede temporária
+é descartada, sem Scheduler, comandos ou pings do aluno.
 
-## Abertura e persistência
+createAlternativeBeginningAttempt() e createAlternativeEntryAttempt(point)
+fornecem documento, progresso vazio e checkpoint. As entradas avançadas são
+assíncronas; a Parte 3 calcula o fingerprint técnico antes da abertura.
+AlternativePathsController.begin() acrescenta a seleção da tentativa à mesma
+initialization. SessionController.openDocument()/WorkspaceRepository.createDraft()
+persistem rascunho, sessão, progresso, checkpoint e seleção atomicamente. CAS,
+quota ou abort não deixam tentativa parcial; uma interrupção posterior ao commit
+recupera o conjunto completo. A tentativa anterior não é substituída.
 
-`await createAlternativeEntryAttempt(point)` retorna documento, progresso, checkpoint
-de reinício e opções de abertura. `AlternativePathsController.begin(point)` usa
-esse contrato; o harness também pode usar `openNewLearningAttempt(sessions,
-attempt.document, attempt.options)`. O submenu público chama o mesmo controller,
-sem duplicar a preparação das topologias na interface.
-As Partes 2/3 preservam também o retorno síncrono existente. A Parte 4 calcula
-assinatura técnica de forma assíncrona antes de iniciar qualquer gravação.
+Progresso de início usa schemaVersion 1; entradas avançadas usam schemaVersion 2
+com entry obrigatório. Ambos pertencem exclusivamente a **chapterVersion: 5**.
+Documento/topologia e stores IndexedDB mantêm seus schemas anteriores.
 
-`SessionController.openDocument()` aceita `initialization: { id, control }`.
-`WorkspaceRepository.createDraft()` grava rascunho, sessão e controles CAS na mesma
-transação IndexedDB, antes da ativação. Conflito, quota e abort revertem todos os
-registros dessa criação. A tentativa anterior não é substituída. Se a interrupção
-ocorrer após o commit, existe uma tentativa completa para recuperação, em vez de
-um rascunho que dependa de uma segunda gravação para adquirir sua identidade.
+## Baseline e tempestade
 
-No menu público, `begin()` acrescenta o marcador de tentativa atual a esses mesmos
-controles. O início normal também prepara seus metadados antes da abertura, via
-`createAlternativeBeginningAttempt()`: mesmo triângulo, posições e configuração,
-com MACs materializados, progresso vazio e checkpoint inicial. Isso fecha a janela
-de F5 entre criar a tentativa e selecioná-la. Não se usa `legacy` nem se aprova
-nenhuma tarefa. Os builders internos continuam separados da decisão de seleção.
+No início integral e na Parte 2, a transição 13 → 14 confere configuração via R2,
+Next Hop respondido e os dois comprovantes A/B reais. Grava viaBaseline com a
+nova etapa, antes de consumir o incidente. Visitar tarefas anteriores depois da
+tempestade não recalcula esse baseline.
 
-Somente o progresso dessas novas entradas usa `schemaVersion: 2`, com o descritor
-`entry` obrigatório. Isso impede builds antigos de interpretarem uma entrada
-avançada como tentativa normal. O conteúdo continua com `chapterVersion: 4`,
-22 tarefas, documento de projeto v1 e topologia `netsim` v1. Tentativas normais e
-antigas continuam com o contrato anterior. Não há alteração de stores ou migração
-estrutural do IndexedDB.
+Na entrada direta da Parte 3, scenarioBaseline identifica somente a configuração
+fornecida. viaBaseline, viaReplies, respostas e completed permanecem vazios.
+Não há crédito fictício para tarefas 1–13.
 
-## Evidências e navegação
+A tarefa 14 consome storm: pending pela transação commitStorm existente:
+porta R2 eth1 DOWN e marcador applied/adopted são gravados juntos. Cabo, endereços,
+rotas e os cinco equipamentos permanecem. F5, navegação, Undo da porta ou uma
+correção do aluno não reaplicam a tempestade. Porta já indisponível é adotada sem
+nova alteração. Configuração diferente do baseline bloqueia o incidente.
 
-- O progresso começa com `completed: []`, respostas falsas e recibos nulos.
-- Na Parte 3, a configuração efetiva via R2 pode habilitar a preparação de LAN C;
-  isso não preenche `hopUnderstood` ou `viaReplies`.
-- A/B pingado durante a tarefa 14 de uma entrada direta não dá crédito retroativo
-  às tarefas fornecidas. Os pings de LAN C continuam exigindo emissão e caminhos reais.
-- O botão Zurück para no limite da entrada. Uma nota DE/EN/PT-BR distingue tarefas
-  fornecidas das realizadas; tarefas fornecidas nunca recebem check de conclusão.
-- Alcançar a tarefa 22 por uma entrada parcial não equivale a cumprir as 22 tarefas.
-  O cálculo integral continua separado do contador da prática e do histórico.
+O aluno observa uma falha real A → R1 → R2 antes da explicação. Na tarefa 15,
+dois indicadores verificam R1 → LAN B via R3 e R3 → LAN A via R1, incluindo toda
+a faixa utilizável de cada LAN. replace e del + add equivalentes são aceitos;
+um atalho /32 que só permite o ping de um PC não basta. A tarefa 16 exige novas
+Echo Requests/Replies nos dois sentidos A → R1 → R3 → B e B → R3 → R1 → A.
 
-PC C continua sendo adicionado pelo aluno, Linux ou Windows. Baseline, ID/MAC,
-conexão à eth3 de R3, endereço /25 e gateway são verificados normalmente. A
-configuração fornecida não autoriza adotar um PC independente ou reparar a rede
-automaticamente após alterações incompatíveis.
+## Reinício, revisão e conclusão
 
-Na entrada da Parte 4, PC C já é fornecido pelo cenário, como Host Linux, com
-ID/MAC materializados e associados à tentativa. Não há adoção de um computador
-independente após remover/substituir esse PC. As entradas das Partes 2/3 continuam
-exigindo a criação manual e aceitando Linux/Windows.
+O checkpoint restaura a origem escolhida: tarefa 1, 7 ou 14. Na Parte 3, restaura
+A/B via R2 e enlace UP/pending, preparando uma nova execução explícita do
+incidente. Equipamentos independentes são preservados; identidades ou cabos
+ambíguos bloqueiam a operação. O baseline técnico do cenário restaurado considera
+os equipamentos independentes preservados. O checkpoint original não é reescrito.
 
-## Parte 4: baseline, incidente e encerramento parcial
+recordEntryIncident() concilia o consumo da tempestade com o ticket do reinício.
+Undo da porta seguido de Undo do reinício recupera a tentativa anterior; Redo
+mantém o marcador consumido, sem disparar outro incidente. Como antes, o histórico
+Undo/Redo é transitório; documento e progresso persistem após F5.
 
-O documento inicial contém R3 eth3 `192.168.30.129/25`, PC C
-`192.168.30.130/25` com gateway `.129`, R2 encaminhando LAN C via R3 e R1 com
-`192.168.30.0/24` via R2 e `192.168.30.128/25` via R3. A/B continuam via R2.
-Nenhum ping é executado para preencher o progresso.
+Revisão histórica continua separada da validade atual da configuração: o box
+com check não cria recibos nem autoriza novas provas com base na configuração.
+A prática parcial termina positivamente em 10/10 ou 3/3 e permite explorar a
+rede; seus resultados integrais são 10/16 ou 3/16. Só uma tentativa iniciada no
+começo que comprove todas as 16 tarefas concede conclusão integral histórica.
+Não há soma de tentativas. Indicadores verde/azul/neutro e textos acessíveis
+continuam independentes do contador da prática atual.
 
-`scenarioBaseline` identifica somente a configuração técnica fornecida. Fica
-separado de `viaBaseline` (comprovação normal anterior), que permanece nulo,
-e dos recibos de ping, respostas e `completed`, inicialmente vazios. O leitor
-recusa evidências das tarefas 1–19 nessa entrada e não usa créditos `legacy`.
+## Edição antiga preservada
 
-A tarefa 20 começa com `storm: pending`. O controller reutiliza `commitStorm()`:
-documento com R2 eth1 DOWN e marcador consumido são gravados atomicamente. Falha
-antes do commit mantém rede operacional/pending; interrupção depois dele recupera
-rede e marcador juntos. F5, navegação ou Undo da porta não reaplicam o incidente.
-Uma mudança incompatível com o baseline bloqueia a preparação, sem corrigir a rede.
+Os quatro namespaces da edição nova são:
 
-As tarefas 20–22 exigem a observação real da falha, recuperação das LANs completas
-e Echo Replies nos dois sentidos pelo enlace R1–R3. `replace` ou `del` + `add`
-equivalentes continuam aceitos; /32 isoladas não substituem cobertura da LAN.
-Ao concluir, a UI DE/EN/PT-BR identifica a conclusão **da prática da Parte 4** e
-permite explorar a rede. A prática indica **3/3**; o resultado integral permanece
-**3/22**, sem crédito para tarefas fornecidas ou concessão de conclusão histórica.
+- `guided:alternative-paths:v5:draft:<id>`
+- `guided:checkpoint:v5:<id>:alternative-paths`
+- `guided:current-attempt:v5:alternative-paths`
+- `guided:chapter-completion:v5:alternative-paths`
 
-## Menu e indicadores — Rodada 3
+As chaves anteriores permanecem intactas, sem migração, exclusão ou limpeza de
+IndexedDB. Um draft com progresso antigo é reconhecido como pertencente à edição
+anterior, para suspender controllers de capítulos anteriores, mas não ativa o
+painel v5, sua tempestade ou o reinício novo. Continua aberto como rede editável.
+Progresso e histórico antigos não são apresentados como erro de corrupção nem
+reinterpretados como crédito v5. Apenas registros inválidos no namespace v5 são
+erros de contrato. Nova tentativa cria outro draft com controles v5.
 
-O botão abre um `FloatingPopover` à direita, com fallback à esquerda e navegação
-por teclado. Escape/Seta esquerda retornam ao acionador; clique fora fecha o
-submenu. O popup pai reconhece o filho por referência, sem fechar ao utilizá-lo.
-Em até 760 px, a lista substitui o conteúdo dos tutoriais por quatro opções e
-Voltar, mantendo o menu compacto. Os demais grupos não foram reformulados.
+O histórico/seleção v5 usam CAS e guards da revisão da origem, como antes.
+São metadados locais ao navegador: não acompanham exportações JSON.
+Os capítulos 1–4 mantêm suas chaves e comportamento.
 
-No capítulo 5:
+## Testes e capturas
 
-- **Check verde:** existe conclusão integral histórica verificada. Prevalece
-  mesmo quando a prática atual tem 0 tarefas. O contador atual aparece separado.
-- **Círculo azul:** existe uma tentativa, mas nenhuma conclusão integral histórica.
-  Exibe o progresso da prática atual; uma prática parcial finalizada tem mensagem
-  positiva de conclusão própria, mantendo esse indicador de capítulo.
-- **Neutro:** nenhuma tentativa disponível nem conclusão histórica.
+O roteiro node scripts/test-alternative-paths-tutorial.mjs usa Chromium, xterm,
+pings reais e banco/perfil descartáveis. Cobre fluxo integral, duas entradas,
+conclusão parcial/integral, tempestade, F5, recuperação, /32 insuficiente,
+histórico, reinício/Undo/Redo, registros antigos, idiomas e Dark/Light.
+Capturas reais ficam em .playwright-mcp/reviews/chapter5-v5/referencias-chatgpt/,
+separadas dos logs e backups locais. Nenhum atalho de conclusão é distribuído.
 
-Os estados têm texto DE/EN/PT-BR e símbolos acessíveis, sem depender só da cor.
-Capítulos 1–4 conservam seus indicadores anteriores. Na revisão de uma tarefa
-comprovada, o box existente recebe um pequeno check verde; não representa a
-validade técnica da rede atual nem é exibido por um pré-requisito fornecido.
-
-Práticas iniciadas nas Partes 2/3/4 terminam nas mesmas verificações da tarefa 22.
-Seus contadores são **16/16**, **9/9** e **3/3**, respectivamente, com encerramento
-próprio e acesso a explorar a rede. Os resultados integrais correspondentes são
-**16/22**, **9/22** e **3/22**. Nenhuma dessas origens concede conclusão integral.
-
-## Metadados independentes de aprendizagem
-
-Nenhum store novo; ambos os registros usam `meta`:
-
-- `guided:chapter-completion:v1:alternative-paths`: contrato v1 com capítulo,
-  versão atual, origem (`draftId`, `attemptId`, versão original, início integral)
-  e `recordedAt`. Essa é a data de registro/verificação, não uma data inventada
-  de conclusão para tentativas antigas. Preserva o primeiro registro válido.
-- `guided:current-attempt:v1:alternative-paths`: referência à tentativa selecionada,
-  com IDs e `selectedAt`. Não copia topologia, etapas ou comprovantes.
-
-`alternativeLearning.ts` só grava a conclusão a partir de **um único** progresso
-persistido e validado pelo leitor existente, sem `entry`, com conclusão integral.
-Não soma atividades entre tentativas. Conclusões antigas integrais verificáveis
-podem ser preservadas, identificando sua versão original; não se criam recibos
-modernos fictícios para preencher diferenças de contrato.
-
-`setMeta()` aceita `guards` opcionais. A revisão do progresso de origem e o CAS do
-histórico são conferidos na mesma transação. Escritores concorrentes preservam o
-primeiro vencedor verificado. Falhas não criam histórico parcial nem alteram a
-origem. Um F5 entre o commit do progresso e o registro independente é recuperado
-na próxima ativação/leitura; o reinício preserva a conclusão antes de limpar o
-progresso da tentativa. Se isso falhar, a restauração não prossegue.
-
-Essas gravações são apenas de metadados: não chamam `commitDocument()`, não ativam
-novamente a simulação nem interrompem processos. A conclusão permanece após
-reinício, nova prática ou fechamento do draft. Se o último draft já foi fechado,
-seu progresso ainda disponível pode reparar um registro histórico pendente, sem
-reabri-lo. Falhas específicas desses metadados têm retry no capítulo 5 e não
-bloqueiam os capítulos 1–4. Dados incompatíveis não são sobrescritos.
-
-Para Fortsetzen, a tentativa do capítulo no plano ativo tem prioridade; fora
-dela, usa-se o marcador da última seleção, conferindo também `attemptId`.
-Respostas atrasadas conferem novamente a identidade ativa antes de selecionar.
-Novas tentativas não apagam as anteriores. Em tentativas antigas sem marcador,
-o fallback usa os drafts existentes; não tenta inventar qual foi a última visita.
-
-O histórico é local ao IndexedDB deste navegador. Não foi criada sincronização
-entre computadores; exportar uma topologia JSON não exporta esse histórico global.
-
-## Reinício e próximos passos
-
-O checkpoint de reinício guarda a origem específica da entrada: etapa 7, 14 ou 20,
-com as mesmas identidades e sem crédito pelas tarefas fornecidas. O leitor confere
-também as condições técnicas iniciais. A restauração seletiva existente preserva
-equipamentos independentes e bloqueia identidades ou conexões ambíguas.
-No reinício da entrada da Parte 3, a preparação automática de R3 eth3 e seu
-progresso `lpm.ready` entram na própria transação de restauração. Isso evita uma
-gravação adicional que invalidaria o ticket Undo/Redo do reinício. PC C e seus
-recibos continuam ausentes; o checkpoint original não é reescrito.
-
-Na Parte 4, o reinício restaura o cenário anterior à falha, inclusive PC C, rotas
-e enlace operacional, com progresso vazio/pending; a tarefa 20 então consome a
-nova tempestade. Equipamentos independentes preservados entram no novo baseline
-técnico, sem gerar evidências. O checkpoint original permanece intacto. O ticket
-Undo/Redo do reinício acompanha o consumo confirmado do incidente: desfaz-se a
-porta e depois o reinício; refazer restaura o marcador consumido e permite refazer
-a operação normal da porta, sem agendar outra tempestade. Como no restante da
-aplicação, o histórico Undo/Redo é transitório; o documento/progresso persistidos
-continuam recuperáveis após F5.
-
-O submenu, os indicadores e a conclusão independente do capítulo 5 foram
-implementados. Os capítulos 1–4 não receberam novos pontos de entrada ou registros
-de histórico nesta rodada. As verificações de roteamento, os cenários fornecidos
-e a transação da tempestade foram reutilizados.
-
-Testes unitários e Chromium usam tentativas, perfis e bancos descartáveis; não se
-executa essa infraestrutura sobre os projetos reais do usuário nesta rodada.
-
-## Validação da Rodada 3
-
-**304 testes distintos em 23 arquivos** aprovados, incluindo os capítulos 1–4,
-metadados concorrentes, quota, origem alterada, progresso antigo verificável,
-seleção tardia, abertura normal/avançada interrompida e reinício. O roteiro
-Chromium passou em **320 verificações**, sem erros de navegador: quatro opções
-públicas, teclado/Escape/Voltar, fallback lateral, 700 px, DE/EN/PT-BR, temas,
-F5, retomada após visitar um plano pessoal, conclusão integral real, histórico
-preservado numa prática nova, três encerramentos parciais, tempestade e Undo/Redo.
-TypeScript, build e diff-check aprovados; apenas o aviso conhecido de chunk grande.
-
-Capturas reais em `.playwright-mcp/reviews/chapter5-entries-round3/`:
-`01-desktop-submenu.png`, `02-compact-submenu.png`, `03-partial-progress.png`,
-`04-history-complete-new-practice.png` e `05-part-{2,3,4}-practice-complete.png`.
-Arquivos gerados permanecem fora do Git. Nenhum commit, push, merge ou deploy.
+Validação em 11/11/2026: **3.020 testes em 184 arquivos**, **134 verificações
+Chromium**, TypeScript, build e diff-check aprovados. Sem erros de navegador.
+Sete PNGs inspecionados e galeria em `.playwright-mcp/reviews/chapter5-v5/index.html`.
+Permanece o aviso conhecido de chunk JS acima de 500 kB. Sem commit/push/deploy.

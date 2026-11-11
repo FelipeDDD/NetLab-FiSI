@@ -1,12 +1,10 @@
 import { TutorialCommand, TutorialText } from './TutorialCommand';
-import { parseCidr } from '../engine/ip';
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { SessionController } from '../persistence/sessionController';
 import type { ProjectRepository } from '../projects/repository';
 import { TutorialProgressStore } from './tutorialProgress';
 import { useStore } from '../store';
 import { recordOperation } from '../topologyHistory';
-import { canNameLanC } from './lanCPresentation';
 import { sim } from '../sim';
 import { serializeNetwork } from '../engine/serialize';
 import { hasPendingForms } from '../persistence/pendingForms';
@@ -115,10 +113,8 @@ function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:
     network:()=>sim.net,activeDraftId:()=>useStore.getState().workspaceIdentity?.draftId??null,pendingForms:hasPendingForms,
     subscribe:listener=>{const a=useStore.subscribe(listener),b=restart.subscribe(listener);return()=>{a();b();};},observeCommands:observeTerminalCommands,observeActivity:observeNetworkActivity,
     insert:()=>useStore.getState().addAlternativeRoutingPCs(),started:requestExerciseViewport,
-    prepareLpm:()=>useStore.getState().setInterfaceIpv4('tutorial-05-r3','eth3',{mode:'static',ip:parseCidr('192.168.30.129/25'),gateway:null,dns:null}) ? 'lpmPort' : null,
     captureDocument:()=>useStore.getState().captureWorkspaceDocument(),
     stormHistory:(changed,before)=>{const history=useStore.getState().topologyHistory;return after=>{restart.recordEntryIncident(before,after,history);useStore.getState().installChapterHistory(changed?recordOperation(history,{type:'set-iface-state',label:'R2–R3: interface DOWN',deviceId:'tutorial-05-r2',ifaceName:'eth1',before:true,after:false}):history);};},
-    nameLanC:pc=>{if(canNameLanC(sim.net,useStore.getState().topologyHistory,pc))useStore.getState().renameDevice(pc.id,'PC C');},
   },new AlternativePathsProgressStore(repository,sessions)));
   alternativeRef.current=alternative;
   const alternativeState=useSyncExternalStore(alternative.subscribe,alternative.getState);
@@ -156,7 +152,7 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
       .catch(() => { if (!cancelled) setProgressError(true); })
       .finally(() => { if (!cancelled) setProgressLoading(false); });
     return () => { cancelled = true; };
-  }, [expanded, ui?.sessions, ui?.repository, ui?.state.draftId, ui?.routerState.loadedDraft, ui?.routingState.loadedDraft, ui?.alternativeState.loadedDraft,ui?.alternativeState.record?.completed.length,ui?.alternativeState.saving]);
+  }, [expanded, ui?.sessions, ui?.repository, ui?.state.draftId, ui?.routerState.loadedDraft, ui?.routingState.loadedDraft, ui?.routingState.record?.completed.length, ui?.routingState.saving, ui?.alternativeState.loadedDraft,ui?.alternativeState.record?.completed.length,ui?.alternativeState.saving]);
   if (!ui) return null;
   const { controller, state } = ui;
   const basicsDraft = progress.first?.draftId ?? state.draftId;
@@ -166,6 +162,7 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
   const routerProgress = progress.router && ui.routerState.record?.draftId === progress.router.draftId ? routerChapterCompletion(ui.routerState.record) : progress.router?.progress;
   const routingDraft=progress.routing?.draftId;
   const routingProgress=progress.routing&&ui.routingState.record&&ui.routingState.record.draftId===routingDraft?staticRoutingCompletion(ui.routingState.record):progress.routing?.progress;
+  const routingHistory=!!progress.routingHistory;
   const alternativeDraft=progress.alternative?.draftId;
   const alternativeProgress=progress.alternative&&ui.alternativeState.record&&ui.alternativeState.record.draftId===alternativeDraft?alternativePathsCompletion(ui.alternativeState.record):progress.alternative?.progress;
   const alternativePractice=progress.alternative&&ui.alternativeState.record&&ui.alternativeState.record.draftId===alternativeDraft?alternativePracticeCompletion(ui.alternativeState.record):progress.alternative?.practice;
@@ -206,10 +203,10 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
     </section>
     <section className="guided-menu-chapter" aria-label={t('guidedStatic.title')}>
       <strong>{t('guidedStatic.title')}</strong><p><TutorialText>{t('guidedStatic.menuDescription')}</TutorialText></p>
-      {routingProgress&&<div className="guided-menu-progress" data-chapter-progress="static-routing"><ChapterProgress progress={routingProgress}/></div>}
+      {(routingProgress||routingHistory)&&<div className="guided-menu-progress" data-chapter-progress="static-routing" data-chapter-historically-completed={routingHistory}><ChapterProgress progress={routingHistory?{completed:11,total:11,complete:true}:routingProgress!}/>{routingHistory&&routingProgress&&!routingProgress.complete&&<small>{t('guidedAlternative.currentPractice',{completed:routingProgress.completed,total:routingProgress.total})}</small>}</div>}
       {routingDraft&&<button type="button" role="menuitem" className="btn" data-static-resume disabled={ui.routingState.busy||progressLoading||progressError} onClick={()=>{void ui.sessions.switchDraft(routingDraft).then(result=>{if(result.ok){ui.showPanels(routingDraft);usePractice.getState().close();close();}});}}>{t(routingProgress?.complete?'guided.openNetwork':'guided.resume')}</button>}
-      <button type="button" role="menuitem" className="btn" data-static-direct disabled={ui.routingState.busy||progressLoading||progressError} onClick={()=>{usePractice.getState().close();void ui.routing.begin();close();}}>{t(routingDraft?'guided.newAttempt':'guided.chapterStart')}</button>
-      {ui.routingState.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void ui.routing.retryProgress()}>{t('common.retry')}</button></p>}
+      <button type="button" role="menuitem" className="btn" data-static-direct disabled={ui.routingState.busy||progressLoading||progressError} onClick={()=>{usePractice.getState().close();void ui.routing.begin();close();}}>{t(routingDraft||routingHistory?'guided.newAttempt':'guided.chapterStart')}</button>
+      {(ui.routingState.storageError||progress.routingError)&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>{void ui.routing.retryProgress();setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}
     </section>
     <section className="guided-menu-chapter" aria-label={t('guidedAlternative.title')}>
       <strong>{t('guidedAlternative.title')}</strong><p><TutorialText>{t('guidedAlternative.menuDescription')}</TutorialText></p>

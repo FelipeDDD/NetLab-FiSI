@@ -15,7 +15,8 @@ export async function runStaticRoutingReview({ page, url, root, report }) {
     await delay(100);
   };
   const mount = async (reload = false) => {
-    await page.send(reload ? 'Page.reload' : 'Page.navigate', reload ? { ignoreCache: true } : { url }); await wait("document.readyState==='complete'&&document.getElementById('root')");
+    const previous=crypto.randomUUID();await page.evaluate(`window.previousStaticReviewDocument=${JSON.stringify(previous)};`);
+    await page.send(reload ? 'Page.reload' : 'Page.navigate', reload ? { ignoreCache: true } : { url }); await wait(`window.previousStaticReviewDocument!==${JSON.stringify(previous)}&&document.readyState==='complete'&&document.getElementById('root')`);
     await page.evaluate(`window.store=(await import('/src/store.ts')).useStore;window.sim=(await import('/src/sim.ts')).sim;window.lang=(await import('/src/i18n/index.ts')).useLanguage;window.theme=(await import('/src/uiTheme.ts')).useUiTheme;window.chapter=await import('/src/tutorials/staticRoutingChapter.ts');window.records=[];window.releaseObserver=(await import('/src/terminalCommandEvents.ts')).observeTerminalCommands(e=>records.push({type:e.type,deviceId:e.command.deviceId,line:e.command.line,source:e.command.source,text:e.text}));lang.getState().setLanguage('de');window.ws=await(await import('/src/workspace/reviewEntry.tsx')).mountWorkspaceReview(document.getElementById('root'),{databaseName:${JSON.stringify(database)}});`);
     await wait("document.querySelector('.react-flow')"); await delay(200);
   };
@@ -196,6 +197,32 @@ export async function runStaticRoutingReview({ page, url, root, report }) {
       await page.evaluate('store.getState().undoTopology();'); await step(11); await saved(); assert.deepEqual(await receipt(), done);
       await page.evaluate('store.getState().redoTopology();'); await step(1); await saved(); assert.equal(await page.evaluate('return sim.net.devices.size;'), 7); await reloadAt(1);
       await menu(); await click('[data-static-direct]'); await step(1); await saved(); assert.notEqual((await receipt()).id, attempt); assert.equal((await receipt()).tabs, done.tabs + 1);
+    });
+    await test('Chapter 4 historical completion wins over a new attempt, survives F5/closed drafts and stays independent of Chapter 5 entries',async()=>{
+      const refs=path.join(root,'.playwright-mcp/reviews/chapter-menu-help/referencias-chatgpt');await mkdir(refs,{recursive:true});
+      const capture=async name=>{const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(refs,name+'.png'),Buffer.from(png.data,'base64'));};
+      await menu();await wait('document.querySelector("[data-chapter-progress=static-routing][data-chapter-historically-completed=true]")');
+      assert(await page.evaluate('return document.querySelector("[data-chapter-progress=static-routing] [data-chapter-completed]").dataset.chapterCompleted==="true"&&document.querySelector("[data-static-resume]").textContent==="Fortsetzen";'));
+      await capture('menu-capitulo4-concluido-tentativa-nova');
+      await click('[data-static-resume]');await step(1);await reloadAt(1);
+      const history=await page.evaluate('return (await ws.repository.getMeta("guided:chapter-completion:v1:static-routing")).value;');assert.equal(history.value.source.draftId,attempt);
+      await page.evaluate(`const d=ws.controller.getState().drafts.find(d=>d.id===${JSON.stringify(attempt)});const r=await ws.controller.closeDraft(d.id,{expectedEditSequence:d.editSequence,discardChanges:true});if(!r.ok)throw Error(JSON.stringify(r));`);
+      await menu();await wait('document.querySelector("[data-chapter-progress=static-routing][data-chapter-historically-completed=true]")');
+      await click('[data-alternative-direct]');await click('[data-alternative-entry-choice="part-3"]');await wait('document.querySelector("[data-alternative-step]")?.dataset.alternativeStep==="14"');
+      assert(await page.evaluate('return !document.querySelector("[data-alternative-entry]");'));
+      for(const language of ['de','en','pt-BR'])for(const name of ['graphite-dark','classic-light']){
+        await page.evaluate(`lang.getState().setLanguage(${JSON.stringify(language)});theme.getState().setTheme(${JSON.stringify(name)});`);await delay(100);
+        const exercise=language==='de'?'Übungen (Beta)':language==='en'?'Exercises (Beta)':'Exercícios (Beta)';
+        await click('.toolbar-menu-trigger,.toolbar-menu-action',exercise);await click('[data-guided-menu-toggle]');
+        await wait('document.querySelector("[data-chapter-progress=static-routing][data-chapter-historically-completed=true]")');
+        assert(await page.evaluate('return document.querySelector("[data-chapter-progress=static-routing] [data-chapter-completed]").dataset.chapterCompleted==="true"&&!!document.querySelector("[data-alternative-indicator=in-progress]");'));
+        if(language==='de'&&name==='graphite-dark')await capture('menu-capitulos4-historico-5-parcial');
+        const p=await page.evaluate('const b=[...document.querySelectorAll(".toolbar-menu-trigger,.toolbar-menu-action")].find(e=>e.getAttribute("aria-expanded")==="true");return b?.textContent;');
+        if(p)await click('.toolbar-menu-trigger,.toolbar-menu-action',p);else {for(const type of ['keyDown','keyUp'])await page.send('Input.dispatchKeyEvent',{type,key:'Escape',code:'Escape',windowsVirtualKeyCode:27});}
+        report.results['static routing: historical menu '+language+' '+name]={passed:true};
+      }
+      assert.deepEqual(await page.evaluate('return (await ws.repository.getMeta("guided:chapter-completion:v1:static-routing")).value;'),history);
+      await page.evaluate(`await ws.controller.switchDraft(${JSON.stringify(personal.id)});`);await delay(100);assert.deepEqual((await receipt()).document,personal.document);
     });
     const captures = [initial, lesson, compact, arpRequest, arpReply, icmpFailure, expanded, completed, mobile], manifest = path.join(directory, 'manifest.json');
     await writeFile(manifest, JSON.stringify({ id: 'chapter-4-minimal-learning', title: 'Kapitel 4 · Instruções mínimas e causalidade ARP', variants: [{ id: 'graphite-dark', label: 'Graphite Dark' }, { id: 'classic-light', label: 'Classic Light' }], states: ['initial', 'help', 'layout', 'arp', 'expanded', 'completed'], captures, share: captures.filter(c=>c!==completed).map(c => ({ ...c, name: c.scene.replace(/^\d+-/, '') })), shareContactSheet: false }));

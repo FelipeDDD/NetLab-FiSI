@@ -5,7 +5,7 @@ import { visualHelpPosition, type TutorialVisualHelp } from './tutorialVisualHel
 import './guidedVisualHelp.css';
 
 /** Mount with a step key so leaving a task always dismisses its visual help. */
-export function GuidedVisualHelp({ help }: { help: TutorialVisualHelp }) {
+export function GuidedVisualHelp({ help, embedded = false }: { help: TutorialVisualHelp; embedded?: boolean }) {
   const { t, language } = useTranslation();
   const [open, setOpen] = useState(false), [halfScale, setHalfScale] = useState(false);
   const [imageWidth, setImageWidth] = useState(0);
@@ -46,7 +46,7 @@ export function GuidedVisualHelp({ help }: { help: TutorialVisualHelp }) {
   }, [open, placement.modal]);
 
   return <>
-    <button ref={trigger} type="button" className="btn guided-visual-help-trigger" data-guided-image
+    <button ref={trigger} type="button" className={`btn guided-visual-help-trigger${embedded ? ' is-embedded' : ''}`} data-guided-image
       aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
       onClick={() => {
         if (open) { close(); return; }

@@ -58,9 +58,9 @@ describe('catalog contracts', () => {
     for (const key of ['maskTitle', 'maskText', 'maskPassed', 'demoTitle', 'demoText', 'demoPassed', 'failureTitle', 'failureText', 'failurePassed', 'correctTitle', 'correctText', 'correctPassed', 'retestTitle', 'retestText', 'finished', 'missing', 'conflict', 'noPort', 'network', 'forms', 'terminalBusy', 'terminalInput', 'demoRepeat']) references.add(`guidedSubnet.${key}`);
     for (const key of ['introTitle','introText','cablesTitle','cablesText','interfacesTitle','interfacesText','hostTitle','hostText','gatewaysTitle','gatewaysText','routeTitle','routeText','diagnosisTitle','diagnosisText','solveTitle','solveText','testTitle','testText','missing','conflict','noPort','network','forms','cables','interfaces','hostIp','gateways','defaultRoute','pcB','repeatUnsafe','diagnosisOther']) references.add('guidedRouter.'+key);
     for (const key of ['forms','missing','network','port','conflict']) references.add(`guidedStatic.${key}`);
-    for (let step=1;step<=22;step++) for (const suffix of ['Title','Text']) references.add(`guidedAlternative.step${step}${suffix}`);
-    for (const step of [1,2,3,4,5,6,8,9,10,13,14,15,16,17,18,19]) references.add(`guidedAlternative.step${step}Help`);
-    for (const key of ['part1','part2','part3','part4','forms','missing','transit','wiring','port','conflict','lpmPort','lpmIdentity']) references.add(`guidedAlternative.${key}`);
+    for (let step=1;step<=16;step++) for (const suffix of ['Title','Text']) references.add(`guidedAlternative.step${step}${suffix}`);
+    for (const step of [1,2,3,4,5,6,8,9,10,13]) references.add(`guidedAlternative.step${step}Help`);
+    for (const key of ['part1','part2','part3','forms','missing','transit','wiring','port','conflict']) references.add(`guidedAlternative.${key}`);
     for (let step=1;step<=11;step++) for (const suffix of ['Title','Text']) references.add(`guidedStaticLine.step${step}${suffix}`);
     for (const step of [3,4,5,6,7,9,10]) references.add(`guidedStaticLine.step${step}Help`);
     for (const status of ['pending','running','confirmed','failed']) references.add(`guidedStaticLine.verification${status}`);

@@ -1,6 +1,7 @@
 .guided-help-with-image { position: relative; }
 .guided-help-with-image > details > summary { padding-right: 145px; min-height: 32px; align-content: center; }
 .guided-visual-help-trigger { position: absolute; right: 0; top: 0; display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
+.guided-visual-help-trigger.is-embedded { position: static; margin-top: 8px; }
 .guided-visual-help { position: fixed; box-sizing: border-box; margin: 0; padding: 0; max-width: none; max-height: calc(100dvh - 24px); border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-surface-panel); color: var(--ui-text); box-shadow: var(--ui-shadow-popover); z-index: 1400; }
 .guided-visual-help[open] { display: flex; flex-direction: column; }
 .guided-visual-help > header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ui-border); }

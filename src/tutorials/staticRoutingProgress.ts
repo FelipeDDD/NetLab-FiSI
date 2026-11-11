@@ -2,6 +2,7 @@ import type { ProjectRepository } from '../projects/repository';
 import type { SessionController } from '../persistence/sessionController';
 import type { MetaValue } from '../projects/types';
 import { STATIC_CHAPTER, STATIC_PAIRS, type StaticPair, type StaticExtensionIdentity } from './staticRoutingChapter';
+import { rememberStaticCompletion } from './staticRoutingLearning';
 
 export const STATIC_PROGRESS_PREFIX = 'guided:static-routing:v1:draft:';
 export type MissingRouter = 'r1' | 'r2' | 'r3' | 'none';
@@ -58,7 +59,9 @@ export class StaticRoutingProgressStore {
     const result = await this.repository.getMeta(STATIC_PROGRESS_PREFIX + id);
     if (!result.ok) throw Error(result.error.code);
     const record = result.value ? readStaticRoutingProgress(result.value.value, id) : null;
-    this.revisions.set(id, result.value?.revision ?? null); return record;
+    this.revisions.set(id, result.value?.revision ?? null);
+    if (record) await rememberStaticCompletion(this.repository, id);
+    return record;
   }
   save(record: StaticRoutingProgress): Promise<void> {
     const snapshot = structuredClone(record);
@@ -70,6 +73,7 @@ export class StaticRoutingProgressStore {
       if (!this.revisions.has(snapshot.draftId)) await this.load(snapshot.draftId);
       const result = await this.repository.setMeta({ key: STATIC_PROGRESS_PREFIX + snapshot.draftId, expectedRevision: this.revisions.get(snapshot.draftId)!, value: snapshot as unknown as MetaValue }, { signal: this.abort.signal });
       if (!result.ok) throw Error(result.error.code); this.revisions.set(snapshot.draftId, result.value.revision);
+      await rememberStaticCompletion(this.repository, snapshot.draftId);
     });
     this.tail = work.catch(() => {}); return work;
   }

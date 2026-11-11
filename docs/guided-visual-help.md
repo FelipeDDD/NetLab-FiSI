@@ -2,6 +2,13 @@
 
 O capítulo 4 associa a ajuda visual à etapa 2, que consulta a tabela de R1 com `ip route`, e à etapa 4, que configura uma rota estática em R2. O botão fica ao lado de `Hilfe` e funciona independentemente do texto recolhido.
 
+No capítulo 5 v5, a Parte 2 reutiliza o mesmo conjunto aprovado de rotas
+estáticas nas etapas 4/9 e 5/9 (tarefas globais 8 e 9), com botão junto de
+Ajuda. Na etapa 7/9 (tarefa 11), o botão fica somente dentro da Ajuda recolhida.
+`alternativeRoutingVisualHelp` aponta para o mesmo objeto do capítulo 4, sem
+duplicar assets. O modo `embedded` altera somente o posicionamento do botão.
+Idiomas, zoom, Escape/foco e fechamento ao mudar de tarefa são compartilhados.
+
 `src/tutorials/tutorialVisualHelp.ts` contém a associação entre etapa, título, descrição acessível e imagens por idioma. Para futuras imagens, basta adicionar uma associação e reutilizar `GuidedVisualHelp` com uma chave por etapa. Não há estado de progresso, persistência ou comandos de simulação nesse componente.
 
 Os conjuntos são referenciados diretamente em `output/imagens-ip-route-sem-setas/` e `output/imagens-rotas-estaticas-referencia/`. O Vite inclui os arquivos no build; nenhuma cópia adicional de origem foi criada. Falhas de carregamento mostram uma mensagem com o idioma solicitado, sem substituir a imagem por outro idioma. O [padrão visual](padrao-imagens-didaticas.md) reúne as diretrizes para futuras imagens.

@@ -4,9 +4,13 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { translate, type Language } from '../i18n';
 import { GuidedVisualHelp } from './GuidedVisualHelp';
-import { staticRoutingVisualHelp, visualHelpPosition } from './tutorialVisualHelp';
+import { alternativeRoutingVisualHelp, staticRoutingVisualHelp, visualHelpPosition } from './tutorialVisualHelp';
 
 describe('optional tutorial visual help', () => {
+  it('reuses the same approved route images only on Chapter 5 tasks 8, 9 and 11', () => {
+    expect(Object.keys(alternativeRoutingVisualHelp)).toEqual(['8', '9', '11']);
+    for (const help of Object.values(alternativeRoutingVisualHelp)) expect(help).toBe(staticRoutingVisualHelp[4]);
+  });
   it('associates only steps 2 and 4 with their own existing images in every language', () => {
     expect(Object.keys(staticRoutingVisualHelp)).toEqual(['2', '4']);
     for (const [step, directory, prefix] of [[2, 'imagens-ip-route-sem-setas', 'ip-route'], [4, 'imagens-rotas-estaticas-referencia', 'rota-estatica']] as const) {

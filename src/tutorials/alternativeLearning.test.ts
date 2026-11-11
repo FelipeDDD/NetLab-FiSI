@@ -3,18 +3,15 @@ import type { ProjectRepository } from '../projects/repository';
 import type { MetaRecord,MetaValue,RepositoryError } from '../projects/types';
 import { ALTERNATIVE_COMPLETION_KEY as HISTORY,ALTERNATIVE_CURRENT_KEY as CURRENT,readAlternativeCompletion,readAlternativeCurrent,rememberAlternativeCompletion,selectAlternativeAttempt } from './alternativeLearning';
 import { ALTERNATIVE_PROGRESS_PREFIX as PREFIX,newAlternativeProgress,readAlternativeProgress } from './alternativePathsProgress';
-import { ALTERNATIVE_IDS as I } from './alternativePathsChapter';
-import { emptyLpm } from './alternativeLpm';
 import { alternativePathsCompletion,alternativePracticeCompletion } from './completion';
 import { createAlternativeEntryAttempt } from './alternativeEntries';
 import { loadTutorialMenuProgress } from './menuProgress';
 
 const hash='sha256-v1:'+'a'.repeat(64);
 function full(id='full'){
-  const p=newAlternativeProgress(id),pc={id:'student-c',mac:'02:00:00:00:00:03'};
-  return {...p,prepared:true,stage:'lans' as const,step:22,completed:Array.from({length:22},(_,i)=>i+1),extension:{a:'02:00:00:00:00:01',b:'02:00:00:00:00:02'},neighbors:Object.fromEntries(Object.keys(p.neighbors).map(k=>[k,hash])) as typeof p.neighbors,
-    remoteUnderstood:true,hopUnderstood:true,lpmUnderstood:true,investigated:hash,returnInvestigated:hash,viaBaseline:hash,failure:hash,viaReplies:{ab:hash,ba:hash},directReplies:{ab:hash,ba:hash},storm:'applied' as const,
-    lpm:{...emptyLpm(),stage:'ready' as const,baseline:Object.values(I),pc,localReply:hash,experiment:{legacy:false,r2:{hash,reply:[pc.id,I.r3,I.r2]},broad:{hash,reply:[pc.id,I.r3,I.r2,I.r1,I.a]},specific:{hash,reply:[pc.id,I.r3,I.r1,I.a]}}}};
+  const p=newAlternativeProgress(id);
+  return {...p,prepared:true,stage:'lans' as const,step:16,completed:Array.from({length:16},(_,i)=>i+1),extension:{a:'02:00:00:00:00:01',b:'02:00:00:00:00:02'},neighbors:Object.fromEntries(Object.keys(p.neighbors).map(k=>[k,hash])) as typeof p.neighbors,
+    remoteUnderstood:true,hopUnderstood:true,investigated:hash,returnInvestigated:hash,viaBaseline:hash,failure:hash,viaReplies:{ab:hash,ba:hash},directReplies:{ab:hash,ba:hash},storm:'applied' as const};
 }
 function storage(){
   const meta=new Map<string,MetaRecord>();let intercept:(()=>void)|null=null,fault:RepositoryError|null=null,writes=0;
@@ -30,15 +27,15 @@ function storage(){
 }
 it('persists a verified full completion independently, with its source and recording date, and never erases it for a new practice',async()=>{
   const s=storage(),p=full();readAlternativeProgress(p,p.draftId);s.put(p.draftId,p);
-  const h=await rememberAlternativeCompletion(s.repository,p.draftId);expect(h).toMatchObject({chapterVersion:4,source:{draftId:p.draftId,attemptId:p.attemptId,entry:'beginning'}});expect(h!.recordedAt).toBeGreaterThan(0);
-  const next=await createAlternativeEntryAttempt('part-4');s.put(next.progress.draftId,next.progress);await selectAlternativeAttempt(s.repository,next.progress.draftId,next.progress.attemptId,()=>true);
+  const h=await rememberAlternativeCompletion(s.repository,p.draftId);expect(h).toMatchObject({chapterVersion:5,source:{draftId:p.draftId,attemptId:p.attemptId,entry:'beginning'}});expect(h!.recordedAt).toBeGreaterThan(0);
+  const next=await createAlternativeEntryAttempt('part-3');s.put(next.progress.draftId,next.progress);await selectAlternativeAttempt(s.repository,next.progress.draftId,next.progress.attemptId,()=>true);
   expect(await rememberAlternativeCompletion(s.repository,next.progress.draftId)).toEqual(h);expect(readAlternativeCurrent(s.meta.get(CURRENT)!.value).draftId).toBe(next.progress.draftId);
   s.meta.delete(PREFIX+p.draftId);expect(await rememberAlternativeCompletion(s.repository,'missing')).toEqual(h);
 });
-it.each(['part-2','part-3','part-4'] as const)('finishes the %s practice without awarding an integral chapter or supplied tasks',async point=>{
+it.each(['part-2','part-3'] as const)('finishes the %s practice without awarding an integral chapter or supplied tasks',async point=>{
   const s=storage(),a=await createAlternativeEntryAttempt(point),provided=a.progress,earned=full(provided.draftId);
-  const p={...earned,...provided,step:22,completed:Array.from({length:23-provided.entry!.firstTask},(_,i)=>i+provided.entry!.firstTask),storm:'applied' as const,failure:hash,directReplies:{ab:hash,ba:hash}};
-  if(point!=='part-4')Object.assign(p,{lpm:earned.lpm,lpmUnderstood:true,viaBaseline:hash,...(point==='part-2'?{investigated:hash,returnInvestigated:hash,viaReplies:earned.viaReplies,hopUnderstood:true}:{})});
+  const p={...earned,...provided,step:16,completed:Array.from({length:17-provided.entry!.firstTask},(_,i)=>i+provided.entry!.firstTask),storm:'applied' as const,failure:hash,directReplies:{ab:hash,ba:hash}};
+  if(point==='part-2')Object.assign(p,{viaBaseline:hash,investigated:hash,returnInvestigated:hash,viaReplies:earned.viaReplies,hopUnderstood:true});
   readAlternativeProgress(p,p.draftId);s.put(p.draftId,p);
   expect(alternativePracticeCompletion(p)).toEqual({completed:p.completed.length,total:p.completed.length,complete:true});expect(alternativePathsCompletion(p).complete).toBe(false);
   expect(await rememberAlternativeCompletion(s.repository,p.draftId)).toBeNull();expect(s.meta.has(HISTORY)).toBe(false);expect(p.completed.every(n=>n>=provided.entry!.firstTask)).toBe(true);
@@ -47,9 +44,9 @@ it('never sums evidence from different incomplete attempts or treats a final nav
   const s=storage();for(const [id,remove]of [['a',1],['b',2]] as const){const p=full(id);p.completed=p.completed.filter(n=>n!==remove);s.put(id,p);expect(await rememberAlternativeCompletion(s.repository,id)).toBeNull();}
   const menu=await loadTutorialMenuProgress(s.repository,['a','b'],null,()=>null);expect(menu.alternativeHistory).toBeUndefined();expect(s.meta.has(HISTORY)).toBe(false);
 });
-it('backfills a genuinely verifiable old integral attempt without changing its progress or inventing a completion date',async()=>{
-  const s=storage(),p={...full('old'),chapterVersion:2,step:17,completed:Array.from({length:17},(_,i)=>i+1)};s.put('old',p);const before=structuredClone(s.meta.get(PREFIX+'old'));
-  const menu=await loadTutorialMenuProgress(s.repository,['old'],null,()=>null);expect(menu.alternativeHistory?.source.chapterVersion).toBe(2);expect(menu.alternativeHistory).not.toHaveProperty('completedAt');expect(s.meta.get(PREFIX+'old')).toEqual(before);
+it('ignores preserved older completion and pointer keys without granting v5 credit',async()=>{
+  const s=storage();const old={schemaVersion:1,chapterVersion:5};for(const key of ['guided:chapter-completion:v1:alternative-paths','guided:current-attempt:v1:alternative-paths','guided:alternative-paths:v1:draft:old'])s.meta.set(key,{key,revision:1,value:old});const before=structuredClone(s.meta);
+  const menu=await loadTutorialMenuProgress(s.repository,['old'],null,()=>null);expect(menu.alternative).toBeNull();expect(menu.alternativeHistory).toBeUndefined();expect(menu.alternativeError).toBeUndefined();expect(s.meta).toEqual(before);expect(s.writes).toBe(0);
 });
 it('recovers the gap after progress commit, quota failure and concurrent writers without duplicate or partial history',async()=>{
   const s=storage(),p=full();s.put(p.draftId,p);s.fail({code:'quota-exceeded',message:'Quota'});
@@ -57,7 +54,7 @@ it('recovers the gap after progress commit, quota failure and concurrent writers
   s.fail(null);const [a,b]=await Promise.all([rememberAlternativeCompletion(s.repository,p.draftId),rememberAlternativeCompletion(s.repository,p.draftId)]);expect(a).toEqual(b);expect(s.meta.get(HISTORY)!.revision).toBe(1);
 });
 it('guards the origin revision atomically instead of crediting a source changed during verification',async()=>{
-  const s=storage(),p=full();s.put(p.draftId,p);s.beforeWrite(()=>{const r=s.meta.get(PREFIX+p.draftId)!;s.meta.set(r.key,{...r,revision:2,value:{...p,completed:p.completed.filter(n=>n!==22)} as unknown as MetaValue});});
+  const s=storage(),p=full();s.put(p.draftId,p);s.beforeWrite(()=>{const r=s.meta.get(PREFIX+p.draftId)!;s.meta.set(r.key,{...r,revision:2,value:{...p,completed:p.completed.filter(n=>n!==16)} as unknown as MetaValue});});
   await expect(rememberAlternativeCompletion(s.repository,p.draftId)).rejects.toThrow('meta-conflict');expect(s.meta.has(HISTORY)).toBe(false);
 });
 it('resumes the selected attempt after leaving for a personal plan, respects the active draft, and skips a late selection',async()=>{

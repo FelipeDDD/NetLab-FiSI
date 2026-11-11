@@ -1,7 +1,7 @@
 import type { Network } from '../engine/network';
 import { Host, IpDevice, RouterDevice } from '../engine/ipdevice';
-import { parseIp, networkOf, ipToString } from '../engine/ip';
-import { serializeNetwork, type SavedLink } from '../engine/serialize';
+import { parseCidr, parseIp, networkOf, ipToString } from '../engine/ip';
+import { serializeNetwork, type SavedLink, type SaveFile } from '../engine/serialize';
 import type { ProjectDocument } from '../projects/types';
 
 export const ALTERNATIVE_IDS = { r1: 'tutorial-05-r1', r2: 'tutorial-05-r2', r3: 'tutorial-05-r3', a: 'tutorial-05-a', b: 'tutorial-05-b' } as const;
@@ -25,14 +25,13 @@ export const NEIGHBOR_TESTS = [
   { key: 'n13', from: I.r1, to: I.r3, target: '10.0.13.2', iface: 'eth1' }, { key: 'n31', from: I.r3, to: I.r1, target: '10.0.13.1', iface: 'eth1' },
 ] as const;
 export type NeighborTest = typeof NEIGHBOR_TESTS[number]['key'];
-export const ALTERNATIVE_TOTAL = 22;
+export const ALTERNATIVE_TOTAL = 16;
 export function alternativePart(step: number) {
   if (step <= 4) return { part: 1, start: 1, total: 4 };
   if (step <= 13) return { part: 2, start: 5, total: 9 };
-  if (step <= 19) return { part: 3, start: 14, total: 6 };
-  return { part: 4, start: 20, total: 3 };
+  return { part: 3, start: 14, total: 3 };
 }
-export type AlternativeWarning = 'forms' | 'missing' | 'transit' | 'wiring' | 'port' | 'conflict' | 'lpmPort' | 'lpmIdentity';
+export type AlternativeWarning = 'forms' | 'missing' | 'transit' | 'wiring' | 'port' | 'conflict';
 export interface AlternativePcIdentity { a: string; b: string }
 export function alternativePathsDocument(): ProjectDocument {
   return { schemaVersion: 1, topology: { app: 'netsim', version: 1, devices: [
@@ -138,3 +137,20 @@ export function expectedPcPath(direction: 'ab' | 'ba', route: 'via' | 'direct') 
   const forward = route === 'via' ? [I.a, I.r1, I.r2, I.r3, I.b] : [I.a, I.r1, I.r3, I.b];
   return direction === 'ab' ? forward : [...forward].reverse();
 }
+
+const ranges = ['192.168.10.0/24', '192.168.20.0/24', '10.0.12.0/30', '10.0.23.0/30', '10.0.13.0/30'].map(s => parseCidr(s)!);
+const intersects = (dest: string) => {
+  const r = parseCidr(dest); if (!r) return true;
+  const low = networkOf(r.addr, r.prefix), high = low + 2 ** (32 - r.prefix) - 1;
+  return ranges.some(n => low <= n.addr + 2 ** (32 - n.prefix) - 1 && high >= n.addr);
+};
+/** Only configuration relevant to A/B and the transit links witnesses A↔B. */
+function abProjection(topology: SaveFile) {
+  const owned: readonly string[] = [...ALTERNATIVE_ROUTERS, ...ALTERNATIVE_PCS];
+  topology.devices = topology.devices.filter(d => owned.includes(d.id)).map(d => ({ ...d,
+    ifaces: d.ifaces.filter(i => d.id !== I.r3 || i.name !== 'eth3'), routes: d.routes.filter(r => intersects(r.dest)) }));
+  topology.links = topology.links.filter(l => owned.includes(l.a[0]) && owned.includes(l.b[0]));
+  topology.devices.sort((a, b) => a.id.localeCompare(b.id)); topology.links.sort((a, b) => a.id.localeCompare(b.id));
+  return JSON.stringify(topology);
+}
+export const abSignature = (net: Network) => abProjection(serializeNetwork(net, {}));

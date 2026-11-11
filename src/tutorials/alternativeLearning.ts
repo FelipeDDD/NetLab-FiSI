@@ -3,12 +3,12 @@ import type { MetaRecord, MetaValue } from '../projects/types';
 import { ALTERNATIVE_PROGRESS_PREFIX, readAlternativeProgress } from './alternativePathsProgress';
 import { alternativePathsCompletion } from './completion';
 
-export const ALTERNATIVE_COMPLETION_KEY='guided:chapter-completion:v1:alternative-paths';
-export const ALTERNATIVE_CURRENT_KEY='guided:current-attempt:v1:alternative-paths';
+export const ALTERNATIVE_COMPLETION_KEY='guided:chapter-completion:v5:alternative-paths';
+export const ALTERNATIVE_CURRENT_KEY='guided:current-attempt:v5:alternative-paths';
 type Reader=Pick<ProjectRepository,'getMeta'>;
 type Writer=Reader&Pick<ProjectRepository,'setMeta'>;
 export interface AlternativeChapterCompletion {
-  schemaVersion:1;kind:'chapter-completion';chapterId:'alternative-paths';chapterVersion:4;
+  schemaVersion:1;kind:'chapter-completion';chapterId:'alternative-paths';chapterVersion:5;
   source:{draftId:string;attemptId:string;chapterVersion:number;entry:'beginning'};
   recordedAt:number;
 }
@@ -19,7 +19,7 @@ const uuid=(s:unknown)=>typeof s==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a
 const time=(n:unknown)=>Number.isSafeInteger(n)&&Number(n)>=0;
 export function readAlternativeCompletion(value:unknown):AlternativeChapterCompletion {
   const p=value as AlternativeChapterCompletion;
-  if(!p||p.schemaVersion!==1||p.kind!=='chapter-completion'||p.chapterId!=='alternative-paths'||p.chapterVersion!==4||!time(p.recordedAt)||!p.source||typeof p.source.draftId!=='string'||!p.source.draftId||!uuid(p.source.attemptId)||![1,2,3,4].includes(p.source.chapterVersion)||p.source.entry!=='beginning')throw Error('Incompatible chapter completion.');
+  if(!p||p.schemaVersion!==1||p.kind!=='chapter-completion'||p.chapterId!=='alternative-paths'||p.chapterVersion!==5||!time(p.recordedAt)||!p.source||typeof p.source.draftId!=='string'||!p.source.draftId||!uuid(p.source.attemptId)||p.source.chapterVersion!==5||p.source.entry!=='beginning')throw Error('Incompatible chapter completion.');
   return structuredClone(p);
 }
 export function readAlternativeCurrent(value:unknown):AlternativeCurrentAttempt {
@@ -44,7 +44,7 @@ export async function rememberAlternativeCompletion(repository:Writer,id:string)
   const source=await alternativeMeta(repository,ALTERNATIVE_PROGRESS_PREFIX+id);if(!source)return null;
   const p=readAlternativeProgress(source.value,id);
   if(p.entry||!alternativePathsCompletion(p).complete)return null;
-  const value:AlternativeChapterCompletion={schemaVersion:1,kind:'chapter-completion',chapterId:'alternative-paths',chapterVersion:4,
+  const value:AlternativeChapterCompletion={schemaVersion:1,kind:'chapter-completion',chapterId:'alternative-paths',chapterVersion:5,
     source:{draftId:id,attemptId:p.attemptId,chapterVersion:(source.value as unknown as {chapterVersion?:number}).chapterVersion??1,entry:'beginning'},recordedAt:Date.now()};
   const saved=await repository.setMeta({key:ALTERNATIVE_COMPLETION_KEY,expectedRevision:null,value:value as unknown as MetaValue},{guards:[{key:source.key,expectedRevision:source.revision}]});
   if(saved.ok)return readAlternativeCompletion(saved.value.value);

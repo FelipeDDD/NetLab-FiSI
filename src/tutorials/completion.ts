@@ -28,16 +28,8 @@ export function routerChapterCompletion(record: RouterProgress): ChapterCompleti
   return summarize(steps, 8);
 }
 export const staticRoutingCompletion = (record: StaticRoutingProgress) => summarize(record.completed.filter(step => step !== 11 || staticFinalProved(record)), 11);
-export const alternativePathsCompletion = (record: AlternativePathsProgress) => summarize([
-  ...record.completed.filter(step => step !== 22 || alternativeFinalProved(record)),
-  ...(record.lpm.legacy ? [14, 15] : []),
-  ...(record.lpm.experiment.legacy ? [16, 17, 18, 19] : []),
-], 22);
-/** Only this practice's real tasks; never the 19 tasks supplied by its scenario. */
-export const alternativePart4Complete = (record:AlternativePathsProgress) => record.entry?.point==='part-4' && [20,21,22].every(step=>alternativeStepCompleted(record,step));
-/** Only tasks actually available in this attempt; supplied prerequisites earn no credit. */
-export const alternativePracticeCompletion = (record:AlternativePathsProgress):ChapterCompletion => {
-  const first=record.entry?.firstTask??1,total=23-first;
-  const completed=Array.from({length:total},(_,i)=>first+i).filter(step=>alternativeStepCompleted(record,step)).length;
+export const alternativePathsCompletion = (p:AlternativePathsProgress) => summarize(p.completed.filter(n=>n!==16||alternativeFinalProved(p)),16);
+export const alternativePracticeCompletion = (p:AlternativePathsProgress):ChapterCompletion => {
+  const first=p.entry?.firstTask??1,total=17-first,completed=Array.from({length:total},(_,i)=>first+i).filter(n=>alternativeStepCompleted(p,n)).length;
   return {completed,total,complete:completed===total};
 };

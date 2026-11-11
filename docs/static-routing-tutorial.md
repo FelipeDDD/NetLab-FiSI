@@ -4,6 +4,30 @@ O capítulo tem início direto e tentativa própria em **Übungen (Beta) → Gef
 Tutorials**. Continuar abre o mesmo rascunho; Direkt starten cria outro sem substituir
 o anterior. Os capítulos 1–3 e os exercícios Beta mantêm seus fluxos.
 
+## Conclusão histórica no menu — 11/11/2026
+
+O menu mantém separadas a tentativa atual para retomar e a conclusão histórica.
+Antes, a leitura parava no primeiro draft do capítulo, de modo que uma tentativa
+incompleta podia esconder outra concluída. Não havia histórico independente para
+este capítulo; a mudança v5 do capítulo 5 não apagou os seus comprovantes.
+
+`staticRoutingLearning.ts` registra uma conclusão integral verificável em
+`guided:chapter-completion:v1:static-routing`, usando o store `meta` existente.
+Exige as onze tarefas e os seis recibos finais válidos. CAS e guard da revisão
+da origem impedem registrar um progresso alterado durante a verificação. A data
+é a do registro, sem inventar a data de conclusão de tentativas antigas.
+
+Gravação final, leitura de tentativa antiga válida e reinício preservam essa
+conclusão. O menu examina todos os drafts disponíveis para recuperar o histórico;
+uma tentativa incompleta atual continua sendo o destino de Retomar, mas não
+remove o check verde. Seu contador aparece separadamente. F5, nova tentativa,
+reinício ou fechamento posterior do draft não apagam o histórico registrado.
+Falhas desses metadados são isoladas ao capítulo 4 e admitem retry.
+
+Não há alteração de validadores, pings, schema do progresso ou dados de topologia.
+Conclusões antigas só podem ser recuperadas quando há histórico ou progresso
+persistido verificável; sem esses registros, não se concede crédito por inferência.
+
 ## Blueprints e oito tarefas
 
 O blueprint inicial prepara sete equipamentos e seis enlaces Ethernet:
