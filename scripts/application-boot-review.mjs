@@ -186,7 +186,7 @@ export async function runApplicationBootReview({ page, url, root, report, restar
       await textButton('Datei','.toolbar');
       await page.evaluate('[...document.querySelectorAll(".toolbar-command-menu button")].find(b=>b.querySelector("span")?.textContent==="Export").click();');
       await wait('document.querySelector("#toolbar-export-menu")');
-      await page.evaluate('[...document.querySelectorAll("#toolbar-export-menu button")].find(b=>b.textContent.includes("Topology (.json)")).click();');
+      await page.evaluate('document.querySelector("#toolbar-export-menu [data-export-action=exportJson]").click();');
     });
     await test('boot-ui: real app.html owns normal boot and restores its draft through F5 without legacy listeners', async () => {
       await dispose(); await navigate(); const name = database();

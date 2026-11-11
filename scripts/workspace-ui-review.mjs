@@ -203,7 +203,7 @@ export async function runWorkspaceUIReview({ page, url, root, report, openPage }
       await menu('JSON importieren…');
       // A real File/change event exercises the existing hidden file input.
       await page.evaluate(`const fixture=(await import('/src/projects/browserFixtures.ts')).changed('JSON import');delete fixture.topology.lab;delete fixture.topology.labProgress;const transfer=new DataTransfer();transfer.items.add(new File([JSON.stringify(fixture.topology)],'review.json',{type:'application/json'}));const input=document.querySelector('input[type=file]');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));`); await tabs(count + 1);
-      await page.evaluate(`store.getState().renameDevice('pc1','Share Link copy');`); await menu('Share link');
+      await page.evaluate(`store.getState().renameDevice('pc1','Share Link copy');`); await menu('Link teilen');
       await page.evaluate(`location.hash=new URL(store.getState().shareLink).hash;`);
       await wait(`document.querySelector('.workspace-share')`); await textButton('In neuer Registerkarte öffnen', '.workspace-share'); await tabs(count + 2);
       assert.equal(await page.evaluate(`return store.getState().captureWorkspaceDocument().topology.devices[0].name;`), 'Share Link copy');

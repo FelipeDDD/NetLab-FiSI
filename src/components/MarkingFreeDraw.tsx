@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { Panel, useReactFlow, ViewportPortal } from '@xyflow/react';
 import { rectangleBetween, validAreaRect, type AreaPoint, type AreaRect } from '../markingGeometry';
 import { useStore } from '../store';
+import { useTranslation } from '../i18n';
 
 /** An explicit temporary tool; the normal React Flow selection never creates areas. */
 export function MarkingFreeDraw() {
+  const { t } = useTranslation();
   const drawing = useStore(s => s.drawingMarking), pending = useStore(s => s.pendingMarkingRect);
   const busy = useStore(s => !!s.quickPing || !!s.reconnectingCable);
   const { screenToFlowPosition } = useReactFlow();
@@ -21,7 +23,7 @@ export function MarkingFreeDraw() {
   if (!drawing || busy) return null;
   const world = (e: ReactPointerEvent) => screenToFlowPosition({ x: e.clientX, y: e.clientY });
   return <>
-    <div ref={surface} tabIndex={-1} className="marking-draw-surface nodrag nopan" aria-label="Neue Fläche zeichnen"
+    <div ref={surface} tabIndex={-1} className="marking-draw-surface nodrag nopan" aria-label={t('navigation.markingDrawNew')}
       onPointerDown={e => {
         if (e.button !== 0) return;
         e.preventDefault(); e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId);
@@ -37,8 +39,8 @@ export function MarkingFreeDraw() {
       onPointerCancel={() => useStore.getState().setPendingMarkingRect(null)}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }} />
     <Panel position="top-center" className="marking-geometry-status nodrag nopan nowheel">
-      Neue Fläche zeichnen · Rechteck ziehen · Esc zum Abbrechen
-      <button type="button" className="mini-btn" onClick={() => useStore.getState().setPendingMarkingRect(null)}>Abbrechen</button>
+      {t('navigation.markingDrawHint')}
+      <button type="button" className="mini-btn" onClick={() => useStore.getState().setPendingMarkingRect(null)}>{t('common.cancel')}</button>
     </Panel>
     {draft && <ViewportPortal><svg className="marking-geometry-controls"><rect {...draft} className="marking-draw-preview" /></svg></ViewportPortal>}
   </>;

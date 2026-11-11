@@ -61,7 +61,7 @@ it('loads legacy preferences, persists custom width and tolerates broken or unav
 });
 it('offers an accessible Settings trigger without mounting an unused popup', () => {
   const html = renderToStaticMarkup(createElement(InspectorLayoutSettings, { value: normalizeInspectorLayout(null), onChange: vi.fn() }));
-  expect(html).toContain('Settings'); expect(html).toContain('aria-haspopup="dialog"');
+  expect(html).toContain('Einstellungen'); expect(html).toContain('aria-haspopup="dialog"');
   expect(html).toContain('aria-expanded="false"'); expect(html).not.toContain('<select');
 });
 it('offers themes separately from existing layout and background preferences', () => {

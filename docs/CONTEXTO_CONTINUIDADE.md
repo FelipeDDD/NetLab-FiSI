@@ -8,6 +8,77 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 
 ## Leia primeiro — auditoria e estado atual em 11/11/2026
 
+**Consolidação i18n 1A + 1B — commit local autorizado (11/11/2026):** as duas
+rodadas foram revisadas em conjunto para o commit
+`Internationalize toolbar settings and area markings`. Selecionados somente os
+16 arquivos de interface, catálogo, helper, testes/roteiros e este contexto.
+Nenhuma alteração em rede, geometria ou persistência; os 118 handlers dos seis
+componentes foram comparados com HEAD e permanecem idênticos. Revalidação:
+**3.033 testes em 185 arquivos**, 120 verificações Chromium de marcações,
+TypeScript, build e diff-check aprovados. Capturas e logs permanecem ignorados.
+Sem push/deploy; rodada 2 não iniciada. As notas “somente local / sem commit”
+abaixo descrevem o estado anterior à consolidação. Pendências mantidas.
+
+**i18n 1B — Configurações e Marcações, somente local (11/11/2026):** preservada
+integralmente a rodada 1A. Acrescentadas 77 chaves ao catálogo navigation para
+aparência/layout, cabos, cobertura Wi-Fi, alinhamento, fundo/animações e todos
+os editores de áreas (picker, desenho livre, sobreposição e subáreas).
+Nomes de temas e fundos permanecem próprios; nomes dos efeitos animados e
+opções descritivas são traduzidos. PT-BR mantém Inspector/layout e usa
+“guias de alinhamento”, “pontos da grade” e “subárea”. IDs, opções internas,
+cores, preferências e nomes personalizados não são traduzidos nem regravados.
+Área sem nome é fallback visual; nomes vazios continuam vazios nos dados.
+Contagem distingue zero/plural e singular. markingLabels.ts apenas associa
+IDs às chaves existentes e formata a contagem pelo mesmo tradutor central.
+A mensagem local de subárea inválida guarda a chave para acompanhar a troca
+de idioma enquanto estiver visível, sem alterar sua condição de validação.
+
+Sem alterações em eventos de arraste/redimensionamento/seleção (80 handlers
+comparados), geometria, store, preferências/persistência, rede ou tutoriais.
+Nenhuma tradução da 1A foi substituída; seus demais arquivos ficaram idênticos.
+Validação: **3.033 testes em 185 arquivos**, TypeScript, build e diff-check;
+120 verificações do roteiro Chromium de marcações e 187 verificações adicionais
+DE/EN/PT-BR. Incluem Dark/Light, menus normal/compacto, configurações e áreas
+após F5, criação/edição/exclusão, plural, Unicode, nomes personalizados,
+desenho livre, erro com troca de idioma, sobreposições e labels dos cantos.
+Teste antigo do botão isolado de Settings atualizado para o padrão alemão.
+18 capturas reais em `.playwright-mcp/reviews/toolbar-1b/referencias-chatgpt/`;
+galeria em `.playwright-mcp/reviews/toolbar-1b/index.html`, logs toolbar-1b-*.
+Autosave, confirmações do workspace, mensagens profundas e histórico ficam
+para a rodada 2, que não foi iniciada. A sobreposição dos dispositivos segue
+fora do escopo. Sem commit, push, merge ou deploy.
+
+**i18n 1A — barra superior, somente local (11/11/2026):** Toolbar usa o
+catálogo navigation para exportações, estrutura de Labs, ações rápidas,
+captura, tooltips e nomes acessíveis. O botão externo de Marcações acompanha
+o idioma; o conteúdo das janelas de configurações/marcações fica para 1B.
+Menus normal/compacto compartilham textos e mantêm ações, IDs técnicos,
+extensões e conteúdos didáticos antigos. DE continua padrão, sem refatorar i18n.
+Em telas menores, antecipado o modo existente de ícones de Undo/Redo e reduzido
+o espaçamento da barra, sem alterar dispositivos ou canvas.
+
+Terminologia: PT-BR usa Desfazer/Refazer, Executar/Pausar e Pacotes; Labs, Demo,
+containerlab, docker-compose e nomes de arquivos técnicos são preservados.
+DE usa Rückgängig/Wiederholen e Starten/Pausieren. O grupo dos labs antigos
+também se chama Labs, distinguindo-o dos exercícios guiados. Revisar essas
+escolhas antes de ampliar o glossário; não traduzir valores ou nomes do usuário.
+Mensagens profundas, autosave e descrições das operações no histórico continuam
+no idioma original. `WLAN hinzuf?gen` vem do literal de enable-wireless em
+store.ts; é corrigível isoladamente, mas não foi alterado nesta rodada.
+
+Validação: 3.029 testes/185 arquivos, TypeScript, build e diff-check aprovados;
+588 verificações interativas Chromium (DE/EN/PT-BR, temas Dark/Light, desktop e
+compacto), 36 combinações de idioma/largura sem overflow e 120 verificações
+do roteiro de marcações. Seletores dos testes de exportação, compartilhamento,
+captura e Undo/Redo foram alinhados à i18n; expectativa antiga de velocidade
+no roteiro de controles agora usa DEFAULT_PING_ANIMATION_SPEED já existente.
+O roteiro amplo de ações dos dispositivos ainda falha na sobreposição dos
+ícones/handles/badges dos PCs ao testar zoom. A mesma falha foi reproduzida
+servindo os quatro arquivos originais de HEAD; fora do escopo, sem correção
+geométrica. Seu teste inicial de captura passou. Logs/prova de baseline em
+`.playwright-mcp/toolbar-1a-*`; quatro capturas separadas em
+`.playwright-mcp/reviews/toolbar-1a/referencias-chatgpt/`. Sem commit/push/deploy.
+
 **Consolidação final autorizada — 11/11/2026:** reúne a implementação do
 capítulo 5 v5 (16 tarefas, 4 + 9 + 3), os três pontos de entrada, isolamento
 de progresso, tempestade/recuperação, histórico independente do capítulo 4,

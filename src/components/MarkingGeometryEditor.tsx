@@ -5,6 +5,8 @@ import { useStore } from '../store';
 import { automaticMarkingBounds, MARKING_COLORS, markingBounds, offsetsFromBounds } from '../areaMarkings';
 import { containsPoint, rectangleBetween, touchesArea, validAreaRect, type AreaPoint, type AreaRect, type MarkingExtension } from '../markingGeometry';
 import { FloatingPopover } from './FloatingPopover';
+import { useTranslation } from '../i18n';
+import { MARKING_COLOR_KEYS, MARKING_CORNER_KEYS } from './markingLabels';
 
 export interface MarkingMenuPoint { x: number; y: number; ids: string[] }
 export function markingsAtPoint(point: AreaPoint, zoom: number): string[] {
@@ -20,13 +22,14 @@ type Gesture = { start: AreaPoint; before: MarkingExtension[]; extensionId?: str
 /** All normal backgrounds remain inert. Only this explicit, temporary editor
  * catches gestures; previews never enter the document or the undo stack. */
 export function MarkingGeometryEditor({ menu, closeMenu }: { menu: MarkingMenuPoint | null; closeMenu(): void }) {
+  const { t } = useTranslation();
   const mode = useStore(s => s.markingGeometry), areas = useStore(s => s.areaMarkings), nodes = useStore(s => s.nodes);
   const generation = useStore(s => s.topologyGeneration), busy = useStore(s => !!s.quickPing || !!s.reconnectingCable);
   const { zoom } = useViewport(), { screenToFlowPosition } = useReactFlow();
   const anchor = useRef<HTMLSpanElement>(null), surface = useRef<HTMLDivElement>(null);
   const [choice, setChoice] = useState<string | null>(null), [selected, setSelected] = useState<string | null>(null);
   const [baseSelected, setBaseSelected] = useState(false);
-  const [draft, setDraft] = useState<AreaRect | null>(null), [message, setMessage] = useState<string | null>(null);
+  const [draft, setDraft] = useState<AreaRect | null>(null), [message, setMessage] = useState<'navigation.markingExtensionError' | null>(null);
   const gesture = useRef<Gesture | null>(null), staged = useRef<MarkingExtension[] | null>(null);
   const area = areas.find(a => a.id === mode?.areaId), base = area && markingBounds(area, nodes, zoom);
   const candidates = areas.filter(a => menu?.ids.includes(a.id));
@@ -89,32 +92,32 @@ export function MarkingGeometryEditor({ menu, closeMenu }: { menu: MarkingMenuPo
     else if (g.automaticBase && baseOffsets) useStore.getState().setMarkingBaseOffsets(area.id, baseOffsets);
     else if (g.extensionId && next) useStore.getState().setMarkingExtensions(area.id, next);
     else if (next && useStore.getState().addMarkingExtension(area.id, next.at(-1)!, zoom)) cancel();
-    else setMessage('Teilfläche zu klein oder ohne Verbindung. An einer vorhandenen Fläche ansetzen.');
+    else setMessage('navigation.markingExtensionError');
   };
   const abortGesture = () => { gesture.current = null; staged.current = null; setDraft(null); useStore.setState({ markingExtensionPreview: null }); };
   const begin = (kind: 'draw' | 'edit') => { if (target) { useStore.getState().setMarkingGeometry(target.id, kind); closeMenu(); } };
   return <>
     {menu && target && !busy && <>
       {createPortal(<span ref={anchor} aria-hidden="true" className="marking-menu-anchor" style={{ left: menu.x, top: menu.y }} />, document.body)}
-      <FloatingPopover anchor={anchor} id="marking-context-menu" label="Bereich" width={250} onClose={closeMenu}>
+      <FloatingPopover anchor={anchor} id="marking-context-menu" label={t('navigation.markingArea')} width={250} onClose={closeMenu}>
         <div className="marking-context-content">
-          {candidates.length > 1 ? <label>Überlappende Bereiche<select aria-label="Bereich am Klickpunkt" value={target.id} onChange={e => setChoice(e.target.value)}>
-            {candidates.map(a => <option key={a.id} value={a.id}>{a.name || 'Unbenannter Bereich'} · {MARKING_COLORS[a.color].label}</option>)}
-          </select></label> : <strong><span className="marking-sample" style={{ background: MARKING_COLORS[target.color].value }} />{target.name || 'Unbenannter Bereich'}</strong>}
-          <button type="button" className="btn" onClick={() => begin('draw')}>Teilfläche hinzufügen</button>
-          <button type="button" className="btn" onClick={() => { useStore.getState().selectMarking(target.id); closeMenu(); }}>Bereich bearbeiten</button>
-          <button type="button" className="btn" onClick={() => begin('edit')}>Teilflächen bearbeiten</button>
+          {candidates.length > 1 ? <label>{t('navigation.markingOverlapping')}<select aria-label={t('navigation.markingAtPoint')} value={target.id} onChange={e => setChoice(e.target.value)}>
+            {candidates.map(a => <option key={a.id} value={a.id}>{a.name || t('navigation.markingUnnamed')} · {t(MARKING_COLOR_KEYS[a.color])}</option>)}
+          </select></label> : <strong><span className="marking-sample" style={{ background: MARKING_COLORS[target.color].value }} />{target.name || t('navigation.markingUnnamed')}</strong>}
+          <button type="button" className="btn" onClick={() => begin('draw')}>{t('navigation.markingAddExtension')}</button>
+          <button type="button" className="btn" onClick={() => { useStore.getState().selectMarking(target.id); closeMenu(); }}>{t('navigation.markingEdit')}</button>
+          <button type="button" className="btn" onClick={() => begin('edit')}>{t('navigation.markingEditExtensions')}</button>
         </div>
       </FloatingPopover>
     </>}
     {mode && area && <>
-      {mode.mode === 'draw' && <div ref={surface} tabIndex={-1} className="marking-draw-surface nodrag nopan" aria-label="Teilfläche zeichnen"
+      {mode.mode === 'draw' && <div ref={surface} tabIndex={-1} className="marking-draw-surface nodrag nopan" aria-label={t('navigation.markingDrawExtension')}
         onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={abortGesture} onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }} />}
       <Panel position="top-center" className="marking-geometry-status nodrag nopan nowheel">
-        <span>{area.name || 'Bereich'} · {mode.mode === 'draw' ? 'Rechteck ziehen' : 'Hauptfläche / Teilfläche wählen · Ecken ziehen'}</span>
-        {mode.mode === 'edit' && <button type="button" className="mini-btn" disabled={!selectedExtension} onClick={() => { useStore.getState().setMarkingExtensions(area.id, extensions.filter(r => r.id !== selected)); setSelected(null); }}>Teilfläche entfernen</button>}
-        <button type="button" className="mini-btn" onClick={cancel}>Fertig (Esc)</button>
-        {message && <small role="status">{message}</small>}
+        <span>{area.name || t('navigation.markingArea')} · {t(mode.mode === 'draw' ? 'navigation.markingDragRectangle' : 'navigation.markingSelectResize')}</span>
+        {mode.mode === 'edit' && <button type="button" className="mini-btn" disabled={!selectedExtension} onClick={() => { useStore.getState().setMarkingExtensions(area.id, extensions.filter(r => r.id !== selected)); setSelected(null); }}>{t('navigation.markingRemoveExtension')}</button>}
+        <button type="button" className="mini-btn" onClick={cancel}>{t('navigation.markingDone')}</button>
+        {message && <small role="status">{t(message)}</small>}
       </Panel>
       <ViewportPortal><svg className="marking-geometry-controls">
         {mode.mode === 'edit' && base && (() => {
@@ -122,13 +125,13 @@ export function MarkingGeometryEditor({ menu, closeMenu }: { menu: MarkingMenuPo
           const selectBase = () => { setBaseSelected(true); setSelected(null); };
           return <g data-base-area={area.id} data-extension-selected={baseSelected || undefined}>
             <rect {...r} rx="3" className="marking-extension-control marking-base-control nodrag nopan" tabIndex={0}
-              role="button" aria-label="Hauptfläche auswählen"
+              role="button" aria-label={t('navigation.markingSelectBase')}
               onPointerDown={e => { if (e.button === 0) { e.preventDefault(); e.stopPropagation(); selectBase(); } }}
               onFocus={selectBase} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); selectBase(); } }} />
             {baseSelected && (['nw', 'ne', 'sw', 'se'] as const).map(corner => <rect key={corner}
               x={r.x + (corner.includes('e') ? r.width : 0) - 4 / zoom} y={r.y + (corner.includes('s') ? r.height : 0) - 4 / zoom}
               width={8 / zoom} height={8 / zoom} className={`marking-resize-handle nodrag nopan ${corner}`} data-base-corner={corner}
-              tabIndex={0} role="button" aria-label={`Hauptfläche ${corner} vergrößern / verkleinern`}
+              tabIndex={0} role="button" aria-label={t('navigation.markingResizeBase', { corner: t(MARKING_CORNER_KEYS[corner]) })}
               onPointerDown={e => start(e, undefined, corner, base)} onPointerMove={move} onPointerUp={finish} onPointerCancel={abortGesture}
               onKeyDown={e => {
                 if (!/^Arrow(Left|Right|Up|Down)$/.test(e.key)) return;
@@ -147,7 +150,7 @@ export function MarkingGeometryEditor({ menu, closeMenu }: { menu: MarkingMenuPo
         {mode.mode === 'edit' && extensions.map(extension => {
           const r = draft && gesture.current?.extensionId === extension.id ? draft : extension;
           return <g key={extension.id} data-extension-id={extension.id} data-extension-selected={selected === extension.id || undefined}>
-            <rect {...r} rx="3" className="marking-extension-control nodrag nopan" tabIndex={0} role="button" aria-label={`Teilfläche ${extensions.indexOf(extension) + 1} verschieben`}
+            <rect {...r} rx="3" className="marking-extension-control nodrag nopan" tabIndex={0} role="button" aria-label={t('navigation.markingMoveExtension', { number: extensions.indexOf(extension) + 1 })}
               onPointerDown={e => start(e, extension)} onPointerMove={move} onPointerUp={finish} onPointerCancel={abortGesture}
               onFocus={() => { setSelected(extension.id); setBaseSelected(false); }} onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setSelected(extension.id); setBaseSelected(false); }

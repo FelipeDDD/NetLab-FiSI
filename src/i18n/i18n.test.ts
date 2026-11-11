@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import { catalogs, LANGUAGES, LANGUAGE_KEY, normalizeLanguage, readLanguage, translate, useLanguage, type Language, type TranslationKey } from './index';
 import ThematicHome from '../home/journey/ThematicHome';
+import { markingDeviceCount } from '../components/markingLabels';
 
 afterEach(() => { vi.unstubAllGlobals(); useLanguage.setState({ language: 'de' }); });
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort();
@@ -41,8 +42,38 @@ describe('catalog contracts', () => {
       visit(ast); expect(literals).toEqual([]);
     }
   });
+  it('keeps toolbar labels and accessible names in catalogs, without claiming deep notices or legacy content are translated', () => {
+    const file = '../components/Toolbar.tsx', source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const literals: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isJsxText(node) && /[a-z]{3}/i.test(node.text) && node.text.trim() !== 'NetLab - FiSi') literals.push(node.text.trim());
+      if (ts.isJsxAttribute(node) && ['title', 'placeholder', 'aria-label', 'alt', 'label'].includes(node.name.getText(ast)) && node.initializer && ts.isStringLiteral(node.initializer)) literals.push(node.initializer.text);
+      ts.forEachChild(node, visit);
+    };
+    visit(ast); expect(literals).toEqual([]);
+  });
+  it('keeps visual settings and every area editor free of hardcoded labels, placeholders and accessible names', () => {
+    for (const name of ['InspectorLayoutSettings', 'BackgroundSettings', 'AreaMarkings', 'MarkingGeometryEditor', 'MarkingFreeDraw']) {
+      const file = `../components/${name}.tsx`, source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX), literals: string[] = [];
+      const visit = (node: ts.Node) => {
+        if (ts.isJsxText(node) && /[a-z]{3}/i.test(node.text)) literals.push(node.text.trim());
+        if (ts.isJsxAttribute(node) && ['title', 'placeholder', 'aria-label', 'alt', 'label'].includes(node.name.getText(ast)) && node.initializer && ts.isStringLiteral(node.initializer)) literals.push(node.initializer.text);
+        ts.forEachChild(node, visit);
+      };
+      visit(ast); expect(literals, name).toEqual([]);
+    }
+  });
+  it.each([
+    ['de', ['0 Geräte', '1 Gerät', '2 Geräte']],
+    ['en', ['0 devices', '1 device', '2 devices']],
+    ['pt-BR', ['0 dispositivos', '1 dispositivo', '2 dispositivos']],
+  ] as const)('renders zero, one and multiple devices naturally in %s', (language, expected) => {
+    expect([0, 1, 2].map(count => markingDeviceCount(count, (key, values) => translate(language, key, values)))).toEqual(expected);
+  });
   it('every static key referenced by migrated consumers exists', () => {
-    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/menuGroups.ts', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx', '../components/LearningHelp.tsx', '../tutorials/TutorialUI.tsx', '../tutorials/CompletionUI.tsx', '../tutorials/SubnetTutorialPanel.tsx', '../tutorials/RouterTutorialPanel.tsx', '../tutorials/GuidedVisualHelp.tsx', '../tutorials/tutorialVisualHelp.ts', '../tutorials/StaticRoutingTutorialPanel.tsx', '../tutorials/AlternativePathsPanel.tsx', '../tutorials/AlternativeEntryMenu.tsx', '../tutorials/ChapterRestartUI.tsx', '../components/QuickPingIndicator.tsx', '../components/PacketAnimationControl.tsx', '../components/TerminalPanelView.tsx', '../components/TerminalCommandReference.tsx', '../components/FloatingCommandReferences.tsx'];
+    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/AreaMarkings.tsx', '../components/markingLabels.ts', '../components/MarkingFreeDraw.tsx', '../components/MarkingGeometryEditor.tsx', '../components/BackgroundSettings.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/menuGroups.ts', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx', '../components/LearningHelp.tsx', '../tutorials/TutorialUI.tsx', '../tutorials/CompletionUI.tsx', '../tutorials/SubnetTutorialPanel.tsx', '../tutorials/RouterTutorialPanel.tsx', '../tutorials/GuidedVisualHelp.tsx', '../tutorials/tutorialVisualHelp.ts', '../tutorials/StaticRoutingTutorialPanel.tsx', '../tutorials/AlternativePathsPanel.tsx', '../tutorials/AlternativeEntryMenu.tsx', '../tutorials/ChapterRestartUI.tsx', '../components/QuickPingIndicator.tsx', '../components/PacketAnimationControl.tsx', '../components/TerminalPanelView.tsx', '../components/TerminalCommandReference.tsx', '../components/FloatingCommandReferences.tsx'];
     for (const file of files) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');
       for (const match of source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey|practice|learningHelp|guided|guidedVisual|guidedSubnet|guidedRouter|guidedRestart|guidedStatic|guidedStaticLine|guidedAlternative|referencePins|pingControls)\.\w+)['"]/g)) {
@@ -51,7 +82,7 @@ describe('catalog contracts', () => {
     }
   });
   it('catalog keys are used by migrated components (explicit finite dynamic families)', () => {
-    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/menuGroups.ts', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx', '../components/LearningHelp.tsx', '../tutorials/TutorialUI.tsx', '../tutorials/CompletionUI.tsx', '../tutorials/SubnetTutorialPanel.tsx', '../tutorials/RouterTutorialPanel.tsx', '../tutorials/GuidedVisualHelp.tsx', '../tutorials/tutorialVisualHelp.ts', '../tutorials/StaticRoutingTutorialPanel.tsx', '../tutorials/AlternativePathsPanel.tsx', '../tutorials/AlternativeEntryMenu.tsx', '../tutorials/ChapterRestartUI.tsx', '../components/QuickPingIndicator.tsx', '../components/PacketAnimationControl.tsx', '../components/TerminalPanelView.tsx', '../components/TerminalCommandReference.tsx', '../components/FloatingCommandReferences.tsx'];
+    const files = ['../home/journey/TerminalShowcase.tsx', '../home/journey/ThematicHome.tsx', '../home/journey/PacketScenes.tsx', '../home/journey/ScrollJourney.tsx', './LanguageSelector.tsx', './HomeLink.tsx', '../components/Toolbar.tsx', '../components/AreaMarkings.tsx', '../components/markingLabels.ts', '../components/MarkingFreeDraw.tsx', '../components/MarkingGeometryEditor.tsx', '../components/BackgroundSettings.tsx', '../components/InspectorLayoutSettings.tsx', '../workspace/WorkspaceUI.tsx', '../exercises/ExerciseUI.tsx', '../exercises/menuGroups.ts', '../exercises/practice/PracticeSurface.tsx', '../exercises/practice/PracticePanel.tsx', '../components/LearningHelp.tsx', '../tutorials/TutorialUI.tsx', '../tutorials/CompletionUI.tsx', '../tutorials/SubnetTutorialPanel.tsx', '../tutorials/RouterTutorialPanel.tsx', '../tutorials/GuidedVisualHelp.tsx', '../tutorials/tutorialVisualHelp.ts', '../tutorials/StaticRoutingTutorialPanel.tsx', '../tutorials/AlternativePathsPanel.tsx', '../tutorials/AlternativeEntryMenu.tsx', '../tutorials/ChapterRestartUI.tsx', '../components/QuickPingIndicator.tsx', '../components/PacketAnimationControl.tsx', '../components/TerminalPanelView.tsx', '../components/TerminalCommandReference.tsx', '../components/FloatingCommandReferences.tsx'];
     const source = files.map(file => readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
     const references = new Set([...source.matchAll(/['"]((?:home|common|navigation|workspace|exercises|journey|practice|learningHelp|guided|guidedVisual|guidedSubnet|guidedRouter|guidedRestart|guidedStatic|guidedStaticLine|guidedAlternative|referencePins|pingControls)\.\w+)['"]/g)].map(m => m[1]));
     for (const feature of ['terminal', 'switch', 'routing', 'capture', 'exercise']) { references.add(`journey.${feature}Title`); references.add(`journey.${feature}Body`); references.add(`journey.${feature}Label`); }

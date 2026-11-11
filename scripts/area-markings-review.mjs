@@ -103,9 +103,9 @@ export async function runAreaMarkingsReview({ page, url, root, report }) {
     await test('markings: removing areas and devices, Undo/Redo and cable reconnection remain independent', async () => {
       await openMenu(); await choose(first); const before = await network(); await textClick('.markings-actions button', 'Bereich entfernen');
       assert.equal((await marks()).length, 1); assert.deepEqual(await network(), before);
-      await click('.toolbar-history-button[aria-label=Undo]'); assert.equal((await marks()).length, 2);
+      await click('.toolbar-history-button[data-history-action=undo]'); assert.equal((await marks()).length, 2);
       await page.evaluate("store.getState().deleteDevice('pc1');"); assert(!(await marks())[0].deviceIds.includes('pc1'));
-      await click('.toolbar-history-button[aria-label=Undo]'); assert((await marks())[0].deviceIds.includes('pc1'));
+      await click('.toolbar-history-button[data-history-action=undo]'); assert((await marks())[0].deviceIds.includes('pc1'));
       await page.evaluate("const link=[...sim.net.links.values()].find(l=>l.a.device.id==='pc2'||l.b.device.id==='pc2');store.getState().onEdgesChange([{type:'remove',id:link.id}]);");
       const source = await point('.react-flow__node[data-id=pc2] .react-flow__handle[data-handleid=r]');
       const target = await point('.react-flow__node[data-id=sw1] .react-flow__handle[data-handleid=b]');
@@ -175,8 +175,8 @@ export async function runAreaMarkingsReview({ page, url, root, report }) {
       await choose(first);await textClick('.marking-members button','Auswahl entfernen');
       assert.deepEqual((await marks())[0].deviceIds,['pc1','pc3','pc5','pc4']);assert((await marks())[1].deviceIds.includes('pc2'));
       assert.deepEqual(await network(),engine);assert.equal(await page.evaluate('return sim.net.devices.size;'),8);
-      const expected=await marks();await click('.toolbar-history-button[aria-label=Undo]');assert((await marks())[0].deviceIds.includes('pc2'));
-      await click('.toolbar-history-button[aria-label=Redo]');assert.deepEqual(await marks(),expected);await key('Escape');
+      const expected=await marks();await click('.toolbar-history-button[data-history-action=undo]');assert((await marks())[0].deviceIds.includes('pc2'));
+      await click('.toolbar-history-button[data-history-action=redo]');assert.deepEqual(await marks(),expected);await key('Escape');
       await page.evaluate("store.getState().onNodesChange(store.getState().nodes.map(n=>({type:'select',id:n.id,selected:false})));store.getState().select(null);store.getState().clearLinkSelection();");
       await shot('06-members-after-graphite.png','graphite-dark',1440);
     });

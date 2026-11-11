@@ -33,15 +33,15 @@ export async function runDeviceActionReview({page,url,root,report}) {
     await wait("document.querySelector('.react-flow')");await setup();await page.send('Page.bringToFront');await delay(350);
     await test('controls: Packets button and dropdown retain capture and inspection without ping playback controls',async()=>{
       assert.equal(await page.evaluate('return store.getState().speed;'),1);
-      assert.equal(await page.evaluate('return store.getState().packetAnimationSpeed;'),1);
+      assert.equal(await page.evaluate("return store.getState().packetAnimationSpeed===(await import('/src/packetAnimation.ts')).DEFAULT_PING_ANIMATION_SPEED;"),true);
       assert.equal(await page.evaluate("return localStorage.getItem('netlab:packet-animation-speed:v1');"),'4');
       assert.equal(await page.evaluate("return document.querySelectorAll('.ping-animation-control,#packet-settings-speed,.packet-animation-widget').length;"),0);
       await click('.packet-settings-toggle');await wait("document.querySelector('#packet-capture-menu')");
       assert.equal(await page.evaluate("return document.querySelectorAll('#packet-capture-menu input,#packet-capture-menu select').length;"),0);
       assert.equal(await page.evaluate("return /Live|Schrittmodus|Replay|Geschwindigkeit/.test(document.querySelector('#packet-capture-menu').textContent);"),false);
       await shot('packet-capture-menu-1440.png','graphite-dark',1440,'settings');
-      for(const [label,status] of [['Start capture','capturing'],['Pause capture','paused'],['Resume capture','capturing'],['Stop capture','stopped']]){
-        await page.evaluate(`[...document.querySelectorAll('#packet-capture-menu button')].find(b=>b.textContent===${JSON.stringify(label)}).click();`);
+      for(const [action,status] of [['start','capturing'],['pause','paused'],['resume','capturing'],['stop','stopped']]){
+        await click('#packet-capture-menu [data-capture-action="'+action+'"]');
         assert.equal(await page.evaluate('return store.getState().packetCapture.status;'),status);
         await click('.packet-settings-toggle');await wait("document.querySelector('#packet-capture-menu')");
       }
