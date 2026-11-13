@@ -1,3 +1,5 @@
+import routeEditor from './catalogs/routeEditor';
+import guidedLpm from './catalogs/guidedLpm';
 import { create } from 'zustand';
 import common from './catalogs/common';
 import home from './catalogs/home';
@@ -21,7 +23,7 @@ import pingControls from './catalogs/pingControls';
 export const LANGUAGES = { de: 'Deutsch', en: 'English', 'pt-BR': 'Português (Brasil)' } as const;
 export type Language = keyof typeof LANGUAGES;
 export const LANGUAGE_KEY = 'netlab:language:v1';
-export const catalogs = { common, home, navigation, exercises, workspace, journey, practice, learningHelp, guided, guidedVisual, guidedSubnet, guidedRouter, guidedRestart, guidedStatic, guidedStaticLine, guidedAlternative, referencePins, pingControls };
+export const catalogs = { routeEditor, guidedLpm, common, home, navigation, exercises, workspace, journey, practice, learningHelp, guided, guidedVisual, guidedSubnet, guidedRouter, guidedRestart, guidedStatic, guidedStaticLine, guidedAlternative, referencePins, pingControls };
 type Domain = keyof typeof catalogs;
 export type TranslationKey = { [D in Domain]: `${D}.${keyof typeof catalogs[D]['en'] & string}` }[Domain];
 export function normalizeLanguage(value: unknown): Language {

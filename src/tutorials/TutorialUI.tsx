@@ -1,3 +1,6 @@
+import { LpmController, type LpmState } from './LpmController';
+import { LpmProgressStore, LPM_PROGRESS_PREFIX, readLpmProgress, type LpmProgress } from './lpmProgress';
+import { LpmPanel } from './LpmPanel';
 import { TutorialCommand, TutorialText } from './TutorialCommand';
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { SessionController } from '../persistence/sessionController';
@@ -46,7 +49,7 @@ import { AlternativeEntryMenu } from './AlternativeEntryMenu';
 import { observeNetworkActivity } from '../networkObservations';
 import './tutorial.css';
 
-const Context = createContext<{ sessions: SessionController; repository: ProjectRepository; controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState; router:RouterTutorialController; routerState:RouterState; routing: StaticRoutingTutorialController; routingState: StaticRoutingState; alternative: AlternativePathsController; alternativeState: AlternativeState; hiddenPanels: ReadonlySet<string>; hidePanel(chapter: ChapterId, draftId: string): void; showPanels(draftId: string): void } | null>(null);
+const Context = createContext<{ sessions: SessionController; repository: ProjectRepository; controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState; router:RouterTutorialController; routerState:RouterState; routing: StaticRoutingTutorialController; routingState: StaticRoutingState; alternative: AlternativePathsController; alternativeState: AlternativeState; lpm: LpmController; lpmState: LpmState; hiddenPanels: ReadonlySet<string>; hidePanel(chapter: ChapterId, draftId: string): void; showPanels(draftId: string): void } | null>(null);
 export function GuidedTutorialProvider({ sessions, repository, children }: { sessions: SessionController; repository: ProjectRepository; children: ReactNode }) {
   const [restart]=useState(()=>new ChapterRestartService(repository,sessions)),status=useSyncExternalStore(restart.subscribe,restart.getState),{t}=useTranslation();
   useEffect(()=>useStore.getState().attachChapterHistory((id,direction)=>void restart.navigate(id,direction)),[restart]);
@@ -118,20 +121,27 @@ function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:
   },new AlternativePathsProgressStore(repository,sessions)));
   alternativeRef.current=alternative;
   const alternativeState=useSyncExternalStore(alternative.subscribe,alternative.getState);
+  const [lpm]=useState(()=>new LpmController(sessions,{
+    network:()=>sim.net,activeDraftId:()=>useStore.getState().workspaceIdentity?.draftId??null,pendingForms:hasPendingForms,restarting:()=>restart.getState().busy,
+    subscribe:listener=>{const a=useStore.subscribe(listener),b=restart.subscribe(listener);return()=>{a();b();};},observeCommands:observeTerminalCommands,observeActivity:observeNetworkActivity,
+    openAttempt:(document,options)=>openNewLearningAttempt(sessions,document,options),started:requestExerciseViewport,
+  },new LpmProgressStore(repository,sessions)));
+  const lpmState=useSyncExternalStore(lpm.subscribe,lpm.getState);
+  useEffect(()=>lpm.connect(),[lpm]);
   useEffect(()=>alternative.connect(),[alternative]);
   useEffect(()=>routing.connect(),[routing]);
   useEffect(()=>router.connect(),[router]);
   useEffect(() => controller.connect(), [controller]);
   useEffect(() => subnet.connect(), [subnet]);
-  useEffect(()=>{restart.flushControllers=async()=>{await controller.flushProgress();await subnet.flushProgress();await router.flushProgress();await routing.flushProgress();await alternative.flushProgress();};restart.resume();return()=>{restart.flushControllers=async()=>{};};},[restart,controller,subnet,router,routing,alternative]);
+  useEffect(()=>{restart.flushControllers=async()=>{await controller.flushProgress();await subnet.flushProgress();await router.flushProgress();await routing.flushProgress();await alternative.flushProgress();await lpm.flushProgress();};restart.resume();return()=>{restart.flushControllers=async()=>{};};},[restart,controller,subnet,router,routing,alternative,lpm]);
   useEffect(() => {
-    const flush = () => { if (document.visibilityState === 'hidden') { void controller.flushProgress(); void subnet.flushProgress(); void router.flushProgress(); void routing.flushProgress(); void alternative.flushProgress(); } };
-    const before = (event: BeforeUnloadEvent) => { if (controller.getState().saving || subnet.getState().saving || router.getState().saving || routing.getState().saving || alternative.getState().saving) { event.preventDefault(); event.returnValue = ''; } };
+    const flush = () => { if (document.visibilityState === 'hidden') { void controller.flushProgress(); void subnet.flushProgress(); void router.flushProgress(); void routing.flushProgress(); void alternative.flushProgress();void lpm.flushProgress(); } };
+    const before = (event: BeforeUnloadEvent) => { if (controller.getState().saving || subnet.getState().saving || router.getState().saving || routing.getState().saving || alternative.getState().saving || lpm.getState().saving) { event.preventDefault(); event.returnValue = ''; } };
     document.addEventListener('visibilitychange', flush); window.addEventListener('beforeunload', before);
     return () => { document.removeEventListener('visibilitychange', flush); window.removeEventListener('beforeunload', before); };
-  }, [controller, subnet, router, routing, alternative]);
+  }, [controller, subnet, router, routing, alternative,lpm]);
   const busy=restart.getState().busy;
-  return <ChapterRestartContext.Provider value={{service:restart,newAttempt:chapter=>chapter==='alternative-paths'?alternative.begin():chapter==='static-routing'?routing.begin():chapter==='two-networks'?router.begin(true):controller.start(true)}}><Context.Provider value={{ sessions, repository, controller, state:{...state,busy:state.busy||busy}, subnet, subnetState:{...subnetState,busy:subnetState.busy||busy}, router, routerState:{...routerState,busy:routerState.busy||busy}, routing, routingState:{...routingState,busy:routingState.busy||busy}, alternative, alternativeState:{...alternativeState,busy:alternativeState.busy||busy}, hiddenPanels, hidePanel, showPanels }}>{children}</Context.Provider></ChapterRestartContext.Provider>;
+  return <ChapterRestartContext.Provider value={{service:restart,newAttempt:chapter=>chapter==='longest-prefix-match'?lpm.begin():chapter==='alternative-paths'?alternative.begin():chapter==='static-routing'?routing.begin():chapter==='two-networks'?router.begin(true):controller.start(true)}}><Context.Provider value={{ sessions, repository, controller, state:{...state,busy:state.busy||busy}, subnet, subnetState:{...subnetState,busy:subnetState.busy||busy}, router, routerState:{...routerState,busy:routerState.busy||busy}, routing, routingState:{...routingState,busy:routingState.busy||busy}, alternative, alternativeState:{...alternativeState,busy:alternativeState.busy||busy}, lpm, lpmState:{...lpmState,busy:lpmState.busy||busy}, hiddenPanels, hidePanel, showPanels }}>{children}</Context.Provider></ChapterRestartContext.Provider>;
 }
 
 export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPopup?:React.MutableRefObject<HTMLDivElement|null> }) {
@@ -217,7 +227,7 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
       {alternativeDraft&&<button type="button" role="menuitem" className="btn" data-alternative-resume disabled={ui.alternativeState.busy||progressLoading||progressError||!!progress.alternativeError} onClick={()=>{void ui.sessions.switchDraft(alternativeDraft).then(result=>{if(result.ok){ui.showPanels(alternativeDraft);usePractice.getState().close();close();}});}}>{t(alternativeProgress?.complete||alternativePractice?.complete?'guided.openNetwork':'guided.resume')}</button>}
       {trigger}
       {(ui.alternativeState.storageError||progress.alternativeError)&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>{void ui.alternative.retryProgress();setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}
-    </section>{progressError && <p role="alert"><TutorialText>{t('guided.storageError')}</TutorialText><button className="btn" onClick={()=>{setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}</div>}
+    </section><LpmMenu ui={ui} close={close}/>{progressError && <p role="alert"><TutorialText>{t('guided.storageError')}</TutorialText><button className="btn" onClick={()=>{setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}</div>}
   </section>}</AlternativeEntryMenu>;
 }
 const steps = [
@@ -240,6 +250,7 @@ export function GuidedTutorialPanel() {
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => setCollapsed(false), [ui?.state.draftId]);
   if (!ui || practiceOpen) return null;
+  if(ui.lpmState.active&&ui.lpmState.record)return ui.hiddenPanels.has(`${ui.lpmState.record.draftId}:longest-prefix-match`)?null:<LpmPanel key={ui.lpmState.record.draftId} controller={ui.lpm} state={ui.lpmState} onExplore={()=>ui.hidePanel('longest-prefix-match',ui.lpmState.record!.draftId)}/>;
   if(ui.alternativeState.active&&ui.alternativeState.record)return ui.hiddenPanels.has(`${ui.alternativeState.record.draftId}:alternative-paths`)?null:<AlternativePathsPanel key={ui.alternativeState.record.draftId} controller={ui.alternative} state={ui.alternativeState} onExplore={()=>ui.hidePanel('alternative-paths',ui.alternativeState.record!.draftId)}/>;
   if(ui.routingState.active&&ui.routingState.record)return ui.hiddenPanels.has(`${ui.routingState.record.draftId}:static-routing`)?null:<StaticRoutingTutorialPanel key={ui.routingState.record.draftId} controller={ui.routing} state={ui.routingState} onExplore={()=>ui.hidePanel('static-routing',ui.routingState.record!.draftId)}/>;
   if(ui.routerState.active && ui.routerState.record) return ui.hiddenPanels.has(`${ui.routerState.record.draftId}:two-networks`) ? null : <RouterTutorialPanel key={ui.routerState.record.draftId} controller={ui.router} state={ui.routerState} onExplore={() => ui.hidePanel('two-networks', ui.routerState.record!.draftId)}/>;
@@ -285,4 +296,22 @@ export function GuidedTutorialPanel() {
       {state.step === 7 && completion.complete && <ExploreNetworkButton onClick={() => ui.hidePanel('first-connection', state.draftId!)}/>}
     </footer></>}
   </ExercisePanelFrame>;
+}
+
+function LpmMenu({ui,close}:{ui:NonNullable<React.ContextType<typeof Context>>;close():void}) {
+  const {t}=useTranslation(),[record,setRecord]=useState<LpmProgress|null>(null),[error,setError]=useState(false),[loading,setLoading]=useState(true),[retry,setRetry]=useState(0);
+  const active=ui.sessions.getState().activeDraftId;
+  useEffect(()=>{let cancelled=false;setLoading(true);setError(false);void(async()=>{
+    const drafts=[...ui.sessions.getState().drafts].reverse().sort((a,b)=>Number(b.id===active)-Number(a.id===active));
+    for(const draft of drafts){const result=await ui.repository.getMeta(LPM_PROGRESS_PREFIX+draft.id);if(!result.ok)throw Error(result.error.code);if(result.value){const value=readLpmProgress(result.value.value,draft.id);if(!cancelled)setRecord(value);return;}}
+    if(!cancelled)setRecord(null);
+  })().catch(()=>{if(!cancelled)setError(true);}).finally(()=>{if(!cancelled)setLoading(false);});return()=>{cancelled=true;};},[ui.repository,ui.sessions,active,ui.lpmState.record,ui.lpmState.saving,retry]);
+  const current=record&&ui.lpmState.record?.draftId===record.draftId?ui.lpmState.record:record;
+  return <section className="guided-menu-chapter" aria-label={t('guidedLpm.title')}>
+    <strong>{t('guidedLpm.title')}</strong><p>{t('guidedLpm.menu')}</p>
+    {current&&<ChapterProgress progress={{completed:current.completed.length,total:5,complete:current.completed.length===5}}/>}
+    {current&&<button className="btn" type="button" role="menuitem" data-lpm-resume disabled={loading||error||ui.lpmState.busy} onClick={()=>{void ui.sessions.switchDraft(current.draftId).then(result=>{if(result.ok){ui.showPanels(current.draftId);usePractice.getState().close();close();}});}}>{t(current.completed.length===5?'guided.openNetwork':'guided.resume')}</button>}
+    <button className="btn" type="button" role="menuitem" data-lpm-start disabled={loading||error||ui.lpmState.busy} onClick={()=>{usePractice.getState().close();void ui.lpm.begin();close();}}>{t(current?'guided.newAttempt':'guided.chapterStart')}</button>
+    {(error||ui.lpmState.storageError)&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>{void ui.lpm.retryProgress();setRetry(n=>n+1);}}>{t('common.retry')}</button></p>}
+  </section>;
 }

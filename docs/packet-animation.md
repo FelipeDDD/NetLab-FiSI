@@ -170,3 +170,39 @@ ficou em no máximo duas tentativas e dez transmissões; os limites contratuais
 continuam 32 transmissões e 256 saltos observados. Os registros de captura e
 resultados do terminal conservaram os envios reais. TypeScript, build e
 `git diff --check` passaram; permanece o aviso de chunk acima de 500 kB.
+## Auditoria visual ARP/ICMP — 13/11/2026
+
+A diferenciação já existe em `src/components/PacketLayer.tsx`: ARP Request e
+Reply usam **âmbar `#f59e0b`**, ICMP Echo Request e Reply usam **ciano `#38bdf8`**.
+O círculo tem raio 5 em coordenadas do canvas e acompanha o zoom. Operações
+do mesmo protocolo compartilham a cor; sentido e percurso vêm da transmissão.
+
+`Network.emitWire()` preenche `WireTransfer.kind` com `frame.payload.kind`
+para ARP ou `frame.payload.l4.kind` para IPv4. `observeGuidedPacket()` preserva
+esse campo ao incluir resolução ARP no fluxo do ping, mantendo `arp: request/reply`
+separado da direção do ping. Tanto Live quanto a reprodução sequencial usam
+`p.kind` para escolher a cor. Não há classificação por texto, nome de dispositivo
+ou saída do terminal. A captura também identifica operações por campos estruturados.
+
+O filtro `.packet-dot` em `src/styles.css` usa um halo de `currentColor`,
+herdado do tema, comum aos protocolos. Esse halo não substitui o preenchimento
+âmbar/ciano. Nas capturas verificadas a distinção é perceptível; não foi
+reproduzida uma animação ARP com preenchimento ICMP. Não se atribuiu uma causa
+definitiva à impressão visual relatada, nem se modificou o halo sem necessidade.
+
+Validação em Chromium descartável: ping real na topologia do capítulo 6 com
+caches inicialmente vazios; Request ARP entre R1/R2 destinado a
+`ff:ff:ff:ff:ff:ff` e Reply ARP unicast, além dos dois sentidos ICMP.
+Foram comparados atributos SVG e cores computadas em **24 combinações**:
+quatro operações × dois temas (Graphite Dark/Classic Light) × velocidades
+0,5×/1×/2×. As oito capturas a 1× usam quadros pausados dos saltos realmente
+registrados, sem gerar pacotes artificiais; isso permite comparar as cores
+sem confundir alterações de velocidade com classificação de protocolo.
+Não é uma medição de percepção humana em movimento ou em todos os níveis de zoom.
+
+**48 testes existentes** de apresentação/reprodução aprovados, incluindo
+ramificações broadcast; harness Chromium com **129 verificações**, zero falhas
+ou erros. Evidências/capturas e roteiro temporário estão ignorados em
+`.playwright-mcp/reviews/arp-icmp-audit/` e `.playwright-mcp/arp-icmp-*.mjs`.
+Nenhuma alteração de código, testes permanentes, paleta, cabos, LEDs, direção,
+temporização, velocidade, encaminhamento ou outros protocolos foi necessária.

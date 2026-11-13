@@ -1,12 +1,164 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **12/11/2026**, para continuar entre notebook e desktop.
+Atualizado em **13/11/2026**, para continuar entre notebook e desktop.
 Este é o **arquivo único de continuidade**: atualizar este resumo nas próximas
 rodadas, sem criar cópias TXT ou documentos de contexto concorrentes.
 O código, os testes e o Git continuam sendo a fonte de verdade. As seções
 históricas abaixo registram decisões antigas e podem ter sido superadas.
 
-## Leia primeiro — auditoria e estado atual em 12/11/2026
+## Leia primeiro — estado atual em 13/11/2026
+
+**Consolidação para commit local (13/11/2026):** auditados os 35 arquivos de
+código, testes, roteiros e documentação do capítulo 6/LPM Parte 1, editor de
+rotas, ajuda visual, indicadores atuais e correções de tradução. Base
+`main`/`f11f364`, alinhada à referência local `origin/main`. A revisão não
+exigiu mudanças adicionais de produto. As notas “somente local/sem commit”
+abaixo registram as rodadas anteriores a esta consolidação.
+
+Reexecutados **3.123 testes em 191 arquivos**, TypeScript, build,
+`git diff --check` e sintaxe dos cinco roteiros alterados/novos. Chromium
+combinado: `NETLAB_LPM_REVIEW`, `NETLAB_ROUTE_EDITOR_REVIEW` e
+`NETLAB_ALTERNATIVE_PATHS_REVIEW`, **161 verificações aprovadas**, zero falhas
+e zero erros de navegador, com perfil/bancos descartáveis. Somente o aviso
+preexistente de chunks >500 kB. Logs `consolidation-*.log` e manifesto de
+seleção em `.playwright-mcp/`, ignorados pelo Git; nenhum segredo, captura,
+log, backup, dependência ou artefato gerado incluído. Stash/backups preservados.
+
+Autorizado um único commit local: `Implement LPM chapter 6 part 1 and static
+route editor`. Consultar `git log` para o hash definitivo. **Sem push, merge,
+rebase, force push, deploy ou início da Parte 2.**
+
+**Auditoria /30 e seletor durante ping (13/11/2026):** reproduzido no Chromium
+descartável `192.168.80.128/30 via 10.6.12.2 dev eth2`, mantendo a `/24` curta
+e PC B `.80.130`. LPM automático, Request longo, Reply direto e aprovação da
+etapa 5 confirmados; nenhuma escolha manual de rota. O seletor de três opções
+foi reproduzido no Quick Ping ao escolher R1 como destino: são seus três IPv4,
+não rotas. PC B tem somente um IPv4. Isso é uma explicação possível do relato,
+sem prova do clique original. Não houve bug comprovado; nenhum código foi
+alterado nesta auditoria. 27 testes e 115 verificações Chromium aprovados,
+TypeScript/build/diff-check aprovados. Detalhes em `docs/lpm-tutorial.md` e
+capturas ignoradas em `.playwright-mcp/reviews/lpm30-audit/`. Alterações locais
+preservadas; sem commit, push, merge, rebase ou deploy.
+
+**Auditoria final de textos (13/11/2026, somente local):** os dois indicadores
+alemães da etapa 5 continham `?` literalmente no catálogo, em vez de `ü`.
+Corrigidos `für` e `über` na origem; nenhuma mudança de fonte ou CSS necessária.
+Aviso do Inspector atualizado em DE/EN/PT-BR para explicar que as rotas
+**também** podem ser gerenciadas pelo terminal. Interpolação mantém `ip route`
+como comando em `<code>`, respeitando a ordem da frase em cada idioma.
+Preservados todos os trabalhos locais, engine, validadores e comportamento.
+Regressão completa: **3.123 testes em 191 arquivos** aprovados. Chromium:
+**114 verificações**, zero falhas/erros, incluindo editor, conclusão LPM,
+indicadores DE/EN/PT-BR sem `?`, F5 e retomada. TypeScript, build e diff-check
+aprovados. Único aviso relevante: chunks >500 kB já conhecido; nenhuma falha
+de teste encontrada. Logs `final-all-tests.log`, `final-text-chromium.log` e
+`final-text-build.log` em `.playwright-mcp/` (ignorados pelo Git).
+Sem commit, push, merge, rebase ou deploy.
+
+**Verificações atuais da etapa 5/LPM (13/11/2026, somente local):** duas linhas
+DE/EN/PT-BR substituem o status único: `/24` preservada no caminho curto e nova
+rota comprovada no caminho longo. Reutilizadas condições e fingerprint do
+recibo; alterações incompatíveis voltam a pendente, sem apagar crédito histórico.
+A conclusão visual exige validade atual simultânea; nenhum metadado novo ou
+relaxamento dos validadores. Lápis das rotas movido para a direita da mesma
+linha, sem nova linha/coluna. Alterações locais anteriores preservadas.
+Validação: 277 testes direcionados em 26 arquivos, TypeScript, build e
+diff-check aprovados. Chromium: 114 verificações, zero falhas/erros, incluindo
+GUI/CLI, novo ping após mudança de prefixo, F5 e histórico. Contratos em
+`docs/lpm-tutorial.md`. Sem commit, push ou deploy.
+
+**Editor visual de rotas estáticas (13/11/2026, somente local):** preservadas
+as alterações do capítulo 6. Router/Firewall → Routing agora oferece adicionar,
+editar e excluir entradas de `staticRoutes`, com formulário na própria aba e
+DE/EN/PT-BR. Connected, RIP e gateways derivados de interfaces são somente
+leitura. Reutilizados `IpDevice.addRoute/replaceRoute/delRoute`, planejamento
+síncrono antes da aplicação e assinatura conservadora para rejeitar edição
+concorrente. Mudança de destino é aplicada por inteiro ou recusada; duplicatas
+antigas não são apagadas silenciosamente. Operação `set-static-routes` existente
+integra Undo/Redo e persistência; CLI continua invalidando histórico incompatível.
+
+Etapa 5 do capítulo 6: botão de imagem somente na Ajuda fechada, reutilizando
+os três assets do capítulo 5 e o visualizador com zoom/fechamento. Os exemplos
+não revelam prefixo/Next Hop da solução. Instruções, progresso, engine e
+validadores preservados. A informação histórica abaixo de que Routing era
+somente leitura foi superada por esta rodada. Contratos e limites em
+`docs/static-route-editor.md`. Testes: **295 casos direcionados em 26 arquivos**,
+incluindo proteção da tabela e regressão dos capítulos anteriores;
+Chromium com 113 verificações, sem erros, em perfil/bancos descartáveis.
+TypeScript/build/diff-check aprovados; aviso de chunks >500 kB preexistente.
+Capturas em `.playwright-mcp/reviews/static-route-editor/`.
+**Sem commit, push, merge, rebase ou deploy.**
+
+**Auditoria visual ARP/ICMP (13/11/2026, somente documentação):** preservadas
+todas as alterações locais do capítulo 6. A paleta existente já diferencia ARP
+Request/Reply em âmbar `#f59e0b` e ICMP Echo Request/Reply em ciano `#38bdf8`.
+Classificação estruturada por `WireTransfer.kind`, preservada no observador do
+ping, sem inferência por textos. Chromium confirmou cores distintas nos dois
+temas, em 0,5×/1×/2×; ARP Request broadcast e Reply unicast entre roteadores
+do cenário LPM. O halo usa a cor textual comum do tema, mas não altera o fill.
+Não se reproduziu ARP com cor ICMP: **nenhuma correção de código necessária**.
+48 testes existentes e 129 verificações Chromium aprovados, sem falhas/erros.
+Capturas reais/evidências ignoradas em `.playwright-mcp/reviews/arp-icmp-audit/`;
+detalhes em `docs/packet-animation.md`. TypeScript, build e diff-check conferidos.
+Sem mudanças na engine, animações, cabos, LEDs, velocidade ou encaminhamento;
+**sem commit, push, merge, rebase ou deploy**.
+
+**Refinamento didático do capítulo 6, Parte 1 (13/11/2026, somente local):**
+preservada toda a implementação local anterior em `main`/`f11f364`. Textos
+DE/EN/PT-BR encurtados, sem exemplos prontos de ping. A etapa 2 mantém pergunta
+e alternativas no painel, sem tabela embutida; a Ajuda fechada oferece `ip route`
+e o botão que agora abre efetivamente Routing de R1 no Inspector. Consulta pela
+aba ou pelo terminal alimenta o mesmo `inspected`, sem alterar as condições de
+resposta. A etapa 4 perdeu a Ajuda repetitiva; a 5 pede uma rota mais específica
+que a `/24`, sem entregar prefixo, Next Hop ou interface, mantendo `/32` válido.
+
+A previsão inicial não existia na árvore: acrescentada como apresentação
+transitória (escolha → confirmação → instrução de teste → comparação com o
+percurso real). Não modifica critérios, progressão, recibos ou persistência;
+após F5 antes do teste a escolha visual precisa ser refeita. Um recibo já salvo
+é recuperado sem inventar uma previsão anterior. Novos sinais locais de
+`inspectorRouting.ts` abrem/observam a aba do dispositivo correto, sem alterar
+viewport ou configurações. Cenário, engine e capítulos anteriores preservados.
+Ver `docs/lpm-tutorial.md` para o contrato e a validação desta revisão.
+Validação: **280 testes direcionados em 25 arquivos**, TypeScript, build e
+diff-check aprovados. Chromium: **113 verificações**, oito cenários compostos,
+DE/EN/PT-BR, temas claro/escuro e 700/1440 px, zero falhas/erros; consulta no
+Inspector e terminal, viewport estável, F5, retomada, rotas e pings reais.
+Capturas separadas em `.playwright-mcp/reviews/chapter6-lpm-refinement/`.
+**Sem commit, push, merge, rebase, deploy ou início da Parte 2.**
+
+**Capítulo 6 — Longest Prefix Match, Parte 1 (13/11/2026, somente local):**
+iniciado com checkout limpo em `main`, HEAD `f11f364`, sem diferença para a
+referência local `origin/main`. O capítulo 5 atual é a edição de **16 tarefas**;
+as referências históricas a 22 tarefas/LAN C abaixo não descrevem essa edição.
+Acrescentado capítulo independente com cinco tarefas: observar o desvio real,
+comparar rotas, descobrir LPM, remover a `/25` e criar livremente um prefixo
+mais específico que a `/24`, inclusive `/32`, comprovando novo ping.
+
+Cenário pronto: PC A → R1 → R5 → PC B versus R1 → R2 → R3 → R4 → R5,
+todos os enlaces operacionais e trânsitos `/30` distintos. O Request inicial
+usa a `/25` no desvio; o Reply retorna pelo enlace direto R5–R1. A UI apresenta
+os dois percursos efetivamente observados, sem presumir simetria. Abertura
+atômica de rascunho/progresso/checkpoint, CAS, recuperação F5, crédito histórico
+separado da validade atual, revisão sem refazer configurações antigas e
+reinício pelo serviço compartilhado com Undo/Redo. Metadados próprios
+`guided:lpm:v1:draft:`, sem novos stores nem migração de tentativas anteriores.
+DE/EN/PT-BR, painel móvel e menu existentes. Nenhuma alteração da engine,
+comandos, critérios ou textos dos capítulos 1–5.
+
+Detalhes e limites: `docs/lpm-tutorial.md`. Preservado o contrato atual em que
+alterações CLI invalidam Undo incompatível; não se implementou histórico de
+rotas para o terminal. Só a Parte 1 está implementada; sem crédito para partes
+futuras nem conclusão histórica independente do capítulo 6. O Inspector deste
+checkout exibe rotas em modo somente leitura; a nova ajuda indica alterações
+pelo terminal Linux, sem prometer editor visual. Logs/capturas em
+`.playwright-mcp/`, sempre com perfil/banco descartáveis. Validação: **3.097
+testes em 187 arquivos**, incluindo regressão dos capítulos anteriores, 20
+casos novos de LPM, TypeScript, build e diff-check aprovados. Chromium: **112
+verificações**, sete cenários compostos do capítulo e 15 revisões visuais nos
+três idiomas, Graphite Dark/Classic Light e 700/1440 px; zero falhas/erros.
+O aviso de chunks >500 kB é preexistente. **Sem commit, push, merge, rebase ou
+deploy.**
 
 **Consolidação final i18n 3A + 3B + 3C1 + 3C2 (12/11/2026):**
 as quatro rodadas foram auditadas em conjunto, partindo de `9576ab9` em

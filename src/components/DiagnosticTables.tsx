@@ -1,7 +1,7 @@
 import { useTranslation } from '../i18n';
 import { Fragment, type ReactNode } from 'react';
 import { InfoTooltip } from './InfoTooltip';
-import type { IpDevice } from '../engine/ipdevice';
+import type { IpDevice, Route } from '../engine/ipdevice';
 import type { SwitchDevice } from '../engine/switch';
 import { cidrToString, ipToString } from '../engine/ip';
 
@@ -80,13 +80,13 @@ export function RouteTypeInfo() {
   </InfoTooltip>;
 }
 
-export function RoutingTable({ device }: { device: IpDevice }) {
+export function RoutingTable({ device, onEdit }: { device: IpDevice; onEdit?: (route: Route) => void }) {
   const { t } = useTranslation();
   const rows: DiagnosticRow[] = device.routes().map(route => ({
     key: `${route.kind}:${route.dest}/${route.prefix}:${route.via}:${route.ifaceName}`,
     cells: [<>{route.prefix === 0 && <span className="diagnostic-secondary">{t('navigation.tableDefault')}</span>}
       <IpAddress value={cidrToString(route.dest, route.prefix)} /></>,
-      route.via === null ? <span>{t('navigation.tableDirect')}</span> : <IpAddress value={ipToString(route.via)} />],
+      <span className="route-cell-end">{route.via === null ? <span>{t('navigation.tableDirect')}</span> : <IpAddress value={ipToString(route.via)} />}{onEdit && device.staticRoutes.includes(route) && <button type="button" className="mini-btn" data-route-edit={cidrToString(route.dest,route.prefix)} title={t('routeEditor.edit')} aria-label={`${t('routeEditor.edit')}: ${cidrToString(route.dest,route.prefix)}`} onClick={()=>onEdit(route)}>✎</button>}</span>],
     details: [
       { label: t('navigation.tableInterface'), value: <code>{route.ifaceName}</code> },
       { label: t('navigation.tableType'), value: <span className={`diagnostic-route-type is-${route.kind}`}>

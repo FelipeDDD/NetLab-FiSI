@@ -48,6 +48,8 @@
 .exercise-panel .guided-command-syntax, .exercise-panel .guided-shortcut { color: var(--ui-warning); }
 .exercise-panel .guided-shortcut { font-family: var(--font-mono, monospace); }
 .guided-action-status { display: flex; align-items: flex-start; gap: 8px; }
+[data-exercise="guided-lpm"] footer { display: flex; justify-content: space-between; gap: 8px; }
+[data-exercise="guided-lpm"] pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .guided-step-progress { display:flex; flex-direction:column; gap:4px; }
 .guided-step-progress progress { display:block; width:100%; max-width:230px; height:3px; border:0; accent-color:var(--ui-accent); }
 .guided-step-progress progress::-webkit-progress-bar { background:var(--ui-border); border-radius:3px; }

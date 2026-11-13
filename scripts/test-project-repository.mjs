@@ -456,6 +456,14 @@ try {
     await runStaticRoutingReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if(process.env.NETLAB_ROUTE_EDITOR_REVIEW==='1'){
+    const {runLpmReview}=await import('./static-route-editor-review.mjs');await runLpmReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});await prepare(pageOne);
+  }
+  if (process.env.NETLAB_LPM_REVIEW === '1') {
+    const { runLpmReview } = await import('./lpm-tutorial-review.mjs');
+    await runLpmReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_ALTERNATIVE_PATHS_REVIEW === '1') {
     const { runAlternativePathsReview } = await import('./alternative-paths-tutorial-review.mjs');
     await runAlternativePathsReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });

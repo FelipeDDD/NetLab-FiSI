@@ -2186,3 +2186,11 @@ input:not(.xterm-helper-textarea)::placeholder, textarea:not(.xterm-helper-texta
 .persistence-status-row label { display: flex; flex: 1 1 320px; align-items: center; gap: 8px; }
 .persistence-status-row input { flex: 1; min-width: 0; color: var(--ui-form-text); background: var(--ui-form-surface); border: 1px solid var(--ui-form-border); padding: 5px; }
 .autosave-state { display: block; color: var(--text-dim); font-size: 11px; line-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.static-route-heading,.static-route-actions { display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
+.static-route-heading { justify-content:space-between; }
+.static-route-form label { display:flex;flex-direction:column;gap:4px;margin:8px 0; }
+.static-route-form :is(input,select) { width:100%;min-width:0;box-sizing:border-box; }
+
+.route-cell-end { display:flex;align-items:center;gap:6px; }
+.route-cell-end > button { margin-left:auto;flex-shrink:0; }

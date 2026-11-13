@@ -1,3 +1,5 @@
+import { translate, useLanguage } from './i18n';
+import { planStaticRouteEdit, type RouteEditError, type RouteEditInput } from './staticRouteEdit';
 import { parseDnsRecords } from './dnsRecords';
 import { editorMessage, type EditorMessage } from './editorMessages';
 import { dhcpConfiguration, applyDhcpConfiguration, legacyPoolInterface, validateDhcpPool, type PoolSettings } from './engine/dhcpPools';
@@ -148,6 +150,7 @@ interface NetsimState {
   beginNodeMovement(source: 'drag' | 'keyboard'): void;
   finishNodeMovement(): void;
   cancelNodeMovement(): void;
+  editStaticRoute(deviceId:string, expected:string, original:import('./engine/ipdevice').Route|null, input:RouteEditInput|null):RouteEditError|null;
   invalidateTopologyHistory(): void;
   undoTopology(): void;
   redoTopology(): void;
@@ -1259,6 +1262,14 @@ export const useStore = create<NetsimState>()((set, get) => {
         set({ nodes: [...get().nodes, ...rows.map(row => deviceNode(row.id, 'host', row.name, positions[row.id].x, positions[row.id].y))], edges: edgesFromEngine(), cableColors: { ...get().cableColors, ...cableColors } });
         commitEdit({ type: 'paste-devices', label: 'Tutorial: PC A und PC B hinzufügen', devices, links, colors: {}, cableColors }); saveSoon(); return null;
       } catch { ALTERNATIVE_PCS.forEach(id => sim.net.removeDevice(id)); return 'conflict'; }
+    },
+    editStaticRoute(deviceId,expected,original,input) {
+      const device=sim.net.devices.get(deviceId);if(!(device instanceof IpDevice))return 'stale';
+      const result=planStaticRouteEdit(device,expected,original,input);if('error' in result)return result.error;
+      prepareEdit();const before=structuredClone(device.staticRoutes),after=result.routes;
+      if(JSON.stringify(before)===JSON.stringify(after))return null;
+      device.staticRoutes=structuredClone(after);get().refresh();
+      commitEdit({type:'set-static-routes',label:translate(useLanguage.getState().language,'routeEditor.title'),deviceId,before,after});saveSoon();return null;
     },
     repeatRouterTutorialTask(step,signature,pcC) {
       if(routerSignature(sim.net)!==signature)return 'repeatUnsafe';

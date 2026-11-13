@@ -1,3 +1,5 @@
+import { readLpmProgress, LPM_PROGRESS_PREFIX } from './lpmProgress';
+import { LPM_IDS } from './lpmChapter';
 import type { MetaValue, ProjectDocument } from '../projects/types';
 import { isProjectId,normalizeProjectDocument } from '../projects/projectDocument';
 import { parseCidr, networkOf, parseIp, sameSubnet } from '../engine/ip';
@@ -14,10 +16,10 @@ import { readAlternativeProgress, ALTERNATIVE_PROGRESS_PREFIX, type AlternativeP
 import { ALTERNATIVE_ROUTERS, ALTERNATIVE_PCS, ALTERNATIVE_IDS } from './alternativePathsChapter';
 import { readAlternativeEntry, alternativeEntryInitialValid } from './alternativeEntryContract';
 
-export type ChapterId='first-connection'|'subnet-mask'|'two-networks'|'static-routing'|'alternative-paths';
-export const CHAPTERS:ChapterId[]=['first-connection','subnet-mask','two-networks','static-routing','alternative-paths'];
+export type ChapterId='first-connection'|'subnet-mask'|'two-networks'|'static-routing'|'alternative-paths'|'longest-prefix-match';
+export const CHAPTERS:ChapterId[]=['first-connection','subnet-mask','two-networks','static-routing','alternative-paths','longest-prefix-match'];
 export const checkpointKey=(id:string,chapter:ChapterId)=>`guided:checkpoint:${chapter==='alternative-paths'?'v5':'v1'}:${id}:${chapter}`;
-export const progressKey=(id:string,chapter:ChapterId)=>({ 'first-connection':TUTORIAL_PROGRESS_PREFIX,'subnet-mask':SUBNET_PROGRESS_PREFIX,'two-networks':ROUTER_PROGRESS_PREFIX,'static-routing':STATIC_PROGRESS_PREFIX,'alternative-paths':ALTERNATIVE_PROGRESS_PREFIX }[chapter])+id;
+export const progressKey=(id:string,chapter:ChapterId)=>({ 'first-connection':TUTORIAL_PROGRESS_PREFIX,'subnet-mask':SUBNET_PROGRESS_PREFIX,'two-networks':ROUTER_PROGRESS_PREFIX,'static-routing':STATIC_PROGRESS_PREFIX,'longest-prefix-match':LPM_PROGRESS_PREFIX,'alternative-paths':ALTERNATIVE_PROGRESS_PREFIX }[chapter])+id;
 export interface ChapterCheckpoint {
   schemaVersion:1;kind:'chapter-checkpoint';draftId:string;chapter:ChapterId;attemptId:string;
   before:ProjectDocument;initial:ProjectDocument|null;progress:MetaValue|null;
@@ -25,7 +27,7 @@ export interface ChapterCheckpoint {
 export interface ChapterCheckpointHooks {before(id:string):Promise<void>;prepared(id:string,progress:MetaValue):Promise<void>}
 export const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 export function validateProgress(chapter:ChapterId,value:unknown,id:string):MetaValue {
-  return (chapter==='first-connection'?readTutorialProgress(value,id):chapter==='subnet-mask'?readSubnetProgress(value,id):chapter==='two-networks'?readRouterProgress(value,id):chapter==='static-routing'?readStaticRoutingProgress(value,id):readAlternativeProgress(value,id)) as unknown as MetaValue;
+  return (chapter==='longest-prefix-match'?readLpmProgress(value,id):chapter==='first-connection'?readTutorialProgress(value,id):chapter==='subnet-mask'?readSubnetProgress(value,id):chapter==='two-networks'?readRouterProgress(value,id):chapter==='static-routing'?readStaticRoutingProgress(value,id):readAlternativeProgress(value,id)) as unknown as MetaValue;
 }
 export function readChapterCheckpoint(value:unknown,id:string,chapter:ChapterId):ChapterCheckpoint {
   const c=value as ChapterCheckpoint;
@@ -35,10 +37,11 @@ export function readChapterCheckpoint(value:unknown,id:string,chapter:ChapterId)
   if((initial===null)!==(c.progress===null))throw Error('checkpoint-invalid');
   let progress:MetaValue|null;try{progress=c.progress===null?null:validateProgress(chapter,c.progress,id);}catch{throw Error('checkpoint-invalid');}
   if(initial){
-    const p=progress as unknown as Record<string,unknown>,added=chapter==='first-connection'||chapter==='static-routing'||chapter==='alternative-paths'?[]:chapter==='subnet-mask'?[SUBNET_PC_ID]:Object.values(ROUTER_IDS);
+    const p=progress as unknown as Record<string,unknown>,added=chapter==='longest-prefix-match'||chapter==='first-connection'||chapter==='static-routing'||chapter==='alternative-paths'?[]:chapter==='subnet-mask'?[SUBNET_PC_ID]:Object.values(ROUTER_IDS);
     const entry=chapter==='alternative-paths'&&p.entry!==undefined?readAlternativeEntry(p.entry):undefined;
     if(p.step!==(entry?.firstTask??1)||initial.topology.devices.length!==before.topology.devices.length+added.length||added.some(key=>before.topology.devices.some(d=>d.id===key)||!initial!.topology.devices.some(d=>d.id===key)))throw Error('checkpoint-invalid');
     if(before.topology.devices.some(d=>!initial!.topology.devices.some(n=>same(d,n))))throw Error('checkpoint-invalid');
+    if(chapter==='longest-prefix-match'&&(!same(before,initial)||!same(p.completed,[])||p.inspected||p.compared||p.rule||p.initial!==null||p.short!==null||p.restored!==null||!Object.values(LPM_IDS).every(id=>initial!.topology.devices.some(d=>d.id===id))))throw Error('checkpoint-invalid');
     if(chapter==='first-connection'&&(!same(before,initial)||p.a!==null||p.c!==null||p.ipv4Applied!==false||(p.devices as {c:unknown}).c!==null))throw Error('checkpoint-invalid');
     if(chapter==='first-connection'&&!same(p.completed,[])||chapter==='two-networks'&&!same(p.completed,[1]))throw Error('checkpoint-invalid');
     if(chapter==='subnet-mask'&&['inspected','answerAccepted','demoClaimed','demoPassed','unreachable'].some(key=>p[key]!==false))throw Error('checkpoint-invalid');
@@ -58,9 +61,9 @@ export function chapterRestartDocument(c:ChapterCheckpoint,current:ProjectDocume
   const progress=validateProgress(c.chapter,rawProgress,c.draftId) as unknown as Record<string,unknown>;
   const original=c.progress as unknown as Record<string,unknown>;
   if(c.chapter==='alternative-paths'&&!same(progress.entry,original.entry))throw Error('checkpoint-conflict');
-  if(c.chapter==='first-connection'?progress.startedAt!==original.startedAt:c.chapter==='static-routing'||c.chapter==='alternative-paths'?progress.attemptId!==original.attemptId:progress.pcC!==original.pcC||progress.baseFingerprint!==original.baseFingerprint||progress.source!==original.source)throw Error('checkpoint-conflict');
+  if(c.chapter==='first-connection'?progress.startedAt!==original.startedAt:c.chapter==='longest-prefix-match'||c.chapter==='static-routing'||c.chapter==='alternative-paths'?progress.attemptId!==original.attemptId:progress.pcC!==original.pcC||progress.baseFingerprint!==original.baseFingerprint||progress.source!==original.source)throw Error('checkpoint-conflict');
   const baseline=c.before.topology,initial=c.initial.topology,result=structuredClone(current),now=result.topology;
-  const owned=new Set(c.chapter==='first-connection'?[...Object.values(FIRST_DEVICES),...(typeof (progress.devices as {c?:unknown})?.c==='string'?[(progress.devices as {c:string}).c]:[])]:c.chapter==='subnet-mask'?[SUBNET_PC_ID]:c.chapter==='static-routing'?[...STATIC_BASE_IDS,...STATIC_EXTENSION_IDS]:c.chapter==='alternative-paths'?[...ALTERNATIVE_ROUTERS,...ALTERNATIVE_PCS]:Object.values(ROUTER_IDS));
+  const owned=new Set<string>(c.chapter==='longest-prefix-match'?Object.values(LPM_IDS):c.chapter==='first-connection'?[...Object.values(FIRST_DEVICES),...(typeof (progress.devices as {c?:unknown})?.c==='string'?[(progress.devices as {c:string}).c]:[])]:c.chapter==='subnet-mask'?[SUBNET_PC_ID]:c.chapter==='static-routing'?[...STATIC_BASE_IDS,...STATIC_EXTENSION_IDS]:c.chapter==='alternative-paths'?[...ALTERNATIVE_ROUTERS,...ALTERNATIVE_PCS]:Object.values(ROUTER_IDS));
   const beforeIds=new Set(baseline.devices.map(d=>d.id));
   const currentIds=new Set(now.devices.map(d=>d.id));
   if(c.chapter==='static-routing'){
@@ -107,7 +110,7 @@ export function chapterRestartDocument(c:ChapterCheckpoint,current:ProjectDocume
   }
   // Initial preparation may only introduce this chapter's devices. Never remove
   // an unknown baseline entity or adopt an unknown ID into the owned group.
-  for(const id of owned)if(beforeIds.has(id)&&c.chapter!=='first-connection'&&c.chapter!=='static-routing'&&c.chapter!=='alternative-paths')throw Error('checkpoint-invalid');
+  for(const id of owned)if(beforeIds.has(id)&&c.chapter!=='longest-prefix-match'&&c.chapter!=='first-connection'&&c.chapter!=='static-routing'&&c.chapter!=='alternative-paths')throw Error('checkpoint-invalid');
   const initialOwned=initial.devices.filter(d=>owned.has(d.id));
   const positions=new Map(now.devices.map((d,i)=>[d.id,i]));
   now.devices=now.devices.filter(d=>!owned.has(d.id));

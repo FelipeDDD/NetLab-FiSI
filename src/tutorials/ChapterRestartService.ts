@@ -109,7 +109,7 @@ export class ChapterRestartService {
     const result=await this.sessions.commitDocument({draftId,expected,document,control,guards});if(!result.ok)throw Error(result.error.code);
   }
   private async checkPlan(chapter:ChapterId,document:ProjectDocument,progress:MetaValue){
-    if(chapter==='first-connection')return;
+    if(chapter==='first-connection'||chapter==='longest-prefix-match')return;
     const prepared=prepareTopologyDocument(document.topology),p=progress as unknown as {pcC:string;baseFingerprint:string};
     try{
       if(chapter==='subnet-mask'&&await tutorialFingerprint(chapterOneSignature(prepared.network))!==p.baseFingerprint)throw Error('checkpoint-conflict');

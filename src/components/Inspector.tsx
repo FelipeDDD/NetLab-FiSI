@@ -28,6 +28,8 @@ import { InfoTooltip } from './InfoTooltip';
 import { usePendingForm } from '../persistence/usePendingForm';
 import {OpenDesktopButton} from '../browser/DesktopSurface';
 import { editorMessage, editorMessageText, type EditorMessage } from '../editorMessages';
+import { consumeInspectorRoutingRequest, observeInspectorRoutingRequest, showInspectorRouting } from '../inspectorRouting';
+import { StaticRouteEditor } from './StaticRouteEditor';
 
 function useInspectorDraft(identity: string, value: string, readCurrent: () => string | undefined,
   onCommit: (text: string) => string | null | void, preserveFormatting = false) {
@@ -362,6 +364,13 @@ function RouterInspector({ device, hidden }: { device: RouterDevice | FirewallDe
   const dedicatedFirewall = device instanceof FirewallDevice;
   const kind = dedicatedFirewall ? 'Firewall' : 'Router';
   const [active, setActive] = useState('general');
+  useEffect(() => {
+    const open = () => { if (consumeInspectorRoutingRequest(device.network, device.id)) setActive('routing'); };
+    open(); return observeInspectorRoutingRequest(open);
+  }, [device]);
+  useEffect(() => {
+    if (active === 'routing' && !hidden) return showInspectorRouting({ network: device.network, deviceId: device.id });
+  }, [active, hidden, device]);
   const [editTarget, setEditTarget] = useState<string | null>(null);
   const interfaces = useRef(new Map<string, HTMLDetailsElement>());
   useEffect(() => {
@@ -391,8 +400,8 @@ function RouterInspector({ device, hidden }: { device: RouterDevice | FirewallDe
           onChange={event => useStore.getState().setForwarding(device.id, event.target.checked)} />{t('navigation.enableForwarding')}</label>
         <label className="svc-toggle"><input type="checkbox" checked={device.ripEnabled}
           onChange={() => useStore.getState().toggleRip(device.id)} />{t('navigation.enableRip')}</label>
-        <h3>{t('navigation.tableRoutes')}</h3><RoutingTable device={device} />
-        <span className="hint">{t('navigation.tableStaticTerminal')} <code>ip route</code>.</span>
+        <StaticRouteEditor device={device} />
+        <span className="hint">{t('navigation.tableStaticTerminal',{command:'{command}'}).split('{command}').map((part,index)=><Fragment key={index}>{index>0&&<code>ip route</code>}{part}</Fragment>)}</span>
         <h3>{t('navigation.tableArp')}</h3><ArpTable device={device} onClear={() => useStore.getState().clearArpCache(device.id)} />
       </section> },
       { id: 'services', label: t('navigation.basicServices'), content: <>
