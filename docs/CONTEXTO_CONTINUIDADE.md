@@ -8,6 +8,22 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 
 ## Leia primeiro — estado atual em 13/11/2026
 
+**Continuidade para o desktop de casa (13/11/2026):** implementação consolidada
+no commit **`e12f40b`**, `Implement LPM chapter 6 part 1 and static route editor`,
+na branch `main`. O usuário autorizou posteriormente o push desse trabalho e
+desta atualização de contexto. As restrições “sem push” nas seções seguintes
+descrevem as autorizações anteriores. Nenhuma funcionalidade adicional foi
+iniciada; a Parte 2 do capítulo 6 aguarda uma nova instrução.
+
+Ao continuar em casa, conferir o Git status antes de sincronizar `main` e ler
+este contexto, `docs/lpm-tutorial.md` e `docs/static-route-editor.md`. A última
+validação completa passou com 3.123 testes/191 arquivos e 161 verificações
+Chromium, além de TypeScript/build/diff-check. Capturas e logs ficaram somente
+no notebook, ignorados pelo Git; os roteiros versionados permitem reproduzi-los.
+Projetos e progresso salvos no navegador continuam locais ao respectivo perfil,
+sem sincronização automática entre computadores pelo Git. Consultar `git log`
+e `git status` para o estado efetivo da publicação e do checkout.
+
 **Consolidação para commit local (13/11/2026):** auditados os 35 arquivos de
 código, testes, roteiros e documentação do capítulo 6/LPM Parte 1, editor de
 rotas, ajuda visual, indicadores atuais e correções de tradução. Base
