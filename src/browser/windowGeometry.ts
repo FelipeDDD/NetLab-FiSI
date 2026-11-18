@@ -14,8 +14,21 @@ export function constrainWindow(rect:WindowRect,area:WindowArea):WindowRect {
   return {width,height,x:clamp(rect.x,WINDOW_MARGIN,Math.max(WINDOW_MARGIN,area.width-WINDOW_MARGIN-width)),
     y:clamp(rect.y,WINDOW_MARGIN,Math.max(WINDOW_MARGIN,area.height-WINDOW_MARGIN-height))};
 }
-export function initialWindow(area:WindowArea,left=12):WindowRect {
-  return constrainWindow({...WINDOW_INITIAL,x:left,y:12},area);
+export function initialWindow(area: WindowArea, left = 12, obstacle?: WindowRect): WindowRect {
+  const initial = constrainWindow({ ...WINDOW_INITIAL, x: left, y: 12 }, area);
+  if (!obstacle) return initial;
+  const below = obstacle.y + obstacle.height + WINDOW_MARGIN;
+  const right = obstacle.x + obstacle.width + WINDOW_MARGIN;
+  const heightBelow = area.height - below - WINDOW_MARGIN;
+  const widthRight = area.width - right - WINDOW_MARGIN;
+  if (heightBelow >= WINDOW_MIN.height) {
+    return constrainWindow({ ...initial, y: below, height: Math.min(initial.height, heightBelow) }, area);
+  }
+  if (widthRight >= WINDOW_MIN.width) {
+    return constrainWindow({ ...initial, x: right, width: Math.min(initial.width, widthRight) }, area);
+  }
+  // Use the smallest normal height at the bottom to leave more of the panel visible.
+  return constrainWindow({ ...initial, y: below, height: WINDOW_MIN.height }, area);
 }
 /** CSS pixels in the app's central area; independent of React Flow pan/zoom. */
 export function changeWindow(rect:WindowRect,area:WindowArea,edge:ResizeEdge|'move',dx:number,dy:number):WindowRect {

@@ -1,3 +1,4 @@
+import type { RelaySettings, RemotePoolSettings } from './dhcpRelay';
 import { legacyPoolInterface } from './dhcpPools';
 import { normalizeWifiRange } from './wirelessRange';
 import { NetInterface } from './device';
@@ -45,6 +46,8 @@ export interface SavedDevice {
   firewall?: FirewallJSON;
   nameserver?: string | null;
   dhcpServerEnabled?: boolean;
+  dhcpRelays?: Record<string, RelaySettings>;
+  dhcpRemotePools?: Record<string, RemotePoolSettings>;
   dhcpPools?: Record<string, NonNullable<SavedDevice['dhcpServer']>>;
   dhcpServer?: {
     interfaceName?: string;
@@ -120,6 +123,8 @@ export function serializeNetwork(
       const fwj = firewallToJSON(ipd.fw);
       if (fwj) saved.firewall = fwj;
       if (ipd.manualNameserver !== null) saved.nameserver = ipToString(ipd.manualNameserver);
+      if(ipd.dhcpRelays.size)saved.dhcpRelays=Object.fromEntries(ipd.dhcpRelays);
+      if(ipd.dhcpRemotePools.size)saved.dhcpRemotePools=Object.fromEntries([...ipd.dhcpRemotePools].map(([id,{leases,...c}])=>[id,c]));
       if (!ipd.dhcpServerEnabled) saved.dhcpServerEnabled = false;
       if (ipd.dhcpServer) {
         saved.dhcpServer = {
@@ -209,6 +214,8 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
   }
   if (d instanceof IpDevice) {
     d.forwarding = sd.forwarding;
+    d.dhcpRelays=new Map(Object.entries(sd.dhcpRelays??{}));
+    d.dhcpRemotePools=new Map(Object.entries(sd.dhcpRemotePools??{}).map(([id,c])=>[id,{...c,leases:new Map()}]));
     d.dhcpServerEnabled = sd.dhcpServerEnabled ?? true;
     if (sd.services) {
       d.services.tcp = new Set(sd.services.tcp);

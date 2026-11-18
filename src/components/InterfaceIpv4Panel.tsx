@@ -1,3 +1,4 @@
+import { DhcpRelayPanel } from './DhcpRelayPanel';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { sim } from '../sim';
@@ -120,5 +121,6 @@ export function InterfaceIpv4Panel({ deviceId, ifaceName }: { deviceId: string; 
       <span className="hint" role="status">{t(iface.cancelDhcp ? 'navigation.ipv4DhcpPending' : iface.dhcpLease ? 'navigation.ipv4Lease' : 'navigation.ipv4NoLease')}{iface.ip && !iface.dhcpLease ? t('navigation.ipv4SavedValues') : ''}</span>
       <button className="btn" disabled={!!iface.cancelDhcp} onClick={() => useStore.getState().renewInterfaceDhcp(deviceId, ifaceName)}>{t('navigation.ipv4Renew')}</button>
     </>}
+    {device instanceof IpDevice && device.kind==='router' && <DhcpRelayPanel device={device} ifaceName={ifaceName} />}
   </div>;
 }

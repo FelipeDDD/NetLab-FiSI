@@ -42,7 +42,7 @@ const NAME_PREFIX: Record<DeviceKind, string> = {
   router: 'r',
   firewall: 'fw',
   server: 'srv',
-  ap: 'ap',
+  ap: 'ap', modem: 'Modem',
 };
 
 export class Network {
@@ -226,6 +226,12 @@ export class Network {
 
   inheritVisualArrival(original: FramePayload, forwarded: FramePayload, deviceId: string): void {
     this.recordVisualArrival(forwarded, deviceId, this.visualArrivals.get(original)?.get(deviceId));
+    if (original.kind === 'ipv4' && forwarded.kind === 'ipv4' && original.l4.kind === 'icmp' && forwarded.l4.kind === 'icmp') {
+      const source = original.l4.msg, target = forwarded.l4.msg;
+      const request = this.visualEchoRequests.get(source), origin = this.visualPingOrigins.get(source);
+      if (request !== undefined) this.visualEchoRequests.set(target, request);
+      if (origin) this.visualPingOrigins.set(target, origin);
+    }
   }
 
   associateVisualEchoReply(request: Ipv4Packet, reply: IcmpMessage, deviceId: string): void {
@@ -241,8 +247,10 @@ export class Network {
     if (request.type === 'echo-request') this.visualPingOrigins.set(request, { deviceId, icmpId: request.id, seq: request.seq, direction: 'request' });
   }
 
-  associateVisualArpRequest(request: ArpPayload, pendingPacket: Ipv4Packet | undefined): void {
-    if (pendingPacket?.l4.kind !== 'icmp') return;
+  associateVisualArpRequest(request: ArpPayload, pendingPacket: Ipv4Packet, deviceId: string): void {
+    // An ARP lookup triggered by forwarding starts after the queued IP packet arrives.
+    this.inheritVisualArrival(pendingPacket, request, deviceId);
+    if (pendingPacket.l4.kind !== 'icmp') return;
     const origin = this.visualPingOrigins.get(pendingPacket.l4.msg);
     if (origin) this.visualArpOrigins.set(request, origin);
   }

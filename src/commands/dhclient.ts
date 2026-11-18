@@ -91,6 +91,7 @@ export function runDhclient(
       device.sendDhcpClient(iface, {
         kind: 'dhcp',
         op: 'request',
+        serverIp: app.serverIp,
         xid,
         clientMac: iface.mac,
         yourIp: app.yourIp,

@@ -5,6 +5,7 @@ import type { Network } from '../engine/network';
 import { IpDevice } from '../engine/ipdevice';
 import { cidrToString, ipToString, networkOf, parseCidr, parseIp, type U32 } from '../engine/ip';
 import type { Check, Objective } from './types';
+import { checkNatHttp } from './natHttpCheck';
 
 export interface CheckResult {
   id: string;
@@ -41,6 +42,7 @@ function runOne(net: Network, check: Check, onDone: (pass: boolean, detail: stri
   const done = (pass: boolean, detail: string) => { if (isActive()) onDone(pass, detail); };
   const find = (reference: string) => findDevice(net, reference, check.resolveBy);
   switch (check.type) {
+    case 'nat-http': return checkNatHttp(net, check, find, done, isActive);
     case 'iface-ip': {
       const d = find(check.device);
       const iface = d?.getInterface(check.iface);

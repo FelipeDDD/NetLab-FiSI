@@ -1,3 +1,4 @@
+import { receiveRelayedDhcp, validRemotePool, type RelaySettings, type RemotePool } from './dhcpRelay';
 import { Device, NetInterface } from './device';
 import { legacyPoolInterface, validateDhcpPool } from './dhcpPools';
 import type { ScheduledEvent } from './scheduler';
@@ -15,7 +16,7 @@ import type {
 } from './types';
 import { BROADCAST_IP, BROADCAST_MAC, ipToString, networkOf, type U32 } from './ip';
 import { FirewallModel, type EvalResult, type FilterHook } from './firewall';
-import { ConnTrack, tupleOf } from './conntrack';
+import { ConnTrack, tupleOf, rewriteTo } from './conntrack';
 import { filterRuleText } from './firewall-fmt';
 
 export const DEFAULT_TTL = 64;
@@ -40,10 +41,10 @@ export type IcmpEvent =
   | { type: 'send-error'; seq: number | null; message: string };
 
 export type SocketResult = 'open' | 'refused' | 'timeout' | 'unreachable';
-export interface SocketControl { cancel?: () => void }
+export interface SocketControl { cancel?: () => void; localPort?: number }
 
 export type TcpSessionEvent =
-  | { type: 'open' }
+  | { type: 'open'; visualCause: Ipv4Packet }
   | { type: 'refused' }
   | { type: 'unreachable' }
   | { type: 'data'; app: AppData };
@@ -182,6 +183,8 @@ export abstract class IpDevice extends Device {
   }
   set nameserver(value: U32 | null) { this.manualNameserver = value; }
   dhcpServer: DhcpServerConfig | null = null;
+  dhcpRelays = new Map<string, RelaySettings>();
+  dhcpRemotePools = new Map<string, RemotePool>();
   dhcpPools = new Map<string, DhcpServerConfig>();
   // Independent of each pool's configuration and of physical interface state.
   dhcpServerEnabled = true;
@@ -197,7 +200,7 @@ export abstract class IpDevice extends Device {
   // Effective availability. Unbound/shadowed legacy pools
   // and invalid configurations cannot serve requests and must not advertise UDP 67.
   get dhcpServiceEnabled():boolean {
-    return this.dhcpServerEnabled && this.configuredDhcpPools().some(([name, cfg]) => cfg.enabled && !validateDhcpPool(this, name, cfg));
+    return this.dhcpServerEnabled && (this.configuredDhcpPools().some(([name, cfg]) => cfg.enabled && !validateDhcpPool(this, name, cfg)) || [...this.dhcpRemotePools.values()].some(c=>c.enabled&&validRemotePool(c)));
   }
   dnsServer: DnsServerConfig | null = null;
   httpServer: HttpServerConfig | null = null;
@@ -444,7 +447,7 @@ export abstract class IpDevice extends Device {
     return this.sendL4(dst, { kind: 'icmp', msg }, opts);
   }
 
-  sendL4(dst: U32, l4: L4, opts: { ttl?: number; srcOverride?: U32 } = {}): string | null {
+  sendL4(dst: U32, l4: L4, opts: { ttl?: number; srcOverride?: U32; visualCause?: Ipv4Packet } = {}): string | null {
     if (this.hasIp(dst)) {
       // Loopback-style delivery to our own address skips wire and firewall.
       const pkt: Ipv4Packet = {
@@ -465,6 +468,7 @@ export abstract class IpDevice extends Device {
     let pkt: Ipv4Packet = { kind: 'ipv4', src, dst, ttl: opts.ttl ?? DEFAULT_TTL, l4 };
 
     const now = this.network.now;
+    this.ct.invalidateMasquerade(name => this.getInterface(name)?.ip?.addr);
     const proc = this.ct.process(pkt, now);
     pkt = proc.pkt;
     const res = this.fw.evaluate('output', pkt, { oif: route.ifaceName, ctState: proc.state });
@@ -474,10 +478,19 @@ export abstract class IpDevice extends Device {
     if (proc.dir === 'none' && proc.state === 'new') {
       const origTuple = tupleOf(pkt);
       const nr = this.fw.evalNat('postrouting', pkt, { oif: route.ifaceName, ctState: 'new' });
+      if (nr?.action.type === 'masquerade' && !iface.ip) return 'Network is unreachable';
       if (nr) pkt = this.applySnat(pkt, nr.action, iface);
       const trans = tupleOf(pkt);
-      if (origTuple && trans) this.ct.confirm(origTuple, trans, now);
+      if (origTuple && trans) {
+        const mapping = this.ct.confirm(origTuple, trans, now, nr?.action.type === 'masquerade' ? { iface: iface.name, address: iface.ip?.addr ?? 0 } : undefined);
+        if (!mapping) return 'NAT translation resources exhausted';
+        const previousPacket = pkt;
+        pkt = rewriteTo(pkt, mapping);
+        this.network.inheritVisualArrival(previousPacket, pkt, this.id);
+      }
     }
+    // A reply can be ready on the wire while the slower visual is still arriving.
+    if (opts.visualCause) this.network.inheritVisualArrival(opts.visualCause, pkt, this.id);
     this.routePacket(pkt, route);
     return null;
   }
@@ -627,7 +640,7 @@ export abstract class IpDevice extends Device {
           rst: false,
           fin: false,
           app: { kind: 'http-request', method: 'GET', path, host },
-        });
+        }, { visualCause: ev.visualCause });
       } else if (ev.type === 'data' && ev.app.kind === 'http-response') {
         finish({ ok: true, status: ev.app.status, reason: ev.app.reason, body: ev.app.body });
       } else if (ev.type === 'refused') {
@@ -637,6 +650,7 @@ export abstract class IpDevice extends Device {
       }
     });
     if (conn.error) return conn.error;
+    if (control) control.localPort = conn.srcPort;
     timeout = this.schedule(timeoutMs, () =>
       finish({ ok: false, error: connected ? 'empty' : 'timeout' }),
     );
@@ -695,6 +709,7 @@ export abstract class IpDevice extends Device {
     }
 
     const now = this.network.now;
+    this.ct.invalidateMasquerade(name => this.getInterface(name)?.ip?.addr);
     const proc = this.ct.process(pktIn, now);
     let pkt = proc.pkt;
     const ctState = proc.state;
@@ -716,10 +731,11 @@ export abstract class IpDevice extends Device {
       }
       if (origTuple) {
         const t = tupleOf(pkt);
-        if (t) this.ct.confirm(origTuple, t, now);
+        if (t && !this.ct.confirm(origTuple, t, now)) return;
       }
       this.network.inheritVisualArrival(pktIn, pkt, this.id);
-      this.deliverLocal(pkt);
+      if (pkt.l4.kind === 'udp' && pkt.l4.app?.kind === 'dhcp') receiveRelayedDhcp(this, pkt, iif);
+      else this.deliverLocal(pkt);
       return;
     }
 
@@ -745,9 +761,16 @@ export abstract class IpDevice extends Device {
     }
     if (proc.dir === 'none' && ctState === 'new') {
       const nr = this.fw.evalNat('postrouting', pkt, { iif, oif: route.ifaceName, ctState });
+      if (nr?.action.type === 'masquerade' && !this.getInterface(route.ifaceName)?.ip) return;
       if (nr) pkt = this.applySnat(pkt, nr.action, this.getInterface(route.ifaceName)!);
       const trans = tupleOf(pkt);
-      if (origTuple && trans) this.ct.confirm(origTuple, trans, now);
+      if (origTuple && trans) {
+        const mapping = this.ct.confirm(origTuple, trans, now, nr?.action.type === 'masquerade' ? { iface: route.ifaceName, address: this.getInterface(route.ifaceName)?.ip?.addr ?? 0 } : undefined);
+        if (!mapping) return;
+        const previousPacket = pkt;
+        pkt = rewriteTo(pkt, mapping);
+        this.network.inheritVisualArrival(previousPacket, pkt, this.id);
+      }
     }
     this.network.inheritVisualArrival(pktIn, pkt, this.id);
     this.routePacket(pkt, route);
@@ -757,7 +780,7 @@ export abstract class IpDevice extends Device {
     const l4 = pkt.l4;
     if (l4.kind !== 'udp' || !l4.app) return;
     if (l4.app.kind === 'dhcp') {
-      if (l4.dstPort === 67) this.handleDhcpServer(l4.app, iif);
+      if (l4.dstPort === 67) { receiveRelayedDhcp(this,pkt,iif); if(!(l4.app.giaddr??0))this.handleDhcpServer(l4.app, iif); }
       else if (l4.dstPort === 68) for (const h of [...this.dhcpListeners]) h(l4.app);
       return;
     }
@@ -1013,7 +1036,7 @@ export abstract class IpDevice extends Device {
       kind: 'arp', op: 'request', senderIp: iface.ip.addr, senderMac: iface.mac,
       targetIp, targetMac: null,
     };
-    this.network.associateVisualArpRequest(request, pendingPacket);
+    if (pendingPacket) this.network.associateVisualArpRequest(request, pendingPacket, this.id);
     iface.send({
       srcMac: iface.mac,
       dstMac: BROADCAST_MAC,
@@ -1165,7 +1188,7 @@ export abstract class IpDevice extends Device {
           fin: false,
           ...flags,
         },
-        { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined },
+        { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined, visualCause: pkt },
       );
     };
 
@@ -1182,7 +1205,7 @@ export abstract class IpDevice extends Device {
     }
     if (seg.syn && seg.ack) {
       reply({ ack: true });
-      this.tcpSessions.get(sessionKey)?.({ type: 'open' });
+      this.tcpSessions.get(sessionKey)?.({ type: 'open', visualCause: pkt });
       return;
     }
     if (seg.rst) {
@@ -1210,7 +1233,7 @@ export abstract class IpDevice extends Device {
           app: { kind: 'http-response', status: found ? 200 : 404, reason: found ? 'OK' : 'Not Found',
             body: found ? this.httpServer.body : '<h1>404 Not Found</h1><p>This simulated server provides / and /index.html.</p>' },
         },
-        { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined },
+        { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined, visualCause: pkt },
       );
     }
     // Data to a generic open port (services/nc) is accepted silently.

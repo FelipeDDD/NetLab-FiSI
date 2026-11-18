@@ -21,6 +21,10 @@ export default defineConfig({
     host: 'localhost',
     port: 5173,
     strictPort: true,
+    watch: {
+      // Local review artifacts and logs are not inputs to the application.
+      ignored: ['**/.playwright-mcp/**', '**/logs/**'],
+    },
   },
   build: {
     rollupOptions: {

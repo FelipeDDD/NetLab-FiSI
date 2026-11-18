@@ -456,6 +456,14 @@ try {
     await runStaticRoutingReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_PROGRESSIVE_NAT_REVIEW === '1') {
+    const { runProgressiveNatPatReview } = await import('./progressive-nat-pat-review.mjs');
+    await runProgressiveNatPatReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, report });
+    await prepare(pageOne);
+  }
+  if(process.env.NETLAB_SERVER_PRESETS_REVIEW==='1'){
+    const {runServerPresetsReview}=await import('./server-presets-review.mjs');await runServerPresetsReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});await prepare(pageOne);
+  }
   if(process.env.NETLAB_ROUTE_EDITOR_REVIEW==='1'){
     const {runLpmReview}=await import('./static-route-editor-review.mjs');await runLpmReview({page:pageOne,url:new URL('/__workspace_ui_test__',url).href,root,report});await prepare(pageOne);
   }

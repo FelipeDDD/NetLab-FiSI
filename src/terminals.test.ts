@@ -3789,7 +3789,7 @@ describe('Router global DHCP service shared by Inspector and terminal',()=>{
     const router=routerWithPools(),session=open(router),store=useStore.getState();
     input(session,'systemctl stop kea-dhcp4-server.service\r');expect(router.dhcpServerEnabled).toBe(false);
     input(session,'systemctl status kea-dhcp4-server\r');expect(output(session)).toContain('inactive (dead)');
-    expect(output(session)).toContain('no DHCP relay');
+    expect(output(session)).toContain('DHCP relay is configured independently');
     store.setDhcpServerEnabled(router.id,true);expect(router.dhcpServiceEnabled).toBe(true);
     expect([...router.dhcpPools.values()].map(p=>p.enabled)).toEqual([true,true,false]);
     input(session,'help\r');expect(output(session)).toContain('Router shell: global DHCPv4 server only');

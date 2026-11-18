@@ -5,9 +5,9 @@ import type { ScheduledEvent } from './scheduler';
 import type { InterfaceIpv4, Ipv4Mode } from './ipv4Config';
 import { wirelessError } from './wirelessRange';
 
-export type DeviceKind = 'host' | 'notebook' | 'smartphone' | 'switch' | 'router' | 'firewall' | 'server' | 'ap';
+export type DeviceKind = 'host' | 'notebook' | 'smartphone' | 'switch' | 'router' | 'firewall' | 'server' | 'ap' | 'modem';
 export const isClientKind = (kind: string): boolean => kind === 'host' || kind === 'notebook' || kind === 'smartphone';
-export const hasTerminalKind = (kind: string): boolean => kind !== 'smartphone' && kind !== 'ap' && kind !== 'switch';
+export const hasTerminalKind = (kind: string): boolean => kind !== 'smartphone' && kind !== 'ap' && kind !== 'switch' && kind !== 'modem';
 
 export class NetInterface {
   medium: 'ethernet' | 'wireless' = 'ethernet';

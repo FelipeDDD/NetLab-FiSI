@@ -24,9 +24,11 @@ import {DesktopSurface} from './browser/DesktopSurface';
 import { LearningHelpProvider } from './components/LearningHelp';
 import { FloatingReferencesProvider } from './components/FloatingCommandReferences';
 import { GuidedTutorialPanel } from './tutorials/TutorialUI';
+import { PROGRESSIVE_NAT_PAT_ID } from './labs/progressiveNatPat';
 
 export default function App() {
   const workspace = useWorkspaceUI();
+  const progressiveNat = useStore(s => s.lab?.id === PROGRESSIVE_NAT_PAT_ID);
   const [packetLayout, setPacketLayout] = useState(loadPacketInspector);
   const changePacketLayout = (value: PacketInspectorPreference, persist = true) => { setPacketLayout(value); if (persist) savePacketInspector(value); };
   const [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 1280 : window.innerWidth);
@@ -56,7 +58,7 @@ export default function App() {
     <ReactFlowProvider>
       <FloatingReferencesProvider>
       <LearningHelpProvider>
-      {workspace && <WorkspaceViewport />}
+      {(workspace || progressiveNat) && <WorkspaceViewport />}
       <div className={`app${hasTerminals ? ' with-dock' : ''}${workspace ? ' workspace-enabled' : ''}`} data-inspector-layout={inspectorLayout.layout}
         data-panel-priority={panelPriority}
         onPointerDownCapture={event => prioritizePanel(event.target)}
@@ -80,7 +82,7 @@ export default function App() {
           style={{ '--packet-panel-width': `${geometry.width}px`, '--analysis-device-width': `${geometry.deviceWidth}px` } as React.CSSProperties}>
           <Palette compact={workspaceCompact} />
           <div className="canvas" ref={editor} tabIndex={-1} role="region" aria-label="Topology editor">
-            <Flow fitOnInit={!workspace} />
+            <Flow fitOnInit={!workspace && !progressiveNat} />
             <LabPanel />
             <ExercisePanel />
             <GuidedTutorialPanel />

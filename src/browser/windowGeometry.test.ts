@@ -7,6 +7,20 @@ import type {Host} from '../engine/ipdevice';
 
 afterEach(()=>useDesktop.getState().close());
 const area={width:1440,height:800};
+it('places a desktop below the tutorial when possible, then beside it, and keeps compact windows reachable', () => {
+  const panel = { x: 180, y: 12, width: 360, height: 280 };
+  const below = initialWindow(area, 180, panel);
+  expect(below).toEqual({ x: 180, y: 300, width: 600, height: 420 });
+  const short = { width: 1024, height: 505 };
+  const beside = initialWindow(short, 180, panel);
+  expect(beside.x).toBe(548);
+  expect(beside.width).toBe(468);
+  const compact = { width: 480, height: 490 };
+  const fallback = initialWindow(compact, 180, panel);
+  expect(fallback).toEqual(constrainWindow(fallback, compact));
+  expect(fallback.height).toBe(280);
+  expect(fallback.y + fallback.height).toBe(compact.height - 8);
+});
 it('starts at 600 × 420 and respects small containers without changing preferred dimensions',()=>{
   const preferred=initialWindow(area,228);expect(preferred).toEqual({x:228,y:12,width:600,height:420});
   const mobile=constrainWindow(preferred,{width:330,height:350});

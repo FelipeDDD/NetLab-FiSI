@@ -15,6 +15,8 @@ export function dhcpSettings(device: IpDevice): DhcpSettings | null {
 export const sortedDnsRecords = (records: Iterable<[string, number]>): DnsRecords =>
   [...new Map(records)].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([name, addr]) => [name, addr]);
 const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const dhcpSignature = (value: unknown) => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
+  ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 
 export function applyAccessVlan(device: SwitchDevice, port: string, vlan: number): void {
   if (device.vlanOf(port) === vlan) return;
@@ -37,7 +39,7 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
     if (!(device instanceof IpDevice) || device.dhcpServerEnabled !== operation[from]) return false;
     device.dhcpServerEnabled = operation[to];
   } else if (operation.type === 'set-dhcp-configuration') {
-    if (!(device instanceof IpDevice) || !sameValue(dhcpConfiguration(device),operation[from])) return false;
+    if (!(device instanceof IpDevice) || dhcpSignature(dhcpConfiguration(device)) !== dhcpSignature(operation[from])) return false;
     applyDhcpConfiguration(device,operation[to]);
   } else if (operation.type === 'enable-wireless') {
     if (!(device instanceof Host)) return false;

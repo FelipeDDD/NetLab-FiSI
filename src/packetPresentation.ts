@@ -43,7 +43,7 @@ function applicationFields(app: AppData): PacketFields {
     case 'dhcp': return {
       Operation: app.op, 'Transaction ID': app.xid, 'Client MAC': app.clientMac,
       'Offered IP': address(app.yourIp), Prefix: app.prefix, Router: address(app.router),
-      DNS: address(app.dns), 'Server IP': address(app.serverIp),
+      DNS: address(app.dns), 'Server IP': address(app.serverIp),...(app.giaddr?{giaddr:address(app.giaddr),hops:app.hops??0}:{}),
     };
     case 'dns-query': return { 'Query ID': app.qid, Name: app.qname };
     case 'dns-answer': return { 'Query ID': app.qid, Name: app.qname, Answer: app.addr === null ? 'NXDOMAIN' : ipToString(app.addr) };

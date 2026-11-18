@@ -1,8 +1,9 @@
+import { type RelaySettings, type RemotePoolSettings } from './dhcpRelay';
 import type { IpDevice, DhcpServerConfig } from './ipdevice';
 import type { NetInterface } from './device';
 import { broadcastOf, networkOf } from './ip';
 export type PoolSettings = Omit<DhcpServerConfig, 'leases'>;
-export type DhcpConfiguration = { legacy: PoolSettings | null; pools: Record<string, PoolSettings> };
+export type DhcpConfiguration = { legacy: PoolSettings | null; pools: Record<string, PoolSettings>; relays?: Record<string,RelaySettings>; remote?: Record<string,RemotePoolSettings> };
 export const poolSettings = (c: DhcpServerConfig): PoolSettings => ({enabled:c.enabled,rangeStart:c.rangeStart,rangeEnd:c.rangeEnd,router:c.router,dns:c.dns,...(c.interfaceName ? {interfaceName:c.interfaceName} : {})});
 export const poolFits = (i: NetInterface, c: PoolSettings) => !!i.ip && networkOf(c.rangeStart,i.ip.prefix) === networkOf(i.ip.addr,i.ip.prefix) && networkOf(c.rangeEnd,i.ip.prefix) === networkOf(i.ip.addr,i.ip.prefix);
 export function legacyPoolInterface(d: IpDevice): string | null {
@@ -12,13 +13,17 @@ export function legacyPoolInterface(d: IpDevice): string | null {
   return matches.length===1 ? matches[0].name : null;
 }
 export function dhcpConfiguration(d: IpDevice): DhcpConfiguration {
-  return {legacy:d.dhcpServer ? poolSettings(d.dhcpServer) : null,pools:Object.fromEntries([...d.dhcpPools].map(([n,c])=>[n,poolSettings(c)]))};
+  return {...(d.dhcpRelays.size?{relays:Object.fromEntries(d.dhcpRelays)}:{}),...(d.dhcpRemotePools.size?{remote:Object.fromEntries([...d.dhcpRemotePools].map(([id,{leases,...c}])=>[id,c]))}:{}),legacy:d.dhcpServer ? poolSettings(d.dhcpServer) : null,pools:Object.fromEntries([...d.dhcpPools].map(([n,c])=>[n,poolSettings(c)]))};
 }
 export function applyDhcpConfiguration(d: IpDevice, next: DhcpConfiguration): void {
   const update=(old:DhcpServerConfig|undefined|null,c:PoolSettings) => {
     const target=old ?? {...c,leases:new Map<string,number>()};
     delete target.interfaceName; Object.assign(target,c); return target;
   };
+  d.dhcpRelays=new Map(Object.entries(next.relays??{}));
+  const remote=next.remote??{};
+  for(const id of d.dhcpRemotePools.keys())if(!remote[id])d.dhcpRemotePools.delete(id);
+  for(const [id,c]of Object.entries(remote))d.dhcpRemotePools.set(id,Object.assign(d.dhcpRemotePools.get(id)??{leases:new Map()},c));
   d.dhcpServer=next.legacy ? update(d.dhcpServer,next.legacy) : null;
   for(const name of d.dhcpPools.keys()) if(!next.pools[name]) d.dhcpPools.delete(name);
   for(const [name,c] of Object.entries(next.pools)) d.dhcpPools.set(name,update(d.dhcpPools.get(name),c));
@@ -42,6 +47,7 @@ export function validateDhcpPool(d:IpDevice,name:string,c:PoolSettings,others: [
     const sharedSubnet=oi?.ip && networkOf(addr,Math.min(prefix,oi.ip.prefix))===networkOf(oi.ip.addr,Math.min(prefix,oi.ip.prefix));
     if(overlap||sharedSubnet) return `Konflikt mit ${other}: aktive DHCP-Pools müssen getrennte Subnetze verwenden.`;
   }
+  if(c.enabled && [...d.dhcpRemotePools.values()].some(p=>p.enabled&&c.rangeStart<=p.rangeEnd&&p.rangeStart<=c.rangeEnd)) return 'Konflikt mit Remote: aktive DHCP-Pools müssen getrennte Subnetze verwenden.';
   return null;
 }
 export function defaultDhcpPool(iface:NetInterface):PoolSettings {

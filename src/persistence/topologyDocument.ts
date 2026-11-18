@@ -53,6 +53,8 @@ function validateLabMetadata(data: AppearanceSaveFile): void {
     if (!object(lab) || !['id', 'title', 'blurb'].every(k => typeof lab[k] === 'string') || !Array.isArray(lab.steps) || !lab.steps.length) fail();
     for (const step of lab.steps) {
       if (!object(step) || typeof step.title !== 'string' || typeof step.body !== 'string' || !Array.isArray(step.objectives)) fail();
+      if (step.hints !== undefined && (!Array.isArray(step.hints) || !step.hints.every(hint => typeof hint === 'string'))) fail();
+      if (step.feedback !== undefined && typeof step.feedback !== 'string') fail();
       for (const objective of step.objectives) {
         if (!object(objective) || typeof objective.id !== 'string' || typeof objective.label !== 'string' || !object(objective.check)) fail();
         const check = objective.check as unknown as Record<string, unknown>;
@@ -60,10 +62,15 @@ function validateLabMetadata(data: AppearanceSaveFile): void {
           'iface-ip': ['device', 'iface'], 'default-route': ['device'], forwarding: ['device'],
           'fw-policy': ['device', 'hook', 'policy'], ping: ['from', 'expect'], tcp: ['from', 'expect'],
           dns: ['from', 'name', 'expect'], http: ['from', 'url', 'expect'],
+          'nat-http': ['from', 'router', 'toDevice', 'outIface', 'expect', 'contains'],
         };
         if (typeof check.type !== 'string' || !Object.hasOwn(fields, check.type) || !fields[check.type].every(k => typeof check[k] === 'string')) fail();
         if (check.type === 'forwarding' && typeof check.expect !== 'boolean') fail();
         if (check.type === 'tcp' && (!Number.isInteger(check.port) || Number(check.port) < 1 || Number(check.port) > 65535)) fail();
+        if (check.type === 'nat-http' && (
+          (check.expect !== 'translated' && check.expect !== 'untranslated') ||
+          (check.peer !== undefined && (typeof check.peer !== 'string' || check.peer === check.from || check.expect !== 'translated'))
+        )) fail();
       }
       if (step.quiz !== undefined && (!Array.isArray(step.quiz) || step.quiz.some(q => !object(q) || typeof q.q !== 'string' || !Array.isArray(q.options) || !q.options.every((o: unknown) => typeof o === 'string') || !Number.isInteger(q.answer) || q.answer < 0 || q.answer >= q.options.length))) fail();
     }

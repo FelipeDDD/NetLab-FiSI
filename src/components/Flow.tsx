@@ -1,3 +1,4 @@
+import { isServerPreset } from '../serverPresets';
 import { hasTerminalKind } from '../engine/device';
 import { WifiCoverage } from './WifiCoverage';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -40,7 +41,7 @@ import { canvasDropTarget } from '../canvasDropTarget';
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { floating: FloatingEdge };
 
-const DROPPABLE_KINDS = new Set(['host', 'notebook', 'smartphone', 'switch', 'router', 'firewall', 'server', 'ap']);
+const DROPPABLE_KINDS = new Set(['host', 'notebook', 'smartphone', 'switch', 'router', 'firewall', 'server', 'ap', 'modem']);
 
 // Keep the prop identity stable: React Flow queues imperative fitView calls.
 // A fresh default-options object on every render can overwrite their limits.
@@ -188,7 +189,9 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       const kind = e.dataTransfer.getData('application/netsim') as DeviceKind | '';
       if (kind === '' || !DROPPABLE_KINDS.has(kind)) return;
       const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      addDeviceAt(kind, { x: pos.x - 48, y: pos.y - 39 });
+      const preset=e.dataTransfer.getData('application/netsim-server-preset');
+      if(preset&&(kind!=='server'||!isServerPreset(preset)))return;
+      addDeviceAt(kind, { x: pos.x - 48, y: pos.y - 39 },isServerPreset(preset)?preset:undefined);
     },
     [screenToFlowPosition, addDeviceAt],
   );

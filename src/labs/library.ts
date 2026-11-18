@@ -4,6 +4,7 @@
 import type { SaveFile, SavedDevice, SavedLink } from '../engine/serialize';
 import type { DeviceKind } from '../engine/device';
 import { CUSTOM_SWITCH_PORTS } from '../engine/switch';
+import { progressiveNatPat } from './progressiveNatPat';
 
 function dev(
   kind: DeviceKind,
@@ -544,4 +545,4 @@ const lab5: SaveFile = {
   },
 };
 
-export const LABS: SaveFile[] = [lab1, lab2, lab3, lab4, lab5];
+export const LABS: SaveFile[] = [lab1, lab2, lab3, lab4, lab5, progressiveNatPat];

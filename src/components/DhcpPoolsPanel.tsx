@@ -1,3 +1,4 @@
+import { RemoteDhcpPoolsPanel } from './DhcpRelayPanel';
 import { useTranslation } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { RouterDevice, type IpDevice } from '../engine/ipdevice';
@@ -64,5 +65,6 @@ export function DhcpPoolsPanel({device}:{device:IpDevice}) {
     </div>}
     {legacy&&!legacyPoolInterface(device)&&<p className="ap-note" role="status">{t('navigation.dhcpLegacyHint', { start: ipToString(legacy.rangeStart), end: ipToString(legacy.rangeEnd) })}</p>}
     {device.interfaces.map(iface=><DhcpPoolCard key={iface.name} device={device} iface={iface} />)}
+    <RemoteDhcpPoolsPanel device={device} />
   </section>;
 }

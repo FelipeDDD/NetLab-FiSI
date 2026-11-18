@@ -1,0 +1,159 @@
+import { describe, expect, it } from 'vitest';
+import type { Network } from '../engine/network';
+import { IpDevice } from '../engine/ipdevice';
+import { parseCidr, parseIp } from '../engine/ip';
+import { disposeNetwork } from '../engine/networkLifecycle';
+import { serializeNetwork } from '../engine/serialize';
+import { prepareTopologyDocument } from '../persistence/topologyDocument';
+import { runChecks, type CheckResult } from './checker';
+import { progressiveNatPat } from './progressiveNatPat';
+import { Shell } from '../commands/shell';
+import { requestPage, simulatedUrl, type BrowserResult } from '../browser/request';
+import { packetAnimationDuration, packetAnimationProgress, sequencePacketAnimation, type AnimatedTransfer } from '../packetAnimation';
+
+const lab = progressiveNatPat.lab!;
+const ip = (text: string) => parseIp(text)!;
+
+function check(net: Network, step: number) {
+  const results: Record<string, CheckResult> = {};
+  let finished = false;
+  runChecks(net, lab.steps[step].objectives, result => { results[result.id] = result; }, () => { finished = true; });
+  net.scheduler.advanceTo(net.now + 12_000);
+  expect(finished).toBe(true);
+  return results;
+}
+
+describe('progressive NAT/PAT Lab', () => {
+  it.each([0.25, 1])('shows the whole causal ARP, TCP and HTTP exchange at %s×', speed => {
+    const { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      const portions: Record<string, AnimatedTransfer[]> = {};
+      const arrival = (packet: AnimatedTransfer) => packet.visualStart + packet.visualDuration;
+      const duration = packetAnimationDuration(speed);
+      const shown = new Set<number>();
+      let pending: AnimatedTransfer[] = [], visualClock = 0;
+      network.onWireTransfer = (transfer, { frame }, trace) => {
+        const visual = sequencePacketAnimation(transfer, trace, pending, visualClock, duration);
+        pending.push(visual);
+        const payload = frame.payload;
+        const tcp = payload.kind === 'ipv4' && payload.l4.kind === 'tcp' ? payload.l4 : null;
+        const label = payload.kind === 'arp'
+          ? (transfer.linkId === 'edge-web' ? 'wan-' : 'lan-') + payload.op
+          : tcp?.app?.kind ?? (tcp?.syn ? (tcp.ack ? 'syn-ack' : 'syn') : 'ack');
+        (portions[label] ??= []).push(visual);
+      };
+      let result: BrowserResult | undefined;
+      requestPage(network.devices.get('PC1') as IpDevice, simulatedUrl('http://198.51.100.80')!, value => { result = value; });
+      // Advance both clocks like the Live renderer and prune expired animations.
+      while (visualClock < 20_000 && (!result || pending.length)) {
+        visualClock += 16;
+        network.scheduler.advanceTo(visualClock);
+        for (const packet of pending) if (packetAnimationProgress(packet, visualClock) !== null) shown.add(packet.id);
+        pending = pending.filter(packet => arrival(packet) > visualClock);
+      }
+      expect(result).toMatchObject({ kind: 'http', status: 200 });
+      expect(pending).toHaveLength(0);
+      const outbound = ['PC1>lan', 'lan>edge', 'edge>web'];
+      const inbound = ['web>edge', 'edge>lan', 'lan>PC1'];
+      const path = (packets: AnimatedTransfer[]) => packets.map(({ fromDeviceId, toDeviceId }) => fromDeviceId + '>' + toDeviceId);
+      for (const label of ['syn', 'ack', 'http-request']) expect(path(portions[label])).toEqual(outbound);
+      for (const label of ['syn-ack', 'http-response']) expect(path(portions[label])).toEqual(inbound);
+      expect(path(portions['lan-request'])).toEqual(outbound.slice(0, 2));
+      expect(path(portions['lan-reply'])).toEqual(inbound.slice(1));
+      expect(path(portions['wan-request'])).toEqual(outbound.slice(2));
+      expect(path(portions['wan-reply'])).toEqual(inbound.slice(0, 1));
+      const transfers = Object.values(portions).flat();
+      expect(transfers.every(packet => packet.end - packet.start === 80 && packet.visualDuration === duration)).toBe(true);
+      expect(shown).toEqual(new Set(transfers.map(packet => packet.id)));
+
+      const after = (child: AnimatedTransfer, parent: AnimatedTransfer) => {
+        expect(child.start).toBeGreaterThanOrEqual(parent.end);
+        expect(child.visualStart, `transfer ${child.id} before visual arrival of ${parent.id}`).toBeGreaterThanOrEqual(arrival(parent));
+        expect(packetAnimationProgress(child, arrival(parent) - 1)).toBeNull();
+        expect(packetAnimationProgress(child, child.visualStart)).toBe(0);
+      };
+      for (const packets of Object.values(portions)) {
+        for (let i = 1; i < packets.length; i++) after(packets[i], packets[i - 1]);
+      }
+      after(portions['lan-reply'][0], portions['lan-request'].at(-1)!);
+      after(portions.syn[0], portions['lan-reply'].at(-1)!);
+      after(portions['wan-request'][0], portions.syn[1]);
+      after(portions['wan-reply'][0], portions['wan-request'][0]);
+      after(portions.syn[2], portions['wan-reply'][0]);
+      after(portions['syn-ack'][0], portions.syn[2]);
+      after(portions.ack[0], portions['syn-ack'].at(-1)!);
+      after(portions['http-request'][0], portions['syn-ack'].at(-1)!);
+      after(portions['http-response'][0], portions['http-request'].at(-1)!);
+    } finally { disposeNetwork(network); }
+  });
+  it('keeps one network, observes the missing return path, and restores progress before a real overlapping PAT test', () => {
+    let { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      expect(network.devices.get('PC2')?.getInterface('eth0')?.link).toBeNull();
+      const first = check(network, 0);
+      expect(first['nat-first-http'].pass).toBe(true);
+      expect(check(network, 1)['nat-before-local'].pass).toBe(false);
+
+      network.connect('PC2', 'lan');
+      const outsideSources: number[] = [];
+      network.onWireTransfer = (transfer, { frame }) => {
+        const packet = frame.payload;
+        if (transfer.fromDeviceId === 'edge' && transfer.toDeviceId === 'web' &&
+            packet.kind === 'ipv4' && packet.l4.kind === 'tcp' && packet.l4.syn) outsideSources.push(packet.src);
+      };
+      const second = check(network, 1);
+      expect(Object.values(second).map(r => r.pass)).toEqual([true, true, true]);
+      expect(outsideSources).toEqual([ip('198.51.100.2'), ip('192.168.60.11')]);
+      expect(check(network, 2)['nat-after-pair'].pass).toBe(false);
+
+      const topology = serializeNetwork(network, Object.fromEntries(progressiveNatPat.devices.map(d => [d.id, d])));
+      topology.lab = lab;
+      topology.labProgress = { step: 2, results: { ...first, ...second }, quiz: {} };
+      const prepared = prepareTopologyDocument(JSON.stringify(topology));
+      disposeNetwork(network);
+      network = prepared.network;
+      expect(prepared.document.labProgress).toEqual(topology.labProgress);
+      const router = network.devices.get('edge') as IpDevice;
+      new Shell(router).exec('iptables -t nat -A POSTROUTING -s 192.168.60.11/32 -o eth1 -j MASQUERADE', { write: () => {} }, () => {});
+      const exchange: { role: string; port: number; address: number }[] = [];
+      const animations: AnimatedTransfer[] = [];
+      network.onWireTransfer = (transfer, { frame }, trace) => {
+        animations.push(sequencePacketAnimation(transfer, trace, animations, transfer.start, packetAnimationDuration(0.25)));
+        const p = frame.payload;
+        if (p.kind !== 'ipv4' || p.l4.kind !== 'tcp' || !p.l4.syn) return;
+        if (transfer.fromDeviceId === 'edge' && transfer.toDeviceId === 'web') {
+          exchange.push({ role: 'request', port: p.l4.srcPort, address: p.src });
+        } else if (transfer.fromDeviceId === 'web' && transfer.toDeviceId === 'edge') {
+          exchange.push({ role: 'reply', port: p.l4.dstPort, address: p.dst });
+        }
+      };
+      expect(Object.values(check(network, 2)).map(r => r.pass)).toEqual([true, true]);
+      const flows = router.ct.list(network.now).filter(e => e.orig.proto === 'tcp');
+      expect(flows.map(e => e.orig.srcPort)).toEqual([40000, 40000]);
+      expect(exchange.map(e => e.role)).toEqual(['request', 'request', 'reply', 'reply']);
+      expect(new Set(exchange.slice(0, 2).map(e => e.port)).size).toBe(2);
+      expect(exchange.every(e => e.address === ip('198.51.100.2'))).toBe(true);
+      const firstArp = ['PC1', 'PC2'].map(id => animations.find(p => p.fromDeviceId === id && p.kind === 'arp')!);
+      expect(firstArp.map(p => p.visualStart)).toEqual([0, 0]);
+
+      router.fw.nat.postrouting.rules.splice(1);
+      expect(check(network, 2)['nat-after-pair'].pass).toBe(false);
+    } finally { disposeNetwork(network); }
+  });
+
+  it('accepts equivalent SNAT but rejects ordinary routed HTTP as proof of NAT', () => {
+    const { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      network.connect('PC2', 'lan');
+      const router = network.devices.get('edge') as IpDevice, server = network.devices.get('web') as IpDevice;
+      const rules = router.fw.nat.postrouting.rules;
+      rules.length = 0;
+      server.addRoute(ip('192.168.60.0'), 24, ip('198.51.100.2'));
+      expect(check(network, 2)['nat-after-pair'].pass).toBe(false);
+      server.staticRoutes = [];
+      router.fw.addNatRule('postrouting', { srcNet: parseCidr('192.168.60.0/24')!, oif: 'eth1' },
+        { type: 'snat', addr: ip('198.51.100.2') });
+      expect(Object.values(check(network, 2)).map(r => r.pass)).toEqual([true, true]);
+    } finally { disposeNetwork(network); }
+  });
+});

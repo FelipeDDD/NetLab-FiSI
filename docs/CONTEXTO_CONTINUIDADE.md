@@ -1,12 +1,188 @@
 # NetLab-FiSI — Contexto para continuidade
 
-Atualizado em **13/11/2026**, para continuar entre notebook e desktop.
+Atualizado em **18/11/2026**, para continuar entre notebook e desktop.
 Este é o **arquivo único de continuidade**: atualizar este resumo nas próximas
 rodadas, sem criar cópias TXT ou documentos de contexto concorrentes.
 O código, os testes e o Git continuam sendo a fonte de verdade. As seções
 históricas abaixo registram decisões antigas e podem ter sido superadas.
 
-## Leia primeiro — estado atual em 13/11/2026
+## Leia primeiro — estado atual em 18/11/2026
+
+**Consolidação de 18/11/2026:** este conjunto reúne Server multifuncional,
+DHCP Relay, NAT/PAT, Modem Bridge, o laboratório de Internet simulada, o
+tutorial progressivo NAT/PAT e a redução do trabalho do watcher do Vite.
+As indicações “somente local” nas notas abaixo descrevem as entregas originais.
+O tutorial passou a abrir com enquadramento menor, dicas e janela do navegador
+ajustados. A 0,25×, a animação respeita a chegada visual que dispara o ARP
+externo, o handshake TCP e a resposta HTTP. O Scheduler continua com os
+tempos da simulação. A regressão percorre os 21 trechos a 0,25× e 1×.
+Validação antes do commit: 278 testes direcionados e build com TypeScript.
+O roteiro nativo do tutorial passou com 106 verificações. Logs, capturas,
+backups e outros artefatos locais ficam fora do commit.
+
+**Inicialização do Vite (somente local):** o servidor observava cerca de
+7.500 arquivos em `.playwright-mcp/` e `logs/` neste checkout. Em testes
+isolados com Node 24 e Chromium, ignorar esses diretórios no watcher reduziu
+a varredura fria de dependências de 12,5 s para 3,1 s e a reabertura do
+Workspace após reiniciar o servidor de 12,5 s para 3,1 s. A mensagem
+`ready` saiu em cerca de 0,7–0,8 s. O F5 com o servidor já aquecido
+levou cerca de 0,7–0,8 s e restaurou a tentativa NAT/PAT. A abertura
+do IndexedDB levou 17–260 ms, sem bloqueio. A porta/origem padrão e
+os dados locais foram preservados. Medições em cache e perfil descartáveis,
+com logs de diagnóstico em `.playwright-mcp/startup-*.log`.
+
+**Tutorial progressivo NAT/PAT (somente local):** Labs → Tutorial progressivo
+— NAT/PAT. Três etapas em PT-BR no mesmo plano: HTTP traduzido de PC1, conexão
+de PC2 e observação da falha de retorno, correção com HTTP simultâneo e ping
+local. PC2 começa preparado e desconectado. Dicas recolhíveis e explicações
+após verificar. Resultados das primeiras etapas ficam registrados para revisão.
+O verificador abre sockets novos e confere portas e tradução no Conntrack.
+Save/Load, JSON e F5 usam o contrato de Lab existente. Planejamento preservado
+em `docs/planning/tutorial-progressivo-nat-pat.md`; guia e roteiro em
+`docs/progressive-nat-pat.md`. Testes direcionados: 94 aprovados. Chromium
+isolado: 106 verificações aprovadas, incluindo o fluxo do Lab. Zero capturas.
+
+**Internet simulada, primeiro laboratório (somente local):** exemplo pronto no
+menu Labs, sem avaliação, em `src/labs/simulatedInternet.ts`. Dois clientes,
+Switch LAN, Router masquerade/default, Modem, Provider sem rota privada,
+Switch externo e Servers genéricos separados DNS `.53` e HTTP `.10` na rede
+`198.51.100.0/24`. Navegador: `http://www.example.test` ou IP direto.
+DNS do exemplo inclui `example.test` e `www.example.test`, ambos para `.10`,
+sem redirecionamento HTTP; testes cobrem os dois nomes nos dois PCs.
+Nenhuma Internet real ou novo protocolo/schema. Documento v1, fluxo normal de
+exemplos/planos. Testes reais cobrem dois clientes e oito falhas, inclusive DNS
+falhando sem impedir HTTP por IP. Guia em `docs/simulated-internet.md`.
+Preservados trabalhos anteriores; sem commit/push/deploy.
+Validação: 30 testes direcionados (9 do novo cenário), 106 verificações Chromium
+incluindo abertura/F5 e duas requisições reais do navegador, TypeScript/build e
+diff-check aprovados. Zero screenshots; aviso conhecido de chunk >500 kB.
+
+**Modem Bridge (16/11/2026, somente local):** novo kind `modem`, duas portas
+Ethernet simétricas `eth0`/`eth1`. Reutiliza `SwitchDevice` e o flood Ethernet,
+sem aprendizagem de MAC, configuração VLAN, expansão, terminal, IP ou serviços.
+Quadros atravessam sem alteração de MAC/payload/TTL; links e Scheduler normais.
+Paleta, Inspector somente físico DE/EN/PT-BR, ícone vetorial provisório e
+exportação de diagramas integrados. Documento v1 aceita novo kind, valida duas
+portas sem configuração IP/serviços e preserva arquivos anteriores. Criação,
+exclusão, Undo/Redo, JSON, Save/Load, autosave e F5 usam mecanismos existentes.
+Sem modem DSL/PPPoE/DOCSIS nem Internet automática. Configuração e arquitetura:
+`docs/modem-bridge.md`. DHCP Relay, Server e NAT/PAT locais preservados.
+Validação: **3.166 testes / 195 arquivos**, 128 testes direcionados e regressão
+adicional de exclusão/restauração aprovados; **124 verificações Chromium**,
+TypeScript/build/diff-check aprovados. Tráfego ARP/IPv4 real, HTTP/DNS com dois
+clientes por NAT/PAT, ambos os sentidos, cabo removido, DOWN, falta de rota,
+JSON/histórico e F5. Captura única revisada em
+`.playwright-mcp/reviews/server-presets/modem-bridge.png`; logs `modem-*`
+ignorados. Avisos conhecidos SSR e chunks >500 kB. Sem dados reais alterados,
+commit, push, merge, rebase ou deploy.
+
+**NAT/PAT (16/11/2026, somente local):** corrigidas colisões de TCP/UDP e IDs
+ICMP no conntrack existente. `confirm()` reserva tupla reversa exclusiva antes
+do envio, preserva porta livre ou remapeia deterministicamente; esgotamento
+não sobrescreve entradas. Respostas e erros ICMP suportados restauram endereços,
+portas/IDs e referência ao pacote original. Mantidas associações visuais dos
+pings quando o ID traduzido exige copiar mensagens. Remoção/expiração libera
+ambos os índices. Masquerade registra interface/IPv4 e invalida associações no
+próximo processamento após mudança/remoção do endereço WAN. Mudanças de regra
+NAT preservam fluxos existentes; regras novas afetam fluxos novos.
+Política por fluxo completo (dependente do destino), timeout didático uniforme
+de 120 s com limpeza por consulta/listagem. Sem conformidade integral às RFCs
+de NAT/TCP/UDP/ICMP. Não há modem ou Internet novos. Contratos, limites e
+referências em `docs/nat-pat.md`. Preservados DHCP Relay e Server multifuncional.
+Validação final: **3.160 testes / 194 arquivos**, incluindo 16 novos testes
+NAT/PAT e testes Chromium existentes; TypeScript, build e diff-check aprovados.
+Cenário real com dois PCs, Router NAT, provedor sem rota privada e Server;
+HTTP/DNS/ping simultâneos, erros ICMP, stateful/SNAT/DNAT, falta de NAT e retorno
+roteado, recursos esgotados, expiração e Save/Load. Avisos conhecidos SSR e
+chunks >500 kB. Logs `pat-*` ignorados; sem nova revisão visual específica.
+Sem commit, push, merge, rebase, deploy ou alterações em dados pessoais.
+
+**DHCP Relay implementado (16/11/2026, somente local):** substitui a auditoria
+incremental abaixo. `main`/`1c0c00a`, preservadas as alterações do Server
+multifuncional. Router tem Relay por interface (off por padrão), servidor IPv4;
+Server aceita pools remotos manuais, selecionados por giaddr. DORA percorre UDP
+67/68, rotas, ARP, links, firewall e Scheduler reais; sem entrega direta ao
+cliente nem encaminhamento de broadcasts genéricos. Respostas são correlacionadas
+com transação, servidor e interface originais; hops excessivo é descartado.
+Reservas impedem concessões duplicadas entre clientes concorrentes. HTTP/DNS
+independentes. Inspector DE/EN/PT-BR, campos opcionais netsim v1, sem novos stores.
+Configuração e Undo/Redo usam o histórico DHCP existente, com comparação por
+conteúdo sem depender da ordem dos campos JSON. F5 restaura configuração,
+não leases/negociações. Não houve migração ou acesso a dados reais.
+Limitações: um Relay por caminho, sem encadeamento, NAK/Decline ou renovação
+temporizada completa; não detecta IP estático ocupado em LAN remota por ARP.
+As sondas ARP dos pools locais continuam preservadas. Detalhes, arquivos,
+configuração manual e contratos: `docs/dhcp-relay.md`.
+Validação: **3.144 testes em 193 arquivos**, **123 verificações Chromium**,
+TypeScript, build e diff-check aprovados. Inclui DORA/retorno real, falhas,
+clientes simultâneos, duas LANs, HTTP/DNS, JSON, F5, Save/Load e Undo/Redo.
+Logs `.playwright-mcp/relay-*` ignorados. Uma captura representativa do roteiro
+Server; nenhuma matriz de imagens. Avisos conhecidos SSR e chunks >500 kB.
+Sem commit, push, merge, rebase, deploy ou mudanças em projetos pessoais.
+
+**Política de screenshots:** aplicar `docs/visual-validation.md`. Manter
+verificações funcionais de idiomas, temas e viewports; gerar normalmente 0–1
+captura representativa por mudança visual. Capturas extras são justificadas por
+investigação/comparação concreta, não por matriz padrão. Relatos históricos de
+capturas não são requisitos atuais; não enfraquecer testes para reduzir imagens.
+
+**Server multifuncional (16/11/2026, somente local):** paleta consolidada em
+uma única entrada Server; retirados os atalhos Web/DNS/DHCP. Novo Server
+continua sem serviços, IP ou pool automáticos. Inspector já oferecia seções
+independentes HTTP/DNS e DHCP por interface; reutilizadas sem redesign.
+Fábricas de presets e contratos internos preservados para compatibilidade e
+futura reutilização. Nenhum nome, configuração salva ou protocolo alterado.
+Documentação atual: `docs/server-presets.md`. Teste novo combina os três
+serviços no mesmo Server pelos enlaces reais, verifica independência entre
+toggles/instâncias, JSON e Undo/Redo. 42 testes direcionados aprovados;
+Chromium descartável aprovado com paleta única, toggles, F5, Save/Load,
+DE/EN/PT-BR, ambos os temas e 700/1440 px. Uma captura Graphite Dark em
+`.playwright-mcp/reviews/server-presets/multifunction-server.png`.
+Validação final: **3.131 testes / 192 arquivos**, **122 verificações Chromium**,
+TypeScript/build/diff-check aprovados. Removidos os três tooltips de presets
+sem uso nos três idiomas após o teste de contrato apontá-los. Avisos conhecidos
+SSR/useLayoutEffect e chunks >500 kB. Logs `server-consolidation-*` ignorados.
+Sem commit/push/merge/rebase/deploy.
+O registro dos presets abaixo descreve a rodada anterior, superada na paleta.
+
+**DHCP Relay — auditoria e proposta incremental (16/11/2026):** ainda **não
+implementado**. Branch `main`, HEAD `1c0c00a`, sem divergência da referência
+local `origin/main`; presets abaixo preservados integralmente. A auditoria
+confirmou que pools, prefixo das respostas e sondas ARP dependem da interface
+local do servidor; DHCP unicast, `giaddr` e `hops` ainda não são suportados.
+Um teste temporário com duas LANs comprovou ping roteado e DHCP local
+funcionais, rejeição de pool remoto e ausência de Offer entre sub-redes.
+Foi usada a alternativa expressa do pedido para propor implementação
+incremental em vez de substituir silenciosamente esse DHCP. Próximas rodadas:
+separar escopo/transporte dos pools; implementar Relay real; integrar Inspector,
+persistência e histórico. Contratos, decisões e cenário de aceitação em
+`docs/dhcp-relay.md`. Nenhuma alteração de engine, interface ou dados reais.
+Regressão completa: **3.130 testes / 192 arquivos**, incluindo os testes
+Chromium existentes da suíte, mais **1 teste isolado de auditoria**, todos
+aprovados; TypeScript, build e diff-check aprovados. Avisos: SSR/useLayoutEffect
+e chunks >500 kB, sem falhas. Logs temporários `.playwright-mcp/dhcp-relay-*`;
+nenhuma captura nova de Relay, pois não houve mudança visual. Não alegar DORA
+remoto, F5 ou Undo/Redo de Relay validados. Sem commit/push/merge/rebase/deploy.
+
+**Presets de servidor (16/11/2026, somente local):** checkout inicialmente
+limpo em `main`, HEAD `1c0c00a`, capítulo 6 e editor de rotas consolidados em
+`e12f40b`. Paleta agora oferece Web Server, DNS Server e DHCP Server além do
+Server genérico. Todos usam a classe/asset Server existente, nomes únicos e
+nenhum IP/gateway predefinido. Web inicia HTTP/80; DNS inicia sem registros;
+DHCP não cria pool. Criação por clique/drop captura os serviços antes da
+operação de Undo/Redo e abre a aba Serviços existente. Avisos de pré-requisitos
+para HTTP/DNS incompletos, sem alegar conectividade. Genérico preservado.
+
+Sem campos persistentes novos, migração ou alteração de protocolos. Os serviços
+e nomes usam a serialização v1 normal; documentos antigos continuam aceitos.
+Detalhes: `docs/server-presets.md`. Suíte completa: **3.130 testes em 192
+arquivos**, TypeScript, build e diff-check aprovados; aviso conhecido de chunks
+>500 kB. Chromium: **121 verificações aprovadas**, zero falhas/erros, incluindo
+Save/Load manual, F5, criação por clique/drop, Undo/Redo e as 12 combinações
+de idioma/tema/largura (DE/EN/PT-BR × Graphite Dark/Classic Light × 700/1440).
+Capturas/roteiro Chromium descartáveis em
+`.playwright-mcp/reviews/server-presets/`, sem dados reais de navegador.
+**Sem commit, push, merge, rebase, deploy, Relay ou outros dispositivos novos.**
 
 **Continuidade para o desktop de casa (13/11/2026):** implementação consolidada
 no commit **`e12f40b`**, `Implement LPM chapter 6 part 1 and static route editor`,

@@ -1,7 +1,9 @@
+import { validRemotePool, unicastAddress } from './dhcpRelay';
+import type { RemotePoolSettings } from './dhcpRelay';
 import { parseCidr, parseIp } from './ip';
 import type { SaveFile } from './serialize';
 
-const kinds = new Set(['host', 'notebook', 'smartphone', 'switch', 'router', 'firewall', 'server', 'ap']);
+const kinds = new Set(['host', 'notebook', 'smartphone', 'switch', 'router', 'firewall', 'server', 'ap', 'modem']);
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -11,6 +13,10 @@ const vlan = (value: unknown) => typeof value === 'number' && Number.isInteger(v
 
 function validateDeviceOptions(d: Record<string, unknown>): void {
   const fail = (field: string): never => { throw new Error('Invalid ' + field + ': ' + d.id); };
+  if(d.kind==='modem') {
+    const ifaces=d.ifaces as Record<string,unknown>[];
+    if(ifaces.length!==2||ifaces.some((i,n)=>i.name!==`eth${n}`||i.ip!==null||i.medium!==undefined||i.gateway!=null||i.dns!=null)||d.forwarding||!Array.isArray(d.routes)||d.routes.length||['services','firewall','dhcpServer','dhcpPools','dhcpRelays','dhcpRemotePools','dnsServer','httpServer','ripEnabled','nameserver'].some(k=>d[k]!==undefined)||(object(d.vlans)&&Object.keys(d.vlans).length))fail('modem bridge configuration');
+  }
   if (d.nameserver !== undefined && d.nameserver !== null && !address(d.nameserver)) fail('nameserver');
   if (d.os !== undefined && d.os !== 'linux' && d.os !== 'windows') fail('OS profile');
   if (d.ripEnabled !== undefined && typeof d.ripEnabled !== 'boolean') fail('RIP configuration');
@@ -37,6 +43,8 @@ function validateDeviceOptions(d: Record<string, unknown>): void {
     if (!object(pools)) return fail('DHCP pools');
     for (const value of Object.values(pools)) pool(value);
   }
+  if(d.dhcpRelays!==undefined){if(d.kind!=='router'||!object(d.dhcpRelays))return fail('DHCP Relay');for(const [name,c]of Object.entries(d.dhcpRelays)){if(!object(c)||typeof c.enabled!=='boolean'||typeof c.server!=='number'||!unicastAddress(c.server)||!(d.ifaces as {name:string}[]).some(i=>i.name===name))fail('DHCP Relay');}}
+  if(d.dhcpRemotePools!==undefined){if(!object(d.dhcpRemotePools))return fail('remote DHCP pools');for(const c of Object.values(d.dhcpRemotePools)){if(!object(c)||typeof c.enabled!=='boolean'||!validRemotePool(c as unknown as RemotePoolSettings))fail('remote DHCP pool');}}
   if (d.dnsServer !== undefined) {
     const dns = d.dnsServer;
     if (!object(dns) || typeof dns.enabled !== 'boolean' || !Array.isArray(dns.records) || dns.records.some(r => !Array.isArray(r) || r.length !== 2 || !text(r[0]) || !address(r[1]))) fail('DNS server');

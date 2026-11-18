@@ -3,6 +3,7 @@ import { useNodesInitialized, useReactFlow, useStore as useFlowStore } from '@xy
 import type { Viewport } from '@xyflow/react';
 import { useStore } from '../store';
 import { ExerciseViewportContext, NEW_EXERCISE_MAX_ZOOM, RESTORED_EXERCISE_MAX_ZOOM, useExerciseViewport } from '../exercises/initialViewport';
+import { PROGRESSIVE_NAT_PAT_ID } from '../labs/progressiveNatPat';
 
 /** Fit once after activating/measuring a document. Resizing panels or the
  * browser must never override the user's pan/zoom. Manual Fit View is separate. */
@@ -11,6 +12,7 @@ export function WorkspaceViewport() {
   const width = useFlowStore(s => s.width), height = useFlowStore(s => s.height);
   const initialized = useNodesInitialized();
   const generation = useStore(s => s.topologyGeneration);
+  const progressiveNat = useStore(s => s.lab?.id === PROGRESSIVE_NAT_PAT_ID);
   const draftId = useStore(s => s.workspaceIdentity?.draftId);
   const documentKey = useStore(s => s.workspaceIdentity?.draftId ? `${s.workspaceIdentity.sessionId}:${s.workspaceIdentity.draftId}` : null);
   const exerciseDraft = useExerciseViewport(s => s.draftId);
@@ -43,11 +45,16 @@ export function WorkspaceViewport() {
         current.framed = true;
         const saved = documentKey && viewports.current.get(documentKey);
         if (saved && !newExercise) void setViewport(saved);
+        else if (progressiveNat) void fitView({
+          maxZoom: 0.9,
+          padding: width >= 950 ? { left: '384px', right: '32px', top: '32px', bottom: '36px' }
+            : height >= 600 ? { x: '24px', top: '250px', bottom: '36px' } : 0.25,
+        });
         else void fitView({ padding: .25, maxZoom: newExercise ? NEW_EXERCISE_MAX_ZOOM : betaExercise ? RESTORED_EXERCISE_MAX_ZOOM : 1.25 });
         if (newExercise) useExerciseViewport.setState({ draftId: null });
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [generation, empty, width, height, initialized, fitView, getViewport, setViewport, documentKey, draftId, exerciseDraft, loadingExercises, betaExercise]);
+  }, [generation, empty, width, height, initialized, fitView, getViewport, setViewport, documentKey, draftId, exerciseDraft, loadingExercises, betaExercise, progressiveNat]);
   return null;
 }

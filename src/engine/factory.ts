@@ -18,6 +18,7 @@ export function createDevice(
   else if (kind === 'server') d = new ServerDevice(net, id, name);
   else if (kind === 'router') d = new RouterDevice(net, id, name);
   else if (kind === 'firewall') d = new FirewallDevice(net, id, name);
+  else if (kind === 'modem') d = new SwitchDevice(net, id, name, 'modem', 2);
   else if (kind === 'ap') d = new ApDevice(net, id, name);
   else if (kind === 'switch') d = new SwitchDevice(net, id, name, 'switch', opts.switchPorts);
   else throw new Error('Unknown device type: ' + String(kind));

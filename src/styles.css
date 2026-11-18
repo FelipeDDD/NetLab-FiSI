@@ -1184,6 +1184,13 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
   margin: 0 0 6px;
 }
 
+.lab-hints summary { cursor: pointer; }
+.lab-hints > details { margin-inline-start: 12px; }
+.lab-step-feedback { margin-top: 8px; font-size: 12px; color: var(--ui-positive-text); }
+
+.lab-panel[data-progressive-nat] { max-width: calc(100% - 24px); }
+.lab-panel[data-progressive-nat] :is(.lab-body, .lab-stepnav, .lab-objective, .lab-step-feedback) { font-size: 13px; line-height: 1.45; }
+
 .lab-body code,
 .lab-quiz-q code {
   background: var(--bg);
@@ -1833,10 +1840,9 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
 }
 .overview-service-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; font-size: var(--inspector-font-size); margin: 10px 0; }
 .overview-service-summary dd { margin: 0; }
-.overview-service-toggle { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 30px; padding: 3px 2px; font-size: var(--inspector-font-size); font-weight: 600; border: 0; border-radius: 5px; color: var(--text-dim); background: transparent; cursor: pointer; }
+.overview-service-toggle { display: inline-flex; align-items: center; justify-content: flex-end; width: 48px; min-height: 30px; padding: 3px 2px; border: 0; border-radius: 5px; color: var(--text-dim); background: transparent; cursor: pointer; }
 .service-switch-track { display: inline-block; position: relative; width: 38px; height: 22px; flex-shrink: 0; border: 1px solid var(--text-dim); border-radius: 12px; background: var(--bg-raised); }
 .service-switch-track > span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text); }
-.service-switch-state { min-width: 3ch; text-align: right; }
 .overview-service-toggle[aria-checked="true"] .service-switch-track { background: var(--ui-success); border-color: var(--ui-success); }
 .overview-service-toggle[aria-checked="true"] .service-switch-track > span { transform: translateX(16px); background: var(--bg-panel); }
 .overview-service-toggle[aria-checked="true"] { color: var(--text); }

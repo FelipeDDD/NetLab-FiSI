@@ -140,7 +140,8 @@ it('classifies AP links from current neighbors and returns disconnected ports to
 it('keeps draggable device controls without the permanent cabling instruction', () => {
   const html = renderToStaticMarkup(createElement(ReactFlowProvider, null, createElement(Palette)));
   expect(html).not.toContain('Drag between the dots'); expect(html).not.toContain('palette-hint');
-  expect(html.match(/draggable="true"/g)).toHaveLength(8);
+  expect(html.match(/draggable="true"/g)).toHaveLength(9);
+  expect(html).not.toContain('data-server-preset=');
 });
 
 it('starts hosts on Allgemein and keeps all three pages mounted with matching accessible tab/panel relationships', () => {
@@ -280,9 +281,9 @@ it('shows server interface and service states from the engine without adding for
   let html = summary();
   for (const label of ['10.0.0.20/24', 'UP', 'Static', `Verbunden mit ${peer.name}`, 'Bearbeiten eth0', 'Dienste bearbeiten']) expect(html).toContain(label);
   expect(html.match(/role="switch"/g)).toHaveLength(2); expect(html.match(/aria-checked="false"/g)).toHaveLength(2);
-  expect(html.match(/>AUS</g)).toHaveLength(2); expect(html).not.toContain('IP-Adresse eth0'); expect(html).not.toContain('<table');
+  expect(html).not.toMatch(/>AUS</); expect(html).not.toContain('IP-Adresse eth0'); expect(html).not.toContain('<table');
   server.httpServer = { enabled: true, port: 8080, body: 'Response' }; server.interfaces[0].up = false;
-  html = summary(); expect(html).toContain('DOWN'); expect(html.match(/>AN</g)).toHaveLength(1);
+  html = summary(); expect(html).toContain('DOWN'); expect(html).not.toMatch(/>AN</);
   expect(html.match(/aria-checked="true"/g)).toHaveLength(1);
 });
 

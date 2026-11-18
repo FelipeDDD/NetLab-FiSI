@@ -19,6 +19,7 @@ export type Check = (
     }
   | { type: 'dns'; from: string; name: string; expect: 'resolves' | 'nxdomain'; addr?: string }
   | { type: 'http'; from: string; url: string; expect: 'ok' | 'fail'; contains?: string }
+  | { type: 'nat-http'; from: string; peer?: string; router: string; toDevice: string; outIface: string; expect: 'translated' | 'untranslated'; contains: string }
 ) & {
   /** Legacy Labs default to visible names. Exercises explicitly use stable IDs
    * for device/from/toDevice; DNS names, URLs and literal addresses are unchanged. */
@@ -41,6 +42,8 @@ export interface LabStep {
   title: string;
   body: string; // plain text; `backticks` render as code
   objectives: Objective[];
+  hints?: string[];
+  feedback?: string;
   quiz?: QuizQ[];
 }
 

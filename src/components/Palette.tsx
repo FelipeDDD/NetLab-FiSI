@@ -1,3 +1,4 @@
+import type { ServerPreset } from '../serverPresets';
 import { useTranslation, type TranslationKey } from '../i18n';
 import { useId, useState, type DragEvent } from 'react';
 import { useReactFlow } from '@xyflow/react';
@@ -9,11 +10,12 @@ import { InspectorTabs } from './InspectorTabs';
 import { effectiveHostCreationMode, type HostCreationMode } from '../hostOs';
 import { loadPalettePreference, savePalettePreference, type PaletteCategory, type PalettePreference } from '../paletteLayout';
 
-const CATEGORIES: { id: PaletteCategory; label: TranslationKey; items: { kind: DeviceKind; label: TranslationKey; blurb: TranslationKey }[] }[] = [
+const CATEGORIES: { id: PaletteCategory; label: TranslationKey; items: { kind: DeviceKind; preset?: ServerPreset; label: TranslationKey; blurb: TranslationKey }[] }[] = [
   { id: 'basic', label: 'navigation.paletteBasic', items: [
     { kind: 'host', label: 'navigation.paletteHost', blurb: 'navigation.paletteWorkstation' },
     { kind: 'server', label: 'navigation.paletteServer', blurb: 'navigation.paletteServerHint' },
     { kind: 'switch', label: 'navigation.paletteSwitch', blurb: 'navigation.paletteSwitchHint' },
+    { kind: 'modem', label: 'navigation.paletteModem', blurb: 'navigation.modemHint' },
     { kind: 'router', label: 'navigation.paletteRouter', blurb: 'navigation.paletteRouterHint' },
   ] },
   { id: 'clients', label: 'navigation.paletteClients', items: [
@@ -32,9 +34,9 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
   const { t } = useTranslation();
   const addDeviceSmart = useStore((s) => s.addDeviceSmart);
   const { screenToFlowPosition } = useReactFlow();
-  const add = (kind: DeviceKind) => {
+  const add = (kind: DeviceKind, preset?: ServerPreset) => {
     const canvas=document.querySelector('.react-flow');
-    if(canvas) addDeviceSmart(kind,canvasWorldBounds(canvas.getBoundingClientRect(),screenToFlowPosition));
+    if(canvas) addDeviceSmart(kind,canvasWorldBounds(canvas.getBoundingClientRect(),screenToFlowPosition),preset);
   };
   const hostMode = useStore(effectiveHostCreationMode);
   const [preference, setPreference] = useState(loadPalettePreference);
@@ -47,8 +49,9 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
       ? preference.collapsedCategories.filter(other => other !== id) : [...preference.collapsedCategories, id],
   });
 
-  const onDragStart = (e: DragEvent, kind: DeviceKind) => {
+  const onDragStart = (e: DragEvent, kind: DeviceKind, preset?: ServerPreset) => {
     e.dataTransfer.setData('application/netsim', kind);
+    if(preset)e.dataTransfer.setData('application/netsim-server-preset',preset);
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -90,10 +93,10 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
                   </svg>{t(category.label)}
                 </button></h2>
                 <div id={`${prefix}-${category.id}`} className="palette-grid" hidden={!expanded}>
-                  {category.items.map(it => <button type="button" key={it.kind}
+                  {category.items.map(it => <button type="button" key={it.preset??it.kind} data-server-preset={it.preset}
                     className={`palette-item kind-${it.kind}`} draggable aria-label={t(it.label)}
-                    onDragStart={e => onDragStart(e, it.kind)}
-                    onClick={() => add(it.kind)}
+                    onDragStart={e => onDragStart(e, it.kind, it.preset)}
+                    onClick={() => add(it.kind,it.preset)}
                     title={t('navigation.paletteAddHint', { description: t(it.blurb) })}>
                     <span className="palette-item-icon"><DeviceIcon kind={it.kind} size={26} /></span>
                     <span className="palette-item-label">{t(it.label)}</span>

@@ -13,6 +13,7 @@ import { headerMarkup } from './headerMarkup';
 
 export { escapeMarkup, printAccent } from './markup';
 const icons: Record<PrintDevice['kind'], string> = {
+  modem: '<rect x="2" y="12" width="44" height="20" rx="3"/><path d="M8 19h8v6H8zm24 0h8v6h-8z"/>',
   host: '<rect x="5" y="4" width="38" height="26" rx="2"/><path d="M24 30v8m-10 0h20"/>',
   notebook: '<rect x="9" y="5" width="30" height="23" rx="2"/><path d="M9 28 3 36h42l-6-8M19 33h10"/>',
   smartphone: '<rect x="15" y="2" width="18" height="36" rx="3"/><path d="M21 6h6m-5 27h4"/>',

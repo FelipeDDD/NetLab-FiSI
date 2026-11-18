@@ -18,7 +18,15 @@ export function useDesktopWindow() {
     const update=()=>{
       finish();const next={width:parent.clientWidth,height:parent.clientHeight};
       setArea(old=>old.width===next.width&&old.height===next.height?old:next);
-      setPreferred(old=>old??initialWindow(next,(parent.querySelector('.palette')?.getBoundingClientRect().right??parent.getBoundingClientRect().left)-parent.getBoundingClientRect().left+12));
+      setPreferred(old => {
+        if (old) return old;
+        const bounds = parent.getBoundingClientRect();
+        const left = (parent.querySelector('.palette')?.getBoundingClientRect().right ?? bounds.left) - bounds.left + 12;
+        const panel = parent.querySelector('.lab-panel[data-progressive-nat]')?.getBoundingClientRect();
+        return initialWindow(next, left, panel && {
+          x: panel.left - bounds.left, y: panel.top - bounds.top, width: panel.width, height: panel.height,
+        });
+      });
     };
     update();const observer=new ResizeObserver(update);observer.observe(parent);
     window.addEventListener('blur',finish);

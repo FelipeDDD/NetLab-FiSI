@@ -1,3 +1,5 @@
+import { ModemInspector } from './ModemInspector';
+import { consumeServerServices, observeServerServices } from '../serverPresets';
 import { useTranslation } from '../i18n';
 import { DhcpPoolsPanel } from './DhcpPoolsPanel';
 import { isClientKind } from '../engine/device';
@@ -125,7 +127,7 @@ function DnsPanel({ device }: { device: IpDevice }) {
   const cfg = device.dnsServer;
   return (
     <details className="svc" open={cfg?.enabled}>
-      <summary>{t('navigation.dnsServerTitle')} <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{t(cfg?.enabled ? 'navigation.basicOn' : 'navigation.basicOff')}</span></summary>
+      <summary>{t('navigation.dnsServerTitle')}</summary>
       <label className="svc-toggle">
         <input type="checkbox" checked={cfg?.enabled ?? false} onChange={() => toggle(device.id)} />
         {t('navigation.dnsServerEnable')}
@@ -147,7 +149,7 @@ function HttpPanel({ device }: { device: IpDevice }) {
   const cfg = device.httpServer;
   return (
     <details className="svc" open={cfg?.enabled}>
-      <summary>{t('navigation.httpServerTitle')} <span className={`svc-state ${cfg?.enabled ? 'on' : ''}`}>{t(cfg?.enabled ? 'navigation.basicOn' : 'navigation.basicOff')}</span></summary>
+      <summary>{t('navigation.httpServerTitle')}</summary>
       <label className="svc-toggle">
         <input type="checkbox" checked={cfg?.enabled ?? false} onChange={() => toggle(device.id)} />
         {t('navigation.httpServerEnable')}
@@ -311,7 +313,6 @@ export function OverviewServices({ device, onServices }: { device: IpDevice; onS
           aria-checked={!!enabled} className="overview-service-toggle"
           onClick={() => useStore.getState()[action](device.id)}>
           <span className="service-switch-track" aria-hidden="true"><span /></span>
-          <span className="service-switch-state">{t(enabled ? 'navigation.basicOn' : 'navigation.basicOff')}</span>
         </button></dd>
       </Fragment>)}
     </dl>
@@ -463,6 +464,7 @@ export function ServerOverview({ device, onEdit, onServices }: {
 function ServerInspector({ device, hidden }: { device: ServerDevice; hidden: boolean }) {
   const { t } = useTranslation();
   const [active, setActive] = useState('general');
+  useEffect(()=>{const open=()=>{if(consumeServerServices(device.network,device.id))setActive('services');};open();return observeServerServices(open);},[device]);
   const [editTarget, setEditTarget] = useState<string | null>(null);
   const interfaces = useRef(new Map<string, HTMLDivElement>());
   useEffect(() => {
@@ -503,6 +505,8 @@ function ServerInspector({ device, hidden }: { device: ServerDevice; hidden: boo
         </details>
       </> },
       { id: 'services', label: t('navigation.basicServices'), content: <>
+        {(device.httpServer?.enabled||device.dnsServer?.enabled)&&!device.interfaces.some(i=>i.up&&i.ip&&i.link?.operational)&&<p className="hint" role="status">{t('navigation.presetNeedsIp')}</p>}
+        {device.dnsServer?.enabled&&device.dnsServer.records.size===0&&<p className="hint">{t('navigation.presetNeedsRecords')}</p>}
         <DhcpPoolsPanel device={device} /><DnsPanel device={device} /><HttpPanel device={device} />
         <details className="host-inspector-details"><summary>{t('navigation.serviceExtraPorts')}</summary>
           <ServicesRow deviceId={device.id} proto="tcp" /><ServicesRow deviceId={device.id} proto="udp" />
@@ -795,6 +799,7 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
   if (device instanceof FirewallDevice) return <RouterInspector key={device.id} device={device} hidden={hidden} />;
   if (device instanceof ServerDevice) return <ServerInspector key={device.id} device={device} hidden={hidden} />;
   if (device instanceof ApDevice) return <ApInspector key={device.id} device={device} hidden={hidden} />;
+  if(device.kind === 'modem') return <ModemInspector device={device} hidden={hidden} />;
   if (device instanceof SwitchDevice && device.kind === 'switch') return <SwitchInspector key={device.id} device={device} hidden={hidden} />;
 
   const ipd = device instanceof IpDevice ? device : null;

@@ -17,7 +17,7 @@ export function runDhcpService(device: IpDevice, args: string[], write: (text: s
   if (action === 'status') {
     write(`${DHCP_SERVICE}.service - NetLab DHCPv4 server\n`);
     write(`  Active: ${device.dhcpServerEnabled ? 'active (running)' : 'inactive (dead)'}\n`);
-    write('  Scope: DHCPv4 server only; no DHCP relay. Per-interface pool settings are retained.\n');
+    write('  Scope: DHCPv4 server only; DHCP relay is configured independently. Per-interface pool settings are retained.\n');
     return;
   }
   device.dhcpServerEnabled = action === 'start';

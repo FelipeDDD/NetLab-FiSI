@@ -1,3 +1,5 @@
+import { unicastAddress, validRemotePool, remotePoolsConflict, type RemotePoolSettings, type RelaySettings } from './engine/dhcpRelay';
+import { applyServerPreset, isServerPreset, requestServerServices, type ServerPreset } from './serverPresets';
 import { translate, useLanguage } from './i18n';
 import { planStaticRouteEdit, type RouteEditError, type RouteEditInput } from './staticRouteEdit';
 import { parseDnsRecords } from './dnsRecords';
@@ -22,7 +24,7 @@ import { createDevice } from './engine/factory';
 import { ROUTER_IDS, ROUTER_LINKS, routerPreparationError, routerConditions, routerSignature, type RouterWarning } from './tutorials/routerChapter';
 import { STATIC_IDS, STATIC_EXTENSION_IDS, STATIC_EXTENSION_LINKS, staticBaseReady, type StaticWarning } from './tutorials/staticRoutingChapter';
 import { ALTERNATIVE_IDS, ALTERNATIVE_PCS, ALTERNATIVE_LINKS, pcPreparationError, type AlternativeWarning } from './tutorials/alternativePathsChapter';
-import { Host, IpDevice, RouterDevice } from './engine/ipdevice';
+import { Host, IpDevice, RouterDevice, ServerDevice } from './engine/ipdevice';
 import { chooseHostOs, effectiveHostCreationMode, normalizeHostCreationMode, readHostCreationMode, saveHostCreationMode, type HostCreationMode, type HostOs } from './hostOs';
 import type { DeviceKind } from './engine/device';
 import { serializeNetwork, type SaveFile } from './engine/serialize';
@@ -40,6 +42,7 @@ import { sim } from './sim';
 import type { LabDef } from './labs/types';
 import { runChecks } from './labs/checker';
 import { LABS } from './labs/library';
+import { PROGRESSIVE_NAT_PAT_ID } from './labs/progressiveNatPat';
 import { EXAMPLES } from './labs/examples';
 import { zipSync, strToU8 } from 'fflate';
 import { configBundle } from './export/configs';
@@ -238,13 +241,13 @@ interface NetsimState {
   labChecking: boolean;
   quizAnswers: Record<string, number>;
 
-  addDeviceAt(kind: DeviceKind, pos: { x: number; y: number }): void;
+  addDeviceAt(kind: DeviceKind, pos: { x: number; y: number }, preset?: ServerPreset): void;
   addSubnetTutorialPC(pcC: string): SubnetWarning | null;
   addRouterTutorialGroup(pcC: string): RouterWarning | null;
   addStaticRoutingLan(): StaticWarning | null;
   addAlternativeRoutingPCs(): AlternativeWarning | null;
   repeatRouterTutorialTask(step:5|6, signature:string, pcC:string):RouterWarning|null;
-  addDeviceSmart(kind: DeviceKind, visible: PlacementBox): void;
+  addDeviceSmart(kind: DeviceKind, visible: PlacementBox, preset?: ServerPreset): void;
   copySelectedDevices(): boolean;
   pasteDevices(desired: Point, visible?: PlacementBox): boolean;
   onNodesChange(changes: NodeChange<DevNode>[]): void;
@@ -263,6 +266,8 @@ interface NetsimState {
   setNameserver(deviceId: string, text: string): string | null;
   bindLegacyDhcp(deviceId:string,ifaceName:string):string|null;
   setDhcpPool(deviceId:string,ifaceName:string,settings:PoolSettings):string|null;
+  setDhcpRelay(deviceId:string,ifaceName:string,value:RelaySettings|null):boolean;
+  setRemoteDhcpPool(deviceId:string,id:string,value:RemotePoolSettings|null):boolean;
   setDhcpServerEnabled(deviceId: string, enabled: boolean): void;
   clearArpCache(deviceId: string): void;
   toggleDhcpServer(deviceId: string): void;
@@ -544,7 +549,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (guidedPacket !== before) set({ guidedPacket });
       if (get().packetVisualizationMode === 'live') {
         const packets = get().packets;
-        const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(1));
+        const speed = get().lab?.id === PROGRESSIVE_NAT_PAT_ID ? 0.25 : 1;
+        const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(speed));
         visual.pingTraffic = !!trace?.arpPing || payload.kind === 'ipv4' && payload.l4.kind === 'icmp' && !!pingIcmpIdentity(payload.l4.msg);
         set({ packets: [...packets, visual] });
       }
@@ -1168,12 +1174,15 @@ export const useStore = create<NetsimState>()((set, get) => {
       commitEdit({ type: 'set-host-os', label: 'Change host OS', deviceId: id, before, after: os });
       saveSoon();
     },
-    addDeviceAt(kind, pos) {
+    addDeviceAt(kind, pos, preset) {
+      if(preset!==undefined&&(kind!=='server'||!isServerPreset(preset)))return;
       if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
       prepareEdit();
       const d = createDevice(sim.net, kind, (kind === 'host' || kind === 'notebook') ? { os: chooseHostOs(effectiveHostCreationMode(get())) } : {});
+      if(preset&&d instanceof ServerDevice)applyServerPreset(d,preset,translate(useLanguage.getState().language,preset==='web'?'navigation.presetWeb':preset==='dns'?'navigation.presetDns':'navigation.presetDhcp'));
       const creation = captureCreation(sim.net, d, pos, get().nodes.length);
       set({ nodes: [...get().nodes, deviceNode(d.id, kind, d.name, pos.x, pos.y)] });
+      if(preset){set({selected:d.id});requestServerServices(sim.net,d.id);}
       lastCreatedId = d.id;
       commitEdit({ type: 'create-device', label: `Create ${d.name}`, device: creation });
       if (Object.keys(tabLayouts).length) saveTabs();
@@ -1285,10 +1294,10 @@ export const useStore = create<NetsimState>()((set, get) => {
       prepareEdit();d.staticRoutes=structuredClone(after);get().refresh();
       commitEdit({type:'set-static-routes',label:'Tutorial: Standardroute erneut üben',deviceId:d.id,before,after});saveSoon();return null;
     },
-    addDeviceSmart(kind, visible) {
+    addDeviceSmart(kind, visible, preset) {
       const state=get(), selected=state.nodes.filter(n=>n.selected);
       const reference=selected[0]?.id ?? state.selected ?? lastCreatedId;
-      state.addDeviceAt(kind,insertionPosition(kind,state.nodes,reference,visible));
+      state.addDeviceAt(kind,insertionPosition(kind,state.nodes,reference,visible),preset);
     },
     copySelectedDevices() {
       const state=get();
@@ -1509,6 +1518,16 @@ export const useStore = create<NetsimState>()((set, get) => {
       const error=validateDhcpPool(d,ifaceName,d.dhcpServer);if(error)return error;
       prepareEdit();const before=dhcpConfiguration(d),after=structuredClone(before);after.legacy!.interfaceName=ifaceName;
       applyDhcpConfiguration(d,after);get().refresh();commitEdit({type:'set-dhcp-configuration',label:'DHCP zuordnen',deviceId,before,after});saveSoon();return null;
+    },
+    setDhcpRelay(deviceId,ifaceName,value) {
+      const d=sim.net.devices.get(deviceId);if(!(d instanceof RouterDevice)||!d.getInterface(ifaceName)||(value&&(!unicastAddress(value.server)||typeof value.enabled!=='boolean')))return false;
+      prepareEdit();const before=dhcpConfiguration(d),after=structuredClone(before);after.relays??={};if(value)after.relays[ifaceName]={...value};else delete after.relays[ifaceName];if(!Object.keys(after.relays).length)delete after.relays;
+      applyDhcpConfiguration(d,after);get().refresh();commitEdit({type:'set-dhcp-configuration',label:'DHCP Relay',deviceId,before,after});saveSoon();return true;
+    },
+    setRemoteDhcpPool(deviceId,id,value) {
+      const d=sim.net.devices.get(deviceId);if(!(d instanceof IpDevice)||!id||(value&&(!validRemotePool(value)||remotePoolsConflict(d,value,id))))return false;
+      prepareEdit();const before=dhcpConfiguration(d),after=structuredClone(before);after.remote??={};if(value)after.remote[id]={...value};else delete after.remote[id];if(!Object.keys(after.remote).length)delete after.remote;
+      applyDhcpConfiguration(d,after);get().refresh();commitEdit({type:'set-dhcp-configuration',label:'DHCP remote pool',deviceId,before,after});saveSoon();return true;
     },
     setDhcpPool(deviceId,ifaceName,settings) {
       const d=sim.net.devices.get(deviceId);

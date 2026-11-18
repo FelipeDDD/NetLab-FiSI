@@ -38,6 +38,7 @@ export interface CtEntry {
   trans: Tuple;
   state: 'new' | 'established';
   lastSeen: number;
+  masquerade?: { iface: string; address: U32 };
 }
 
 export interface CtResult {
@@ -47,17 +48,34 @@ export interface CtResult {
   dir: 'orig' | 'reply' | 'none';
 }
 
-function rewriteTo(pkt: Ipv4Packet, t: Tuple): Ipv4Packet {
+export function rewriteTo(pkt: Ipv4Packet, t: Tuple): Ipv4Packet {
+  const current = tupleOf(pkt);
+  if (current && key(current) === key(t)) return pkt;
   const l4 = pkt.l4;
   if (l4.kind === 'tcp' || l4.kind === 'udp') {
     return { ...pkt, src: t.srcIp, dst: t.dstIp, l4: { ...l4, srcPort: t.srcPort, dstPort: t.dstPort } };
   }
+  if (l4.msg.type === 'echo-request' || l4.msg.type === 'echo-reply')
+    return { ...pkt, src: t.srcIp, dst: t.dstIp, l4: l4.msg.id === t.srcPort ? l4 : { ...l4, msg: { ...l4.msg, id: t.srcPort } } };
   return { ...pkt, src: t.srcIp, dst: t.dstIp };
 }
 
 export class ConnTrack {
   private byOrig = new Map<string, CtEntry>();
   private byReply = new Map<string, CtEntry>();
+  // Configurable bounded search also permits small deterministic exhaustion tests.
+  constructor(private readonly ports = { min: 1024, max: 65535 }) {
+    if (!Number.isInteger(ports.min) || !Number.isInteger(ports.max) || ports.min < 1 || ports.max > 65535 || ports.min > ports.max) throw Error('Invalid PAT port range');
+  }
+
+  remove(entry: CtEntry): void {
+    if (this.byOrig.get(key(entry.orig)) === entry) this.byOrig.delete(key(entry.orig));
+    if (this.byReply.get(key(reverseTuple(entry.trans))) === entry) this.byReply.delete(key(reverseTuple(entry.trans)));
+  }
+
+  invalidateMasquerade(address: (iface: string) => U32 | undefined): void {
+    for (const entry of this.byOrig.values()) if (entry.masquerade && address(entry.masquerade.iface) !== entry.masquerade.address) this.remove(entry);
+  }
 
   process(pkt: Ipv4Packet, now: number): CtResult {
     const l4 = pkt.l4;
@@ -70,8 +88,18 @@ export class ConnTrack {
         dstIp: o.dst,
         dstPort: o.dstPort ?? o.icmpId ?? 0,
       };
-      const e = this.lookup(this.byOrig, ot, now) ?? this.lookup(this.byReply, ot, now);
-      return { pkt, state: e ? 'related' : 'new', entry: e, dir: 'none' };
+      // Errors quote the packet as seen on the generating side of the NAT.
+      // Require the error to be addressed to that packet's sender.
+      if (pkt.dst !== ot.srcIp) return { pkt, state: 'new', entry: null, dir: 'none' };
+      const outgoing = this.lookup(this.byReply, reverseTuple(ot), now);
+      const incoming = outgoing ? null : this.lookup(this.byOrig, reverseTuple(ot), now);
+      const e = outgoing ?? incoming;
+      if (!e) return { pkt, state: 'new', entry: null, dir: 'none' };
+      const target = outgoing ? e.orig : reverseTuple(e.trans);
+      const original = { ...o, src: target.srcIp, dst: target.dstIp,
+        ...(o.proto === 'icmp' ? { icmpId: target.srcPort } : { srcPort: target.srcPort, dstPort: target.dstPort }) };
+      return { pkt: { ...pkt, dst: target.srcIp, src: pkt.src === ot.dstIp ? target.dstIp : pkt.src,
+        l4: { ...l4, msg: { ...l4.msg, original } } }, state: 'related', entry: e, dir: outgoing ? 'reply' : 'orig' };
     }
 
     const t = tupleOf(pkt);
@@ -103,23 +131,40 @@ export class ConnTrack {
     return { pkt, state: 'new', entry: null, dir: 'none' };
   }
 
-  confirm(orig: Tuple, trans: Tuple, now: number): void {
-    const existing = this.byOrig.get(key(orig));
+  confirm(orig: Tuple, trans: Tuple, now: number, masquerade?: CtEntry['masquerade']): Tuple | null {
+    const validPorts = (t: Tuple) => [t.srcPort, t.dstPort].every(port => Number.isInteger(port) && port >= (t.proto === 'icmp' ? 0 : 1) && port <= 65535);
+    if (!validPorts(orig) || !validPorts(trans)) return null;
+    const existing = this.lookup(this.byOrig, orig, now);
     if (existing) {
       existing.lastSeen = now;
-      return;
+      return existing.trans;
     }
-    const entry: CtEntry = { orig, trans, state: 'new', lastSeen: now };
+    let chosen = { ...trans };
+    const occupied = (candidate: Tuple) => !!this.lookup(this.byReply, reverseTuple(candidate), now);
+    if (occupied(chosen)) {
+      // Only source NAT may allocate a replacement. A colliding DNAT/plain
+      // flow must fail rather than secretly modifying the source endpoint.
+      if (orig.srcIp === trans.srcIp) return null;
+      let available = false;
+      const min = trans.proto === 'icmp' ? 0 : this.ports.min;
+      const max = trans.proto === 'icmp' ? 65535 : this.ports.max;
+      for (let port = min; port <= max; port++) {
+        chosen = { ...trans, srcPort: port, ...(trans.proto === 'icmp' ? { dstPort: port } : {}) };
+        if (!occupied(chosen)) { available = true; break; }
+      }
+      if (!available) return null;
+    }
+    const entry: CtEntry = { orig: { ...orig }, trans: chosen, state: 'new', lastSeen: now, ...(masquerade ? { masquerade } : {}) };
     this.byOrig.set(key(orig), entry);
-    this.byReply.set(key(reverseTuple(trans)), entry);
+    this.byReply.set(key(reverseTuple(chosen)), entry);
+    return chosen;
   }
 
   list(now: number): CtEntry[] {
     const out: CtEntry[] = [];
-    for (const [k, e] of this.byOrig) {
+    for (const e of this.byOrig.values()) {
       if (now - e.lastSeen > TIMEOUT_MS) {
-        this.byOrig.delete(k);
-        this.byReply.delete(key(reverseTuple(e.trans)));
+        this.remove(e);
         continue;
       }
       out.push(e);
@@ -131,8 +176,7 @@ export class ConnTrack {
     const e = map.get(key(t));
     if (!e) return null;
     if (now - e.lastSeen > TIMEOUT_MS) {
-      this.byOrig.delete(key(e.orig));
-      this.byReply.delete(key(reverseTuple(e.trans)));
+      this.remove(e);
       return null;
     }
     return e;

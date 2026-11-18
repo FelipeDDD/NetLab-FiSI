@@ -30,7 +30,7 @@ export function DeviceIcon({ kind, size = 30 }: { kind: DeviceKind; size?: numbe
     );
   }
   if (kind === 'smartphone') return <svg width="20" height="30" viewBox="0 0 20 30" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="1" width="14" height="28" rx="3" /><path d="M8 4h4M9 26h2" /></svg>;
-  if (kind === 'switch') {
+  if (kind === 'switch' || kind === 'modem') {
     return (
       <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden>
         <rect x="3" y="10" width="26" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />

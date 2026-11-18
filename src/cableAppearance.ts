@@ -82,7 +82,7 @@ export function automaticCableAppearance(net: Network, id: string, colors: Cable
   if (!link) return { mode: 'auto', color: CABLE_COLORS.gray.value };
   const devices = [link.a.device, link.b.device];
   const backbone = (kind: string) => ['router', 'switch', 'firewall'].includes(kind);
-  const priority = { ap: 8, server: 7, firewall: 6, notebook: 5, smartphone: 5, host: 4, switch: 3, router: 2 };
+  const priority = { modem: 3, ap: 8, server: 7, firewall: 6, notebook: 5, smartphone: 5, host: 4, switch: 3, router: 2 };
   const preferred = [...devices].sort((a, b) => Number(backbone(a.kind)) - Number(backbone(b.kind))
     || priority[b.kind] - priority[a.kind] || a.id.localeCompare(b.id, 'en'))[0];
   const routers = new Set(devices.filter(d => d.kind === 'router' || d.kind === 'firewall').map(d => d.id));

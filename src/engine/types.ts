@@ -61,6 +61,8 @@ export interface DhcpApp {
   op: DhcpOp;
   xid: number;
   clientMac: string;
+  giaddr?: U32;
+  hops?: number;
   yourIp?: U32;
   prefix?: number;
   router?: U32 | null;

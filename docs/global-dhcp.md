@@ -1,5 +1,10 @@
 # Controle global de DHCP no Router
 
+Atualização 16/11/2026: DHCP Relay está disponível separadamente por interface;
+ver `dhcp-relay.md`. O controle global e os comandos abaixo continuam exclusivos
+do servidor DHCP. As referências históricas abaixo à ausência de Relay descrevem
+o estado anterior à implementação, não uma limitação atual do simulador.
+
 O Router oferece **DHCP-Server global aktivieren** em Inspector → Dienste →
 DHCP · Schnittstellen. O estado é `IpDevice.dhcpServerEnabled`, inicialmente
 `true`, compartilhado pelo motor, Inspector e terminal. Não existe cópia paralela

@@ -1,4 +1,13 @@
 const en = {
+  paletteModem: 'Modem', modemHint: 'Transparent Ethernet bridge with two ports. No routing, IP configuration or services.',
+  relayHint: 'Forward DHCP requests to a remote server. Requires IPv4, links and return routes.',
+  relayEnable: 'Enabled', relayServer: 'DHCP Server IPv4', remotePools: 'DHCP · Remote subnets',
+  remotePoolHint: 'Configure the client subnet manually. Relay uses giaddr to select the pool.',
+  remotePoolNew: 'New pool', remotePoolNetwork: 'Client network/CIDR', remotePoolDelete: 'Delete pool',
+  relayInvalid: 'Check IPv4, network/prefix, host range and overlapping pools. Reload the form if configuration changed elsewhere.',
+  presetWeb: 'Web Server', presetDns: 'DNS Server', presetDhcp: 'DHCP Server',
+  presetNeedsIp: 'Service enabled: configure IPv4 and connect the interface before testing access.',
+  presetNeedsRecords: 'No A records configured. Add records for the names you want to resolve.',
   file: 'File', labs: 'Labs', exercises: 'Exercises (Beta)', settings: 'Settings', help: 'Help', menu: 'Menu', main: 'Main menu', new: 'New', open: 'Open…', save: 'Save', saveAs: 'Save as…', closePlan: 'Close plan', plans: 'Saved plans…', exchange: 'Exchange', import: 'Import JSON…', export: 'Export', share: 'Share link', documentation: 'Help / Documentation', languageNote: 'Some editor controls and learning content are not translated yet.',
   quickActions: 'Quick actions', undo: 'Undo', redo: 'Redo', undoAction: 'Undo: {action}', redoAction: 'Redo: {action}',
   run: 'Run', pause: 'Pause', runHint: 'Run — resume simulation time', pauseHint: 'Pause — pause simulation time',
@@ -473,6 +482,15 @@ const en = {
 } as const;
 type Messages = Record<keyof typeof en, string>;
 const de: Messages = {
+  paletteModem: 'Modem', modemHint: 'Transparente Ethernet-Bridge mit zwei Ports. Ohne Routing, IP-Konfiguration oder Dienste.',
+  relayHint: 'DHCP-Anfragen an einen entfernten Server weiterleiten. IPv4, Verbindungen und Rückrouten erforderlich.',
+  relayEnable: 'Aktiviert', relayServer: 'DHCP-Server IPv4', remotePools: 'DHCP · Entfernte Subnetze',
+  remotePoolHint: 'Client-Subnetz manuell konfigurieren. Der Relay wählt den Pool über giaddr.',
+  remotePoolNew: 'Neuer Pool', remotePoolNetwork: 'Client-Netz/CIDR', remotePoolDelete: 'Pool löschen',
+  relayInvalid: 'IPv4, Netz/Präfix, Hostbereich und überlappende Pools prüfen. Bei externen Änderungen das Formular neu laden.',
+  presetWeb: 'Webserver', presetDns: 'DNS-Server', presetDhcp: 'DHCP-Server',
+  presetNeedsIp: 'Dienst aktiviert: zuerst IPv4 konfigurieren und die Schnittstelle verbinden.',
+  presetNeedsRecords: 'Keine A-Records konfiguriert. Einträge für die gewünschten Namen hinzufügen.',
   file: 'Datei', labs: 'Labs', exercises: 'Übungen (Beta)', settings: 'Einstellungen', help: 'Hilfe', menu: 'Menü', main: 'Hauptmenü', new: 'Neu', open: 'Öffnen…', save: 'Speichern', saveAs: 'Speichern unter…', closePlan: 'Plan schließen', plans: 'Gespeicherte Pläne…', exchange: 'Austausch', import: 'JSON importieren…', export: 'Export', share: 'Link teilen', documentation: 'Hilfe / Dokumentation', languageNote: 'Einige Editor-Elemente und Lerninhalte sind noch nicht übersetzt.',
   quickActions: 'Schnellaktionen', undo: 'Rückgängig', redo: 'Wiederholen', undoAction: 'Rückgängig: {action}', redoAction: 'Wiederholen: {action}',
   run: 'Starten', pause: 'Pausieren', runHint: 'Starten — Simulationsuhr fortsetzen', pauseHint: 'Pausieren — Simulationsuhr anhalten',
@@ -946,6 +964,15 @@ const de: Messages = {
   clientsLabel: "Clients",
 };
 const ptBR: Messages = {
+  paletteModem: 'Modem', modemHint: 'Bridge Ethernet transparente com duas portas. Sem roteamento, configuração IP ou serviços.',
+  relayHint: 'Encaminhar solicitações DHCP ao servidor remoto. Requer IPv4, enlaces e rotas de retorno.',
+  relayEnable: 'Habilitado', relayServer: 'IPv4 do DHCP Server', remotePools: 'DHCP · Sub-redes remotas',
+  remotePoolHint: 'Configure a sub-rede do cliente manualmente. O Relay seleciona o pool por giaddr.',
+  remotePoolNew: 'Novo pool', remotePoolNetwork: 'Rede/CIDR do cliente', remotePoolDelete: 'Excluir pool',
+  relayInvalid: 'Verifique IPv4, rede/prefixo, intervalo de hosts e pools sobrepostos. Reabra o formulário se houve alteração externa.',
+  presetWeb: 'Web Server', presetDns: 'DNS Server', presetDhcp: 'DHCP Server',
+  presetNeedsIp: 'Serviço habilitado: configure IPv4 e conecte a interface antes de testar o acesso.',
+  presetNeedsRecords: 'Nenhum registro A configurado. Adicione registros para os nomes que deseja resolver.',
   file: 'Arquivo', labs: 'Labs', exercises: 'Exercícios (Beta)', settings: 'Configurações', help: 'Ajuda', menu: 'Menu', main: 'Menu principal', new: 'Novo', open: 'Abrir…', save: 'Salvar', saveAs: 'Salvar como…', closePlan: 'Fechar plano', plans: 'Planos salvos…', exchange: 'Compartilhamento', import: 'Importar JSON…', export: 'Exportar', share: 'Compartilhar link', documentation: 'Ajuda / Documentação', languageNote: 'Alguns controles do editor e conteúdos didáticos ainda não estão traduzidos.',
   quickActions: 'Ações rápidas', undo: 'Desfazer', redo: 'Refazer', undoAction: 'Desfazer: {action}', redoAction: 'Refazer: {action}',
   run: 'Executar', pause: 'Pausar', runHint: 'Executar — retomar o tempo da simulação', pauseHint: 'Pausar — interromper o tempo da simulação',

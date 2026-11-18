@@ -13,7 +13,7 @@ export const CUSTOM_SWITCH_PORTS = { min: 1, max: 24, default: 8 } as const;
 // one VLAN (default 1) and frames never cross VLAN boundaries — two hosts in
 // the same subnet but different VLANs cannot even ARP for each other.
 export class SwitchDevice extends Device {
-  readonly kind: 'switch' | 'ap';
+  readonly kind: 'switch' | 'ap' | 'modem';
   // MAC table keys are "vlan|mac" so identical MACs stay separated per VLAN.
   macTable = new Map<string, NetInterface>();
   private learnedAt = new Map<string, number>();
@@ -45,15 +45,16 @@ export class SwitchDevice extends Device {
   }
   vlans = new Map<string, number>();
 
-  constructor(network: Network, id: string, name: string, kind: 'switch' | 'ap' = 'switch', ports: number = CUSTOM_SWITCH_PORTS.default) {
+  constructor(network: Network, id: string, name: string, kind: 'switch' | 'ap' | 'modem' = 'switch', ports: number = CUSTOM_SWITCH_PORTS.default) {
     super(network, id, name);
+    if (kind === 'modem' && ports !== 2) throw new Error('Modem requires two Ethernet ports');
     if (kind === 'switch' && (!Number.isInteger(ports) || ports < CUSTOM_SWITCH_PORTS.min || ports > CUSTOM_SWITCH_PORTS.max)) throw new Error('Invalid switch capacity');
     this.kind = kind;
     this.addInterfaces('eth', ports);
   }
 
   vlanOf(portName: string): number {
-    return this.vlans.get(portName) ?? 1;
+    return this.kind === 'modem' ? 1 : this.vlans.get(portName) ?? 1;
   }
 
   // Capacity policy is separate from forwarding; APs remain fixed-capacity.
@@ -91,6 +92,7 @@ export class SwitchDevice extends Device {
 
   receiveFrame(iface: NetInterface, frame: EthernetFrame): void {
     if (this.disposed || !iface.up || !this.interfaces.includes(iface)) return;
+    if (this.kind === 'modem') { this.flood(1, iface, frame); return; }
     this.ageMacs();
     const vlan = this.vlanOf(iface.name);
     this.macTable.set(`${vlan}|${frame.srcMac}`, iface);

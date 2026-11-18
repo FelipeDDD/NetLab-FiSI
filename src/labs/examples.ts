@@ -5,6 +5,7 @@
 import type { SaveFile, SavedDevice, SavedLink } from '../engine/serialize';
 import type { DeviceKind } from '../engine/device';
 import { CUSTOM_SWITCH_PORTS } from '../engine/switch';
+import { simulatedInternet } from './simulatedInternet';
 
 function dev(
   kind: DeviceKind,
@@ -161,5 +162,10 @@ export const EXAMPLES: { title: string; blurb: string; file: SaveFile }[] = [
     title: 'Example — flat open network (what not to do)',
     blurb: 'Everything on one segment, no rules, telnet to the world. Count the problems.',
     file: badNetwork,
+  },
+  {
+    title: 'Internet simuliert — DNS, HTTP & NAT/PAT',
+    blurb: 'PC1 / PC2 → Browser → http://www.example.test · Modem Bridge, Router und externe Server.',
+    file: simulatedInternet,
   },
 ];
