@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Network } from '../engine/network';
-import { IpDevice } from '../engine/ipdevice';
+import { Host, IpDevice } from '../engine/ipdevice';
 import { parseCidr, parseIp } from '../engine/ip';
 import { disposeNetwork } from '../engine/networkLifecycle';
 import { serializeNetwork } from '../engine/serialize';
@@ -10,9 +10,16 @@ import { progressiveNatPat } from './progressiveNatPat';
 import { Shell } from '../commands/shell';
 import { requestPage, simulatedUrl, type BrowserResult } from '../browser/request';
 import { packetAnimationDuration, packetAnimationProgress, sequencePacketAnimation, type AnimatedTransfer } from '../packetAnimation';
+import { natCapturedFlow, natIntroSignature, natSecondHost } from './natLearning';
+import { PacketCapture } from '../packetCapture';
 
 const lab = progressiveNatPat.lab!;
 const ip = (text: string) => parseIp(text)!;
+function addPc2(net: Network) {
+  const host = new Host(net, 'PC2', 'PC2'); net.devices.set(host.id, host);
+  host.interfaces[0].configureIpv4({ mode: 'static', ip: parseCidr('192.168.60.11/24'), gateway: ip('192.168.60.1'), dns: null });
+  return host;
+}
 
 function check(net: Network, step: number) {
   const results: Record<string, CheckResult> = {};
@@ -24,6 +31,53 @@ function check(net: Network, step: number) {
 }
 
 describe('progressive NAT/PAT Lab', () => {
+  it('retains linked SYN evidence after capture stops and Conntrack expires between answers', () => {
+    const { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      const capture = new PacketCapture(() => {});
+      capture.start();
+      network.onWireTransfer = (transfer, context, trace) => capture.observe(transfer, context, trace?.parentTransferId);
+      expect(natCapturedFlow(capture.state.records)).toBe('missing-lan');
+      requestPage(network.devices.get('PC1') as IpDevice, simulatedUrl('http://198.51.100.80')!, () => {});
+      network.scheduler.advanceTo(network.now + 12_000);
+      capture.pause();
+      const { records } = capture.state;
+      const wan = records.find(r => r.linkId === 'edge-web' && r.kind === 'tcp')!;
+      const lan = records.find(r => r.id === wan.parentTransferId)!;
+      expect(lan.linkId).toBe('lan-edge');
+      expect(records.some(r => r.id > lan.id && r.id < wan.id && r.kind === 'arp')).toBe(true);
+      expect(natCapturedFlow(records)).toMatchObject({ local: '192.168.60.10' });
+      expect(natCapturedFlow(records.filter(r => r.id < wan.id))).toBe('missing-wan');
+      expect(natCapturedFlow(records.filter(r => r.id !== lan.id))).toBe('missing-lan');
+      expect(natCapturedFlow(records.map(r => r === wan ? { ...r, parentTransferId: undefined } : r))).toBe('unpaired');
+      network.scheduler.advanceTo(network.now + 121_000);
+      expect((network.devices.get('edge') as IpDevice).ct.list(network.now)).toHaveLength(0);
+      capture.stop();
+      expect(natCapturedFlow(capture.state.records)).toMatchObject({ external: '198.51.100.2' });
+    } finally { disposeNetwork(network); }
+  });
+
+  it.each(['linux', 'windows'] as const)('binds a learner-created %s Host by ID and preserves it through JSON', os => {
+    let { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      const signature = natIntroSignature(network);
+      const c = addPc2(network); c.os = os; c.name = 'Estação β';
+      expect(natIntroSignature(network)).toBe(signature);
+      expect(natSecondHost(network)?.id).toBe(c.id);
+      network.connect(c.id, 'lan');
+      expect(check(network, 1)['nat-before-local'].pass).toBe(true);
+      const topology = serializeNetwork(network, {});
+      disposeNetwork(network); network = prepareTopologyDocument(topology).network;
+      expect(natSecondHost(network, c.id)).toMatchObject({ id: c.id, name: 'Estação β', os });
+      const extra = new Host(network, 'extra', 'Extra'); network.devices.set(extra.id, extra);
+      expect(natSecondHost(network)).toBeNull();
+      expect(natSecondHost(network, c.id)?.id).toBe(c.id);
+      expect(natSecondHost(network, 'deleted')).toBeNull();
+      const router = network.devices.get('edge') as IpDevice;
+      router.fw.nat.postrouting.rules.length = 0;
+      expect(natIntroSignature(network)).not.toBe(signature);
+    } finally { disposeNetwork(network); }
+  });
   it.each([0.25, 1])('shows the whole causal ARP, TCP and HTTP exchange at %s×', speed => {
     const { network } = prepareTopologyDocument(progressiveNatPat);
     try {
@@ -89,12 +143,12 @@ describe('progressive NAT/PAT Lab', () => {
   it('keeps one network, observes the missing return path, and restores progress before a real overlapping PAT test', () => {
     let { network } = prepareTopologyDocument(progressiveNatPat);
     try {
-      expect(network.devices.get('PC2')?.getInterface('eth0')?.link).toBeNull();
+      expect(network.devices.has('PC2')).toBe(false);
       const first = check(network, 0);
       expect(first['nat-first-http'].pass).toBe(true);
       expect(check(network, 1)['nat-before-local'].pass).toBe(false);
 
-      network.connect('PC2', 'lan');
+      addPc2(network); network.connect('PC2', 'lan');
       const outsideSources: number[] = [];
       network.onWireTransfer = (transfer, { frame }) => {
         const packet = frame.payload;
@@ -144,7 +198,7 @@ describe('progressive NAT/PAT Lab', () => {
   it('accepts equivalent SNAT but rejects ordinary routed HTTP as proof of NAT', () => {
     const { network } = prepareTopologyDocument(progressiveNatPat);
     try {
-      network.connect('PC2', 'lan');
+      addPc2(network); network.connect('PC2', 'lan');
       const router = network.devices.get('edge') as IpDevice, server = network.devices.get('web') as IpDevice;
       const rules = router.fw.nat.postrouting.rules;
       rules.length = 0;

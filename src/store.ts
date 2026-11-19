@@ -16,6 +16,7 @@ import { runDhclient } from './commands/dhclient';
 import { Network, type PingProgress } from './engine/network';
 import { observeIcmpActivity, observePingActivity } from './networkObservations';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
+import { natSecondHost, natConfiguration } from './labs/natLearning';
 import { normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { preferredPingAnimationSpeed } from './pingAnimationPreference';
 import { readPingAnimationPosition, type PingAnimationPosition } from './pingAnimationPosition';
@@ -326,7 +327,8 @@ interface NetsimState {
   loadExample(index: number): void;
   setLabStep(step: number): void;
   answerQuiz(qid: string, choice: number): void;
-  checkStep(): void;
+  checkStep(objectiveId?: string): void;
+  recordLabResult(id: string, pass: boolean, detail: string): void;
   exportAttempt(): void;
   closeLab(): void;
 }
@@ -554,7 +556,7 @@ export const useStore = create<NetsimState>()((set, get) => {
         visual.pingTraffic = !!trace?.arpPing || payload.kind === 'ipv4' && payload.l4.kind === 'icmp' && !!pingIcmpIdentity(payload.l4.msg);
         set({ packets: [...packets, visual] });
       }
-      if (sim.net === net) capture.observe(t, context);
+      if (sim.net === net) capture.observe(t, context, trace?.parentTransferId);
     };
     net.onPingProgress = (event) => {
       if (sim.net !== net) return;
@@ -2199,19 +2201,38 @@ export const useStore = create<NetsimState>()((set, get) => {
       saveSoon();
     },
 
-    checkStep() {
+    recordLabResult(id, pass, detail) {
+      if (get().lab?.id !== PROGRESSIVE_NAT_PAT_ID) return;
+      const previous = get().labResults[id];
+      if (previous?.pass === pass && previous.detail === detail) return;
+      set({ labResults: { ...get().labResults, [id]: { pass, detail } } });
+      saveSoon();
+    },
+
+    checkStep(objectiveId) {
       const lab = get().lab;
       if (!lab || get().labChecking) return;
       const step = lab.steps[get().labStep];
       if (!step || step.objectives.length === 0) return;
       set({ labChecking: true, paused: false, pauseReason: null });
       const generation = ++labCheckGeneration;
+      const natSignature = lab.id === PROGRESSIVE_NAT_PAT_ID ? natConfiguration(sim.net) : null;
       runChecks(
         sim.net,
-        step.objectives,
+        step.objectives.filter(o => !objectiveId || o.id === objectiveId).map(o => {
+          if (lab.id !== PROGRESSIVE_NAT_PAT_ID) return o;
+          const host = natSecondHost(sim.net, get().labResults['nat-host']?.detail);
+          const check = { ...o.check };
+          if ('from' in check && check.from === 'PC2') check.from = host?.id ?? '__missing_nat_host__';
+          if ('peer' in check && check.peer === 'PC2') check.peer = host?.id ?? '__missing_nat_host__';
+          return { ...o, check };
+        }),
         (r) => {
+          const unchanged = natSignature === null || natSignature === natConfiguration(sim.net);
           set({
-            labResults: { ...get().labResults, [r.id]: { pass: r.pass, detail: r.detail } },
+            labResults: { ...get().labResults,
+              ...(natSignature === null ? {} : { ['nat-proof-' + r.id]: { pass: unchanged, detail: natSignature } }),
+              [r.id]: { pass: unchanged && r.pass, detail: unchanged ? r.detail : 'A configuração mudou durante o teste. Execute uma nova verificação.' } },
           });
         },
         () => {
@@ -2237,6 +2258,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     },
 
     closeLab() {
+      labCheckGeneration++;
       set({ lab: null, labStep: 0, labResults: {}, quizAnswers: {}, labChecking: false });
       saveSoon();
     },

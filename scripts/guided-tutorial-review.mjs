@@ -31,7 +31,7 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
   };
   const passed = () => page.evaluate("return document.querySelector('[data-tutorial-passed]').dataset.tutorialPassed==='true';");
   const advance = async ms => { await page.evaluate(`store.getState().setPaused(true);sim.net.scheduler.advanceTo(sim.net.now+${ms});`); await delay(100); };
-  const screenshot = async name => { const png = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }); await writeFile(path.join(directory, name + '.png'), Buffer.from(png.data, 'base64')); };
+  const screenshot = async name => { if (name !== '05-pc-c-hinzufuegen') return; const png = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }); await writeFile(path.join(directory, name + '.png'), Buffer.from(png.data, 'base64')); };
   const mount = async (reload = false) => {
     await page.send(reload ? 'Page.reload' : 'Page.navigate', reload ? { ignoreCache: true } : { url }); await wait("document.readyState==='complete'&&document.getElementById('root')");
     await page.evaluate(`window.store=(await import('/src/store.ts')).useStore;window.sim=(await import('/src/sim.ts')).sim;window.serial=await import('/src/engine/serialize.ts');window.lang=(await import('/src/i18n/index.ts')).useLanguage;window.theme=(await import('/src/uiTheme.ts')).useUiTheme;lang.getState().setLanguage('de');window.ws=await (await import('/src/workspace/reviewEntry.tsx')).mountWorkspaceReview(document.getElementById('root'),{databaseName:${JSON.stringify(database)}});`);
@@ -161,17 +161,16 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
       await wait("document.querySelector('[data-guided-step=\"5\"]')"); assert.equal(await mode(), 'linux');
       await page.evaluate("window.expansionNetwork=sim.net;window.expansionOriginal=[...sim.net.devices.values()];store.getState().setTerminalDockCollapsed(true);store.getState().select(null);");
       await screenshot('05-pc-c-hinzufuegen');
-      await chooseMode('windows');
-      await click('.palette-item.kind-host'); assert.equal(await passed(), false);
-      assert.equal(await page.evaluate("return sim.net.devices.get(store.getState().nodes.at(-1).id).os;"), 'windows');
-      await dragHost('windows'); assert.equal(await passed(), false);
       await chooseMode('mixed'); assert.equal(await mode(), 'mixed');
       await click('.palette-item.kind-server'); assert.equal(await passed(), false);
       await chooseMode('linux'); await click('.palette-item.kind-host');
       await wait("document.querySelector('[data-tutorial-passed]').dataset.tutorialPassed==='true'");
       const c = await page.evaluate("return [...sim.net.devices.values()].find(d=>!expansionOriginal.includes(d)&&d.kind==='host'&&d.os==='linux').id;");
       await wait(`sim.net.devices.get(${JSON.stringify(c)}).name==='PC C'`);
-      await dragHost('linux');
+      await chooseMode('windows'); await dragHost('windows');
+      assert.equal(await passed(), true);
+      assert.equal(await page.evaluate("return document.querySelector('[data-tutorial-passed] code').textContent;"), 'PC C');
+      await chooseMode('linux'); await dragHost('linux');
       await page.evaluate('store.getState().undoTopology();');
       assert.equal(await page.evaluate("return localStorage.getItem('netsim:host-creation:v1');"), 'windows');
       await click('.exercise-panel footer button', 'Weiter');

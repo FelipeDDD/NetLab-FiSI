@@ -1,11 +1,36 @@
 import type { SaveFile, SavedDevice } from '../engine/serialize';
 import { CUSTOM_SWITCH_PORTS } from '../engine/switch';
+import { translate, type Language } from '../i18n';
+import { browserText } from '../browser/messages';
 import type { Objective } from './types';
 
 export const PROGRESSIVE_NAT_PAT_ID = 'progressive-nat-pat';
 const webIp = '198.51.100.80';
 const pageTitle = 'Oficina conectada';
 export const PROGRESSIVE_NAT_PAT_URL = 'http://' + webIp;
+
+export function natIntroConcept(language: Language): string {
+  const packets = translate(language, 'navigation.packets');
+  const startCapture = translate(language, 'navigation.startCapture');
+  const openBrowser = browserText(language, 'openBrowser');
+  return [
+    'NAT (Network Address Translation) permite que um Router ou Firewall altere os endereços IP dos pacotes em trânsito e, em alguns casos, as portas. Assim, vários PCs podem compartilhar um endereço externo.',
+    `Abra \`${packets}\`. Na seta ao lado do botão, escolha \`${startCapture}\`. (Você pode fechar o painel sem interromper a captura.)`,
+    `Clique com o botão direito no PC1, escolha \`${openBrowser}\` e acesse ${PROGRESSIVE_NAT_PAT_URL}.`,
+  ].join('\n');
+}
+
+export const NAT_INTRO_COMPARISON = [
+  'No painel de captura, escolha a visualização completa (`Full`). Procure registros TCP `[SYN]` com destino `198.51.100.80` e porta `80`.',
+  'Identifique o IPv4 de origem no enlace Switch LAN → Router Borda.',
+  'Depois, compare a origem do mesmo fluxo no enlace Router Borda → Servidor Web.',
+].join('\n');
+
+export const NAT_INTRO_HINTS = [
+  'Pause a captura para ler a lista com calma. Ignore ARP e as respostas com `SYN, ACK`. Na coluna `Link`, procure os dois enlaces em ordem, primeiro o local e depois o externo.',
+  'Na visualização compacta (`Compact`) do painel de captura, selecione a linha pelo horário e veja `Source IP` e `Destination IP` em `IPv4`.',
+  'A porta de destino é `80` nos dois enlaces. A porta de origem pode mudar com PAT. Se a captura estava pausada, retome-a. Para ver os dois enlaces, a captura deve indicar `All links`.',
+];
 
 function pc(id: string, y: number, ip: string): SavedDevice {
   return {
@@ -26,7 +51,6 @@ export const progressiveNatPat: SaveFile = {
   app: 'netsim', version: 1,
   devices: [
     pc('PC1', 100, '192.168.60.10/24'),
-    pc('PC2', 380, '192.168.60.11/24'),
     {
       id: 'lan', name: 'Switch LAN', kind: 'switch', x: 310, y: 240, forwarding: false, routes: [],
       ifaces: Array.from({ length: CUSTOM_SWITCH_PORTS.default }, (_, i) => ({ name: `eth${i}`, ip: null, up: true })),
@@ -55,21 +79,18 @@ export const progressiveNatPat: SaveFile = {
   lab: {
     id: PROGRESSIVE_NAT_PAT_ID,
     title: 'Tutorial progressivo — NAT/PAT',
-    blurb: 'Observe a tradução de um cliente, conecte o segundo e compartilhe o acesso externo.',
+    blurb: 'Observe a tradução de um cliente, adicione um Host e compartilhe o acesso externo.',
     steps: [
       {
         title: 'Acesso funcionando',
-        body: `Abra ${PROGRESSIVE_NAT_PAT_URL} no navegador do PC1. Observe o caminho da conexão até o servidor e o retorno da resposta.\nO NAT permite ao Router trocar o endereço de origem dos pacotes que saem da LAN.`,
-        hints: [
-          'Inicie a captura de pacotes antes de abrir a página. Compare os IPv4 de origem do TCP nos enlaces Switch–Router e Router–Servidor.',
-          'No retorno, compare os endereços de destino nos mesmos enlaces. No Router, `conntrack -L` lista a conexão original e a tradução.',
-        ],
+        body: natIntroConcept('pt-BR'),
+        hints: NAT_INTRO_HINTS,
         objectives: [{ id: 'nat-first-http', label: 'PC1 recebe a página com a origem traduzida', check: pc1Http }],
         feedback: 'O servidor viu o endereço externo do Router. Na volta, o Router usou a associação da conexão para devolver a resposta ao PC1.',
       },
       {
         title: 'Novo posto',
-        body: `Conecte o PC2 a uma porta livre do Switch LAN. Compare o acesso local e o acesso a ${PROGRESSIVE_NAT_PAT_URL} nos dois PCs. Verifique os objetivos antes de alterar a configuração do Router.`,
+        body: `Adicione um Host Linux ou Windows para PC2. Configure 192.168.60.11/24 e Gateway 192.168.60.1 pelo Inspector e conecte-o ao Switch LAN. Teste o ping de PC2 para PC1 e abra ${PROGRESSIVE_NAT_PAT_URL} em cada PC antes de alterar o Router.`,
         hints: [
           'Use o ping para testar PC2 → PC1. Depois tente abrir a mesma página externa em cada PC.',
           'Se capturou as duas tentativas, compare o IPv4 de origem que sai do Router. Inspecione também a regra NAT e veja quais origens ela seleciona.',
@@ -83,7 +104,7 @@ export const progressiveNatPat: SaveFile = {
       },
       {
         title: 'Acesso compartilhado',
-        body: 'Ajuste o NAT no Router Borda para que os dois PCs recebam a página ao mesmo tempo. Mantenha os endereços e a comunicação na LAN. A verificação abre duas novas conexões HTTP em paralelo.',
+        body: 'A regra NAT inicial contempla apenas PC1. Examine a restrição de origem no Router Borda e adapte-a para incluir PC2. Mantenha os endereços e a comunicação na LAN. A verificação abre duas conexões HTTP novas em paralelo.',
         hints: [
           'Compare os IPs dos PCs com a origem selecionada pela regra de saída. Um prefixo /32 seleciona apenas um endereço.',
           'Masquerade é uma forma de SNAT que usa o IPv4 da interface de saída. Você pode trabalhar com uma regra para vários endereços ou com regras separadas.',
@@ -93,7 +114,7 @@ export const progressiveNatPat: SaveFile = {
           { id: 'nat-after-pair', label: 'Os dois PCs recebem HTTP por conexões traduzidas simultâneas', check: { ...pc1Http, peer: 'PC2' } },
           { id: 'nat-after-local', label: 'A comunicação local continua funcionando', check: localPing },
         ],
-        feedback: 'Tutorial concluído! As duas conexões compartilharam o IPv4 externo com portas distintas. O PAT permite ao Router entregar cada resposta ao cliente certo.',
+        feedback: 'Tutorial concluído! As duas conexões compartilharam o IPv4 externo com portas distintas. O PAT permite entregar cada resposta ao cliente certo. A porta de origem só precisa mudar quando o mapeamento exige.',
       },
     ],
   },

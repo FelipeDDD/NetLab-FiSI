@@ -8,6 +8,9 @@ históricas abaixo registram decisões antigas e podem ter sido superadas.
 
 ## Leia primeiro — estado atual em 18/11/2026
 
+**Refinamento NAT/PAT de 19/11/2026, local:** mantidas as três etapas em Labs. A primeira contém duas telas, com comprovantes de captura/HTTP real do navegador e duas respostas de origem verificadas sequencialmente pelos SYN da captura ligados ao mesmo encaminhamento, inclusive após expirar o Conntrack. O cenário novo começa com quatro dispositivos. PC2 é um Host criado pelo aluno (Linux ou Windows), associado por ID sem renomear o nome personalizado. Etapas 2/3 usam verificações contextuais existentes de ping e HTTP, com conexões novas e assinatura de configuração para impedir reutilização de falha anterior após editar NAT. PAT explica portas e remapeamento conforme a necessidade. Persistência reaproveita LabProgress, sem schema ou engine novos. Tentativas antigas sem comprovantes estruturados pedem nova verificação. Após F5, atividades de comparação pendentes podem exigir nova captura, pois os registros de pacotes são transitórios. Decisões e roteiro em `docs/progressive-nat-pat.md`. Validação desta rodada: 89 testes em 8 arquivos, 107 verificações no harness Chromium (incluindo o tutorial), TypeScript/build e diff-check aprovados. Chromium cobriu resposta incorreta, Host Windows real pelo catálogo, captura, HTTP, F5 nas duas telas/etapas, Save/Load, revisão após editar NAT e 700/1440 px. Linux e Windows cobertos nos testes de rede/persistência. Uma captura em `.playwright-mcp/reviews/nat-pat-refinement/comparacao.png`.
+
+
 **Consolidação de 18/11/2026:** este conjunto reúne Server multifuncional,
 DHCP Relay, NAT/PAT, Modem Bridge, o laboratório de Internet simulada, o
 tutorial progressivo NAT/PAT e a redução do trabalho do watcher do Vite.
@@ -2360,3 +2363,11 @@ a localização correta. Não gerar/apagar capturas antigas indiscriminadamente.
 
 O estado aqui é um ponto de partida verificável. Atualizar este arquivo quando
 decisões ou funcionalidades mudarem, diferenciando sempre implementado de planejado.
+
+## Referência visual para novos tutoriais
+
+Em *Primeira conexão*, `TutorialUI` usa `ExercisePanelFrame` e o controlador do capítulo acompanha a topologia e as respostas do terminal por tentativa. PC C pode ser um Host Linux ou Windows. O Inspector atende aos dois sistemas. O exemplo de configuração com `ip address add` é específico do Linux.
+
+O NAT/PAT continua experimental em Labs. `LabPanel` apresenta as etapas e os resultados dos verificadores do Lab. As duas telas iniciais compartilham uma etapa. Exercícios (Beta) têm também atividades com perguntas, respostas e tentativas próprias em `PracticePanel`. A infraestrutura deve acompanhar o objetivo pedagógico de cada atividade.
+
+Como referência, alternar explicações curtas e ações observáveis, agrupar a navegação no rodapé e usar rótulos que indiquem a próxima ação. Reservar o verde para resultados confirmados e usar o âmbar da sintaxe de terminal com parâmetros neutros. Antes de criar componentes, consultar `TutorialCommand`, os estilos de botões e o painel dos capítulos guiados. Outras formas de apresentação podem ser adequadas ao conteúdo.

@@ -183,9 +183,7 @@ describe('first guided chapter', () => {
       f.controller.next(); expect(f.controller.getState()).toMatchObject({ step: 4, passed: false, pcC: null });
       const notebook = new NotebookDevice(f.net, 'notebook', 'Notebook'); f.net.devices.set(notebook.id, notebook); f.refresh();
       expect(f.controller.getState().passed).toBe(false);
-      const c = new Host(f.net, 'c', 'pc1'); c.os = 'windows'; f.net.devices.set(c.id, c); f.refresh();
-      expect(f.controller.getState().passed).toBe(false);
-      c.os = 'linux'; f.refresh(); expect(f.controller.getState()).toMatchObject({ passed: true, pcC: c.id });
+      const c = new Host(f.net, 'c', 'pc1'); f.net.devices.set(c.id, c); f.refresh(); expect(f.controller.getState()).toMatchObject({ passed: true, pcC: c.id });
       await Promise.resolve(); expect(c.name).toBe('PC C'); expect(f.net.devices.get(c.id)).toBe(c);
       f.controller.next(); f.net.connect(c.id, notebook.id); f.refresh(); expect(f.controller.getState().passed).toBe(false);
       f.net.disconnect([...f.net.links.keys()].at(-1)!); f.net.connect(c.id, FIRST_DEVICES.sw); f.refresh();
@@ -225,10 +223,10 @@ describe('first guided chapter', () => {
       expect(JSON.stringify(serializeNetwork(f.net, {}))).toBe(saved);
     } finally { f.dispose(); }
   });
-  it('accepts PC C configuration through the Inspector and rechecks cable, address and mask after reload', async () => {
+  it.each(['linux', 'windows'] as const)('accepts a %s Host through the Inspector and validates its terminal reply after reload', async os => {
     const f = fixture(true); try {
       await f.ready(); const ping = f.submit('ping 192.168.10.20'); f.net.scheduler.advanceTo(f.net.now + 1500); ping.interrupt(); f.controller.next();
-      const c = new Host(f.net, 'pc-c-inspector', 'New'); f.net.devices.set(c.id, c); f.refresh(); await Promise.resolve();
+      const c = new Host(f.net, 'pc-c-inspector', 'New'); c.os = os; f.net.devices.set(c.id, c); f.refresh(); await Promise.resolve();
       f.controller.next(); f.net.connect(c.id, FIRST_DEVICES.sw); f.refresh(); f.controller.next();
       c.interfaces[0].configureIpv4({ mode: 'static', ip: parseCidr('192.168.10.30/25'), gateway: null, dns: null }); f.refresh();
       expect(f.controller.getState().passed).toBe(false);
@@ -241,6 +239,10 @@ describe('first guided chapter', () => {
       (f.net.devices.get(c.id) as Host).interfaces[0].ip = parseCidr('192.168.10.30/24'); f.refresh();
       const cable = [...f.net.links.values()].find(l => l.a.device.id === c.id || l.b.device.id === c.id)!;
       f.net.disconnect(cable.id); f.refresh(); expect(f.controller.getState().passed).toBe(false);
+      f.net.connect(c.id, FIRST_DEVICES.sw); f.refresh(); f.controller.next();
+      f.submit(os === 'windows' ? 'ping -n 1 192.168.10.20' : 'ping -c 1 192.168.10.20', 'keyboard', c.id);
+      f.net.scheduler.advanceTo(f.net.now + 5000);
+      expect(f.controller.getState()).toMatchObject({ passed: true, finished: true });
     } finally { f.dispose(); }
   });
   it('keeps a conflicting PC C name and all other devices unchanged', async () => {

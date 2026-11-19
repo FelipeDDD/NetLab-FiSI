@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 
-const programs = new Set(['ip', 'ping', 'arp', 'traceroute', 'tracert', 'ipconfig', 'ifconfig', 'netstat', 'nslookup', 'route']);
+const programs = new Set(['iptables', 'ip', 'ping', 'arp', 'traceroute', 'tracert', 'ipconfig', 'ifconfig', 'netstat', 'nslookup', 'route']);
 const ipSyntax = new Set(['address', 'addr', 'route', 'link', 'neigh', 'add', 'del', 'delete', 'replace', 'show', 'list', 'flush', 'set', 'get', 'up', 'down', 'via', 'dev', 'default']);
 
 /** Format presentation only: parameters and placeholders never inherit amber. */

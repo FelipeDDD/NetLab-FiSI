@@ -24,7 +24,7 @@ import { SubnetProgressStore } from './subnetProgress';
 import { SubnetTutorialPanel } from './SubnetTutorialPanel';
 import { SUBNET_DEMO_COMMAND, SUBNET_PC_ID } from './subnetChapter';
 import { getSession } from '../terminals';
-import { IpDevice } from '../engine/ipdevice';
+import { Host, IpDevice } from '../engine/ipdevice';
 import { RouterTutorialController, type RouterState } from './RouterTutorialController';
 import { RouterProgressStore } from './routerProgress';
 import { RouterTutorialPanel } from './RouterTutorialPanel';
@@ -263,6 +263,8 @@ export function GuidedTutorialPanel() {
   if (!ui.state.active) return ui.state.error ? <aside className="exercise-error" role="alert">{t('guided.error')} <button type="button" className="btn" onClick={() => void ui.controller.start()}>{t('common.retry')}</button></aside> : null;
   const { controller, state } = ui, step = steps[state.step];
   if (state.draftId && ui.hiddenPanels.has(`${state.draftId}:first-connection`)) return null;
+  const pcC = sim.net.devices.get(state.pcC ?? '');
+  const windowsIpv4 = state.step === 6 && pcC instanceof Host && pcC.os === 'windows';
   const completion = firstChapterCompletion({ completed: controller.completedSteps() });
   return <ExercisePanelFrame key={state.draftId} exerciseId="guided-first-connection" collapsed={collapsed} header={<>
     <div className="exercise-heading"><strong>{t('guided.title')}</strong><ChapterStepProgress step={state.step + 1} total={FIRST_CONNECTION.steps.length} progress={completion}/></div>
@@ -271,17 +273,17 @@ export function GuidedTutorialPanel() {
     <ChapterRestartButton chapter="first-connection" draftId={state.draftId} step={state.step}/>
   </>}>
     {!collapsed && <><div className="exercise-body" data-guided-step={state.step + 1} data-guided-saving={state.saving}>
-      <h3>{t(step.title)}</h3>{!(state.step === 3 && state.passed) && <p><TutorialText>{t(step.text)}</TutorialText></p>}
+      <h3>{t(step.title)}</h3>{!(state.step === 3 && state.passed) && <p><TutorialText>{t(windowsIpv4 ? 'guided.ipv4CInspector' : step.text)}</TutorialText></p>}
       {state.repeatPing && <p role="status" data-guided-repeat><TutorialText>{t('guided.repeatPing')}</TutorialText></p>}
       {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
       {(state.step === 1 || state.step === 6) && <LearningHelpLink page="ipv4" />}
       {state.step === 7 && !state.passed && <section className="exercise-learning"><strong>{t('guided.arpTitle')}</strong><p><TutorialText>{t('guided.arpText')}</TutorialText></p><p><TutorialText>{t('guided.arpCached')}</TutorialText></p></section>}
       {(state.step === 2 || state.step === 7) && <pre><TutorialCommand>ping 192.168.10.20</TutorialCommand></pre>}
-      {state.step === 6 && <pre><TutorialCommand>ip address add 192.168.10.30/24 dev eth0</TutorialCommand></pre>}
+      {state.step === 6 && !windowsIpv4 && <pre><TutorialCommand>ip address add 192.168.10.30/24 dev eth0</TutorialCommand></pre>}
       {state.step === 3 && !state.passed && <p><kbd className="guided-shortcut">{t('guided.shortcut')}</kbd></p>}
       <p className="guided-action-status" role="status" data-tutorial-passed={state.passed}>
         <span className="guided-action-indicator" aria-hidden="true">{state.passed ? '✓' : ''}</span>
-        <span>{state.passed ? t(step.success).replace(/^✓\s*/, '') : state.hint === 'addC' || state.hint === 'cableC' ? t('guided.pending') : <TutorialText>{t(hints[state.hint])}</TutorialText>}</span>
+        <span>{state.passed ? t(step.success).replace(/^✓\s*/, '') : state.hint === 'addC' || state.hint === 'cableC' || (windowsIpv4 && (state.hint === 'ipv4C' || state.hint === 'ipv4CExisting')) ? t('guided.pending') : <TutorialText>{t(hints[state.hint])}</TutorialText>}</span>
         {state.passed && state.step === 4 && <code>{sim.net.devices.get(state.pcC ?? '')?.name}</code>}
       </p>
       {state.step === 3 && state.passed && <p className="exercise-learning"><TutorialText>{t('guided.explanation')}</TutorialText></p>}

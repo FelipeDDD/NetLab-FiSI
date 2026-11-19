@@ -11,6 +11,7 @@ export interface TruncatedCaptureField {
 }
 
 export interface CapturedPacket extends WireTransfer, WireFrameContext {
+  parentTransferId?: number;
   truncatedFields: TruncatedCaptureField[];
 }
 
@@ -87,7 +88,7 @@ export class PacketCapture {
     this.publish();
   }
 
-  observe(transfer: WireTransfer, context: WireFrameContext): void {
+  observe(transfer: WireTransfer, context: WireFrameContext, parentTransferId?: number): void {
     if (this.snapshot.status !== 'capturing' || (this.snapshot.linkId !== null && this.snapshot.linkId !== transfer.linkId)) return;
     try {
       const copy = structuredClone(context);
@@ -97,7 +98,7 @@ export class PacketCapture {
         this.pending.shift();
         this.pendingDiscarded++;
       }
-      this.pending.push({ ...transfer, ...copy, truncatedFields });
+      this.pending.push({ ...transfer, ...copy, ...(parentTransferId === undefined ? {} : { parentTransferId }), truncatedFields });
       if (this.timer === null) {
         const generation = this.generation;
         this.timer = setTimeout(() => {

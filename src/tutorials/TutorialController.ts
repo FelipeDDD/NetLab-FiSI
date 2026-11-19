@@ -43,6 +43,8 @@ export interface TutorialRuntime {
 }
 type Sessions = Pick<SessionController, 'getState' | 'subscribe' | 'openDocument' | 'switchDraft' | 'hasPendingOperations'>;
 
+const replyFromPcB = /(?:^|\n)(?:64 bytes from 192\.168\.10\.20: icmp_seq=\d+ ttl=\d+ time=[\d.]+ ms|Reply from 192\.168\.10\.20: time=[\d.]+ms TTL=\d+)\r?(?:\n|$)/;
+
 /** One live simulation owned by SessionController. No verifier probes or progress writes. */
 export class TutorialController {
   private state: TutorialState = { busy: false, draftId: null, step: 0, active: false, passed: false, hint: 'cable', error: false, pcC: null, finished: false, ready: true, saving: false, storageError: false, repeatPing: false };
@@ -144,7 +146,7 @@ export class TutorialController {
   }
   private cConditions() {
     const net = this.runtime.network(), pc = net.devices.get(this.state.pcC ?? '');
-    const host = pc instanceof Host && pc.kind === 'host' && pc.os === 'linux';
+    const host = pc instanceof Host && pc.kind === 'host';
     const cable = host && [...net.links.values()].some(l => l.medium !== 'wireless' &&
       (l.a.device.id === pc.id && l.b.device.id === FIRST_DEVICES.sw || l.b.device.id === pc.id && l.a.device.id === FIRST_DEVICES.sw));
     const iface = pc?.getInterface('eth0');
@@ -257,7 +259,7 @@ export class TutorialController {
     if (this.evidence && this.evidence.signature !== this.originalSignature()) this.evidence = undefined;
     if (this.state.step === 4 && !this.cBaseline) this.cBaseline = new Set(this.runtime.network().devices.keys());
     if (this.state.step === 4 && !this.state.pcC) {
-      const pc = [...this.runtime.network().devices.values()].find(d => !this.cBaseline!.has(d.id) && d instanceof Host && d.kind === 'host' && d.os === 'linux');
+      const pc = [...this.runtime.network().devices.values()].find(d => !this.cBaseline!.has(d.id) && d instanceof Host && d.kind === 'host');
       if (pc) {
         this.publish({ pcC: pc.id });
         const network = this.runtime.network();
@@ -306,13 +308,13 @@ export class TutorialController {
       }
       if (this.state.step === 7) {
         if (event.type === 'started') {
-          this.cCandidate = this.cConditions().ready && /^ping(?:\s+-c\s+\d+)?\s+192\.168\.10\.20\s*$/.test(command.line.trim()) ? { command, signature: chapterOneSignature(this.runtime.network()), output: '' } : undefined;
+          this.cCandidate = this.cConditions().ready && /^ping(?:\s+-(?:c|n)\s+\d+)?\s+192\.168\.10\.20\s*$/.test(command.line.trim()) ? { command, signature: chapterOneSignature(this.runtime.network()), output: '' } : undefined;
           if (this.cCandidate) this.cEvidence = undefined;
           this.cPingHint = this.cCandidate ? 'pingC' : /^ping\s/.test(command.line.trim()) ? 'wrongTarget' : 'pingC'; this.refresh();
         } else if (this.cCandidate?.command.id === command.id && this.cCandidate.signature === chapterOneSignature(this.runtime.network()) && !this.runtime.pendingForms()) {
           if (event.type === 'output') {
             this.cCandidate.output = (this.cCandidate.output + event.text).slice(-2048);
-            if (/(?:^|\n)64 bytes from 192\.168\.10\.20: icmp_seq=\d+ ttl=\d+ time=[\d.]+ ms\r?(?:\n|$)/.test(this.cCandidate.output)) this.cEvidence = { signature: this.cCandidate.signature, commandId: command.id, ended: false };
+            if (replyFromPcB.test(this.cCandidate.output)) this.cEvidence = { signature: this.cCandidate.signature, commandId: command.id, ended: false };
             else if (/no answer yet|ping: connect:|ping: sendmsg:|[Uu]nreachable/.test(event.text)) this.cPingHint = 'pingFailed';
           } else {
             if (this.cEvidence?.commandId === command.id) this.cEvidence.ended = true;
@@ -341,7 +343,7 @@ export class TutorialController {
       candidate.output = (candidate.output + event.text).slice(-2048);
       // These lines are emitted only after runPing receives an actual Echo Reply.
       // Never infer success from wire animation, a request, or generic terminal text.
-      if (/(?:^|\n)(?:64 bytes from 192\.168\.10\.20: icmp_seq=\d+ ttl=\d+ time=[\d.]+ ms|Reply from 192\.168\.10\.20: time=[\d.]+ms TTL=\d+)\r?(?:\n|$)/.test(candidate.output)) {
+      if (replyFromPcB.test(candidate.output)) {
         this.evidence = { signature: this.originalSignature(), commandId: command.id, interrupted: false };
         this.completed.add(3);
         if (this.state.step === 2) this.publish({ step: 3 });

@@ -45,7 +45,8 @@ export const routerTarget = (net:Network) => { const ip=net.devices.get(ROUTER_I
 export function routerConditions(net: Network, pcC: string) {
   const router = net.devices.get(ROUTER_IDS.router), swA = net.devices.get(FIRST_DEVICES.sw), swB = net.devices.get(ROUTER_IDS.sw);
   const a = host(net, FIRST_DEVICES.a), b=host(net,FIRST_DEVICES.b), e = host(net, ROUTER_IDS.e), f = host(net, ROUTER_IDS.f);
-  const exists = router instanceof RouterDevice && swA instanceof SwitchDevice && swB instanceof SwitchDevice && !!a && !!b && !!e && !!f && !!host(net, pcC) && !!host(net, SUBNET_PC_ID);
+  const inheritedC = net.devices.get(pcC);
+  const exists = router instanceof RouterDevice && swA instanceof SwitchDevice && swB instanceof SwitchDevice && !!a && !!b && !!e && !!f && inheritedC instanceof Host && inheritedC.kind === 'host' && !!host(net, SUBNET_PC_ID);
   if (!exists) return { exists: false, cables: false, interfaces: false, hostIp: false, gateways: false, defaultRoute:false, bReady:false } as const;
   const aPort = portOn(a, swA), ePort = portOn(e, swB), fPort = portOn(f, swB);
   const side = (sw: SwitchDevice, port: typeof aPort) => router.interfaces.filter(i => {

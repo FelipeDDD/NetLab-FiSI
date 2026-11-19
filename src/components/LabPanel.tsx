@@ -1,14 +1,19 @@
 import { Fragment, useState } from 'react';
 import { useStore } from '../store';
-import { PROGRESSIVE_NAT_PAT_ID, PROGRESSIVE_NAT_PAT_URL } from '../labs/progressiveNatPat';
+import { PROGRESSIVE_NAT_PAT_ID } from '../labs/progressiveNatPat';
+import { TutorialCommand } from '../tutorials/TutorialCommand';
+import { NatPatActivities } from './NatPatActivities';
+import { natConfiguration, natIntroSignature } from '../labs/natLearning';
+import { sim } from '../sim';
 
 // Renders `backtick` spans as inline code.
-function Rich({ text }: { text: string }) {
+function Rich({ text, commands = false }: { text: string; commands?: boolean }) {
   return (
     <>
       {text.split('\n').map((line, li) => (
         <p key={li} className="lab-line">
-          {line.split('`').map((part, i) => (i % 2 ? <code key={i}>{part}</code> : <Fragment key={i}>{part}</Fragment>))}
+          {line.split('`').map((part, i) => (i % 2 === 0 ? <Fragment key={i}>{part}</Fragment>
+            : commands && part.startsWith('iptables ') ? <TutorialCommand key={i}>{part}</TutorialCommand> : <code key={i}>{part}</code>))}
         </p>
       ))}
     </>
@@ -26,13 +31,20 @@ export function LabPanel() {
   const checkStep = useStore((s) => s.checkStep);
   const exportAttempt = useStore((s) => s.exportAttempt);
   const closeLab = useStore((s) => s.closeLab);
+  const generation = useStore((s) => s.topologyGeneration);
+  useStore(s => s.lab?.id === PROGRESSIVE_NAT_PAT_ID ? s.nodes : null);
   const [collapsed, setCollapsed] = useState(false);
 
   if (!lab) return null;
   const step = lab.steps[stepIdx];
   const allObjectives = lab.steps.flatMap((s) => s.objectives);
-  const passed = allObjectives.filter((o) => results[o.id]?.pass).length;
   const progressive = lab.id === PROGRESSIVE_NAT_PAT_ID;
+  const configuration = progressive ? natConfiguration(sim.net) : '';
+  const passed = allObjectives.filter(o => results[o.id]?.pass && (!progressive ||
+    (o.id === 'nat-first-http' ? results[o.id].detail === natIntroSignature(sim.net) :
+      results['nat-proof-' + o.id]?.pass && results['nat-proof-' + o.id]?.detail === configuration))).length;
+  const intro = progressive && stepIdx === 0;
+  const hints = step.hints;
   const stepPassed = !checking && step.objectives.every(o => results[o.id]?.pass);
   const lastStep = stepIdx === lab.steps.length - 1;
 
@@ -45,7 +57,8 @@ export function LabPanel() {
   }
 
   return (
-    <div className="lab-panel" data-progressive-nat={progressive || undefined}>
+    <div className="lab-panel" data-progressive-nat={progressive || undefined}
+      data-nat-intro={intro || undefined} data-nat-packet-demo={intro && quizAnswers['nat-intro-screen'] !== 1 && !stepPassed ? true : undefined}>
       <div className="lab-head">
         <div className="lab-title">{lab.title}</div>
         <button className="tab-close" title={progressive ? 'Recolher' : 'Collapse'} onClick={() => setCollapsed(true)}>
@@ -69,30 +82,20 @@ export function LabPanel() {
       </div>
 
       <div className="lab-stepnav">
-        <button className="btn" aria-label={progressive ? 'Voltar' : 'Previous step'}
-          disabled={stepIdx === 0 || (progressive && checking)} onClick={() => setLabStep(stepIdx - 1)}>
-          ‹
-        </button>
+        {!progressive && <button className="btn" aria-label="Previous step" disabled={stepIdx === 0} onClick={() => setLabStep(stepIdx - 1)}>‹</button>}
         <span>
           {progressive ? `Etapa ${stepIdx + 1}/${lab.steps.length} · ` : `Step ${stepIdx + 1} of ${lab.steps.length}: `}<strong>{step.title}</strong>
         </span>
-        <button
-          className="btn"
-          aria-label={progressive ? 'Avançar' : 'Next step'}
-          disabled={lastStep || (progressive && !stepPassed)}
-          onClick={() => setLabStep(stepIdx + 1)}
-        >
-          ›
-        </button>
+        {!progressive && <button className="btn" aria-label="Next step" disabled={lastStep} onClick={() => setLabStep(stepIdx + 1)}>›</button>}
       </div>
 
-      <div className="lab-body">
-        <Rich text={progressive ? step.body.replaceAll('`' + PROGRESSIVE_NAT_PAT_URL + '`', PROGRESSIVE_NAT_PAT_URL) : step.body} />
-        {step.hints?.length ? <details key={lab.id + ':' + stepIdx} className="lab-hints">
+      {progressive ? <NatPatActivities key={generation}/> : <><div className="lab-body">
+        <Rich text={step.body} />
+        {hints?.length ? <details key={lab.id + ':' + stepIdx} className="lab-hints">
           <summary>Dicas</summary>
-          {step.hints.map((hint, index) => <details key={hint} open={progressive && index === 0}>
+          {hints.map((hint, index) => <details key={hint} open={progressive && index === 0}>
             <summary>Dica {index + 1}</summary>
-            <Rich text={hint} />
+            <Rich commands={progressive} text={hint} />
           </details>)}
         </details> : null}
       </div>
@@ -114,7 +117,7 @@ export function LabPanel() {
           })}
           {(!progressive || !stepPassed || lastStep) &&
             <button className="btn lab-check" disabled={checking} onClick={() => checkStep()}>
-              {progressive ? (checking ? 'Verificando…' : 'Verificar objetivos') : (checking ? 'Checking (watch the packets)…' : 'Check objectives')}
+              {checking ? 'Checking (watch the packets)…' : 'Check objectives'}
             </button>}
           {step.feedback && stepPassed && <div className="lab-step-feedback" role="status"><Rich text={step.feedback} /></div>}
         </div>
@@ -150,11 +153,10 @@ export function LabPanel() {
         );
       })}
 
-      <div className="lab-footer">
-        <button className="btn" onClick={() => exportAttempt()}>
-          {progressive ? 'Exportar tentativa' : 'Export attempt for submission'}
-        </button>
-      </div>
+      {!progressive && <div className="lab-footer">
+        <button className="btn" onClick={() => exportAttempt()}>Export attempt for submission</button>
+      </div>}
+      </>}
     </div>
   );
 }

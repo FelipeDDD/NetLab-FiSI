@@ -35,6 +35,7 @@ export async function runBrowserReview({page,url,root,report}) {
     await wait("document.querySelector('#device-context-menu [role=menuitem]')");
   };
   const shot=async(name,variant,width)=>{
+    if (process.env.NETLAB_BROWSER_REVIEW_NO_SCREENSHOTS === '1') return;
     const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
     await writeFile(path.join(directory,name+'.png'),Buffer.from(png.data,'base64'));
     captures.push({source:path.relative(root,path.join(directory,name+'.png')).split(path.sep).join('/'),scene:name,variant,state:'normal',width,height:960});
@@ -65,12 +66,13 @@ export async function runBrowserReview({page,url,root,report}) {
       assert.equal(await page.evaluate('return JSON.stringify(store.getState().captureWorkspaceDocument());'),await page.evaluate('return beforeBrowser;'));
       await shot('browser-http-desktop','graphite-dark',1440);
     });
-    await test('browser window: headers move one compact frame; edges/corners/keyboard resize without requests, history or canvas changes',async()=>{
+    await test('browser window: one header moves the frame; edges/corners/keyboard resize without requests, history or canvas changes',async()=>{
       const before=await browserState(),doc=await page.evaluate('return JSON.stringify(store.getState().captureWorkspaceDocument());');
       const viewport=await page.evaluate("return document.querySelector('.react-flow__viewport').getAttribute('style');");
       const start=await rect();await drag('.pc-desktop-header',90,55);const moved=await rect();
       assert.equal(moved.x,start.x+90);assert.equal(moved.y,start.y+55);assert.equal(moved.width,600);assert.equal(moved.height,420);
-      await drag('.pc-browser-header',-30,15);assert.equal((await rect()).x,moved.x-30);
+      assert.equal(await page.evaluate("return document.querySelectorAll('.pc-desktop header').length;"),1);
+      await drag('.pc-desktop-header',-30,15);assert.equal((await rect()).x,moved.x-30);
       await drag('.resize-se',80,50);assert.equal((await rect()).width,680);assert.equal((await rect()).height,470);
       for(const edge of ['n','s','e','w','ne','nw','sw'])await drag('.resize-'+edge,edge.includes('w')?-8:edge.includes('e')?8:0,edge.includes('n')?-8:edge.includes('s')?8:0);
       const preKey=await rect();await page.evaluate("document.querySelector('.pc-desktop-header').focus();");
@@ -150,15 +152,17 @@ export async function runBrowserReview({page,url,root,report}) {
       assert.equal(await page.evaluate("return document.querySelectorAll('.pc-desktop').length;"),1);
       assert.equal(await page.evaluate("return document.querySelectorAll('.pc-desktop-home').length;"),0);
       assert(await page.evaluate("return ![...document.querySelectorAll('.device-actions button')].some(e=>/Browser|Desktop/.test(e.textContent+' '+e.getAttribute('aria-label')));"));
-      await click('.pc-desktop-header button');await wait("!document.querySelector('.pc-desktop')");
+      await click('.pc-desktop-close');await wait("!document.querySelector('.pc-desktop')");
       await nodeMenu(id,true);await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await wait("!document.querySelector('#device-context-menu')");
       await nodeMenu(id);await click('#device-context-menu button','Browser öffnen');await wait("document.querySelector('#pc-browser-address')");
       assert.equal(await page.evaluate("return document.querySelectorAll('.pc-desktop-home').length;"),0);
       assert.equal((await rect()).width,600);assert.equal((await rect()).height,420);
     });
     await test('browser: Linux reuses the same desktop, mobile/Light fits and device deletion closes stale window',async()=>{
-      await click('.pc-desktop-header button');await page.evaluate('store.getState().select(linux.id);');await delay(100);await nodeMenu(await page.evaluate('return linux.id;'));await click('#device-context-menu button','Browser öffnen');await wait("document.querySelector('#pc-browser-address')");
+      await click('.pc-desktop-close');await page.evaluate('store.getState().select(linux.id);');await delay(100);await nodeMenu(await page.evaluate('return linux.id;'));await click('#device-context-menu button','Browser öffnen');await wait("document.querySelector('#pc-browser-address')");
+      await click('.pc-browser-desktop');await wait("document.querySelector('.pc-desktop-home')");
       assert(await page.evaluate("return document.querySelector('.pc-desktop-header').textContent.includes('Linux');"));
+      await click('.pc-desktop-app');await wait("document.querySelector('#pc-browser-address')");
       await page.evaluate("theme.getState().setTheme('classic-light');server.httpServer.body=safeBody;");
       await page.send('Emulation.setDeviceMetricsOverride',{width:700,height:960,deviceScaleFactor:1,mobile:false});await delay(150);
       await navigate('http://server.lab');await wait("document.querySelector('.pc-browser-page')?.textContent.includes('Serviceportal')");await shot('browser-http-700','classic-light',700);

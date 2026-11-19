@@ -10,6 +10,9 @@ import {useDesktopWindow} from './useDesktopWindow';
 import type {ResizeEdge} from './windowGeometry';
 import {BrowserErrorPanel} from './BrowserErrorPanel';
 import './browser.css';
+import { sim } from '../sim';
+import { natIntroSignature } from '../labs/natLearning';
+import { PROGRESSIVE_NAT_PAT_ID, PROGRESSIVE_NAT_PAT_URL } from '../labs/progressiveNatPat';
 
 export default function PCDesktop({device}:{device:Host}) {
   const {language}=useTranslation(),paused=useStore(s=>s.paused);
@@ -31,7 +34,17 @@ export default function PCDesktop({device}:{device:Host}) {
     else if(!tcpOnly){const next=[...history.slice(0,index+1),url.address];setHistory(next);setIndex(next.length-1);}
     if(!url.https||tcpOnly){const state=useStore.getState();if(state.paused&&state.pauseReason==='activation')state.setPaused(false);}
     setLoading(true);const token=++sequence.current;
-    request.current=requestPage(device,url,value=>{if(token===sequence.current){setResult(value);setLoading(false);}},
+    const network = sim.net;
+    const signature = useStore.getState().lab?.id === PROGRESSIVE_NAT_PAT_ID ? natIntroSignature(network) : null;
+    request.current=requestPage(device,url,value=>{if(token===sequence.current){
+      setResult(value);setLoading(false);
+      const state = useStore.getState();
+      if (state.lab?.id === PROGRESSIVE_NAT_PAT_ID && state.labStep === 0 && device.id === 'PC1' &&
+          sim.net === network && network.devices.get(device.id) === device && signature === natIntroSignature(network) &&
+          signature !== null && url.address === PROGRESSIVE_NAT_PAT_URL + '/' && value.kind === 'http' && value.status === 200 && value.body.includes('Oficina conectada')) {
+        state.recordLabResult('nat-first-http', true, signature);
+      }
+    }},
       {tcpOnly,stage:value=>{if(token===sequence.current)setStage(value);}});
   }
   // The renderer receives only HTTP response content from the simulated engine.
@@ -44,11 +57,13 @@ export default function PCDesktop({device}:{device:Host}) {
     style={frame.rect?{left:frame.rect.x,top:frame.rect.y,width:frame.rect.width,height:frame.rect.height}:{visibility:'hidden'}}
     onPointerMove={frame.move} onPointerUp={frame.finish} onPointerCancel={frame.finish} onLostPointerCapture={frame.finish}
     onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();if(open)closeBrowser();else closeDesktop();}}}>
-    <header className="pc-desktop-header" {...moveHeader}><div><h2 id="pc-desktop-heading">{device.name} · {t('desktop')}</h2><small>{device.os==='windows'?'Windows':'Linux'}</small></div>
-      <button type="button" className="btn btn--icon" aria-label={t('closeDesktop')} onClick={closeDesktop}>×</button></header>
+    <header className={`pc-desktop-header${open ? ' is-browser' : ''}`} {...moveHeader}>
+      <div><h2 id="pc-desktop-heading">{device.name} · {t(open ? 'browser' : 'desktop')}</h2>{!open && <small>{device.os==='windows'?'Windows':'Linux'}</small>}</div>
+      {open && <button type="button" className="btn pc-browser-desktop" title={t('closeBrowser')} onClick={closeBrowser}>‹ {t('desktop')}</button>}
+      <button type="button" className="btn btn--icon pc-desktop-close" aria-label={t('closeDesktop')} onClick={closeDesktop}>×</button></header>
     {!open?<div className="pc-desktop-home"><button className="btn pc-desktop-app" type="button" ref={launch} onClick={()=>useDesktop.getState().openBrowser(device)}>
       <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="16" cy="16" r="12"/><ellipse cx="16" cy="16" rx="5" ry="12"/><path d="M4 16h24M7 9h18M7 23h18"/></svg>{t('browser')}</button><p>{t('intro')}</p></div>:
-    <div className="pc-browser"><div className="pc-browser-header" {...moveHeader}><strong>{t('browser')}</strong><button className="btn btn--icon" type="button" aria-label={t('closeBrowser')} onClick={closeBrowser}>×</button></div>
+    <div className="pc-browser">
       <form className="pc-browser-navigation" onSubmit={e=>{e.preventDefault();navigate(draft);}}>
         <button className="btn btn--icon" type="button" aria-label={t('back')} disabled={index<=0} onClick={()=>navigate(history[index-1],index-1)}>←</button>
         <button className="btn btn--icon" type="button" aria-label={t('forward')} disabled={index>=history.length-1} onClick={()=>navigate(history[index+1],index+1)}>→</button>

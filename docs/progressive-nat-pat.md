@@ -8,23 +8,13 @@ a intenção pedagógica e as escolhas anteriores à implementação.
 
 ## Fluxo para o aluno
 
-1. **Acesso funcionando.** Abra `http://198.51.100.80` no navegador de PC1.
-   Inicie a captura antes do acesso para comparar os pacotes TCP dos dois
-   lados do Router. Na ida, compare o IPv4 de origem. Na volta, compare o
-   destino. O terminal do Router também mostra as associações com `conntrack -L`.
-2. **Novo posto.** Ligue PC2 ao Switch LAN. Compare o ping local PC2 → PC1 e
-   as tentativas de abrir a página nos dois PCs. Use **Verificar objetivos**
-   antes de mudar o NAT. O tráfego de PC2 sai com a origem privada, para a
-   qual o servidor não tem rota de retorno.
-3. **Acesso compartilhado.** Edite a regra de saída no terminal do Router e
-   verifique os objetivos. A verificação inicia duas conexões HTTP juntas
-   e testa de novo a comunicação local. As duas respostas precisam chegar
-   aos clientes corretos.
+1. **Acesso funcionando.** A primeira tela apresenta NAT, pede iniciar a captura em todos os enlaces e abrir a página externa no navegador de PC1. Cada ação recebe confirmação junto da instrução. O HTTP é confirmado pela resposta real do navegador, sem sonda adicional. **Próximo** abre a comparação.
+   Na segunda tela, o aluno identifica primeiro a origem local do SYN e depois a origem externa. A verificação usa o vínculo registrado na captura entre o SYN recebido e o encaminhado pelo Router. A evidência continua válida após pausar ou encerrar a captura e após a expiração do Conntrack. As respostas completas aparecem após acertar. Se faltarem registros na captura, abra a página novamente com a captura ativa em todos os enlaces.
+2. **Novo posto.** O cenário novo começa sem PC2. Adicione um Host Linux ou Windows, configure 192.168.60.11/24 e Gateway 192.168.60.1 pelo Inspector e conecte-o ao Switch LAN. A associação guarda o ID do Host no progresso existente. O nome existente é preservado e aparece junto de PC2. Se houver vários candidatos, o tutorial pede resolver a ambiguidade.
+   Verificações contextuais comprovam ping de PC2 para PC1, HTTP traduzido de PC1 e uma nova falha externa de PC2, nessa ordem. Cada botão gera tráfego real. As dicas aparecem após as ações.
+3. **Acesso compartilhado.** A explicação esclarece a abrangência da regra inicial. O aluno adapta o NAT e verifica HTTP concorrente e comunicação local por botões separados. O verificador existente confere sockets novos e Conntrack. A explicação de PAT menciona portas externas distintas e remapeamento conforme a necessidade.
 
-As dicas são recolhíveis e podem ser abertas uma de cada vez. Nas duas primeiras
-etapas, a verificação libera o avanço e guarda a observação. Voltar serve para
-revisá-la sem desfazer o cabo ou as regras. A última etapa pode ser verificada
-novamente a qualquer momento. Os objetivos são resultados da última verificação.
+Tela interna, associação do Host e comprovantes usam os campos existentes de progresso do Lab. Uma assinatura da configuração acompanha as verificações. Mudanças técnicas exigem novas provas. Resultados antigos sem assinatura permanecem armazenados, mas devem ser verificados novamente. A posição dos dispositivos não invalida as provas. Tentativas antigas com PC2 pronto continuam utilizáveis.
 
 ## Topologia e critérios
 
@@ -33,7 +23,7 @@ PC1 `192.168.60.10/24` e PC2 `192.168.60.11/24` usam o gateway
 `198.51.100.2/24`. O servidor `198.51.100.80/24` oferece HTTP/80 e não tem
 rota para a LAN. A regra inicial de masquerade seleciona apenas PC1.
 
-A checagem usa sockets HTTP novos no simulador ao apertar o botão. Associa
+Nas etapas 2 e 3, a checagem usa sockets HTTP novos no simulador ao apertar cada botão. Associa
 cada resposta à porta local do socket e confirma a tradução no Conntrack do
 Router. Na etapa final, ambos os fluxos precisam usar o IPv4 externo com
 portas distintas. Uma regra mais abrangente, uma segunda regra para PC2
@@ -59,7 +49,7 @@ O roteiro Chromium valida o menu, as dicas, os bloqueios antes das
 verificações, o F5, a revisão de etapas e o Save/Load. Pode ser executado
 no PowerShell com `$env:NETLAB_PROGRESSIVE_NAT_REVIEW='1'` seguido de
 `node scripts/test-project-repository.mjs`. O roteiro usa banco descartável
-e não grava capturas.
+e grava uma captura representativa em .playwright-mcp/reviews/nat-pat-refinement/comparacao.png.
 
 No primeiro teste com aluno, observe se ele consegue encontrar a captura e
 comparar os endereços nos dois sentidos. Peça que verifique a etapa 2 antes
