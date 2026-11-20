@@ -12,6 +12,8 @@ import { requestPage, simulatedUrl, type BrowserResult } from '../browser/reques
 import { packetAnimationDuration, packetAnimationProgress, sequencePacketAnimation, type AnimatedTransfer } from '../packetAnimation';
 import { natCapturedFlow, natIntroSignature, natSecondHost } from './natLearning';
 import { PacketCapture } from '../packetCapture';
+import { createDevice } from '../engine/factory';
+import { natHostReady, natBrowserProof, natRouterEntries } from './natLearning';
 
 const lab = progressiveNatPat.lab!;
 const ip = (text: string) => parseIp(text)!;
@@ -31,6 +33,65 @@ function check(net: Network, step: number) {
 }
 
 describe('progressive NAT/PAT Lab', () => {
+  it('lists the initial NAT rule with nftables in the Router terminal', () => {
+    const { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      let output = '';
+      new Shell(network.devices.get('edge') as IpDevice).exec('nft list ruleset', { write: text => { output += text; } }, () => {});
+      expect(output).toContain('oifname "eth1" ip saddr 192.168.60.10 masquerade');
+    } finally { disposeNetwork(network); }
+  });
+  it('allocates the same PC sequence for Linux and Windows and keeps custom names through load', () => {
+    const { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      createDevice(network, 'host', { name: 'pc2' });
+      const linux = createDevice(network, 'host', { os: 'linux' });
+      const windows = createDevice(network, 'host', { os: 'windows' });
+      expect([linux.name, windows.name]).toEqual(['PC3', 'PC4']);
+      windows.name = 'Recepção';
+      const restored = prepareTopologyDocument(serializeNetwork(network, {})).network;
+      try { expect(restored.devices.get(windows.id)?.name).toBe('Recepção'); }
+      finally { disposeNetwork(restored); }
+    } finally { disposeNetwork(network); }
+  });
+
+  it('recognizes CLI IPv4 and default route as equivalent to inspector fields', () => {
+    const { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      const host = createDevice(network, 'host') as Host;
+      network.connect(host.id, 'lan');
+      const shell = new Shell(host);
+      shell.exec('ip address add 192.168.60.11/24 dev eth0', { write: () => {} }, () => {});
+      expect(natHostReady(network, host)).toBe(false);
+      shell.exec('ip route add default via 192.168.60.1 dev eth0', { write: () => {} }, () => {});
+      expect(host.interfaces[0].gateway).toBeNull();
+      expect(natHostReady(network, host)).toBe(true);
+    } finally { disposeNetwork(network); }
+  });
+
+  it('requires a new browser socket and the exact NAT outcome for each client', () => {
+    const { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      const first = network.devices.get('PC1') as Host, peer = addPc2(network);
+      network.connect(peer.id, 'lan');
+      const browse = (host: Host, translated: boolean) => {
+        const previous = new Set(natRouterEntries(network));
+        let proved: boolean | undefined;
+        requestPage(host, simulatedUrl('http://198.51.100.80')!, (result, port) => {
+          proved = natBrowserProof(network, host, result, port, previous, translated);
+          expect(natBrowserProof(network, host, result, port, new Set(natRouterEntries(network)), translated)).toBe(false);
+        });
+        network.scheduler.advanceTo(network.now + 5000);
+        return proved;
+      };
+      expect(browse(first, true)).toBe(true);
+      expect(browse(peer, false)).toBe(true);
+      expect(browse(peer, true)).toBe(false);
+      (network.devices.get('edge') as IpDevice).fw.addNatRule('postrouting', { oif: 'eth1' }, { type: 'masquerade' });
+      expect(browse(peer, false)).toBe(false);
+      expect(browse(peer, true)).toBe(true);
+    } finally { disposeNetwork(network); }
+  });
   it('retains linked SYN evidence after capture stops and Conntrack expires between answers', () => {
     const { network } = prepareTopologyDocument(progressiveNatPat);
     try {

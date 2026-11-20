@@ -13,10 +13,11 @@ import type { Connection, Edge, EdgeChange, Node, NodeChange } from '@xyflow/rea
 import LZString from 'lz-string';
 import { sameIpv4, validIpv4, type InterfaceIpv4 } from './engine/ipv4Config';
 import { runDhclient } from './commands/dhclient';
+import { addNftMasquerade, type MasqueradeRuleError } from './commands/nft';
 import { Network, type PingProgress } from './engine/network';
 import { observeIcmpActivity, observePingActivity } from './networkObservations';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
-import { natSecondHost, natConfiguration } from './labs/natLearning';
+import { natSecondHost, natConfiguration, natHostReady, NAT_LOCAL_IP, NAT_PEER_IP } from './labs/natLearning';
 import { normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { preferredPingAnimationSpeed } from './pingAnimationPreference';
 import { readPingAnimationPosition, type PingAnimationPosition } from './pingAnimationPosition';
@@ -155,6 +156,7 @@ interface NetsimState {
   finishNodeMovement(): void;
   cancelNodeMovement(): void;
   editStaticRoute(deviceId:string, expected:string, original:import('./engine/ipdevice').Route|null, input:RouteEditInput|null):RouteEditError|null;
+  addNatMasquerade(device: RouterDevice, iface: string, source: string): MasqueradeRuleError | null;
   invalidateTopologyHistory(): void;
   undoTopology(): void;
   redoTopology(): void;
@@ -328,7 +330,7 @@ interface NetsimState {
   setLabStep(step: number): void;
   answerQuiz(qid: string, choice: number): void;
   checkStep(objectiveId?: string): void;
-  recordLabResult(id: string, pass: boolean, detail: string): void;
+  recordLabResult(id: string, pass: boolean, detail: string, configuration?: string): void;
   exportAttempt(): void;
   closeLab(): void;
 }
@@ -364,6 +366,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   let movement: { source: 'drag' | 'keyboard'; before: Map<string, Point> } | null = null;
   let ignoreDrag = false;
   let labCheckGeneration = 0;
+  const natPings = new Map<string, { objective: string; target: number; configuration: string }>();
   // Detection only: no serialized snapshot is ever applied to the live engine.
   const configuration = () => JSON.stringify(serializeNetwork(sim.net, {}));
   let chapterHistory:((id:string,direction:'undo'|'redo')=>void)|undefined;
@@ -532,6 +535,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       capture.reset();
     }
     wiredNetwork = net;
+    natPings.clear();
     latestPing = null;
     net.onClientConfiguration = () => {
       if (sim.net !== net) return;
@@ -560,6 +564,28 @@ export const useStore = create<NetsimState>()((set, get) => {
     };
     net.onPingProgress = (event) => {
       if (sim.net !== net) return;
+      const state = get(), key = event.deviceId + ':' + event.icmpId;
+      if (state.lab?.id === PROGRESSIVE_NAT_PAT_ID && state.labStep > 0) {
+        const host = natSecondHost(net, state.labResults['nat-host']?.detail);
+        const first = net.devices.get('PC1');
+        if (event.type === 'started' && natHostReady(net, host) &&
+            first?.getInterface('eth0')?.ip?.addr === NAT_LOCAL_IP &&
+            (event.deviceId === host?.id || event.deviceId === first.id)) {
+          natPings.set(key, {
+            objective: state.labStep === 1 ? 'nat-before-local' : 'nat-after-local',
+            target: event.deviceId === first.id ? NAT_PEER_IP : NAT_LOCAL_IP,
+            configuration: natConfiguration(net),
+          });
+        } else if (event.type === 'settled') {
+          const proof = natPings.get(key);
+          if (proof && event.replyFrom === proof.target && proof.configuration === natConfiguration(net) &&
+              [...net.devices.values()].filter(d => d.interfaces.some(i => i.ip?.addr === proof.target)).length === 1) {
+            state.recordLabResult(proof.objective, true, 'Echo Reply recebido.', proof.configuration);
+            natPings.delete(key);
+          }
+        }
+      }
+      if (event.type === 'finished') natPings.delete(key);
       observePingActivity(net, event);
       if (event.type === 'started') latestPing = { start: event, finished: false };
       else if (event.type === 'finished' && latestPing?.start.deviceId === event.deviceId && latestPing.start.icmpId === event.icmpId) latestPing.finished = true;
@@ -1281,6 +1307,15 @@ export const useStore = create<NetsimState>()((set, get) => {
       if(JSON.stringify(before)===JSON.stringify(after))return null;
       device.staticRoutes=structuredClone(after);get().refresh();
       commitEdit({type:'set-static-routes',label:translate(useLanguage.getState().language,'routeEditor.title'),deviceId,before,after});saveSoon();return null;
+    },
+    addNatMasquerade(device, iface, source) {
+      if (sim.net.devices.get(device.id) !== device) return 'stale';
+      const error = addNftMasquerade(device, iface, source);
+      if (error) return error;
+      checkHistoryConfiguration();
+      get().refresh();
+      saveSoon();
+      return null;
     },
     repeatRouterTutorialTask(step,signature,pcC) {
       if(routerSignature(sim.net)!==signature)return 'repeatUnsafe';
@@ -2192,6 +2227,7 @@ export const useStore = create<NetsimState>()((set, get) => {
     setLabStep(step) {
       const lab = get().lab;
       if (!lab) return;
+      natPings.clear();
       set({ labStep: Math.max(0, Math.min(lab.steps.length - 1, step)) });
       saveSoon();
     },
@@ -2201,11 +2237,13 @@ export const useStore = create<NetsimState>()((set, get) => {
       saveSoon();
     },
 
-    recordLabResult(id, pass, detail) {
+    recordLabResult(id, pass, detail, configuration) {
       if (get().lab?.id !== PROGRESSIVE_NAT_PAT_ID) return;
       const previous = get().labResults[id];
-      if (previous?.pass === pass && previous.detail === detail) return;
-      set({ labResults: { ...get().labResults, [id]: { pass, detail } } });
+      if (previous?.pass === pass && previous.detail === detail &&
+          (configuration === undefined || get().labResults['nat-proof-' + id]?.detail === configuration)) return;
+      set({ labResults: { ...get().labResults, [id]: { pass, detail },
+        ...(configuration === undefined ? {} : { ['nat-proof-' + id]: { pass, detail: configuration } }) } });
       saveSoon();
     },
 
@@ -2259,6 +2297,7 @@ export const useStore = create<NetsimState>()((set, get) => {
 
     closeLab() {
       labCheckGeneration++;
+      natPings.clear();
       set({ lab: null, labStep: 0, labResults: {}, quizAnswers: {}, labChecking: false });
       saveSoon();
     },

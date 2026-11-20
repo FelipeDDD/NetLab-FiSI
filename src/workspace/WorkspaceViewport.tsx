@@ -47,7 +47,8 @@ export function WorkspaceViewport() {
         if (saved && !newExercise) void setViewport(saved);
         else if (progressiveNat) void fitView({
           maxZoom: 0.9,
-          padding: width >= 950 ? { left: '384px', right: '32px', top: '32px', bottom: '36px' }
+          // Leave space for the 380px guided panel, its inset and a gap.
+          padding: width >= 950 ? { left: '412px', right: '32px', top: '32px', bottom: '36px' }
             : height >= 600 ? { x: '24px', top: '250px', bottom: '36px' } : 0.25,
         });
         else void fitView({ padding: .25, maxZoom: newExercise ? NEW_EXERCISE_MAX_ZOOM : betaExercise ? RESTORED_EXERCISE_MAX_ZOOM : 1.25 });

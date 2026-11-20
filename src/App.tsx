@@ -48,6 +48,10 @@ export default function App() {
     else if (target.closest('.terminal-dock')) setPanelPriority('terminal');
   };
   const selected = useStore((s) => s.selected);
+  useEffect(() => useStore.subscribe((next, previous) => {
+    if (next.terminalFocusRequest > previous.terminalFocusRequest && !next.terminalDockCollapsed) setPanelPriority('terminal');
+    else if (next.selected && next.selected !== previous.selected) setPanelPriority('inspector');
+  }), []);
   const generation = useStore(s => s.topologyGeneration);
   const packetInspectorOpen = useStore((s) => s.packetInspectorOpen);
   const hasTerminals = useStore((s) => s.terminals.length > 0);

@@ -126,8 +126,9 @@ export function runPing(
     complete();
   };
 
-  const maybeFinish = (seq: number) => {
-    device.network.emitPingProgress({ type: 'settled', deviceId: device.id, icmpId: id, seq });
+  const maybeFinish = (seq: number, replyFrom?: U32) => {
+    device.network.emitPingProgress({ type: 'settled', deviceId: device.id, icmpId: id, seq,
+      ...(replyFrom === undefined ? {} : { replyFrom }) });
     if (count !== null && (windows ? sent >= count && answered.size >= sent : seq >= count)) finish();
   };
 
@@ -144,7 +145,7 @@ export function runPing(
           windows ? `Reply from ${ipToString(ev.from)}: time=${rtt.toFixed(1)}ms TTL=${ev.ttl}\n`
             : `64 bytes from ${ipToString(ev.from)}: icmp_seq=${ev.seq} ttl=${ev.ttl} time=${rtt.toFixed(1)} ms\n`,
         );
-        maybeFinish(ev.seq);
+        maybeFinish(ev.seq, ev.from);
         break;
       }
       case 'time-exceeded': {

@@ -50,6 +50,7 @@ function parsePort(tok: string): PortRange | null {
 }
 
 function parseNetToken(tok: string): { addr: number; prefix: number } | null {
+  if (!/^\d+(?:\.\d+){3}(?:\/\d+)?$/.test(tok)) return null;
   const cidr = parseCidr(tok);
   if (cidr) return cidr;
   const ip = parseIp(tok);
@@ -183,6 +184,39 @@ function parseExpressions(p: Parser): ParsedExpr {
   }
   if (p.peek() !== undefined) return { match, error: `Error: trailing tokens after verdict: "${p.peek()}"` };
   return { match, verdict, nat };
+}
+
+export type MasqueradeRuleError = 'iface' | 'source' | 'chain' | 'stale';
+
+export function previewNftMasquerade(device: IpDevice, iface: string, source: string) {
+  const { tables, nat } = device.fw;
+  const chain = nat.postrouting.declared ? nat.postrouting.name : 'postrouting';
+  const commands: string[] = [];
+  if (!tables.nat) commands.push('nft add table ip nat');
+  if (!nat.postrouting.declared) {
+    commands.push(`nft add chain ip nat ${chain} { type nat hook postrouting priority 100 ; }`);
+  }
+  commands.push(`nft add rule ip nat ${chain} oifname "${iface || '<interface>'}" ip saddr ${source.trim() || '<IPv4/CIDR>'} masquerade`);
+  const preview = { chain, commands };
+  if (!device.getInterface(iface) || !/^[\w.:-]+$/.test(iface)) return { ...preview, error: 'iface' as const };
+  const srcNet = parseNetToken(source.trim());
+  if (!srcNet) return { ...preview, error: 'source' as const };
+  if (!/^[A-Za-z_][\w.-]*$/.test(chain)
+    || (nat.prerouting.declared && nat.prerouting.name.toLowerCase() === chain.toLowerCase())) {
+    return { ...preview, error: 'chain' as const };
+  }
+  return { ...preview, srcNet };
+}
+
+/** Structured entry point for the single operation offered by the Inspector. */
+export function addNftMasquerade(device: IpDevice, iface: string, source: string): MasqueradeRuleError | null {
+  const rule = previewNftMasquerade(device, iface, source);
+  if ('error' in rule) return rule.error;
+  const { fw } = device;
+  fw.tables.nat = true;
+  if (!fw.nat.postrouting.declared) fw.declareNat('postrouting', rule.chain);
+  fw.addNatRule('postrouting', { oif: iface, srcNet: rule.srcNet }, { type: 'masquerade' });
+  return null;
 }
 
 export function runNft(device: IpDevice, raw: string, out: Out): void {

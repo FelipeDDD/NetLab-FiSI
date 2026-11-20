@@ -11,7 +11,7 @@ import type {ResizeEdge} from './windowGeometry';
 import {BrowserErrorPanel} from './BrowserErrorPanel';
 import './browser.css';
 import { sim } from '../sim';
-import { natIntroSignature } from '../labs/natLearning';
+import { natIntroSignature, natConfiguration, natSecondHost, natRouterEntries, natBrowserProof, natHostReady } from '../labs/natLearning';
 import { PROGRESSIVE_NAT_PAT_ID, PROGRESSIVE_NAT_PAT_URL } from '../labs/progressiveNatPat';
 
 export default function PCDesktop({device}:{device:Host}) {
@@ -35,14 +35,33 @@ export default function PCDesktop({device}:{device:Host}) {
     if(!url.https||tcpOnly){const state=useStore.getState();if(state.paused&&state.pauseReason==='activation')state.setPaused(false);}
     setLoading(true);const token=++sequence.current;
     const network = sim.net;
-    const signature = useStore.getState().lab?.id === PROGRESSIVE_NAT_PAT_ID ? natIntroSignature(network) : null;
-    request.current=requestPage(device,url,value=>{if(token===sequence.current){
+    const initial = useStore.getState();
+    const natRequest = !tcpOnly && initial.lab?.id === PROGRESSIVE_NAT_PAT_ID && url.address === PROGRESSIVE_NAT_PAT_URL + '/';
+    const signature = natRequest && initial.labStep === 0 ? natIntroSignature(network) : null;
+    const finalScreen = initial.labStep === 2 && initial.quizAnswers['nat-rule-screen'] === 2;
+    const configuration = natRequest && (initial.labStep === 1 || finalScreen) ? natConfiguration(network) : null;
+    const previous = new Set(configuration === null ? [] : natRouterEntries(network));
+    request.current=requestPage(device,url,(value, localPort)=>{if(token===sequence.current){
       setResult(value);setLoading(false);
       const state = useStore.getState();
       if (state.lab?.id === PROGRESSIVE_NAT_PAT_ID && state.labStep === 0 && device.id === 'PC1' &&
           sim.net === network && network.devices.get(device.id) === device && signature === natIntroSignature(network) &&
           signature !== null && url.address === PROGRESSIVE_NAT_PAT_URL + '/' && value.kind === 'http' && value.status === 200 && value.body.includes('Oficina conectada')) {
         state.recordLabResult('nat-first-http', true, signature);
+      }
+      if (configuration !== null && sim.net === network && network.devices.get(device.id) === device &&
+          state.lab === initial.lab && state.labStep === initial.labStep && configuration === natConfiguration(network)) {
+        const host = natSecondHost(network, state.labResults['nat-host']?.detail);
+        if (natHostReady(network, host) && finalScreen && state.quizAnswers['nat-rule-screen'] === 2 && device === host &&
+            natBrowserProof(network, device, value, localPort, previous, true)) {
+          state.recordLabResult('nat-after-browser', true, 'PC2 recebeu HTTP por NAT.', configuration);
+        } else if (state.labStep === 1 && natHostReady(network, host) && (device.id === 'PC1' || device === host)) {
+          const translated = device.id === 'PC1';
+          if (natBrowserProof(network, device, value, localPort, previous, translated)) {
+            state.recordLabResult(translated ? 'nat-before-pc1' : 'nat-before-pc2', true,
+              translated ? 'HTTP recebido por NAT.' : 'Origem privada sem resposta.', configuration);
+          }
+        }
       }
     }},
       {tcpOnly,stage:value=>{if(token===sequence.current)setStage(value);}});

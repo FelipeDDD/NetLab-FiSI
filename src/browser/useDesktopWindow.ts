@@ -22,7 +22,7 @@ export function useDesktopWindow() {
         if (old) return old;
         const bounds = parent.getBoundingClientRect();
         const left = (parent.querySelector('.palette')?.getBoundingClientRect().right ?? bounds.left) - bounds.left + 12;
-        const panel = parent.querySelector('.lab-panel[data-progressive-nat]')?.getBoundingClientRect();
+        const panel = parent.querySelector('[data-exercise="guided-nat-pat"]')?.getBoundingClientRect();
         return initialWindow(next, left, panel && {
           x: panel.left - bounds.left, y: panel.top - bounds.top, width: panel.width, height: panel.height,
         });

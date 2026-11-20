@@ -20,12 +20,12 @@ export type BrowserResult={kind:'http';url:string;status:number;reason:string;bo
   |{kind:'tcp';url:string;port:number}
   |BrowserError;
 /** All traffic uses the selected device's DNS/IP/TCP stack, never host networking. */
-export function requestPage(device:IpDevice,url:SimulatedUrl,done:(r:BrowserResult)=>void,
+export function requestPage(device:IpDevice,url:SimulatedUrl,done:(r:BrowserResult, localPort?: number)=>void,
   options:{tcpOnly?:boolean;stage?:(s:'dns'|'tcp'|'http')=>void}={}):{cancel():void} {
   let finished=false,resolver:{cancel():void}|undefined;
   const socket:SocketControl={};
   let resolution:BrowserError['resolution'];
-  const finish=(r:BrowserResult)=>{if(finished)return;finished=true;done(r);};
+  const finish=(r:BrowserResult)=>{if(finished)return;finished=true;done(r,socket.localPort);};
   const fail=(error:string)=>finish({kind:'error',code: error==='Network is unreachable'||error==='unreachable'?'unreachable':
     (['refused','timeout','empty'] as string[]).includes(error)?error as BrowserFailure:'other',detail:error,...(resolution?{resolution}:{})});
   if(url.https&&!options.tcpOnly)finish({kind:'error',code:'https'});

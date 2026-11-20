@@ -32,6 +32,7 @@ import {OpenDesktopButton} from '../browser/DesktopSurface';
 import { editorMessage, editorMessageText, type EditorMessage } from '../editorMessages';
 import { consumeInspectorRoutingRequest, observeInspectorRoutingRequest, showInspectorRouting } from '../inspectorRouting';
 import { StaticRouteEditor } from './StaticRouteEditor';
+import { NatRuleEditor } from './NatRuleEditor';
 
 function useInspectorDraft(identity: string, value: string, readCurrent: () => string | undefined,
   onCommit: (text: string) => string | null | void, preserveFormatting = false) {
@@ -427,6 +428,7 @@ function RouterInspector({ device, hidden }: { device: RouterDevice | FirewallDe
           <button type="button" className="mini-btn" onClick={() => useStore.getState().copyDeviceConfig(device.id)}>{t('navigation.basicCopyConfig')}</button>
           <pre className="table-pre">{listRuleset(device.fw) || t('navigation.firewallNoRules')}</pre>
         </section>
+        {device instanceof RouterDevice && <NatRuleEditor device={device} />}
         <details className="router-inspector-details"><summary>Conntrack</summary>
           {dedicatedFirewall && <FirewallInfo label={t('navigation.firewallConntrackExplain')} concepts={['Conntrack']} />}
           <pre className="table-pre">{formatConntrack(device) || t('navigation.technicalEmpty')}</pre>

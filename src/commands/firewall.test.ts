@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Network } from '../engine/network';
 import { createDevice } from '../engine/factory';
-import { FirewallDevice, Host } from '../engine/ipdevice';
+import { FirewallDevice, Host, type IpDevice, type RouterDevice } from '../engine/ipdevice';
 import { parseCidr, parseIp } from '../engine/ip';
 import { Shell } from './shell';
+import { addNftMasquerade, previewNftMasquerade } from './nft';
 
 const ip = (s: string) => parseIp(s)!;
 
@@ -11,7 +12,7 @@ function setIp(dev: Host | FirewallDevice, ifname: string, cidr: string): void {
   dev.getInterface(ifname)!.ip = parseCidr(cidr)!;
 }
 
-function run(net: Network, dev: Host | FirewallDevice, line: string, advance = 60_000): string {
+function run(net: Network, dev: IpDevice, line: string, advance = 60_000): string {
   const out: string[] = [];
   let finished = false;
   new Shell(dev).exec(line, { write: (s) => out.push(s) }, () => (finished = true));
@@ -144,6 +145,32 @@ describe('nc and services', () => {
 });
 
 describe('NAT', () => {
+  it('validates a new router before setup and produces the same rules as its nft preview', () => {
+    const net = new Network();
+    const gui = createDevice(net, 'router') as RouterDevice;
+    const cli = createDevice(net, 'router') as RouterDevice;
+    expect(addNftMasquerade(gui, 'eth99', '192.168.60.0/24')).toBe('iface');
+    expect(addNftMasquerade(gui, 'eth1', '192.168.60.0/99')).toBe('source');
+    expect(addNftMasquerade(gui, 'eth1', '192.168.60.0/0x18')).toBe('source');
+    expect(gui.fw.tables.nat).toBe(false);
+    expect(gui.fw.nat.postrouting.declared).toBe(false);
+
+    const { commands } = previewNftMasquerade(gui, 'eth1', '192.168.60.0/24');
+    expect(commands).toHaveLength(3);
+    for (const command of commands) expect(run(net, cli, command)).toBe('');
+    expect(addNftMasquerade(gui, 'eth1', '192.168.60.0/24')).toBeNull();
+    expect(run(net, gui, 'nft list ruleset')).toBe(run(net, cli, 'nft list ruleset'));
+
+    for (const router of [gui, cli]) {
+      expect(run(net, router, 'nft add chain ip nat uplink { type nat hook postrouting priority 100 ; }')).toBe('');
+    }
+    const second = previewNftMasquerade(gui, 'eth0', '192.168.60.11').commands;
+    expect(second).toEqual(['nft add rule ip nat uplink oifname "eth0" ip saddr 192.168.60.11 masquerade']);
+    expect(run(net, cli, second[0])).toBe('');
+    expect(addNftMasquerade(gui, 'eth0', '192.168.60.11')).toBeNull();
+    expect(run(net, gui, 'nft list ruleset')).toBe(run(net, cli, 'nft list ruleset'));
+  });
+
   it('masquerade hides the LAN behind the firewall address', () => {
     const net = new Network();
     const { pc1, fw1, pc2 } = fwTopology(net);

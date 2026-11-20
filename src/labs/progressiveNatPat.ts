@@ -66,7 +66,7 @@ export const progressiveNatPat: SaveFile = {
       },
     },
     {
-      id: 'web', name: 'Servidor Web', kind: 'server', x: 820, y: 240, forwarding: false, routes: [],
+      id: 'web', name: 'Servidor Web', kind: 'server', x: 865, y: 240, forwarding: false, routes: [],
       ifaces: [{ name: 'eth0', ip: webIp + '/24', up: true }],
       httpServer: { enabled: true, port: 80, body: '<h1>' + pageTitle + '</h1><p>Resposta do servidor externo simulado.</p>' },
     },
@@ -90,7 +90,7 @@ export const progressiveNatPat: SaveFile = {
       },
       {
         title: 'Novo posto',
-        body: `Adicione um Host Linux ou Windows para PC2. Configure 192.168.60.11/24 e Gateway 192.168.60.1 pelo Inspector e conecte-o ao Switch LAN. Teste o ping de PC2 para PC1 e abra ${PROGRESSIVE_NAT_PAT_URL} em cada PC antes de alterar o Router.`,
+        body: `Adicione outro Host à rede. Configure 192.168.60.11/24 e gateway 192.168.60.1, conecte-o ao Switch LAN e teste o ping e o acesso a ${PROGRESSIVE_NAT_PAT_URL} antes de alterar o Router.`,
         hints: [
           'Use o ping para testar PC2 → PC1. Depois tente abrir a mesma página externa em cada PC.',
           'Se capturou as duas tentativas, compare o IPv4 de origem que sai do Router. Inspecione também a regra NAT e veja quais origens ela seleciona.',

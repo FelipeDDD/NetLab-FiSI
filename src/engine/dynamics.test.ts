@@ -194,7 +194,7 @@ describe('wireless AP', () => {
 describe('serialization round-trip', () => {
   it('preserves ripEnabled, vlans and ssid', () => {
     const net = new Network();
-    const { r1, r2 } = ripChain(net);
+    const { r1, r2, pc1 } = ripChain(net);
     const sw = createDevice(net, 'switch') as SwitchDevice;
     const ap = createDevice(net, 'ap') as ApDevice;
     r1.enableRip(true);
@@ -213,7 +213,7 @@ describe('serialization round-trip', () => {
     expect(apb.ssid).toBe('lab-wifi');
 
     // RIP converges in the restored network too.
-    const pc1b = [...restored.devices.values()].find((d) => d.name === 'pc1') as Host;
+    const pc1b = restored.devices.get(pc1.id) as Host;
     restored.scheduler.advanceTo(30_000);
     expect(pingWorks(restored, pc1b, '172.16.0.20')).toBe(true);
   });

@@ -29,6 +29,11 @@ in `src/components/` and `src/store.ts`.
 - **Explainable simulation over emulation.** The engine is deterministic so
   every outcome can be explained ([ADR 0002](docs/adr/0002-pure-ts-engine-not-wasm-vms.md)).
 
+## Guided tutorials
+
+For a step-by-step activity in **Geführte Tutorials**, start with the guided
+panel and visual-help references in [AGENTS.md](AGENTS.md).
+
 ## Adding a lab
 
 See [docs/LAB_AUTHORING.md](docs/LAB_AUTHORING.md). To bundle it, add it to

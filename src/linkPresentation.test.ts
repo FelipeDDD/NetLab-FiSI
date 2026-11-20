@@ -6,7 +6,7 @@ import { linkPresentation, linkTooltipEndpoints } from './linkPresentation';
 it('reads actual endpoint names, high numbered ports, status and latency without mutation', () => {
   const net = new Network(), sw = createDevice(net, 'switch', { switchPorts: 24 }), host = createDevice(net, 'host');
   const link = net.connect(host.id, sw.id, { bIface: 'eth18' });
-  expect(linkPresentation(net, link.id)?.title).toBe('pc1 / eth0 ↔ sw1 / eth18');
+  expect(linkPresentation(net, link.id)?.title).toBe('PC1 / eth0 ↔ sw1 / eth18');
   link.b.up = false; link.latency = 125; host.name = 'Client';
   expect(linkPresentation(net, link.id)).toEqual({ title: 'Client / eth0 ↔ sw1 / eth18', a: 'Client / eth0 · UP', b: 'sw1 / eth18 · DOWN', latency: 125 });
   expect(sw.interfaces[18].link).toBe(link); expect(net.links.size).toBe(1);

@@ -34,10 +34,10 @@ export interface WireVisualTrace { parentTransferId?: number; echoRequestTransfe
 // Read-only command lifecycle observation; not protocol/capture data.
 export type PingProgress = { deviceId: string; icmpId: number } &
   ({ type: 'started' } | { type: 'attempt'; seq: number; local: boolean; deadline: number } |
-   { type: 'settled'; seq: number } | { type: 'finished'; cancelled?: boolean });
+   { type: 'settled'; seq: number; replyFrom?: number } | { type: 'finished'; cancelled?: boolean });
 
 const NAME_PREFIX: Record<DeviceKind, string> = {
-  host: 'pc', notebook: 'nb', smartphone: 'phone',
+  host: 'PC', notebook: 'nb', smartphone: 'phone',
   switch: 'sw',
   router: 'r',
   firewall: 'fw',
@@ -118,12 +118,12 @@ export class Network {
   }
 
   allocName(kind: DeviceKind): string {
-    const used = new Set([...this.devices.values()].map((d) => d.name));
+    const used = new Set([...this.devices.values()].map(d => kind === 'host' ? d.name.toUpperCase() : d.name));
     let n = 0;
     let name: string;
     do {
       name = `${NAME_PREFIX[kind]}${++n}`;
-    } while (used.has(name));
+    } while (used.has(kind === 'host' ? name.toUpperCase() : name));
     return name;
   }
 

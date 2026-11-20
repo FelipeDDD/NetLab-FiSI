@@ -1,5 +1,7 @@
 import type { Network } from '../engine/network';
-import { Host } from '../engine/ipdevice';
+import { Host, IpDevice } from '../engine/ipdevice';
+import type { BrowserResult } from '../browser/request';
+import type { CtEntry } from '../engine/conntrack';
 import { serializeNetwork } from '../engine/serialize';
 import { ipToString, parseIp } from '../engine/ip';
 import type { CapturedPacket } from '../packetCapture';
@@ -23,6 +25,39 @@ export function natSecondHost(net: Network, associated?: string): Host | null {
   }
   const candidates = [...net.devices.values()].filter((d): d is Host => d instanceof Host && d.kind === 'host' && d.id !== 'PC1');
   return candidates.length === 1 ? candidates[0] : null;
+}
+
+export const NAT_LOCAL_IP = parseIp('192.168.60.10')!;
+export const NAT_PEER_IP = parseIp('192.168.60.11')!;
+const WAN_SERVER = parseIp('198.51.100.80')!;
+
+export function natHostReady(net: Network, host: Host | null): boolean {
+  const iface = host?.getInterface('eth0');
+  const gateway = host?.lookupRoute(WAN_SERVER);
+  return !!iface?.up && iface.ip?.addr === NAT_PEER_IP && iface.ip.prefix === 24 &&
+    gateway?.prefix === 0 && gateway.via === parseIp('192.168.60.1') && gateway.ifaceName === iface.name &&
+    !!iface.link?.operational && iface.link.other(iface).device === net.devices.get('lan');
+}
+
+export function natRouterEntries(net: Network): CtEntry[] {
+  const router = net.devices.get('edge');
+  return router instanceof IpDevice ? router.ct.list(net.now) : [];
+}
+
+export function natBrowserProof(net: Network, device: Host, result: BrowserResult, port: number | undefined,
+  previous: ReadonlySet<CtEntry>, translated: boolean): boolean {
+  const source = device.getInterface('eth0')?.ip?.addr;
+  const entry = natRouterEntries(net).find(e => !previous.has(e) &&
+    e.orig.proto === 'tcp' && e.orig.srcIp === source && e.orig.srcPort === port &&
+    e.orig.dstIp === WAN_SERVER && e.orig.dstPort === 80 && e.trans.dstIp === WAN_SERVER && e.trans.dstPort === 80);
+  if (!entry) return false;
+  const server = net.devices.get('web');
+  if (!(server instanceof IpDevice) || !server.hasIp(WAN_SERVER) ||
+      !server.httpServer?.enabled || server.httpServer.port !== 80 || !server.httpServer.body.includes('Oficina conectada')) return false;
+  if (translated) return (source === NAT_LOCAL_IP || source === NAT_PEER_IP) && entry.trans.srcIp === parseIp('198.51.100.2') &&
+    entry.state === 'established' && result.kind === 'http' && result.status === 200 && result.body.includes('Oficina conectada');
+  return source === NAT_PEER_IP && !server.lookupRoute(source) && entry.state === 'new' &&
+    entry.trans.srcIp === source && entry.trans.srcPort === port && result.kind === 'error' && result.code === 'timeout';
 }
 
 export function natCapturedFlow(records: readonly CapturedPacket[]):

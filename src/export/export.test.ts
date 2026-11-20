@@ -112,7 +112,7 @@ describe('config bundle', () => {
     const files = configBundle(net);
     const paths = files.map((f) => f.path);
     expect(paths).toContain('README.md');
-    expect(paths).toContain('pc1/setup.sh');
+    expect(paths).toContain('PC1/setup.sh');
     expect(paths).toContain('fw1/nftables.conf');
     expect(paths).toContain('fw1/dnsmasq.conf');
     expect(paths).toContain('srv1/index.html');
@@ -129,7 +129,7 @@ describe('containerlab export', () => {
     expect(yaml).toContain('ip addr add 192.168.1.10/24 dev eth1'); // sim eth0 -> clab eth1
     expect(yaml).toContain('ip link add br0 type bridge');
     expect(yaml).toContain('ip link set eth1 master br0');
-    expect(yaml).toContain('- endpoints: ["pc1:eth1", "sw1:eth1"]');
+    expect(yaml).toContain('- endpoints: ["PC1:eth1", "sw1:eth1"]');
     // nft rules ride along, with iifname/oifname shifted too
     expect(yaml).toContain(`nft 'add rule ip nat postrouting oifname \\"eth2\\" masquerade'`);
     expect(yaml).toContain('policy drop');
@@ -159,7 +159,7 @@ describe('diagram and report', () => {
     exportLab(net);
     const svg = topologySvg(net, POSITIONS);
     expect(svg).toContain('<svg');
-    expect(svg).toContain('pc1');
+    expect(svg).toContain('PC1');
     expect(svg).toContain('eth0 192.168.1.10/24');
   });
 

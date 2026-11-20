@@ -1,5 +1,7 @@
 # Tutorial progressivo de NAT/PAT — planejamento PT-BR
 
+Este documento registra o planejamento original. O [guia do tutorial guiado](../progressive-nat-pat.md) descreve a versão atual, inclusive a entrada pelo menu e a criação do segundo Host pelo aluno.
+
 **Objetivo.** Entender como um Router traduz o endereço de origem ao sair da LAN, quais clientes uma regra cobre e como as respostas voltam ao cliente certo quando duas conexões compartilham o endereço externo.
 
 ## Cenário e mudança
@@ -13,7 +15,7 @@ PC1 ── Switch LAN ── Router Borda ── Servidor Web
 
 Na LAN `192.168.60.0/24`, PC1 usa `.10`, PC2 usa `.11` e o gateway dos PCs é `192.168.60.1` (Borda, `eth0`). Na rede externa simulada `198.51.100.0/24`, o Borda usa `198.51.100.2` em `eth1` e o servidor atende em `http://198.51.100.80`. O servidor não tem caminho de retorno para a LAN privada. Endereços estáticos e acesso por IP deixam DHCP e DNS fora da atividade.
 
-No início, só PC1 está presente. O encaminhamento IPv4 está ativo, os enlaces estão operacionais, o HTTP responde e uma regra de `masquerade` cobre `192.168.60.10/32` na saída `eth1`. Na etapa 2, conectar PC2 ao Switch com seu endereço e gateway já configurados. A regra continua igual. PC2 alcança PC1 na LAN e seu tráfego pode chegar ao servidor com origem privada, mas a resposta fica sem rota de retorno. Essa diferença deve emergir da simulação e ser confirmada com tráfego real durante a futura validação.
+O plano previa apenas PC1 no início, com encaminhamento IPv4 ativo, enlaces operacionais, HTTP disponível e uma regra de `masquerade` para `192.168.60.10/32` na saída `eth1`. Na etapa 2, a proposta era conectar PC2 ao Switch com endereço e gateway já configurados. A regra inicial permitiria observar a diferença com tráfego real: PC2 alcançaria PC1 na LAN, mas o servidor externo ficaria sem rota de retorno para a origem privada.
 
 ## Etapas
 
@@ -31,24 +33,11 @@ No início, só PC1 está presente. O encaminhamento IPv4 está ativo, os enlace
 
 Mostrar as ajudas sob demanda, sem fornecer um comando pronto. Usar canvas, Inspector, terminais e ferramentas de captura já disponíveis. Exploração, pedidos de ajuda e reflexões opcionais ficam fora da avaliação. Aceitar, por exemplo, uma segunda regra `/32`, uma regra para o prefixo da LAN ou SNAT equivalente, desde que o acesso simultâneo funcione e os endereços, enlaces, serviço e acesso local sejam preservados.
 
-## A confirmar no checkout atualizado
+## Questões técnicas do planejamento original
 
-- **Tráfego e topologia.** Validar os gateways, a ausência de retorno para origem privada e o HTTP real. Confirmar a criação ou ativação de PC2 com as APIs existentes, preservando a configuração da tentativa ao retomar ou reiniciar. A entrada do PC2 muda a topologia. Sucesso e falha vêm dos pacotes e das respostas reais.
-- **NAT e PAT.** Confirmar a correção de PAT da escola com dois clientes usando a mesma porta de origem para o mesmo servidor e porta. Verificar tradução reversa e entrega ao cliente certo. Nas verificações após a edição da regra, usar sessões novas para evitar resultados de Conntrack ou HTTP anteriores.
-- **Recursos existentes.** Conferir onde já é possível ler e editar a regra e observar ida, volta e origem traduzida. Usar a demonstração disponível para ensinar o conceito e registrar lacunas de evidência antes de propor qualquer ferramenta visual adicional.
-- **Concorrência.** O `runChecks` local é sequencial. Confirmar se a versão atualizada permite iniciar duas sessões sobrepostas e associar cada resposta à sua tentativa. Dois acessos sequenciais podem confirmar acesso individual. O critério de simultaneidade requer sobreposição real.
+Na época, faltava conferir no checkout da escola como adicionar PC2, observar a tradução e testar duas conexões sobrepostas. A implementação guiada usa o Host criado pelo aluno, compara os SYN na captura e verifica duas conexões HTTP novas pelo Conntrack. Os [testes do cenário](../../src/labs/progressiveNatPat.test.ts) cobrem a falta de rota de retorno e a entrega das respostas aos clientes após a correção. A revisão pedagógica com aluno está indicada no [contexto de continuidade](../CONTEXTO_CONTINUIDADE.md).
 
-O protótipo usa roteamento IPv4, NAT/PAT e HTTP. Server multifuncional, DHCP Relay e Modem Bridge ficam fora deste cenário. O plano aguarda a versão atualizada para validação técnica.
+## Primeira implementação em Labs (18/11/2026)
 
-## Implementação de 18/11/2026
-
-O tutorial está no menu Labs. A topologia segue este plano com uma adaptação:
-PC2 aparece desde o início com endereço e gateway configurados, mas fica
-desconectado até o aluno ligar seu cabo na etapa 2. A própria tentativa
-registra a conexão, as alterações de NAT e os objetivos verificados.
-
-A verificação final abre dois sockets de uma vez e confirma o conteúdo
-recebido por cada PC e as portas externas no Conntrack. A captura e a
-listagem do Conntrack continuam disponíveis para observação manual.
-Consulte [o guia do tutorial](../progressive-nat-pat.md) para o fluxo, os
-testes e os limites observados na implementação.
+Na primeira implementação, o tutorial abria pelo menu Labs. PC2 já estava
+configurado e o aluno conectava seu cabo na etapa 2.

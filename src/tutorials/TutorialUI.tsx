@@ -47,9 +47,11 @@ import { AlternativePathsPanel } from './AlternativePathsPanel';
 import { alternativePathsCompletion, alternativePracticeCompletion } from './completion';
 import { AlternativeEntryMenu } from './AlternativeEntryMenu';
 import { observeNetworkActivity } from '../networkObservations';
+import { NatPatPanel } from './NatPatPanel';
+import { progressiveNatPat, PROGRESSIVE_NAT_PAT_ID } from '../labs/progressiveNatPat';
 import './tutorial.css';
 
-const Context = createContext<{ sessions: SessionController; repository: ProjectRepository; controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState; router:RouterTutorialController; routerState:RouterState; routing: StaticRoutingTutorialController; routingState: StaticRoutingState; alternative: AlternativePathsController; alternativeState: AlternativeState; lpm: LpmController; lpmState: LpmState; hiddenPanels: ReadonlySet<string>; hidePanel(chapter: ChapterId, draftId: string): void; showPanels(draftId: string): void } | null>(null);
+const Context = createContext<{ sessions: SessionController; repository: ProjectRepository; controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState; router:RouterTutorialController; routerState:RouterState; routing: StaticRoutingTutorialController; routingState: StaticRoutingState; alternative: AlternativePathsController; alternativeState: AlternativeState; lpm: LpmController; lpmState: LpmState; hiddenPanels: ReadonlySet<string>; hidePanel(chapter: ChapterId | typeof PROGRESSIVE_NAT_PAT_ID, draftId: string): void; showPanels(draftId: string): void } | null>(null);
 export function GuidedTutorialProvider({ sessions, repository, children }: { sessions: SessionController; repository: ProjectRepository; children: ReactNode }) {
   const [restart]=useState(()=>new ChapterRestartService(repository,sessions)),status=useSyncExternalStore(restart.subscribe,restart.getState),{t}=useTranslation();
   useEffect(()=>useStore.getState().attachChapterHistory((id,direction)=>void restart.navigate(id,direction)),[restart]);
@@ -58,7 +60,7 @@ export function GuidedTutorialProvider({ sessions, repository, children }: { ses
 }
 function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:SessionController;repository:ProjectRepository;restart:ChapterRestartService;children:ReactNode}){
   const [hiddenPanels, setHiddenPanels] = useState<ReadonlySet<string>>(() => new Set());
-  const hidePanel = (chapter: ChapterId, draftId: string) => setHiddenPanels(previous => new Set([...previous, `${draftId}:${chapter}`]));
+  const hidePanel = (chapter: ChapterId | typeof PROGRESSIVE_NAT_PAT_ID, draftId: string) => setHiddenPanels(previous => new Set([...previous, `${draftId}:${chapter}`]));
   const showPanels = (draftId: string) => setHiddenPanels(previous => new Set([...previous].filter(key => !key.startsWith(`${draftId}:`))));
   const routerRef=useRef<RouterTutorialController|null>(null);
   const routingRef=useRef<StaticRoutingTutorialController|null>(null);
@@ -227,7 +229,7 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
       {alternativeDraft&&<button type="button" role="menuitem" className="btn" data-alternative-resume disabled={ui.alternativeState.busy||progressLoading||progressError||!!progress.alternativeError} onClick={()=>{void ui.sessions.switchDraft(alternativeDraft).then(result=>{if(result.ok){ui.showPanels(alternativeDraft);usePractice.getState().close();close();}});}}>{t(alternativeProgress?.complete||alternativePractice?.complete?'guided.openNetwork':'guided.resume')}</button>}
       {trigger}
       {(ui.alternativeState.storageError||progress.alternativeError)&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>{void ui.alternative.retryProgress();setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}
-    </section><LpmMenu ui={ui} close={close}/>{progressError && <p role="alert"><TutorialText>{t('guided.storageError')}</TutorialText><button className="btn" onClick={()=>{setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}</div>}
+    </section><LpmMenu ui={ui} close={close}/><NatPatMenu sessions={ui.sessions} showPanels={ui.showPanels} close={close}/>{progressError && <p role="alert"><TutorialText>{t('guided.storageError')}</TutorialText><button className="btn" onClick={()=>{setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}</div>}
   </section>}</AlternativeEntryMenu>;
 }
 const steps = [
@@ -247,9 +249,17 @@ const hints: Record<TutorialHint, TranslationKey> = {
 };
 export function GuidedTutorialPanel() {
   const ui = useContext(Context), { t } = useTranslation(), practiceOpen = usePractice(s => s.open);
+  const natActive = useStore(s => s.lab?.id === PROGRESSIVE_NAT_PAT_ID);
+  const generation = useStore(s => s.topologyGeneration);
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => setCollapsed(false), [ui?.state.draftId]);
-  if (!ui || practiceOpen) return null;
+  if (practiceOpen) return null;
+  if (natActive) {
+    const draft = ui?.sessions.getState().activeDraftId;
+    if (draft && ui?.hiddenPanels.has(`${draft}:${PROGRESSIVE_NAT_PAT_ID}`)) return null;
+    return <NatPatPanel key={generation} onExplore={draft && ui ? () => ui.hidePanel(PROGRESSIVE_NAT_PAT_ID, draft) : undefined}/>;
+  }
+  if (!ui) return null;
   if(ui.lpmState.active&&ui.lpmState.record)return ui.hiddenPanels.has(`${ui.lpmState.record.draftId}:longest-prefix-match`)?null:<LpmPanel key={ui.lpmState.record.draftId} controller={ui.lpm} state={ui.lpmState} onExplore={()=>ui.hidePanel('longest-prefix-match',ui.lpmState.record!.draftId)}/>;
   if(ui.alternativeState.active&&ui.alternativeState.record)return ui.hiddenPanels.has(`${ui.alternativeState.record.draftId}:alternative-paths`)?null:<AlternativePathsPanel key={ui.alternativeState.record.draftId} controller={ui.alternative} state={ui.alternativeState} onExplore={()=>ui.hidePanel('alternative-paths',ui.alternativeState.record!.draftId)}/>;
   if(ui.routingState.active&&ui.routingState.record)return ui.hiddenPanels.has(`${ui.routingState.record.draftId}:static-routing`)?null:<StaticRoutingTutorialPanel key={ui.routingState.record.draftId} controller={ui.routing} state={ui.routingState} onExplore={()=>ui.hidePanel('static-routing',ui.routingState.record!.draftId)}/>;
@@ -298,6 +308,35 @@ export function GuidedTutorialPanel() {
       {state.step === 7 && completion.complete && <ExploreNetworkButton onClick={() => ui.hidePanel('first-connection', state.draftId!)}/>}
     </footer></>}
   </ExercisePanelFrame>;
+}
+
+function NatPatMenu({ sessions, showPanels, close }: { sessions: SessionController; showPanels(id: string): void; close(): void }) {
+  const { t } = useTranslation();
+  const activeNat = useStore(s => s.lab?.id === PROGRESSIVE_NAT_PAT_ID);
+  const [busy, setBusy] = useState(false), [error, setError] = useState(false);
+  const { activeDraftId, drafts } = sessions.getState();
+  const attempt = activeNat ? activeDraftId : [...drafts].reverse().find(draft =>
+    draft.id !== activeDraftId && sessions.recoveryDocument(draft.id)?.topology.lab?.id === PROGRESSIVE_NAT_PAT_ID)?.id;
+  const start = async (resume = false) => {
+    setBusy(true);
+    setError(false);
+    const result = resume && attempt
+      ? await sessions.switchDraft(attempt)
+      : await openNewLearningAttempt(sessions, { schemaVersion: 1, topology: progressiveNatPat });
+    setBusy(false);
+    if (!result.ok) { setError(true); return; }
+    const opened = sessions.getState().activeDraftId;
+    if (opened) showPanels(opened);
+    usePractice.getState().close();
+    close();
+  };
+  const lab = progressiveNatPat.lab!;
+  return <section className="guided-menu-chapter" aria-label={lab.title}>
+    <strong>{lab.title}</strong><p>{lab.blurb}</p>
+    {attempt && <button type="button" role="menuitem" className="btn" data-nat-resume disabled={busy} onClick={() => void start(true)}>{t('guided.resume')}</button>}
+    <button type="button" role="menuitem" className="btn" data-nat-start disabled={busy} onClick={() => void start()}>{t(attempt ? 'guided.newAttempt' : 'guided.chapterStart')}</button>
+    {error && <p role="alert">{t('guided.error')}</p>}
+  </section>;
 }
 
 function LpmMenu({ui,close}:{ui:NonNullable<React.ContextType<typeof Context>>;close():void}) {

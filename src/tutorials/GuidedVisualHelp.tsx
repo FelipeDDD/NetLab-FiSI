@@ -5,7 +5,7 @@ import { visualHelpPosition, type TutorialVisualHelp } from './tutorialVisualHel
 import './guidedVisualHelp.css';
 
 /** Mount with a step key so leaving a task always dismisses its visual help. */
-export function GuidedVisualHelp({ help, embedded = false }: { help: TutorialVisualHelp; embedded?: boolean }) {
+export function GuidedVisualHelp({ help, embedded = false, title }: { help: TutorialVisualHelp; embedded?: boolean; title?: string }) {
   const { t, language } = useTranslation();
   const [open, setOpen] = useState(false), [halfScale, setHalfScale] = useState(false);
   const [imageWidth, setImageWidth] = useState(0);
@@ -71,14 +71,14 @@ export function GuidedVisualHelp({ help, embedded = false }: { help: TutorialVis
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
         }
       }}>
-      <header><strong id={`${id}-title`}>{t(help.title)}</strong>
+      <header><strong id={`${id}-title`}>{title ?? t(help.title)}</strong>
         <button className="btn" type="button" data-guided-image-zoom aria-pressed={halfScale}
           onClick={() => setHalfScale(value => !value)}>{t(halfScale ? 'guidedVisual.fit' : 'guidedVisual.half')}</button>
         <button ref={closeButton} className="btn btn--icon" type="button" data-guided-image-close aria-label={t('common.close')} onClick={close}>×</button>
       </header>
-      <div className="guided-visual-help-scroll" tabIndex={0} role="region" aria-label={t(help.title)}>
+      <div className="guided-visual-help-scroll" tabIndex={0} role="region" aria-label={title ?? t(help.title)}>
         {!source || failedSource === source ? <p role="alert">{t('guidedVisual.missing', { language })}</p> :
-          <img key={source} src={source} alt={t(help.description)}
+          <img key={source} src={source} alt={title ?? t(help.description)}
             style={halfScale && imageWidth ? { width: imageWidth / 2 } : undefined}
             onLoad={event => setImageWidth(event.currentTarget.naturalWidth)} onError={() => setFailedSource(source)}/>}
       </div>

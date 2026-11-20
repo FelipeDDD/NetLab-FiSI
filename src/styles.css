@@ -1197,19 +1197,6 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
 .lab-hints > details { margin-inline-start: 12px; }
 .lab-step-feedback { margin-top: 8px; font-size: 12px; color: var(--ui-positive-text); }
 
-.lab-panel[data-progressive-nat] { max-width: calc(100% - 24px); }
-.lab-panel[data-progressive-nat] :is(.lab-body, .lab-stepnav, .lab-objective, .lab-step-feedback) { font-size: 13px; line-height: 1.45; }
-.lab-panel[data-nat-intro] .lab-body { line-height: 1.65; }
-.lab-intro-heading { font-size: inherit; margin: 0 0 6px; }
-.lab-nat-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
-.lab-nat-nav .btn--primary { margin-inline-start: auto; }
-.lab-panel[data-progressive-nat] .guided-command-syntax { color: var(--ui-warning); }
-.lab-nat-activity { margin-block: 10px; padding-block: 4px; }
-.lab-nat-activity p { margin: 0 0 6px; }
-.lab-nat-answer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.lab-nat-answer input { min-width: 0; width: 180px; max-width: 100%; font: 15px var(--font-mono); }
-.lab-nat-mappings { font-family: var(--font-mono); overflow-wrap: anywhere; }
-
 .lab-body code,
 .lab-quiz-q code {
   background: var(--bg);
@@ -1219,13 +1206,6 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--ui-code);
-}
-
-.lab-panel[data-nat-intro] .lab-body code {
-  padding-block: 0;
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
-  overflow-wrap: anywhere;
 }
 
 .lab-objectives {
@@ -2221,8 +2201,9 @@ input:not(.xterm-helper-textarea)::placeholder, textarea:not(.xterm-helper-texta
 
 .static-route-heading,.static-route-actions { display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
 .static-route-heading { justify-content:space-between; }
-.static-route-form label { display:flex;flex-direction:column;gap:4px;margin:8px 0; }
-.static-route-form :is(input,select) { width:100%;min-width:0;box-sizing:border-box; }
+.static-route-form label,.nat-rule-form label { display:flex;flex-direction:column;gap:4px;margin:8px 0; }
+.static-route-form :is(input,select),.nat-rule-form :is(input,select) { width:100%;min-width:0;box-sizing:border-box; }
+.nat-rule-form .table-pre { white-space:pre-wrap;overflow-wrap:anywhere;user-select:text; }
 
 .route-cell-end { display:flex;align-items:center;gap:6px; }
 .route-cell-end > button { margin-left:auto;flex-shrink:0; }
