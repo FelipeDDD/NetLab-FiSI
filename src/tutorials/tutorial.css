@@ -51,9 +51,31 @@
 [data-exercise="guided-lpm"] footer, [data-nat-nav] { display: flex; justify-content: space-between; gap: 8px; }
 [data-nat-nav] { flex-shrink: 0; flex-wrap: wrap; }
 [data-nat-body] code { overflow-wrap: anywhere; }
+[data-nat-body] :is(.nat-term-a, .nat-term-b, .nat-term-c) {
+  color: var(--ui-text);
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+}
+[data-nat-body] :is(.nat-term-b, .nat-term-c) {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.12em 0.42em;
+  border-radius: 5px;
+  line-height: 1.45;
+}
+[data-nat-body] .nat-term-b {
+  background: color-mix(in srgb, var(--ui-surface-base) 85%, var(--ui-surface-selected));
+}
+[data-nat-body] .nat-term-c {
+  background: var(--ui-accent-tint);
+  border: 1px solid var(--ui-border);
+}
+.exercise-panel [data-nat-body] .guided-command { color: var(--ui-warning); }
 [data-nat-body] details details { margin-inline-start: 12px; }
 [data-nat-body] details summary { cursor: pointer; }
 .guided-nat-image-actions { display: flex; justify-content: flex-end; }
+.guided-nat-image-actions > .guided-visual-help-trigger.is-embedded { margin-top: 4px; padding: 6px 12px; }
 .guided-nat-mappings { font-family: var(--font-mono); overflow-wrap: anywhere; }
 [data-nat-body] [data-tutorial-passed="true"] { color: var(--ui-success); }
 [data-exercise="guided-lpm"] pre { white-space: pre-wrap; overflow-wrap: anywhere; }

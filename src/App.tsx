@@ -40,6 +40,17 @@ export default function App() {
     if (persist) saveInspectorLayout(next);
   };
   const editor = useRef<HTMLDivElement>(null);
+  const palette = useRef<HTMLElement>(null);
+  const [paletteWidth, setPaletteWidth] = useState(0);
+  useEffect(() => {
+    const element = palette.current;
+    if (!element) return;
+    const measure = () => setPaletteWidth(element.offsetWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const [panelPriority, setPanelPriority] = useState<'inspector' | 'terminal'>('terminal');
   const [terminalOverlapHeight, setTerminalOverlapHeight] = useState(0);
   const prioritizePanel = (target: EventTarget | null) => {
@@ -56,7 +67,7 @@ export default function App() {
   const packetInspectorOpen = useStore((s) => s.packetInspectorOpen);
   const hasTerminals = useStore((s) => s.terminals.length > 0);
   const workspaceCompact = !!workspace && viewport <= 900;
-  const geometry = packetPanelGeometry(viewport, selected ? inspectorPreferredWidth(inspectorLayout) : 0, packetLayout);
+  const geometry = packetPanelGeometry(viewport, selected ? inspectorPreferredWidth(inspectorLayout) : 0, packetLayout, paletteWidth);
 
   return (
     <ReactFlowProvider>
@@ -84,7 +95,7 @@ export default function App() {
         <div className={`main${packetInspectorOpen ? ' is-analyzing-packets' : ''}${selected ? ' has-device-inspector' : ''}`}
           data-packet-side={packetLayout.side} data-analysis-layout={geometry.placement}
           style={{ '--packet-panel-width': `${geometry.width}px`, '--analysis-device-width': `${geometry.deviceWidth}px` } as React.CSSProperties}>
-          <Palette compact={workspaceCompact} />
+          <Palette compact={workspaceCompact} elementRef={palette} />
           <div className="canvas" ref={editor} tabIndex={-1} role="region" aria-label="Topology editor">
             <Flow fitOnInit={!workspace && !progressiveNat} />
             <LabPanel />

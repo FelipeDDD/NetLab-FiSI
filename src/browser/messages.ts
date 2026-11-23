@@ -12,7 +12,7 @@ const en={desktop:'Desktop',openDesktop:'Open desktop',closeDesktop:'Close deskt
   dnsTimeoutMeaning:'No usable DNS answer was received. Without a destination IP, HTTP was not started.',dnsRefusedMeaning:'The query to the DNS server was refused. Name resolution was not completed.',dnsResolved:'DNS resolved: {host} → {address}',
   http403Meaning:'The HTTP server returned 403 and refused access to this page. This is an HTTP response, not a DNS or connection failure.',http404Meaning:'The HTTP server returned 404: the requested resource was not found. The HTTP connection reached the server.',
   probe:'Test TCP port {port} (no TLS)',tcpOpen:'TCP port {port} is reachable. Only TCP was tested: no TLS, encryption, certificate or HTTPS page.',
-  cancelled:'Request stopped.',response:'HTTP response',serverResponse:'Server response',
+  cancelled:'Request stopped.',response:'HTTP response',serverResponse:'Server response',tabs:'Browser tabs',tab:'Tab {number}',closeTab:'Close tab {number}',newTab:'New tab',tabLimit:'Close a tab to open a browser tab for another host.',
 } as const;
 type Messages=Record<keyof typeof en,string>;
 const de:Messages={desktop:'Desktop',openDesktop:'Desktop öffnen',closeDesktop:'Desktop schließen',browser:'Web Browser',openBrowser:'Browser öffnen',closeBrowser:'Browser schließen',moveWindow:'Fenster bewegen · ziehen oder Pfeiltasten',resizeWindow:'Fenstergröße ändern · ziehen oder Pfeiltasten',
@@ -28,7 +28,7 @@ const de:Messages={desktop:'Desktop',openDesktop:'Desktop öffnen',closeDesktop:
   dnsTimeoutMeaning:'Es liegt keine nutzbare DNS-Antwort vor. Ohne Ziel-IP wurde HTTP noch nicht gestartet.',dnsRefusedMeaning:'Die Anfrage an den DNS-Server wurde abgelehnt. Die Namensauflösung wurde nicht abgeschlossen.',dnsResolved:'DNS aufgelöst: {host} → {address}',
   http403Meaning:'Der HTTP-Server hat mit 403 geantwortet und den Zugriff auf diese Seite verweigert. Das ist eine HTTP-Antwort, kein DNS- oder Verbindungsfehler.',http404Meaning:'Der HTTP-Server hat mit 404 geantwortet: Die angeforderte Ressource wurde nicht gefunden. Die HTTP-Verbindung hat den Server erreicht.',
   probe:'TCP-Port {port} testen (ohne TLS)',tcpOpen:'TCP-Port {port} ist erreichbar. Nur TCP wurde getestet: kein TLS, keine Verschlüsselung, kein Zertifikat und keine HTTPS-Seite.',
-  cancelled:'Anfrage gestoppt.',response:'HTTP-Antwort',serverResponse:'Antwort des Servers',
+  cancelled:'Anfrage gestoppt.',response:'HTTP-Antwort',serverResponse:'Antwort des Servers',tabs:'Browser-Tabs',tab:'Tab {number}',closeTab:'Tab {number} schließen',newTab:'Neuer Tab',tabLimit:'Schließe einen Tab, um einen Browser-Tab für ein anderes Gerät zu öffnen.',
 };
 const pt:Messages={desktop:'Desktop',openDesktop:'Abrir desktop',closeDesktop:'Fechar desktop',browser:'Web Browser',openBrowser:'Abrir navegador',closeBrowser:'Fechar navegador',moveWindow:'Mover janela · arraste ou use as setas',resizeWindow:'Redimensionar janela · arraste ou use as setas',
   intro:'Abra o navegador para testar a rede simulada.',address:'Endereço',go:'Abrir',back:'Voltar',forward:'Avançar',reload:'Atualizar',stop:'Parar',
@@ -43,7 +43,7 @@ const pt:Messages={desktop:'Desktop',openDesktop:'Abrir desktop',closeDesktop:'F
   dnsTimeoutMeaning:'Nenhuma resposta DNS utilizável foi recebida. Sem o IP de destino, a conexão HTTP ainda não foi iniciada.',dnsRefusedMeaning:'A consulta ao servidor DNS foi recusada. A resolução do nome não foi concluída.',dnsResolved:'DNS resolvido: {host} → {address}',
   http403Meaning:'O servidor HTTP respondeu 403 e recusou acesso a esta página. Isso é uma resposta HTTP, não uma falha DNS ou de conexão.',http404Meaning:'O servidor HTTP respondeu 404: o recurso solicitado não foi encontrado. A conexão HTTP chegou ao servidor.',
   probe:'Testar porta TCP {port} (sem TLS)',tcpOpen:'A porta TCP {port} está acessível. Apenas TCP foi testado: sem TLS, criptografia, certificado ou página HTTPS.',
-  cancelled:'Solicitação interrompida.',response:'Resposta HTTP',serverResponse:'Resposta do servidor',
+  cancelled:'Solicitação interrompida.',response:'Resposta HTTP',serverResponse:'Resposta do servidor',tabs:'Guias do navegador',tab:'Guia {number}',closeTab:'Fechar guia {number}',newTab:'Nova guia',tabLimit:'Feche uma guia para abrir o navegador de outro Host.',
 };
 export const browserMessages={en,de,'pt-BR':pt};
 export const browserText=(language:Language,key:keyof Messages,values?:Record<string,string|number>)=>translateMessages(browserMessages,language,key,values);

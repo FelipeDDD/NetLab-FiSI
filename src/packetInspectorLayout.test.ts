@@ -1,5 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { loadPacketInspector, normalizePacketInspector, packetPanelGeometry, savePacketInspector, PACKET_LAYOUT_KEY } from './packetInspectorLayout';
+
+it('reserves the open catalog before sizing the packet panel and falls back on narrow screens', () => {
+  const preference = normalizePacketInspector({ widths: { compact: 370, full: 800 } });
+  expect(packetPanelGeometry(1440, 340, preference, 216)).toMatchObject({ placement: 'columns', width: 604 });
+  expect(packetPanelGeometry(900, 470, preference, 216).placement).toBe('stack');
+  expect(packetPanelGeometry(900, 470, preference, 32).placement).toBe('rows');
+});
 afterEach(() => vi.unstubAllGlobals());
 it('keeps the existing Full/right presentation by default and validates local preferences', () => {
   expect(normalizePacketInspector(null)).toEqual({ side: 'right', mode: 'full', widths: { compact: 370, full: 600 } });

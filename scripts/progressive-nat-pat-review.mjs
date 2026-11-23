@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 export async function runProgressiveNatPatReview({ page, url, report }) {
   const database = 'netlab-idb-test-' + crypto.randomUUID();
@@ -13,6 +14,70 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     throw Error('NAT/PAT review: ' + condition);
   };
   const click = selector => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).click();`);
+  const styleCrops = [];
+  const sampleStyle = async (variant, label) => {
+    if (process.env.NETLAB_NAT_STYLE_COMPARISON !== '1') return;
+    const sample = await page.evaluate(`
+      await document.fonts.ready;
+      const terms = [...document.querySelectorAll('.nat-term-${variant.toLowerCase()}')];
+      const body = document.querySelector('[data-nat-body]');
+      const heading = body.querySelector('h3').getBoundingClientRect();
+      const panel = document.querySelector('[data-exercise="guided-nat-pat"]').getBoundingClientRect();
+      const end = terms.at(-1).closest('p').getBoundingClientRect();
+      const x = Math.floor(panel.left), y = Math.floor(heading.top) - 6;
+      return {
+        theme: document.documentElement.dataset.uiTheme,
+        viewport: [innerWidth, innerHeight, devicePixelRatio, visualViewport.scale],
+        clip: { x, y, width: Math.ceil(panel.right) - x, height: Math.ceil(end.bottom) + 8 - y, scale: 1 },
+        bodyBottom: body.getBoundingClientRect().bottom,
+        styles: terms.map(term => {
+          const css = getComputedStyle(term);
+          return { text: term.textContent, font: css.fontFamily, size: css.fontSize, weight: css.fontWeight,
+            lineHeight: css.lineHeight, color: css.color, background: css.backgroundColor,
+            border: css.borderTop, padding: css.padding, radius: css.borderRadius };
+        }),
+      };
+    `);
+    assert.equal(sample.theme, 'graphite-dark');
+    assert.deepEqual(sample.viewport, [1440, 950, 1, 1]);
+    assert(sample.clip.y + sample.clip.height <= sample.bodyBottom, `Variant ${variant} is clipped`);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: sample.clip, captureBeyondViewport: false });
+    styleCrops.push({ label, data });
+    (report.natStyleComparison ??= {}).computed ??= {};
+    report.natStyleComparison.computed[variant] = sample.styles;
+  };
+  const saveStyleComparison = async () => {
+    if (!styleCrops.length) return;
+    assert.equal(styleCrops.length, 3);
+    const png = await page.evaluate(`
+      const crops = ${JSON.stringify(styleCrops)};
+      const images = await Promise.all(crops.map(async crop => {
+        const image = new Image();
+        image.src = 'data:image/png;base64,' + crop.data;
+        await image.decode();
+        return image;
+      }));
+      const canvas = document.createElement('canvas'), gap = 12, top = 50;
+      canvas.width = images.reduce((width, image) => width + image.width, gap * (images.length + 1));
+      canvas.height = top + Math.max(...images.map(image => image.height)) + gap;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#101214';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.font = '600 16px system-ui';
+      context.fillStyle = '#e4e9ec';
+      let x = gap;
+      images.forEach((image, index) => {
+        context.fillText(crops[index].label, x, 31);
+        context.drawImage(image, x, top);
+        x += image.width + gap;
+      });
+      return canvas.toDataURL('image/png').split(',')[1];
+    `);
+    const dir = new URL('../.playwright-mcp/reviews/nat-pat/', import.meta.url);
+    await mkdir(dir, { recursive: true });
+    await writeFile(new URL('comparacao-abc.png', dir), Buffer.from(png, 'base64'));
+    report.natStyleComparison.image = '.playwright-mcp/reviews/nat-pat/comparacao-abc.png';
+  };
   const mount = async (reload = false) => {
     const token = JSON.stringify(crypto.randomUUID());
     await page.evaluate(`window.previousDocument = ${token};`);
@@ -45,7 +110,8 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
       window.desktop = (await import('/src/browser/desktopState.ts')).useDesktop;
       desktop.getState().openBrowser(sim.net.devices.get(${JSON.stringify(id)}));
     `);
-    await wait('document.getElementById("pc-browser-address")');
+    await wait(`document.getElementById("pc-browser-address") &&
+      document.getElementById("pc-desktop-heading")?.textContent.startsWith(sim.net.devices.get(${JSON.stringify(id)}).name + " ·")`);
     await page.evaluate(`
       const input = document.getElementById('pc-browser-address');
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'http://198.51.100.80');
@@ -71,6 +137,7 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
   try {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 950, deviceScaleFactor: 1, mobile: false });
     await mount();
+    await page.evaluate("(await import('/src/uiTheme.ts')).useUiTheme.getState().setTheme('graphite-dark');");
     await page.evaluate("window.languageStore = (await import('/src/i18n/index.ts')).useLanguage;");
     await page.evaluate('[...document.querySelectorAll(".toolbar-menu-trigger")].find(e => e.textContent.trim().startsWith("Labs")).click();');
     await wait('document.querySelector("#toolbar-labs-menu")');
@@ -149,6 +216,8 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await click('.pc-desktop-close');
     await click(next);
     await wait('document.querySelector("[data-nat-screen]")?.textContent.startsWith("2/2")');
+    assert(await page.evaluate('const term = document.querySelector(".nat-term-a"); return term?.getClientRects().length && getComputedStyle(term).fontWeight === "600" && getComputedStyle(term).backgroundColor === "rgba(0, 0, 0, 0)";'));
+    await sampleStyle('A', 'A · Texto sem caixa');
     assert.equal(await page.evaluate('return document.getElementById("nat-source-local").value;'), '192.168.');
     await click('#packets-toggle');
     await wait('document.querySelector(".packet-table tbody tr")');
@@ -175,7 +244,7 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
       const code = [...body.querySelectorAll(':scope > p code')];
       return document.getElementById('nat-source-local').getBoundingClientRect().right <= bounds.right + 1 && code.every(element => [...element.getClientRects()].every(rect =>
         rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 &&
-        rect.height <= parseFloat(getComputedStyle(body).lineHeight)));
+        rect.height <= parseFloat(getComputedStyle(element.closest('p')).lineHeight)));
     `));
     assert(await page.evaluate(`
       const panel = document.querySelector('[data-exercise=guided-nat-pat]').getBoundingClientRect();
@@ -216,6 +285,41 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await page.evaluate('store.getState().stopPacketCapture(); sim.net.scheduler.advanceTo(sim.net.now + 121000); return sim.net.devices.get("edge").ct.list(sim.net.now).length;').then(count => assert.equal(count, 0));
     await answer('nat-source-external','198.51.100.3');
     assert(await page.evaluate('return document.querySelector("[data-nat-body] [role=alert]").textContent.includes("Confira o IPv4") && document.querySelector("[data-nat-next]").disabled;'));
+    await page.evaluate('store.getState().startPacketCapture(); const saved = await ws.controller.flush(); if (!saved.ok) throw Error(JSON.stringify(saved.error));');
+    await mount(true);
+    const recoveryHint = 'Em Pacotes, inicie uma nova captura em todos os enlaces e abra novamente a página no PC1.';
+    await wait(`document.querySelector("[data-nat-body]")?.textContent.includes(${JSON.stringify(recoveryHint)})`);
+    assert(await page.evaluate(`
+      return !document.querySelector("#packet-inspector") && store.getState().packetCapture.status === "stopped" &&
+        store.getState().packetCapture.records.length === 0 && document.getElementById("nat-source-local").disabled &&
+        !document.getElementById("nat-source-external").disabled && document.querySelector("[data-nat-next]").disabled;
+    `));
+    await click('[data-nat-nav] button:first-child');
+    await wait('document.querySelector("[data-nat-screen]")?.textContent.startsWith("1/2")');
+    assert(await page.evaluate('return !document.querySelector("[data-nat-body]").textContent.includes("Captura ativa") && document.querySelector("[data-nat-body]").textContent.includes("PC1 recebeu a página HTTP");'));
+    await page.evaluate('store.getState().startPacketCapture();');
+    await wait('document.querySelector("[data-nat-body]")?.textContent.includes("Captura ativa em todos os enlaces")');
+    await page.evaluate('store.getState().pausePacketCapture();');
+    await wait('!document.querySelector("[data-nat-body]")?.textContent.includes("Captura ativa")');
+    await click(next);
+    await wait('document.getElementById("nat-source-local")?.disabled');
+    await page.evaluate(`
+      const { controller } = ws;
+      const saved = await controller.save('NAT/PAT capture recovery');
+      if (!saved.ok) throw Error(JSON.stringify(saved.error));
+      const state = controller.getState(), id = state.activeDraftId;
+      const closed = await controller.closeDraft(id, { expectedEditSequence: state.drafts.find(draft => draft.id === id).editSequence });
+      if (!closed.ok) throw Error(JSON.stringify(closed.error));
+      const opened = await controller.openPlan(saved.value.plan.project.id);
+      if (!opened.ok) throw Error(JSON.stringify(opened.error));
+    `);
+    await wait(`document.querySelector("[data-nat-body]")?.textContent.includes(${JSON.stringify(recoveryHint)})`);
+    assert(await page.evaluate('return document.getElementById("nat-source-local").disabled && document.querySelector("[data-nat-next]").disabled;'));
+    await page.evaluate('store.getState().startPacketCapture();');
+    await navigateFrom('PC1');
+    await wait('document.querySelector(".pc-browser-page")?.textContent.includes("Oficina conectada")');
+    await click('.pc-desktop-close');
+    await wait('![...document.querySelectorAll("[data-nat-body] [role=status]")].some(status => status.textContent.includes("registrar os dois SYN"))');
     await answer('nat-source-external','198.51.100.2');
     await wait('!document.querySelector("[data-nat-next]").disabled');
     await page.evaluate("(await import('/src/uiTheme.ts')).useUiTheme.getState().setTheme('graphite-dark');");
@@ -232,17 +336,48 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     assert(await page.evaluate('return document.getElementById("nat-source-local").disabled && !document.querySelector("[data-nat-next]").disabled;'));
     await click(next);
     await wait('store.getState().labStep === 1');
+    assert(await page.evaluate('const term = document.querySelector(".nat-term-b"); return term?.getClientRects().length && getComputedStyle(term).fontWeight === "600" && getComputedStyle(term).backgroundColor !== "rgba(0, 0, 0, 0)";'));
+    await sampleStyle('B', 'B · Caixa azul-acinzentada');
     assert(await page.evaluate('return !document.querySelector(".lab-footer");'));
+    await click('#packets-toggle');
+    await wait('document.querySelector(".packet-table:not(.is-compact)")');
+    const catalogAccessible = () => page.evaluate(`
+      const host = document.querySelector('.palette-item.kind-host'), bounds = host.getBoundingClientRect();
+      const canvas = document.querySelector('.canvas').getBoundingClientRect();
+      return bounds.width > 0 && canvas.width >= 280 &&
+        document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)?.closest('.palette-item') === host;
+    `);
+    assert(await catalogAccessible());
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 700, height: 800, deviceScaleFactor: 1, mobile: false });
+    await wait('document.querySelector(".main").dataset.analysisLayout === "stack" && document.querySelector(".palette.is-collapsed")');
+    await click('.palette-toggle');
+    await page.evaluate('document.querySelector(".palette-item.kind-host").scrollIntoView({block:"nearest"});');
+    assert(await catalogAccessible());
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 950, deviceScaleFactor: 1, mobile: false });
+    await wait('document.querySelector(".main").dataset.analysisLayout === "columns"');
+    await page.evaluate('document.querySelector(".palette-item.kind-host").scrollIntoView({block:"nearest"});');
+    assert(await catalogAccessible());
     await page.evaluate('store.getState().setHostCreationMode("windows");document.querySelector(".palette-item.kind-host").click();');
     await wait('store.getState().labResults["nat-host"]');
+    assert(await page.evaluate('const host = sim.net.devices.get(store.getState().labResults["nat-host"].detail);return host.getInterface("eth0").gateway === null && !host.staticRoutes.some(route => route.prefix === 0);'));
+    await click('#packets-toggle');
+    await wait('!document.querySelector("#packet-inspector")');
     await page.evaluate(`
       const id=store.getState().labResults['nat-host'].detail;
       window.pc2=id;
       const {parseCidr,parseIp}=await import('/src/engine/ip.ts');
+      store.getState().setInterfaceIpv4(id,'eth0',{mode:'static',ip:parseCidr('192.168.60.11/24'),gateway:null,dns:null});
+      if (sim.net.devices.get(id).getInterface('eth0').gateway !== null) throw Error('Unexpected gateway after configuring IPv4 only');
       store.getState().setInterfaceIpv4(id,'eth0',{mode:'static',ip:parseCidr('192.168.60.11/24'),gateway:parseIp('192.168.60.1'),dns:null});
       store.getState().onConnect({source:id,target:'lan',sourceHandle:null,targetHandle:null});
     `);
     await wait('document.querySelector("[data-nat-body]").textContent.includes("PC2 configurado")');
+    assert(await page.evaluate('return !document.querySelector("[data-nat-http-comparison]") && document.querySelector("[data-nat-next]").disabled && document.querySelector("[data-nat-body]").textContent.includes("Pendente: Echo Reply");'));
+    assert(await page.evaluate(`
+      const indicator = document.querySelector('[data-nat-body] [data-tutorial-passed="false"] .guided-action-indicator');
+      const style = getComputedStyle(indicator);
+      return indicator.textContent === '' && style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.borderTopWidth === '2px';
+    `));
     const pc2 = await page.evaluate('return pc2;');
     assert(await page.evaluate('return sim.net.devices.get(pc2).name === "PC2" && !document.querySelector("[data-nat-body]").textContent.includes("PC2 (PC2)");'));
     await page.evaluate('store.getState().renameDevice(pc2, "Recepção");');
@@ -257,9 +392,37 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     assert(await page.evaluate('return !store.getState().labResults["nat-before-local"];'));
     await quickPing(pc2, 'PC1');
     await wait('store.getState().labResults["nat-before-local"]?.pass');
+    await wait('document.querySelector("[data-nat-http-comparison]")');
+    assert(await page.evaluate(`
+      const rows = [...document.querySelectorAll('[data-nat-body] [data-tutorial-passed="true"]')];
+      const indicator = rows.find(row => row.textContent.includes('Echo Reply'))?.querySelector('.guided-action-indicator');
+      return indicator?.textContent === '✓' && getComputedStyle(indicator).backgroundColor !== 'rgba(0, 0, 0, 0)';
+    `));
+    assert(await page.evaluate('return document.querySelector("[data-nat-next]").disabled && document.querySelector("[data-nat-http-comparison]").textContent.includes("Pendente: acesso pelo navegador de PC1");'));
     await navigateFrom('PC1');
     await wait('store.getState().labResults["nat-before-pc1"]?.pass');
+    assert(await page.evaluate('return document.querySelector("[data-nat-next]").disabled;'));
     await click('.pc-desktop-close');
+    await page.evaluate(`
+      const edge = sim.net.devices.get('edge');
+      const rules = edge.fw.nat.postrouting.rules;
+      const { parseIp } = await import('/src/engine/ip.ts');
+      if (rules.length !== 1 || rules[0].match.srcNet?.prefix !== 32 || rules[0].match.srcNet?.addr !== parseIp('192.168.60.10')) throw Error('Initial NAT must only cover PC1');
+      const { runNft } = await import('/src/commands/nft.ts');
+      runNft(edge, 'add rule ip nat postrouting oifname eth1 ip saddr 192.168.60.0/24 masquerade', text => { throw Error(text); });
+      window.earlyNatHandle = rules.at(-1).handle;
+      store.getState().refresh();
+    `);
+    await quickPing('PC1', pc2);
+    await wait('document.querySelector("[data-nat-http-comparison]")?.textContent.includes("Restaure a regra NAT")');
+    await navigateFrom(pc2);
+    await page.evaluate('sim.net.scheduler.advanceTo(sim.net.now + 12000);');
+    await wait('document.querySelector(".pc-browser-http-status")?.textContent.includes("200")');
+    assert(await page.evaluate('return !store.getState().labResults["nat-before-pc2"]?.pass && document.querySelector("[data-nat-next]").disabled;'));
+    await click('.pc-desktop-close');
+    await page.evaluate('sim.net.devices.get("edge").fw.deleteHandle(earlyNatHandle); store.getState().closeTerminal(pc2); store.getState().refresh();');
+    await quickPing(pc2, 'PC1');
+    await wait('document.querySelector("[data-nat-http-comparison]")');
     await navigateFrom(pc2);
     await wait('store.getState().labResults["nat-before-pc2"]?.pass');
     await click('.pc-desktop-close');
@@ -273,6 +436,22 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
       const button = document.querySelector("[data-guided-image]");
       return Math.abs(button.getBoundingClientRect().right - button.parentElement.getBoundingClientRect().right) < 1;
     `));
+    for (const locale of ['de', 'en', 'pt-BR']) {
+      const labels = await page.evaluate(`
+        const { useLanguage, translate } = await import('/src/i18n/index.ts');
+        const locale = ${JSON.stringify(locale)};
+        useLanguage.getState().setLanguage(locale);
+        return [translate(locale, 'guidedVisual.open'), translate(locale, 'guidedVisual.close')];
+      `);
+      const visibleLabel = 'document.querySelector("[data-guided-image] .guided-visual-help-label > span:not([hidden])")?.textContent';
+      await wait(`${visibleLabel} === ${JSON.stringify(labels[0])}`);
+      const width = await page.evaluate('return document.querySelector("[data-guided-image]").getBoundingClientRect().width;');
+      await click('[data-guided-image]');
+      await wait(`${visibleLabel} === ${JSON.stringify(labels[1])}`);
+      assert.equal(await page.evaluate('return document.querySelector("[data-guided-image]").getBoundingClientRect().width;'), width, locale);
+      await click('[data-guided-image]');
+      await wait('document.querySelector("[data-guided-image][aria-expanded=false]")');
+    }
     await click('[data-guided-image]');
     await wait('document.querySelector("[data-guided-image-dialog] img")?.complete');
     assert(await page.evaluate(`
@@ -299,8 +478,12 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await wait('store.getState().labStep === 2 && document.querySelector("[data-guided-image]")');
     await click(next);
     await wait('store.getState().labStep === 2 && document.querySelector("[data-nat-screen]")?.textContent.startsWith("3/3")');
+    assert(await page.evaluate('const term = document.querySelector(".nat-term-c"); return term?.getClientRects().length && getComputedStyle(term).borderTopWidth === "1px";'));
+    await sampleStyle('C', 'C · Caixa com borda discreta');
+    await saveStyleComparison();
     assert(await page.evaluate('return store.getState().labResults["nat-before-pc2"].pass && !!sim.net.devices.get(store.getState().labResults["nat-host"].detail).getInterface("eth0").link;'));
     await navigateFrom(pc2);
+    await page.evaluate('sim.net.scheduler.advanceTo(sim.net.now + 12000);');
     await wait('document.querySelector(".pc-browser-error")');
     assert(await page.evaluate('return !store.getState().labResults["nat-after-browser"] && !document.querySelector("[data-nat-check=nat-after-pair]");'));
     await click('.pc-desktop-close');
@@ -420,11 +603,29 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await click('[data-nat-nav] button:first-child');
     await click('[data-nat-nav] button:first-child');
     await wait('store.getState().labStep === 1');
-    assert(await page.evaluate('return document.querySelector("[data-nat-next]").disabled;'));
+    assert(await page.evaluate('return !document.querySelector("[data-nat-next]").disabled && document.querySelector("[data-nat-body]").textContent.includes("foi registrado antes");'));
+    await navigateFrom('PC1');
+    await wait('document.querySelector(".pc-browser-http-status")?.textContent.includes("200")');
+    await click('.pc-desktop-close');
     await navigateFrom(pc2);
     await wait('document.querySelector(".pc-browser-page")?.textContent.includes("Oficina conectada")');
-    assert(await page.evaluate('return store.getState().labResults["nat-proof-nat-before-pc2"].detail !== store.getState().labResults["nat-proof-nat-after-pair"].detail;'));
+    assert(await page.evaluate(`
+      const results = store.getState().labResults;
+      return results["nat-proof-nat-before-pc2"].detail !== results["nat-proof-nat-after-pair"].detail &&
+        results["nat-proof-nat-before-pc2"].detail === results["nat-proof-nat-before-pc1"].detail &&
+        !document.querySelector("[data-nat-next]").disabled;
+    `));
     await click('.pc-desktop-close');
+    await click('[data-nat-nav] button:first-child');
+    await wait('document.querySelector("[data-nat-body]")?.textContent.includes("Comparação dos SYN registrada")');
+    await page.evaluate('const saved=await ws.controller.flush();if(!saved.ok)throw Error(JSON.stringify(saved.error));');
+    await mount(true);
+    await wait('document.getElementById("nat-source-external")?.disabled');
+    assert(await page.evaluate('return !store.getState().packetCapture.records.length && document.getElementById("nat-source-local").disabled && !document.querySelector("[data-nat-next]").disabled;'));
+    await click(next);
+    await wait('store.getState().labStep === 1 && !document.querySelector("[data-nat-next]").disabled');
+    await click(next);
+    await wait('store.getState().labStep === 2');
     await page.evaluate(`
       const legacy = ws.controller.recoveryDocument();
       legacy.topology.labProgress.step = 2;
@@ -452,6 +653,16 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await wait('document.querySelector("[data-nat-finished]")?.textContent.includes("Tutorial concluído")');
     await check();
     assert(await page.evaluate('return store.getState().labResults["nat-after-pair"].pass;'));
+    await click('[data-nat-nav] button:first-child');
+    await click('[data-nat-nav] button:first-child');
+    await click('[data-nat-nav] button:first-child');
+    await wait('store.getState().labStep === 1 && !document.querySelector("[data-nat-next]").disabled');
+    await click(next);
+    await wait('store.getState().labStep === 2');
+    await click(next);
+    await wait('document.querySelector("[data-guided-image]")');
+    await click(next);
+    await wait('document.querySelector("[data-nat-finished]")');
     const attempt = await page.evaluate('return ws.controller.getState().activeDraftId;');
     await click('[data-explore-network]');
     await wait('!document.querySelector("[data-exercise=guided-nat-pat]")');

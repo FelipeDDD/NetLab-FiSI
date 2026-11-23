@@ -2,7 +2,7 @@ export interface WindowRect {x:number;y:number;width:number;height:number}
 export interface WindowArea {width:number;height:number}
 export type ResizeEdge='n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw';
 export const WINDOW_MARGIN=8;
-export const WINDOW_INITIAL={width:600,height:420};
+export const WINDOW_INITIAL={width:420,height:294};
 export const WINDOW_MIN={width:360,height:280};
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
 export function windowLimits(area:WindowArea) {

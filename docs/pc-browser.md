@@ -70,13 +70,13 @@ O botão explícito **TCP-Port 443 testen (ohne TLS)** (ou a porta indicada na U
 
 ## Estado e layout
 
-Uma janela de Desktop por vez, independente das sessões xterm. O Browser pode ser fechado/reaberto no mesmo Desktop; fechar o Desktop descarta seu histórico. Não há persistência de páginas ou progresso, nem alteração de IndexedDB, documentos de topologia ou Undo/Redo.
+O app compartilha uma única janela de Desktop e navegador. Ao abrir o navegador de um Host, a janela seleciona sua guia ou cria uma se houver espaço. Use **+** para abrir outra guia no Host selecionado. O limite é de três guias no total. Cada guia mantém seu endereço, histórico, resposta e controles de navegação em memória.
 
 A janela usa tokens dos temas existentes e não redimensiona React Flow. Em telas estreitas fica sobre a área central, podendo cobrir o Inspector temporariamente. Fechar a janela revela os painéis anteriores, preservando seleção, posições e viewport. Escape fecha primeiro o Browser e depois o Desktop. Excluir o PC ou trocar o plano invalida a referência à instância antiga e fecha a janela, sem associá-la a outro dispositivo com o mesmo ID.
 
 ### Janela compacta, movimento e tamanho
 
-Desktop e Browser compartilham uma moldura inicial de **600 × 420 px**. Arrastar qualquer um dos dois cabeçalhos move essa janela; arrastar bordas/cantos redimensiona. As áreas de interação ficam dentro da moldura e não acrescentam overflow. Não existe uma segunda instância de Browser criada ao alternar Desktop/Browser.
+Desktop e Browser compartilham uma moldura inicial de **420 × 294 px**. Arraste o cabeçalho para mover a janela ou as bordas e cantos para redimensioná-la. A mesma posição e o mesmo tamanho são usados ao trocar de guia ou Host.
 
 Limites em `browser/windowGeometry.ts`: mínimo de **360 × 280 px**, reduzido somente se a área disponível for menor, e máximo limitado à área central do aplicativo, com margem de 8 px. São coordenadas CSS da interface, independentes do zoom/pan do React Flow. `ResizeObserver` acompanha a área disponível, inclusive abertura do dock e mudanças de viewport, sem desmontar a janela ou seus filhos. O tamanho preferido pode ser recuperado ao voltar de uma janela estreita, desde que o usuário não tenha redimensionado manualmente nesse intervalo.
 

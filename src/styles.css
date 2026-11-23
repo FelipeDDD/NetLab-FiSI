@@ -1958,11 +1958,11 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
 .inspector .iface-ip { max-width: 100%; }
 
 /* Analysis only changes grid placement; all panels remain mounted. */
-.main.is-analyzing-packets { display: grid; grid-template-columns: minmax(0, 1fr) var(--packet-panel-width); grid-template-rows: minmax(0, 1fr); grid-template-areas: 'canvas packets'; }
-.main.is-analyzing-packets.has-device-inspector { grid-template-columns: var(--analysis-device-width) minmax(0, 1fr) var(--packet-panel-width); grid-template-areas: 'device canvas packets'; }
-.main.is-analyzing-packets[data-packet-side="left"] { grid-template-columns: var(--packet-panel-width) minmax(0, 1fr); grid-template-areas: 'packets canvas'; }
-.main.is-analyzing-packets.has-device-inspector[data-packet-side="left"] { grid-template-columns: var(--packet-panel-width) minmax(0, 1fr) var(--analysis-device-width); grid-template-areas: 'packets canvas device'; }
-.is-analyzing-packets > .palette { display: none; }
+.main.is-analyzing-packets { display: grid; grid-template-columns: auto minmax(0, 1fr) var(--packet-panel-width); grid-template-rows: minmax(0, 1fr); grid-template-areas: 'palette canvas packets'; }
+.main.is-analyzing-packets.has-device-inspector { grid-template-columns: var(--analysis-device-width) auto minmax(0, 1fr) var(--packet-panel-width); grid-template-areas: 'device palette canvas packets'; }
+.main.is-analyzing-packets[data-packet-side="left"] { grid-template-columns: var(--packet-panel-width) auto minmax(0, 1fr); grid-template-areas: 'packets palette canvas'; }
+.main.is-analyzing-packets.has-device-inspector[data-packet-side="left"] { grid-template-columns: var(--packet-panel-width) auto minmax(0, 1fr) var(--analysis-device-width); grid-template-areas: 'packets palette canvas device'; }
+.is-analyzing-packets > .palette { grid-area: palette; }
 .is-analyzing-packets > .canvas { grid-area: canvas; min-height: 0; }
 .is-analyzing-packets > .inspector-shell { grid-area: device; position: relative; inset: auto; width: 100%; max-width: 100%; min-height: 0; z-index: auto; box-shadow: none; }
 .is-analyzing-packets .inspector { border-left: 0; border-right: 1px solid var(--border); }
@@ -1990,14 +1990,14 @@ body.packet-panel-resizing, body.packet-panel-resizing * { cursor: col-resize !i
 .packet-table.is-compact .packet-full-column { display: none; }
 /* Like the stacked layout, short analysis rows scroll inside main. A zero
    second track leaves the Inspectors' padding outside it and behind the dock. */
-.main.is-analyzing-packets[data-analysis-layout="rows"] { grid-template-columns: var(--analysis-device-width) minmax(0, 1fr); grid-template-rows: minmax(140px, 2fr) minmax(260px, 3fr); grid-template-areas: 'canvas canvas' 'device packets'; overflow-y: auto; }
-.main.is-analyzing-packets[data-analysis-layout="rows"][data-packet-side="left"] { grid-template-columns: minmax(0, 1fr) var(--analysis-device-width); grid-template-areas: 'canvas canvas' 'packets device'; }
+.main.is-analyzing-packets[data-analysis-layout="rows"] { grid-template-columns: auto var(--analysis-device-width) minmax(0, 1fr); grid-template-rows: minmax(140px, 2fr) minmax(260px, 3fr); grid-template-areas: 'palette canvas canvas' 'palette device packets'; overflow-y: auto; }
+.main.is-analyzing-packets[data-analysis-layout="rows"][data-packet-side="left"] { grid-template-columns: auto minmax(0, 1fr) var(--analysis-device-width); grid-template-areas: 'palette canvas canvas' 'palette packets device'; }
 .is-analyzing-packets[data-analysis-layout="rows"] > .canvas { border-bottom: 1px solid var(--border); }
 .is-analyzing-packets[data-analysis-layout="rows"] > .packet-panel-shell { justify-self: end; }
 .is-analyzing-packets[data-analysis-layout="rows"][data-packet-side="left"] > .packet-panel-shell { justify-self: start; }
-.main.is-analyzing-packets[data-analysis-layout="stack"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 180px minmax(300px, 1fr); grid-template-areas: 'canvas' 'packets'; overflow-y: auto; }
-.main.is-analyzing-packets.has-device-inspector[data-analysis-layout="stack"] { grid-template-rows: 180px minmax(260px, 1fr) minmax(300px, 1fr); grid-template-areas: 'canvas' 'device' 'packets'; }
-.main.is-analyzing-packets.has-device-inspector[data-analysis-layout="stack"][data-packet-side="left"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 180px minmax(300px, 1fr) minmax(260px, 1fr); grid-template-areas: 'canvas' 'packets' 'device'; }
+.main.is-analyzing-packets[data-analysis-layout="stack"] { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 180px minmax(300px, 1fr); grid-template-areas: 'palette canvas' 'packets packets'; overflow-y: auto; }
+.main.is-analyzing-packets.has-device-inspector[data-analysis-layout="stack"] { grid-template-rows: 180px minmax(260px, 1fr) minmax(300px, 1fr); grid-template-areas: 'palette canvas' 'device device' 'packets packets'; }
+.main.is-analyzing-packets.has-device-inspector[data-analysis-layout="stack"][data-packet-side="left"] { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 180px minmax(300px, 1fr) minmax(260px, 1fr); grid-template-areas: 'palette canvas' 'packets packets' 'device device'; }
 .is-analyzing-packets[data-analysis-layout="stack"] > .inspector-shell { width: min(var(--inspector-width, 340px), calc(100vw - 16px), 100%); }
 .is-analyzing-packets[data-analysis-layout="stack"] .inspector-resizer { right: 0; }
 .is-analyzing-packets[data-analysis-layout="stack"][data-packet-side="left"] .inspector-resizer { left: 0; right: auto; }
@@ -2006,13 +2006,13 @@ body.packet-panel-resizing, body.packet-panel-resizing * { cursor: col-resize !i
 /* Apply the fallback immediately during viewport changes, before React updates
    the computed limits, so oversized saved widths never collapse React Flow. */
 @media (min-width: 701px) and (max-width: 1100px) {
-  .main.is-analyzing-packets.has-device-inspector[data-analysis-layout][data-packet-side="right"] { grid-template-columns: var(--analysis-device-width) minmax(0, 1fr); grid-template-rows: minmax(140px, 2fr) minmax(260px, 3fr); grid-template-areas: 'canvas canvas' 'device packets'; overflow-y: auto; }
-  .main.is-analyzing-packets.has-device-inspector[data-analysis-layout][data-packet-side="left"] { grid-template-columns: minmax(0, 1fr) var(--analysis-device-width); grid-template-rows: minmax(140px, 2fr) minmax(260px, 3fr); grid-template-areas: 'canvas canvas' 'packets device'; overflow-y: auto; }
+  .main.is-analyzing-packets.has-device-inspector[data-analysis-layout="columns"][data-packet-side="right"] { grid-template-columns: auto var(--analysis-device-width) minmax(0, 1fr); grid-template-rows: minmax(140px, 2fr) minmax(260px, 3fr); grid-template-areas: 'palette canvas canvas' 'palette device packets'; overflow-y: auto; }
+  .main.is-analyzing-packets.has-device-inspector[data-analysis-layout="columns"][data-packet-side="left"] { grid-template-columns: auto minmax(0, 1fr) var(--analysis-device-width); grid-template-rows: minmax(140px, 2fr) minmax(260px, 3fr); grid-template-areas: 'palette canvas canvas' 'palette packets device'; overflow-y: auto; }
 }
 @media (max-width: 700px) {
-  .main.is-analyzing-packets[data-analysis-layout][data-packet-side] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 180px minmax(300px, 1fr); grid-template-areas: 'canvas' 'packets'; overflow-y: auto; }
-  .main.is-analyzing-packets.has-device-inspector[data-analysis-layout][data-packet-side="right"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 180px minmax(260px, 1fr) minmax(300px, 1fr); grid-template-areas: 'canvas' 'device' 'packets'; }
-  .main.is-analyzing-packets.has-device-inspector[data-analysis-layout][data-packet-side="left"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 180px minmax(300px, 1fr) minmax(260px, 1fr); grid-template-areas: 'canvas' 'packets' 'device'; }
+  .main.is-analyzing-packets[data-analysis-layout][data-packet-side] { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 180px minmax(300px, 1fr); grid-template-areas: 'palette canvas' 'packets packets'; overflow-y: auto; }
+  .main.is-analyzing-packets.has-device-inspector[data-analysis-layout][data-packet-side="right"] { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 180px minmax(260px, 1fr) minmax(300px, 1fr); grid-template-areas: 'palette canvas' 'device device' 'packets packets'; }
+  .main.is-analyzing-packets.has-device-inspector[data-analysis-layout][data-packet-side="left"] { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 180px minmax(300px, 1fr) minmax(260px, 1fr); grid-template-areas: 'palette canvas' 'packets packets' 'device device'; }
 }
 
 /* Compact shared interface summaries; link status and device identity are independent. */

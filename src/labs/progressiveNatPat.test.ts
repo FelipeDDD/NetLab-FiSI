@@ -10,13 +10,37 @@ import { progressiveNatPat } from './progressiveNatPat';
 import { Shell } from '../commands/shell';
 import { requestPage, simulatedUrl, type BrowserResult } from '../browser/request';
 import { packetAnimationDuration, packetAnimationProgress, sequencePacketAnimation, type AnimatedTransfer } from '../packetAnimation';
-import { natCapturedFlow, natIntroSignature, natSecondHost } from './natLearning';
+import { natCapturedFlow, natIntroComplete, natIntroSignature, natInvestigationComplete, natSecondHost } from './natLearning';
 import { PacketCapture } from '../packetCapture';
 import { createDevice } from '../engine/factory';
 import { natHostReady, natBrowserProof, natRouterEntries } from './natLearning';
 
 const lab = progressiveNatPat.lab!;
 const ip = (text: string) => parseIp(text)!;
+
+it('credits completed review only with paired SYN answers and a coherent failed HTTP investigation', () => {
+  const passed = (detail: string) => ({ pass: true, detail });
+  const intro = {
+    'nat-first-http': passed('original'),
+    'nat-source-local': passed('original'),
+    'nat-source-external': passed('original'),
+  };
+  expect(natIntroComplete(intro)).toBe(true);
+  expect(natIntroComplete({ ...intro, 'nat-source-external': passed('other') })).toBe(false);
+  const investigation = {
+    'nat-before-local': passed('echo reply'),
+    'nat-before-pc1': passed('translated HTTP'),
+    'nat-proof-nat-before-local': passed('original'),
+    'nat-proof-nat-before-pc1': passed('original'),
+    'nat-proof-nat-before-pc2': passed('original'),
+  };
+  expect(natInvestigationComplete(investigation)).toBe(false);
+  expect(natInvestigationComplete(investigation, 2)).toBe(false);
+  const complete = { ...investigation, 'nat-before-pc2': passed('untranslated timeout') };
+  expect(natInvestigationComplete(complete)).toBe(true);
+  expect(natInvestigationComplete({ ...complete, 'nat-proof-nat-before-pc1': passed('other') })).toBe(false);
+  expect(natInvestigationComplete({ ...complete, 'nat-proof-nat-before-pc1': passed('other') }, 2)).toBe(true);
+});
 function addPc2(net: Network) {
   const host = new Host(net, 'PC2', 'PC2'); net.devices.set(host.id, host);
   host.interfaces[0].configureIpv4({ mode: 'static', ip: parseCidr('192.168.60.11/24'), gateway: ip('192.168.60.1'), dns: null });

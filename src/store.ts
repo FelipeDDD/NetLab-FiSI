@@ -17,7 +17,7 @@ import { addNftMasquerade, type MasqueradeRuleError } from './commands/nft';
 import { Network, type PingProgress } from './engine/network';
 import { observeIcmpActivity, observePingActivity } from './networkObservations';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
-import { natSecondHost, natConfiguration, natHostReady, NAT_LOCAL_IP, NAT_PEER_IP } from './labs/natLearning';
+import { natSecondHost, natConfiguration, natHostReady, natIntroComplete, natInvestigationComplete, NAT_INTRO_RESULTS, NAT_INVESTIGATION_RESULTS, NAT_LOCAL_IP, NAT_PEER_IP } from './labs/natLearning';
 import { normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { preferredPingAnimationSpeed } from './pingAnimationPreference';
 import { readPingAnimationPosition, type PingAnimationPosition } from './pingAnimationPosition';
@@ -2239,7 +2239,10 @@ export const useStore = create<NetsimState>()((set, get) => {
 
     recordLabResult(id, pass, detail, configuration) {
       if (get().lab?.id !== PROGRESSIVE_NAT_PAT_ID) return;
-      const previous = get().labResults[id];
+      const results = get().labResults;
+      if (NAT_INTRO_RESULTS.some(key => key === id) && natIntroComplete(results)) return;
+      if (NAT_INVESTIGATION_RESULTS.some(key => key === id) && natInvestigationComplete(results, get().quizAnswers['nat-rule-screen'])) return;
+      const previous = results[id];
       if (previous?.pass === pass && previous.detail === detail &&
           (configuration === undefined || get().labResults['nat-proof-' + id]?.detail === configuration)) return;
       set({ labResults: { ...get().labResults, [id]: { pass, detail },
@@ -2252,6 +2255,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       if (!lab || get().labChecking) return;
       const step = lab.steps[get().labStep];
       if (!step || step.objectives.length === 0) return;
+      if (lab.id === PROGRESSIVE_NAT_PAT_ID && get().labStep === 1 &&
+          natInvestigationComplete(get().labResults, get().quizAnswers['nat-rule-screen'])) return;
       set({ labChecking: true, paused: false, pauseReason: null });
       const generation = ++labCheckGeneration;
       const natSignature = lab.id === PROGRESSIVE_NAT_PAT_ID ? natConfiguration(sim.net) : null;
@@ -2266,6 +2271,8 @@ export const useStore = create<NetsimState>()((set, get) => {
           return { ...o, check };
         }),
         (r) => {
+          if (natSignature !== null && NAT_INVESTIGATION_RESULTS.some(id => id === r.id) &&
+              natInvestigationComplete(get().labResults, get().quizAnswers['nat-rule-screen'])) return;
           const unchanged = natSignature === null || natSignature === natConfiguration(sim.net);
           set({
             labResults: { ...get().labResults,

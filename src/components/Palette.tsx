@@ -1,6 +1,6 @@
 import type { ServerPreset } from '../serverPresets';
 import { useTranslation, type TranslationKey } from '../i18n';
-import { useId, useState, type DragEvent } from 'react';
+import { useId, useState, type DragEvent, type Ref } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { canvasWorldBounds } from '../devicePlacement';
 import { useStore } from '../store';
@@ -30,7 +30,7 @@ const CATEGORIES: { id: PaletteCategory; label: TranslationKey; items: { kind: D
   ] },
 ];
 
-export function Palette({ compact = false }: { compact?: boolean } = {}) {
+export function Palette({ compact = false, elementRef }: { compact?: boolean; elementRef?: Ref<HTMLElement> } = {}) {
   const { t } = useTranslation();
   const addDeviceSmart = useStore((s) => s.addDeviceSmart);
   const { screenToFlowPosition } = useReactFlow();
@@ -57,7 +57,7 @@ export function Palette({ compact = false }: { compact?: boolean } = {}) {
 
   const toggleCollapsed = () => compact ? setCompactExpanded(!compactExpanded) : update({ ...preference, collapsed: !preference.collapsed });
   const toggleLabel = t(collapsed ? 'navigation.paletteExpand' : 'navigation.paletteCollapse');
-  return <aside className={`palette${collapsed ? ' is-collapsed' : ''}`} aria-label={t('navigation.paletteLabel')}>
+  return <aside ref={elementRef} className={`palette${collapsed ? ' is-collapsed' : ''}`} aria-label={t('navigation.paletteLabel')}>
     <div className="palette-header">
       <span className="palette-title" hidden={collapsed}>{t('navigation.paletteCatalog')}</span>
       <button type="button" className="palette-toggle" aria-label={toggleLabel} title={toggleLabel}

@@ -5,7 +5,9 @@ import { visualHelpPosition, type TutorialVisualHelp } from './tutorialVisualHel
 import './guidedVisualHelp.css';
 
 /** Mount with a step key so leaving a task always dismisses its visual help. */
-export function GuidedVisualHelp({ help, embedded = false, title }: { help: TutorialVisualHelp; embedded?: boolean; title?: string }) {
+export function GuidedVisualHelp({ help, embedded = false, title, stableLabel = false }: {
+  help: TutorialVisualHelp; embedded?: boolean; title?: string; stableLabel?: boolean;
+}) {
   const { t, language } = useTranslation();
   const [open, setOpen] = useState(false), [halfScale, setHalfScale] = useState(false);
   const [imageWidth, setImageWidth] = useState(0);
@@ -55,7 +57,10 @@ export function GuidedVisualHelp({ help, embedded = false, title }: { help: Tuto
         setPlacement(next); setHalfScale(false); setOpen(true);
       }}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg>
-      {t(open ? 'guidedVisual.close' : 'guidedVisual.open')}
+      {stableLabel ? <span className="guided-visual-help-label">
+        <span hidden={open}>{t('guidedVisual.open')}</span>
+        <span hidden={!open}>{t('guidedVisual.close')}</span>
+      </span> : t(open ? 'guidedVisual.close' : 'guidedVisual.open')}
     </button>
     {open && createPortal(<dialog ref={dialog} id={id} className="guided-visual-help" data-guided-image-dialog
       data-modal={placement.modal} lang={language} aria-labelledby={`${id}-title`}

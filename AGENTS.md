@@ -6,6 +6,8 @@ Ao retomar trabalho de outro computador, confira a branch, o HEAD e `git status 
 
 Antes de criar um componente, asset ou comportamento, encontre um exemplo em uso no mesmo fluxo. Confira o componente que ele monta e o teste que cobre sua interação.
 
+Nas instruções guiadas, comandos executáveis de terminal usam o amarelo do tema, em linha ou em blocos. Trate endereços, interfaces e termos conceituais pelo papel que desempenham no texto.
+
 | Tarefa | Por onde começar |
 | --- | --- |
 | Tutorial com instruções progressivas | O [capítulo LPM](src/tutorials/LpmPanel.tsx) exemplifica a moldura `ExercisePanelFrame`, o progresso `ChapterStepProgress`, comandos em `TutorialCommand`, dicas recolhíveis, confirmações de ações e navegação no rodapé. O [menu guiado](src/tutorials/TutorialUI.tsx) abre ou retoma a tentativa. Use os verificadores da atividade para confirmar ações reais. |

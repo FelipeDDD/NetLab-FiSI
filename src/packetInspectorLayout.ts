@@ -18,11 +18,13 @@ export function loadPacketInspector(): PacketInspectorPreference {
 export function savePacketInspector(value: PacketInspectorPreference): void {
   try { localStorage.setItem(PACKET_LAYOUT_KEY, JSON.stringify(value)); } catch { /* Local-only preference. */ }
 }
-export function packetPanelGeometry(viewport: number, deviceWidth: number, preference: PacketInspectorPreference) {
+export function packetPanelGeometry(viewport: number, deviceWidth: number, preference: PacketInspectorPreference, paletteWidth = 0) {
   const hasDevice = deviceWidth > 0;
-  const placement = viewport <= 700 ? 'stack' : hasDevice && (viewport <= 1100 || viewport - deviceWidth < 580) ? 'rows' : 'columns';
+  const room = viewport - paletteWidth - deviceWidth;
+  const placement = viewport <= 700 || room < (hasDevice ? 300 : 580) ? 'stack'
+    : hasDevice && (viewport <= 1100 || room < 580) ? 'rows' : 'columns';
   const displayedDevice = Math.min(deviceWidth, Math.max(0, viewport - 16));
-  const available = placement === 'stack' ? viewport - 16 : viewport - displayedDevice - (placement === 'columns' ? 280 : 0);
+  const available = placement === 'stack' ? viewport - 16 : viewport - paletteWidth - displayedDevice - (placement === 'columns' ? 280 : 0);
   const max = Math.max(0, Math.min(preference.mode === 'full' ? 800 : 680, available)), min = Math.min(300, max);
   const width = Math.round(Math.max(min, Math.min(max, preference.widths[preference.mode])));
   return { placement, width, min, max, deviceWidth: displayedDevice };
