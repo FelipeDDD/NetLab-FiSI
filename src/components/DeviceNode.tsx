@@ -12,6 +12,7 @@ import { DEVICE_COLORS } from '../deviceColors';
 import { pingAddresses } from '../quickPing';
 import { DeviceArtwork, hasDeviceArtwork } from './DeviceArtwork';
 import { sim } from '../sim';
+import { SwitchDevice } from '../engine/switch';
 import { firstReconnectInterface } from '../cableInteraction';
 import { deviceArtworkOffsetY } from '../deviceArtwork';
 
@@ -92,6 +93,10 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
   const compatible = !!reconnecting && !!firstReconnectInterface(sim.net, reconnecting, id);
   const hasShell = hasTerminalKind(data.kind);
   const artwork = hasDeviceArtwork(data.kind);
+  const modemColor = useStore(() => {
+    const device = data.kind === 'modem' ? sim.net.devices.get(id) : undefined;
+    return device instanceof SwitchDevice ? device.modemColor : undefined;
+  });
   return (
     <div style={{ '--device-color': DEVICE_COLORS[data.kind], '--device-artwork-offset-y': `${deviceArtworkOffsetY(data.kind)}px` } as CSSProperties}
       onMouseEnter={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(id); }} onMouseLeave={() => { if (data.kind === 'ap') useWifiCoverage.getState().hover(null); }} className={`device-node kind-${data.kind}${artwork ? ' has-device-artwork' : ''}${selected || inspected ? ' selected' : ''}${cableHighlighted ? ' cable-endpoint' : ''}${compatible ? ' cable-compatible' : ''}${pingSource ? ' quick-ping-source' : ''}${pingTarget ? ' quick-ping-target' : ''}`}>
@@ -102,7 +107,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps<DevNode>) {
       <Handle type="source" position={Position.Left} id="l" />
       {hasShell && <DeviceActions id={id} name={data.label} />}
       <div className="dev-icon">
-        {hasDeviceArtwork(data.kind) ? <DeviceArtwork id={id} kind={data.kind} fallback={<DeviceIcon kind={data.kind} />} /> : <DeviceIcon kind={data.kind} />}
+        {hasDeviceArtwork(data.kind) ? <DeviceArtwork id={id} kind={data.kind} modemColor={modemColor} fallback={<DeviceIcon kind={data.kind} />} /> : <DeviceIcon kind={data.kind} />}
       </div>
       {data.fw === true && (
         <span className="dev-fw-badge" title="firewall rules active">

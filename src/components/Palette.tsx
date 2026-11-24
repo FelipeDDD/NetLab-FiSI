@@ -6,6 +6,7 @@ import { canvasWorldBounds } from '../devicePlacement';
 import { useStore } from '../store';
 import type { DeviceKind } from '../engine/device';
 import { DeviceIcon } from './DeviceNode';
+import { DeviceArtwork, hasDeviceArtwork } from './DeviceArtwork';
 import { InspectorTabs } from './InspectorTabs';
 import { effectiveHostCreationMode, type HostCreationMode } from '../hostOs';
 import { loadPalettePreference, savePalettePreference, type PaletteCategory, type PalettePreference } from '../paletteLayout';
@@ -98,7 +99,9 @@ export function Palette({ compact = false, elementRef }: { compact?: boolean; el
                     onDragStart={e => onDragStart(e, it.kind, it.preset)}
                     onClick={() => add(it.kind,it.preset)}
                     title={t('navigation.paletteAddHint', { description: t(it.blurb) })}>
-                    <span className="palette-item-icon"><DeviceIcon kind={it.kind} size={26} /></span>
+                    <span className="palette-item-icon">{it.kind === 'modem' && hasDeviceArtwork(it.kind)
+                      ? <DeviceArtwork kind={it.kind} fallback={<DeviceIcon kind={it.kind} size={26} />} />
+                      : <DeviceIcon kind={it.kind} size={26} />}</span>
                     <span className="palette-item-label">{t(it.label)}</span>
                   </button>)}
                 </div>

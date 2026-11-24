@@ -15,6 +15,7 @@ import { LanguageSelector } from '../i18n/LanguageSelector';
 import { consumeHomeIntent } from '../home/navigation';
 import { useLearningHelp } from './LearningHelp';
 import { studioText } from '../export/studio/messages';
+import { TRAFFIC_PROTOCOLS, toggleTrafficProtocol } from '../packetProtocols';
 
 const TopologyStudio = lazy(() => import('../export/studio/TopologyStudio'));
 
@@ -70,6 +71,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
   const autosaveError = useStore(s => s.autosaveError);
   const packetInspectorOpen = useStore(s => s.packetInspectorOpen);
   const captureStatus = useStore(s => s.packetCapture.status);
+  const animationProtocols = useStore(s => s.animationProtocols);
 
   const cancelHoverClose = () => { if (hoverTimer.current !== null) clearTimeout(hoverTimer.current); hoverTimer.current = null; };
   const closeExport = () => { cancelHoverClose(); setExportOpen(false); };
@@ -243,6 +245,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
           aria-controls={packetInspectorOpen ? 'packet-inspector' : undefined} onClick={togglePackets}>{t('navigation.packets')}</button>
         <button type="button" className="btn packet-settings-toggle" ref={el => { packetAnchor.current = el; }}
           aria-label={t('navigation.packetSettings')} title={t('navigation.packetSettings')}
+          data-animation-filter-active={animationProtocols.length > 0 || undefined}
           aria-haspopup="menu" aria-expanded={dialog === 'packets'}
           aria-controls={dialog === 'packets' ? 'packet-capture-menu' : undefined} onClick={openPacketSettings}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m3 4 3 3 3-3" /></svg>
@@ -342,6 +345,20 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
         { action: 'stop', label: t('navigation.stopCapture'), run: () => useStore.getState().stopPacketCapture(), disabled: captureStatus === 'stopped' },
       ].map(item => <button key={item.action} type="button" role="menuitem" className="labs-menu-item" data-capture-action={item.action}
         disabled={item.disabled} onClick={() => { item.run(); setDialog(null); }}>{item.label}</button>)}
+      <div role="group" aria-label={t('traffic.animations')}>
+        <div className="labs-menu-section" aria-hidden="true">{t('traffic.animations')}</div>
+        <button type="button" role="menuitemcheckbox" className="labs-menu-item" aria-checked={!animationProtocols.length}
+          data-animation-protocol="all" onClick={() => useStore.getState().setAnimationProtocols([])}>
+          <span>{t('traffic.all')}</span>{animationProtocols.length === 0 && <span aria-hidden="true">✓</span>}
+        </button>
+        <div className="packet-animation-options" role="presentation">
+          {TRAFFIC_PROTOCOLS.map(protocol => <button key={protocol} type="button" role="menuitemcheckbox"
+            aria-checked={animationProtocols.includes(protocol)} data-animation-protocol={protocol} className="btn"
+            onClick={() => useStore.getState().setAnimationProtocols(toggleTrafficProtocol(useStore.getState().animationProtocols, protocol))}>
+            {protocol.toUpperCase()}
+          </button>)}
+        </div>
+      </div>
     </FloatingPopover>}
     <input ref={fileRef} type="file" accept="application/json" hidden onChange={event => onFile(event.target.files?.[0])} />
     {notice && <div className="notice toolbar-notice" role="status" aria-live="polite">{editorMessageText(notice, t)}</div>}

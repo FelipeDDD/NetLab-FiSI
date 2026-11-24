@@ -1,6 +1,7 @@
 import { isClientKind } from './device';
 import { wirelessError } from './wirelessRange';
 import { Scheduler } from './scheduler';
+import { PacketTrace, type TraceEvent } from './packetTrace';
 import { Link, NetInterface as Interface } from './device';
 import type { Device, DeviceKind, NetInterface } from './device';
 import type { ArpPayload, EthernetFrame, FramePayload, IcmpMessage, Ipv4Packet } from './types';
@@ -81,6 +82,10 @@ export class Network {
   // Asynchronous client configuration changes, not traffic or clock updates.
   onClientConfiguration: (() => void) | null = null;
   private visualArrivals = new WeakMap<FramePayload, Map<string, number>>();
+  packetTrace?: PacketTrace;
+  observeDecisions(observer?: (id: number, event: TraceEvent) => void) {
+    this.packetTrace = observer && new PacketTrace((payload, device) => this.visualArrivals.get(payload)?.get(device), observer);
+  }
   private visualEchoRequests = new WeakMap<IcmpMessage, number>();
   private visualArpRequests = new WeakMap<ArpPayload, number>();
   private visualArpResolutions = new WeakMap<Ipv4Packet, Map<string, number>>();
@@ -88,7 +93,7 @@ export class Network {
   private visualArpOrigins = new WeakMap<ArpPayload, VisualPingOrigin>();
   // Fired when a declared firewall chain drops or rejects a packet — the UI
   // flashes the device so students see *where* traffic died.
-  onFwDrop: ((deviceId: string) => void) | null = null;
+  onFwDrop: ((deviceId: string, packet?: Ipv4Packet) => void) | null = null;
 
   private macCounter = 0;
   private wireCounter = 0;
@@ -250,6 +255,7 @@ export class Network {
   associateVisualArpRequest(request: ArpPayload, pendingPacket: Ipv4Packet, deviceId: string): void {
     // An ARP lookup triggered by forwarding starts after the queued IP packet arrives.
     this.inheritVisualArrival(pendingPacket, request, deviceId);
+    this.packetTrace?.probe(request, pendingPacket);
     if (pendingPacket.l4.kind !== 'icmp') return;
     const origin = this.visualPingOrigins.get(pendingPacket.l4.msg);
     if (origin) this.visualArpOrigins.set(request, origin);
@@ -308,6 +314,7 @@ export class Network {
         ...(resolvedArpTransferId === undefined ? {} : { resolvedArpTransferId }),
         ...(arpPing === undefined ? {} : { arpPing: { ...arpPing } }),
       });
+      this.packetTrace?.sent(frame.payload, transfer.id);
     } catch {
       // Observation must never prevent Link.transmit from scheduling delivery.
     }

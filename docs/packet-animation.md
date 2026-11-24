@@ -19,9 +19,56 @@ são cancelados ao mudar de comando/documento. A barra não rouba foco nem alter
 dimensões do canvas, viewport, Inspector, dock ou topologia.
 
 O botão superior **Packets**, sua seta e estilos foram preservados. Seu dropdown
-oferece inspeção e atalhos para as operações existentes Start/Pause/Resume/Stop
-capture. Nenhum controle de velocidade, Live/Schrittmodus, Step, Replay ou posição
-do widget aparece ali. O Packet Inspector e sua infraestrutura não mudaram.
+oferece inspeção, atalhos de captura e a seleção dos protocolos que aparecem
+nas animações do canvas. **Todos os protocolos** restaura a exibição. A seleção
+é temporária e não muda a velocidade, a fila causal, o Scheduler ou as capturas.
+
+## Filtros e evidências disponíveis
+
+No **Packet Inspector → Filtros de visualização**, selecione os protocolos e,
+se necessário, informe IPv4 de origem e destino e escolha o enlace. A seleção
+de protocolos inclui qualquer um dos marcados. As demais condições devem
+corresponder simultaneamente. Para ARP, os IPs correspondem ao remetente e ao
+alvo do quadro. Em **Compact**, passe o mouse sobre o horário para ver o enlace.
+A contagem separa registros retidos que correspondem ao filtro do total
+capturado, que também inclui os registros removidos pelo limite de retenção.
+Os detalhes de um pacote selecionado permanecem disponíveis enquanto o registro
+estiver retido. Os filtros do painel são reiniciados ao trocar de plano.
+Os filtros abrem recolhidos. O cabeçalho mostra as contagens de filtros ativos
+e transmissões visíveis. Com uma transmissão selecionada, arraste a divisória
+ou use as setas para redistribuir a altura entre lista e detalhes. No layout em
+colunas, o painel e o Terminal Dock alternam a prioridade por clique ou foco.
+
+Os filtros de captura e do canvas usam os campos de transporte e aplicação
+do quadro. TCP inclui segmentos HTTP e do handshake. Selecionar apenas HTTP
+inclui os segmentos com dados HTTP. O mesmo vale para UDP e DNS, DHCP ou RIP.
+Os filtros são independentes e não integram os documentos salvos.
+
+## Investigar percurso
+
+Inicie a captura, selecione uma transmissão e clique em **Investigar percurso**.
+A janela acompanha a seleção e permite mover o cabeçalho ou redimensionar pelo
+canto inferior direito. As setas também funcionam com esses controles focados.
+Os filtros da tabela continuam independentes do percurso apresentado.
+
+O cabeçalho destaca a transmissão selecionada e o resumo mostra protocolo,
+origem, destino e resultado observado. Cada salto mostra as duas interfaces
+e a recepção quando o Scheduler efetivamente entrega o quadro. A apresentação
+distingue requisições, respostas e erros ICMP. Os detalhes incluem a rota escolhida, o Next Hop,
+o veredito de cadeias de firewall declaradas e a tradução observada. Para uma
+nova associação NAT aparece a regra aplicada; em uma associação existente,
+Conntrack fornece os endereços e portas antes e depois. Os vínculos usam IDs de
+transmissão e a identidade dos objetos durante o encaminhamento e a geração de
+respostas. Uma resolução ARP compartilhada aparece como referência e mantém os
+fluxos independentes.
+
+Capturas pausadas, limitadas a um enlace ou iniciadas no meio de uma troca podem
+mostrar percursos parciais. **Recepção sem confirmação** indica falta de evidência.
+Uma entrega ao IPv4 local pode ter ocorrido mesmo que a captura termine sem uma
+resposta vinculada. Operações locais que nunca chegaram a emitir um quadro e
+respostas sem vínculo explícito não têm percurso completo. O diagnóstico retém
+até 32 observações por transmissão, acompanha o limite de 1.000 registros e é
+descartado ao limpar a captura, trocar de documento ou recarregar a página.
 
 ## Menor intervenção na reprodução existente
 

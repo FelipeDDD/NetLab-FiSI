@@ -23,6 +23,7 @@ export type InspectorOperation =
   | { type: 'resize-switch'; label: string; deviceId: string; before: number; after: number; port: { name: string; mac: string } }
   | { type: 'set-interface-ipv4'; label: string; deviceId: string; ifaceName: string; before: import('./engine/ipv4Config').InterfaceIpv4; after: import('./engine/ipv4Config').InterfaceIpv4 }
   | { type: 'set-host-os'; label: string; deviceId: string; before: import('./hostOs').HostOs; after: import('./hostOs').HostOs }
+  | { type: 'set-modem-color'; label: string; deviceId: string; before: import('./engine/switch').ModemColor; after: import('./engine/switch').ModemColor }
   | { type: 'rename-device'; label: string; deviceId: string; before: string; after: string }
   | { type: 'set-iface-ip'; label: string; deviceId: string; ifaceName: string; before: InterfaceIp; after: InterfaceIp }
   | { type: 'set-nameserver'; label: string; deviceId: string; before: number | null; after: number | null }

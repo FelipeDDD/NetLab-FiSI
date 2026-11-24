@@ -8,6 +8,7 @@ import { isPingAnimationActive, packetAnimationProgress } from '../packetAnimati
 import { visibleGuidedHops } from '../guidedPacket';
 import { sim } from '../sim';
 import { inactiveWireless } from '../wirelessPresentation';
+import { matchesTrafficProtocols } from '../packetProtocols';
 
 const COLORS: Record<string, string> = {
   arp: '#f59e0b',
@@ -25,6 +26,7 @@ export function PacketLayer() {
   const clock = useStore((s) => s.clock);
   const animationClock = useStore((s) => s.packetAnimationClock);
   const mode = useStore((s) => s.packetVisualizationMode);
+  const protocols = useStore((s) => s.animationProtocols);
   const guidedState = useStore((s) => s.guidedPacket);
   const guided = guidedState.playback;
   const nodes = useStore((s) => s.nodes);
@@ -62,7 +64,7 @@ export function PacketLayer() {
   const frontDots: React.ReactNode[] = [];
   const dots = visible
     .map(({ p, t }) => {
-      if (t === null || p.linkId === reconnecting || inactiveWireless(sim.net.links.get(p.linkId))) return null;
+      if (t === null || !matchesTrafficProtocols(protocols, p) || p.linkId === reconnecting || inactiveWireless(sim.net.links.get(p.linkId))) return null;
       const a = centers.get(p.fromDeviceId);
       const b = centers.get(p.toDeviceId);
       if (!a || !b) return null;
@@ -70,6 +72,7 @@ export function PacketLayer() {
       const point = path ? path.geometry.pointAt(path.source === p.fromDeviceId ? t : 1 - t)
         : { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
       const dot = <circle key={p.id} data-link-id={p.linkId} data-transfer-id={p.id}
+        data-protocol={p.kind} data-application={'application' in p ? p.application : undefined}
         data-ping-sequence={'ping' in p ? p.ping : undefined} data-direction={'direction' in p ? p.direction : undefined}
         cx={point.x} cy={point.y} r={5} fill={COLORS[p.kind] ?? '#fff'} className="packet-dot" />;
       if (path?.geometry.isFrontAt(path.source === p.fromDeviceId ? t : 1 - t)) {
@@ -80,7 +83,8 @@ export function PacketLayer() {
 
   // Expanding red ring where a firewall chain dropped or rejected a packet.
   const rings = (mode === 'live' ? dropFlashes : [])
-    .filter((f) => clock >= f.start && clock <= f.until)
+    .filter((f) => clock >= f.start && clock <= f.until &&
+      (protocols.length === 0 || (f.protocols && matchesTrafficProtocols(protocols, f.protocols))))
     .map((f) => {
       const c = centers.get(f.deviceId);
       if (!c) return null;

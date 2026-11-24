@@ -1,6 +1,7 @@
 import { ipToString } from './engine/ip';
 import type { AppData } from './engine/types';
 import type { CapturedPacket } from './packetCapture';
+import { applicationProtocol } from './packetProtocols';
 
 export const PACKET_PAGE_SIZE = 50;
 export type PacketFields = Record<string, unknown>;
@@ -8,14 +9,14 @@ export interface PacketDetailsLayer { name: string; fields: PacketFields }
 
 const address = (value: number | null | undefined) => value === undefined ? undefined : value === null ? 'None' : ipToString(value);
 
-function appSummary(app: AppData): { protocol: string; summary: string } {
+function appSummary(app: AppData): string {
   switch (app.kind) {
-    case 'dhcp': return { protocol: 'DHCP', summary: `${app.op.toUpperCase()} · xid ${app.xid}${app.yourIp === undefined ? '' : ` · ${ipToString(app.yourIp)}`}` };
-    case 'dns-query': return { protocol: 'DNS', summary: `Query ${app.qname}` };
-    case 'dns-answer': return { protocol: 'DNS', summary: `${app.qname} → ${app.addr === null ? 'NXDOMAIN' : ipToString(app.addr)}` };
-    case 'http-request': return { protocol: 'HTTP', summary: `${app.method} ${app.path}` };
-    case 'http-response': return { protocol: 'HTTP', summary: `${app.status} ${app.reason}` };
-    case 'rip': return { protocol: 'RIP', summary: `Advertisement · ${app.routes.length} routes` };
+    case 'dhcp': return `${app.op.toUpperCase()} · xid ${app.xid}${app.yourIp === undefined ? '' : ` · ${ipToString(app.yourIp)}`}`;
+    case 'dns-query': return `Query ${app.qname}`;
+    case 'dns-answer': return `${app.qname} → ${app.addr === null ? 'NXDOMAIN' : ipToString(app.addr)}`;
+    case 'http-request': return `${app.method} ${app.path}`;
+    case 'http-response': return `${app.status} ${app.reason}`;
+    case 'rip': return `Advertisement · ${app.routes.length} routes`;
   }
 }
 
@@ -30,7 +31,7 @@ export function packetSummary(packet: CapturedPacket) {
   if (l4.kind === 'icmp') {
     const msg = l4.msg;
     description = { protocol: 'ICMP', summary: `${msg.type}${'seq' in msg ? ` · id ${msg.id} seq ${msg.seq}` : ''}` };
-  } else if (l4.app) description = appSummary(l4.app);
+  } else if (l4.app) description = { protocol: applicationProtocol(l4.app.kind).toUpperCase(), summary: appSummary(l4.app) };
   else {
     const flags = l4.kind === 'tcp' ? [l4.syn && 'SYN', l4.ack && 'ACK', l4.rst && 'RST', l4.fin && 'FIN'].filter(Boolean).join(', ') : '';
     description = { protocol: l4.kind.toUpperCase(), summary: `${l4.srcPort} → ${l4.dstPort}${flags ? ` [${flags}]` : ''}` };
@@ -79,7 +80,7 @@ export function packetLayers(packet: CapturedPacket): PacketDetailsLayer[] {
     const fields: PacketFields = { 'Source port': l4.srcPort, 'Destination port': l4.dstPort };
     if (l4.kind === 'tcp') fields.Flags = { SYN: l4.syn, ACK: l4.ack, RST: l4.rst, FIN: l4.fin };
     layers.push({ name: l4.kind.toUpperCase(), fields });
-    if (l4.app) layers.push({ name: appSummary(l4.app).protocol, fields: applicationFields(l4.app) });
+    if (l4.app) layers.push({ name: applicationProtocol(l4.app.kind).toUpperCase(), fields: applicationFields(l4.app) });
   }
   return layers;
 }

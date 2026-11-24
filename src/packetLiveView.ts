@@ -11,14 +11,14 @@ export const emptyPacketLiveView = (): PacketLiveView => ({ following: true, anc
 // Retention keeps length constant, but discarded continues to count arrivals.
 export const receivedPacketCount = (capture: PacketCaptureState) => capture.records.length + capture.discarded;
 
-export function packetLivePage(capture: PacketCaptureState, view: PacketLiveView) {
-  const latestStart = Math.max(0, Math.floor((capture.records.length - 1) / PACKET_PAGE_SIZE) * PACKET_PAGE_SIZE);
-  return packetPage(capture.records, view.following ? capture.records[latestStart] ?? null : view.anchor);
+export function packetLivePage(capture: PacketCaptureState, view: PacketLiveView, records = capture.records) {
+  const latestStart = Math.max(0, Math.floor((records.length - 1) / PACKET_PAGE_SIZE) * PACKET_PAGE_SIZE);
+  return packetPage(records, view.following ? records[latestStart] ?? null : view.anchor);
 }
 
-export function suspendPacketLive(capture: PacketCaptureState, view: PacketLiveView): PacketLiveView {
+export function suspendPacketLive(capture: PacketCaptureState, view: PacketLiveView, records = capture.records): PacketLiveView {
   if (!view.following) return view;
-  return { following: false, anchor: packetLivePage(capture, view).rows[0] ?? null, acknowledged: receivedPacketCount(capture) };
+  return { following: false, anchor: packetLivePage(capture, view, records).rows[0] ?? null, acknowledged: receivedPacketCount(capture) };
 }
 
 export function newPacketCount(capture: PacketCaptureState, view: PacketLiveView): number {

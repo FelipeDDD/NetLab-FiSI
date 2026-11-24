@@ -9,6 +9,63 @@ import { serializeNetwork,restoreNetwork } from './serialize';
 import { disposeNetwork } from './networkLifecycle';
 import { hasTerminalKind } from './device';
 import type { EthernetFrame } from './types';
+
+it('round-trips independent modem colours in JSON and defaults legacy modems to white', () => {
+  const net = new Network();
+  const white = createDevice(net, 'modem') as SwitchDevice;
+  const dark = createDevice(net, 'modem') as SwitchDevice;
+  expect(white.modemColor).toBe('white');
+  dark.modemColor = 'dark';
+  const saved = serializeNetwork(net, {});
+  expect(saved.devices.map(device => device.modemColor)).toEqual([undefined, 'dark']);
+  const restored = restoreNetwork(JSON.parse(JSON.stringify(saved)));
+  expect([white.id, dark.id].map(id => (restored.devices.get(id) as SwitchDevice).modemColor))
+    .toEqual(['white', 'dark']);
+  expect(serializeNetwork(restored, {})).toEqual(saved);
+  disposeNetwork(restored);
+  expect(() => restoreNetwork(JSON.parse(JSON.stringify({
+    ...saved, devices: [{ ...saved.devices[0], modemColor: 'invalid' }],
+  })))).toThrow('Invalid modem color');
+  disposeNetwork(net);
+});
+
+it.each(['white', 'dark'] as const)('counts actual traffic and local egress drops for the %s bridge', color => {
+  const { net, r, p, m, run } = setup();
+  try {
+    m.modemColor = color;
+    const [left, right] = m.interfaces;
+    const stats = (iface: typeof left) => m.modemPortTraffic(iface);
+    const ping = run(r, 'ping -c 1 192.0.2.1');
+    net.scheduler.advanceTo(1_000);
+    expect(ping()).toContain('1 received');
+    for (const port of [left, right]) {
+      expect(stats(port)).toEqual({ received: 2, forwarded: 2, disconnected: 0, unavailable: 0 });
+    }
+
+    const sender = r.getInterface('eth1')!;
+    const arp: EthernetFrame = { srcMac: sender.mac, dstMac: 'ff:ff:ff:ff:ff:ff', payload: {
+      kind: 'arp', op: 'request', senderIp: ip('192.0.2.2'), senderMac: sender.mac,
+      targetIp: ip('192.0.2.3'), targetMac: null,
+    } };
+    p.getInterface('eth0')!.up = false;
+    sender.send(arp);
+    net.scheduler.advanceTo(1_500);
+    net.disconnect(right.link!.id);
+    sender.send(arp);
+    net.scheduler.advanceTo(2_000);
+    expect(stats(left)).toEqual({ received: 4, forwarded: 2, disconnected: 1, unavailable: 1 });
+    expect(stats(right)).toEqual({ received: 2, forwarded: 2, disconnected: 0, unavailable: 0 });
+    const restored = restoreNetwork(serializeNetwork(net, {}));
+    try {
+      const modem = restored.devices.get(m.id) as SwitchDevice;
+      expect(modem.modemColor).toBe(color);
+      for (const port of modem.interfaces) {
+        expect(modem.modemPortTraffic(port)).toEqual({ received: 0, forwarded: 0, disconnected: 0, unavailable: 0 });
+      }
+    } finally { disposeNetwork(restored); }
+  } finally { disposeNetwork(net); }
+});
+
 const ip=(s:string)=>parseIp(s)!;
 function setup(){const net=new Network(),r=createDevice(net,'router') as IpDevice,p=createDevice(net,'router') as IpDevice,m=createDevice(net,'modem') as SwitchDevice,s=createDevice(net,'server') as IpDevice,a=createDevice(net,'host') as IpDevice,b=createDevice(net,'host') as IpDevice,sw=createDevice(net,'switch');
  net.connect(r.id,m.id,{aIface:'eth1',bIface:'eth0'});net.connect(m.id,p.id,{aIface:'eth1',bIface:'eth0'});net.connect(p.id,s.id,{aIface:'eth1'});net.connect(r.id,sw.id,{aIface:'eth0'});net.connect(a.id,sw.id);net.connect(b.id,sw.id);

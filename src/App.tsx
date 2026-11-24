@@ -51,11 +51,12 @@ export default function App() {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const [panelPriority, setPanelPriority] = useState<'inspector' | 'terminal'>('terminal');
+  const [panelPriority, setPanelPriority] = useState<'inspector' | 'packets' | 'terminal'>('terminal');
   const [terminalOverlapHeight, setTerminalOverlapHeight] = useState(0);
   const prioritizePanel = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return;
     if (target.closest('.inspector-shell')) setPanelPriority('inspector');
+    else if (target.closest('.packet-panel-shell')) setPanelPriority('packets');
     else if (target.closest('.terminal-dock')) setPanelPriority('terminal');
   };
   const selected = useStore((s) => s.selected);

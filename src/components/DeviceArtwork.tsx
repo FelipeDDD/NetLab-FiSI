@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import type { ModemColor } from '../engine/switch';
 import { DEVICE_ARTWORK } from '../deviceArtwork';
 import { linkAttachment } from '../deviceArtwork';
 import { cableGeometry } from '../cableGeometry';
@@ -42,15 +43,16 @@ function SwitchCableTips({ id }: { id: string }) {
   </g>;
 }
 
-export function DeviceArtwork({ kind, fallback, id }: { kind: keyof typeof DEVICE_ARTWORK; fallback: React.ReactNode; id?: string }) {
-  const [failed, setFailed] = useState(false);
+export function DeviceArtwork({ kind, fallback, id, modemColor }: { kind: keyof typeof DEVICE_ARTWORK; fallback: React.ReactNode; id?: string; modemColor?: ModemColor }) {
+  const [failedFile, setFailedFile] = useState<string>();
   const shieldId = useId().replace(/:/g, '');
   const asset = DEVICE_ARTWORK[kind];
-  if (failed) return <>{fallback}</>;
+  const file = kind === 'modem' && modemColor === 'dark' ? DEVICE_ARTWORK.modem.darkFile : asset.file;
+  if (failedFile === file) return <>{fallback}</>;
   // Frame the silhouette; overflow stays visible to preserve faint outer glows.
   return <svg className="device-artwork" viewBox={asset.viewBox} width={asset.width} height={asset.height}
     preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
-    <image href={`${import.meta.env.BASE_URL}assets/devices/${asset.file}`} width="1254" height="1254" onError={() => setFailed(true)} />
+    <image href={`${import.meta.env.BASE_URL}assets/devices/${file}`} width="1254" height="1254" onError={() => setFailedFile(file)} />
     {kind === 'firewall' && <>
       <defs>
         <filter id={`${shieldId}-soft`}><feGaussianBlur stdDeviation="6" /></filter>

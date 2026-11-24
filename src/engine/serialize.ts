@@ -6,7 +6,7 @@ import { Network } from './network';
 import { createDevice } from './factory';
 import { Host, IpDevice } from './ipdevice';
 import type { HostOs } from '../hostOs';
-import { ApDevice, SwitchDevice, CUSTOM_SWITCH_PORTS } from './switch';
+import { ApDevice, SwitchDevice, CUSTOM_SWITCH_PORTS, type ModemColor } from './switch';
 import type { DeviceKind } from './device';
 import { validIpv4, type Ipv4Mode } from './ipv4Config';
 import { cidrToString, ipToString, networkOf, parseCidr, parseIp } from './ip';
@@ -34,6 +34,7 @@ export interface SavedRoute {
 
 export interface SavedDevice {
   os?: HostOs;
+  modemColor?: ModemColor;
   id: string;
   kind: DeviceKind;
   name: string;
@@ -153,6 +154,7 @@ export function serializeNetwork(
       if (ipd.ripEnabled) saved.ripEnabled = true;
     }
     if (d instanceof SwitchDevice) {
+      if (d.kind === 'modem' && d.modemColor !== 'white') saved.modemColor = d.modemColor;
       const vlans: Record<string, number> = {};
       for (const [port, vlan] of d.vlans) if (vlan !== 1) vlans[port] = vlan;
       if (Object.keys(vlans).length) saved.vlans = vlans;
@@ -193,6 +195,7 @@ export function restoreDevice(net: Network, sd: SavedDevice) {
   const switchPorts = savedSwitchPortCount(sd);
   const d = createDevice(net, sd.kind, { id: sd.id, name: sd.name, os: sd.os, switchPorts });
   d.position = { x: sd.x, y: sd.y };
+  if (d instanceof SwitchDevice && d.kind === 'modem') d.modemColor = sd.modemColor ?? 'white';
   for (const si of sd.ifaces) {
     let iface = d.getInterface(si.name);
     if (!iface && si.medium === 'wireless') {

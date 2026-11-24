@@ -3,6 +3,8 @@ import type { CapturedPacket } from './packetCapture';
 import type { AppData, FramePayload } from './engine/types';
 import { parseIp } from './engine/ip';
 import { packetLayers, packetPage, packetSummary, PACKET_PAGE_SIZE } from './packetPresentation';
+import { emptyPacketFilters, filterCapturedPackets } from './packetFilters';
+import { matchesTrafficProtocols, trafficProtocolLayers } from './packetProtocols';
 
 const ip = (text: string) => parseIp(text)!;
 function record(payload: FramePayload, id = 1): CapturedPacket {
@@ -50,6 +52,26 @@ it('shows only simulated TCP ports and flags', () => {
   const packet = record({ kind: 'ipv4', src: 1, dst: 2, ttl: 64, l4: { kind: 'tcp', srcPort: 40000, dstPort: 80, syn: true, ack: true, rst: false, fin: false } });
   expect(packetSummary(packet).summary).toBe('40000 → 80 [SYN, ACK]');
   expect(packetLayers(packet).at(-1)!.fields).toEqual({ 'Source port': 40000, 'Destination port': 80, Flags: { SYN: true, ACK: true, RST: false, FIN: false } });
+});
+
+it('shares transport/application matching and intersects display filters by direction and link', () => {
+  const transport = { kind: 'tcp', srcPort: 40000, dstPort: 80, syn: false, ack: true, rst: false, fin: false } as const;
+  const header = { kind: 'ipv4', src: ip('10.0.0.1'), dst: ip('10.0.1.2'), ttl: 64 } as const;
+  const segment = record({ ...header, l4: transport });
+  const http = record({ ...header, l4: { ...transport,
+    app: { kind: 'http-request', method: 'GET', path: '/', host: 'web.lan' } } }, 2);
+  const dns = record({ kind: 'ipv4', src: ip('10.0.0.1'), dst: ip('10.0.1.3'), ttl: 64,
+    l4: { kind: 'udp', srcPort: 40000, dstPort: 53, app: { kind: 'dns-query', qid: 1, qname: 'web.lan' } } }, 3);
+  const icmp = { ...record(echo(), 4), linkId: 'other' };
+  const records = [segment, http, dns, icmp];
+  const filters = { ...emptyPacketFilters, linkId: 'cable', source: '10.0.0.1' };
+  expect(filterCapturedPackets(records, { ...filters, protocols: ['tcp', 'dns'] })).toEqual([segment, http, dns]);
+  expect(filterCapturedPackets(records, { ...filters, protocols: ['icmp', 'http', 'udp'], destination: '10.0.1.2' })).toEqual([http]);
+  expect(filterCapturedPackets(records, { ...filters, protocols: ['udp'] })).toEqual([dns]);
+  expect(filterCapturedPackets(records, { ...filters, source: '10.0.1.2' })).toEqual([]);
+  expect(matchesTrafficProtocols(['tcp'], trafficProtocolLayers(http.frame.payload))).toBe(true);
+  expect(matchesTrafficProtocols(['http'], trafficProtocolLayers(segment.frame.payload))).toBe(false);
+  expect(filterCapturedPackets(records, emptyPacketFilters)).toBe(records);
 });
 
 it('bounds rendered pages and anchors reading across append, eviction, clear and same-ID topology replacement', () => {

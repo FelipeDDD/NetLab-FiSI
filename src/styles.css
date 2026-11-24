@@ -319,6 +319,7 @@ body,
 .palette-item.kind-firewall .palette-item-icon { color: var(--firewall); }
 .palette-item.kind-server .palette-item-icon { color: var(--server); }
 .palette-item.kind-ap .palette-item-icon { color: var(--ap); }
+.palette-item.kind-modem .device-artwork { width: 34px; height: 26px; }
 
 .palette-item:hover {
   border-color: var(--accent);
@@ -388,6 +389,9 @@ body,
 .device-node.has-device-artwork.kind-ap { width: 124px; }
 .has-device-artwork .dev-icon { display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .device-artwork { display: block; overflow: visible; pointer-events: none; filter: drop-shadow(0 2px 3px #0008); transform: translateY(var(--device-artwork-offset-y, 0px)); }
+.device-node.has-device-artwork.kind-modem { padding: 8px 6px 6px; border-width: 1.5px; }
+.has-device-artwork.kind-modem .dev-icon { display: block; }
+.kind-modem .dev-icon .device-artwork { display: inline; }
 .has-device-artwork .device-label-content { top: var(--device-artwork-offset-y, 0px); }
 .has-device-artwork .dev-label, .has-device-artwork .dev-ip { text-shadow: 0 1px 3px var(--bg), 0 0 5px var(--bg); }
 .device-actions { display: contents; }
@@ -782,8 +786,8 @@ body.inspector-resizing, body.inspector-resizing * { cursor: col-resize !importa
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 6px;
+  padding: 8px;
   overflow: auto;
   background: var(--bg-panel);
   border-left: 1px solid var(--border);
@@ -805,6 +809,23 @@ body.inspector-resizing, body.inspector-resizing * { cursor: col-resize !importa
 .capture-paused { color: var(--ui-warning); }
 .capture-stopped { color: var(--text-dim); }
 .packet-capture-note { margin: 0; overflow-wrap: anywhere; }
+.packet-view-filters { border: 1px solid var(--ui-border); border-radius: 6px; padding: 4px 8px; }
+.packet-view-filters summary, .modem-port-drops summary { cursor: pointer; }
+.packet-view-filters summary span { color: var(--text-dim); margin-inline-start: 6px; }
+.packet-view-filters summary .packet-active-filters { color: var(--accent); white-space: nowrap; }
+.packet-protocol-options { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; border: 0; min-inline-size: 0; padding: 4px 0; margin: 6px 0; }
+.packet-protocol-options label, .modem-port-traffic div { display: flex; align-items: center; gap: 4px; }
+.packet-protocol-options .mini-btn, .packet-view-filters > .mini-btn { margin: 0; }
+.packet-address-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
+.packet-address-filters label { display: grid; gap: 3px; min-width: 0; }
+.packet-address-filters :is(input, select) { min-width: 0; width: 100%; padding: 4px; border: 1px solid var(--ui-form-border); border-radius: 4px; color: var(--ui-form-text); background: var(--ui-form-surface); }
+.packet-link-filter { grid-column: 1 / -1; }
+.packet-animation-options, .modem-port-traffic { display: flex; flex-wrap: wrap; gap: 6px; }
+.packet-animation-options .btn { padding: 4px 8px; font-size: 12px; }
+.packet-animation-options .btn[aria-checked="true"], .packet-protocol-options .mini-btn[aria-pressed="true"],
+.packet-settings-toggle[data-animation-filter-active] { border-color: var(--accent); color: var(--accent); }
+.modem-port-traffic { gap: 6px 12px; margin: 6px 0; }
+.modem-port-traffic dd { margin: 0; font-variant-numeric: tabular-nums; }
 .packet-list-scroll {
   flex: 1 1 200px;
   min-height: 120px;
@@ -857,6 +878,26 @@ body.inspector-resizing, body.inspector-resizing * { cursor: col-resize !importa
 .packet-detail-layer dt { color: var(--text-dim); }
 .packet-detail-layer dd { margin: 0; min-width: 0; white-space: pre-wrap; }
 .packet-detail-layer pre { margin: 0; padding: 7px; background: var(--bg); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; font-size: 11px; }
+.packet-split {
+  flex: 1 0 170px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.packet-split.is-split {
+  grid-template-rows: minmax(0, var(--packet-list-share)) var(--packet-divider-height) minmax(0, var(--packet-detail-share));
+}
+.packet-list-pane, #packet-detail-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.packet-list-pane { gap: 4px; }
+.packet-list-pane > .packet-list-scroll, #packet-detail-pane > .packet-details {
+  flex: 1 1 0; min-height: 0; overflow-anchor: none;
+}
+.packet-list-pane > .packet-pagination { flex-shrink: 0; }
+.packet-splitter { display: grid; place-items: center; cursor: row-resize; touch-action: none; }
+.packet-splitter::after { content: ''; width: 40px; height: 2px; border-radius: 2px; background: var(--text-dim); opacity: .55; }
+.packet-splitter:is(:hover, :focus-visible)::after, .packet-split.is-resizing .packet-splitter::after {
+  background: var(--accent); opacity: 1;
+}
+.packet-split.is-resizing { cursor: row-resize; user-select: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 @media (max-width: 1000px) {
   .packet-inspector { position: absolute; right: 0; top: 0; bottom: 0; width: min(100%, 680px); z-index: 8; box-shadow: var(--ui-shadow-panel); }
@@ -1521,15 +1562,20 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
   min-width: 0;
 }
 
-/* Keep the canvas/grid geometry unchanged. Only the existing right Inspector
-   extends over the dock; its two z-levels never change its size or scroll box.
-   Packet analysis retains its independent columns/stacked scrolling fallback. */
+/* Extend side panels over the dock without changing their grid tracks.
+   The scrollable rows and stack keep their separate layout. */
 .app.with-dock .terminal-dock { z-index: 40; }
 .app.with-dock > .main:not(.is-analyzing-packets) > .inspector-shell {
   height: calc(100% + var(--terminal-overlap-height, 0px));
   z-index: 41;
 }
 .app.with-dock[data-panel-priority="terminal"] > .main:not(.is-analyzing-packets) > .inspector-shell { z-index: 39; }
+.app.with-dock:has(.terminal-dock:not(.is-collapsed)) > .main[data-analysis-layout="columns"] > .packet-panel-shell {
+  height: calc(100% + var(--terminal-overlap-height));
+  z-index: 39;
+}
+.app.with-dock[data-panel-priority="packets"]:has(.terminal-dock:not(.is-collapsed))
+  > .main[data-analysis-layout="columns"] > .packet-panel-shell { z-index: 41; }
 
 .terminal-dock-toggle {
   position: absolute;
@@ -1818,6 +1864,8 @@ body:has(.terminal-dock:not(.is-collapsed)) .home-link { color: var(--canvas-tex
 }
 .host-creation-mode, .host-os-setting { display: flex; flex-direction: column; gap: 5px; font-size: 12px; margin-bottom: 12px; }
 .host-creation-mode select, .host-os-setting select { min-width: 0; width: 100%; background: var(--ui-form-surface); color: var(--ui-form-text); border: 1px solid var(--ui-form-border); border-radius: 4px; padding: 5px; }
+.modem-color-setting { flex-direction: row; align-items: center; gap: 8px; }
+.modem-color-setting select { width: auto; }
 .dev-os-badge { position: absolute; left: 34px; top: 5px; font-size: 9px; line-height: 13px; padding: 0 3px; border: 1px solid #64748b66; border-radius: 3px; color: #cbd5e1; background: #101827; pointer-events: none; }
 .ipv4-interface { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .ipv4-mode { display: flex; align-items: flex-start; gap: 6px; font-size: var(--inspector-font-size); margin: 8px 0; cursor: pointer; }
@@ -2207,3 +2255,39 @@ input:not(.xterm-helper-textarea)::placeholder, textarea:not(.xterm-helper-texta
 
 .route-cell-end { display:flex;align-items:center;gap:6px; }
 .route-cell-end > button { margin-left:auto;flex-shrink:0; }
+.packet-diagnosis {
+  position: absolute; z-index: 21; box-sizing: border-box; display: flex; flex-direction: column;
+  overflow: hidden; color: var(--ui-text); background: var(--ui-surface-panel);
+  border: 1px solid var(--ui-border); border-radius: 8px; box-shadow: 0 4px 16px #0003;
+}
+.packet-diagnosis .pc-desktop-header { padding: 5px 10px; font-size: 13px; }
+.packet-diagnosis-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-width: 0; }
+.packet-diagnosis .pc-desktop-header button { flex-shrink: 0; }
+.packet-diagnosis-selection { white-space: nowrap; }
+.packet-diagnosis-selection small { color: var(--ui-text-muted); }
+.packet-diagnosis-selection strong { font-size: 1.3em; font-variant-numeric: tabular-nums; }
+.packet-diagnosis-overview {
+  padding: 6px 10px; border-bottom: 1px solid var(--ui-border);
+  font-size: 12px; overflow-wrap: anywhere;
+}
+.packet-diagnosis-overview p { margin: 0; }
+.packet-diagnosis-overview p + p { margin-top: 2px; color: var(--ui-text-muted); }
+.packet-details-head [data-investigate] { font-size: 12px; max-width: 45%; white-space: normal; }
+.packet-diagnosis-list { flex: 1; min-height: 0; overflow: auto; padding: 5px 10px 24px; font-size: 13px; overflow-wrap: anywhere; }
+.packet-diagnosis .pc-window-resizer.resize-se {
+  width: 24px; height: 24px; padding: 0; border: 0;
+  border-radius: 6px 0 0; background: var(--ui-surface-panel);
+}
+.packet-diagnosis .pc-window-resizer.resize-se::after { right: 5px; bottom: 5px; width: 8px; height: 8px; opacity: 1; }
+.packet-diagnosis .pc-window-resizer.resize-se:is(:hover, :focus-visible)::after { border-color: var(--ui-accent); }
+.packet-diagnosis-list details { padding: 6px; border-bottom: 1px solid var(--ui-border); }
+.packet-diagnosis-hop:has(summary[aria-current="true"]) { background: var(--ui-surface-selected); }
+.packet-diagnosis-list summary { cursor: pointer; }
+.packet-diagnosis-hop-id { font-size: 11px; color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+.packet-diagnosis-list small { display: block; margin-inline-start: 1em; color: var(--ui-text-muted); }
+.packet-diagnosis [data-tone="request"] { --packet-role-color: var(--ui-success); }
+.packet-diagnosis [data-tone="reply"] { --packet-role-color: light-dark(#135f9e, #78bfff); }
+.packet-diagnosis [data-tone="error"] { --packet-role-color: var(--danger); }
+.packet-diagnosis-kind, .packet-diagnosis-overview [data-tone] { color: var(--packet-role-color, var(--ui-text-muted)); }
+.packet-diagnosis-list p, .packet-diagnosis-list ul { margin-block: 5px; }
+.packet-diagnosis-list ul { padding-inline-start: 22px; }

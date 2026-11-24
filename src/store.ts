@@ -17,6 +17,7 @@ import { addNftMasquerade, type MasqueradeRuleError } from './commands/nft';
 import { Network, type PingProgress } from './engine/network';
 import { observeIcmpActivity, observePingActivity } from './networkObservations';
 import { PacketCapture, type PacketCaptureState } from './packetCapture';
+import { trafficProtocolLayers, type TrafficProtocol } from './packetProtocols';
 import { natSecondHost, natConfiguration, natHostReady, natIntroComplete, natInvestigationComplete, NAT_INTRO_RESULTS, NAT_INVESTIGATION_RESULTS, NAT_LOCAL_IP, NAT_PEER_IP } from './labs/natLearning';
 import { normalizePingAnimationSpeed, sequencePacketAnimation, packetAnimationDuration, type AnimatedTransfer } from './packetAnimation';
 import { preferredPingAnimationSpeed } from './pingAnimationPreference';
@@ -37,7 +38,7 @@ import type { WorkspaceIdentity, WorkspacePersistenceSink } from './persistence/
 import type { ProjectDocument } from './projects/types';
 import { listRuleset } from './engine/firewall-fmt';
 import { cidrToString, parseCidr, parseIp } from './engine/ip';
-import { ApDevice, SwitchDevice } from './engine/switch';
+import { ApDevice, SwitchDevice, type ModemColor } from './engine/switch';
 import { disposeSession, getSession, refreshSessionProfile } from './terminals';
 import { canQuickPing, pingAddresses, preferredPingAddress, quickPingCommand, type QuickPingSelection } from './quickPing';
 import { sim } from './sim';
@@ -84,6 +85,7 @@ export interface DropFlash {
   deviceId: string;
   start: number;
   until: number;
+  protocols?: ReturnType<typeof trafficProtocolLayers>;
 }
 
 export type DevNode = Node<DevNodeData>;
@@ -151,6 +153,7 @@ interface NetsimState {
   setTutorialHostCreationDraft(draftId: string | null): void;
   setPaletteHostCreationMode(mode: HostCreationMode): void;
   setHostOs(id: string, os: HostOs): void;
+  setModemColor(id: string, color: ModemColor): void;
   topologyHistory: TopologyHistory;
   beginNodeMovement(source: 'drag' | 'keyboard'): void;
   finishNodeMovement(): void;
@@ -205,6 +208,8 @@ interface NetsimState {
   packetAnimationSpeed: number;
   setPacketAnimationSpeed(speed: number): void;
   packetVisualizationMode: PacketVisualizationMode;
+  animationProtocols: readonly TrafficProtocol[];
+  setAnimationProtocols(protocols: readonly TrafficProtocol[]): void;
   guidedPacket: GuidedPacketState;
   setPacketVisualizationMode(mode: PacketVisualizationMode): void;
   toggleGuidedPlayback(): void;
@@ -529,6 +534,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   const wireNet = (net: Network) => {
     if (wiredNetwork && wiredNetwork !== net) {
       wiredNetwork.onWireTransfer = null;
+      wiredNetwork.observeDecisions();
       wiredNetwork.onFwDrop = null;
       wiredNetwork.onPingProgress = null;
       wiredNetwork.onClientConfiguration = null;
@@ -557,10 +563,12 @@ export const useStore = create<NetsimState>()((set, get) => {
         const packets = get().packets;
         const speed = get().lab?.id === PROGRESSIVE_NAT_PAT_ID ? 0.25 : 1;
         const visual = sequencePacketAnimation(t, trace, packets, animationNow, packetAnimationDuration(speed));
+        const { application } = trafficProtocolLayers(payload);
+        if (application) visual.application = application;
         visual.pingTraffic = !!trace?.arpPing || payload.kind === 'ipv4' && payload.l4.kind === 'icmp' && !!pingIcmpIdentity(payload.l4.msg);
         set({ packets: [...packets, visual] });
       }
-      if (sim.net === net) capture.observe(t, context, trace?.parentTransferId);
+      if (sim.net === net) capture.observe(t, context, trace?.parentTransferId, trace, net.packetTrace?.responseId(payload));
     };
     net.onPingProgress = (event) => {
       if (sim.net !== net) return;
@@ -594,13 +602,13 @@ export const useStore = create<NetsimState>()((set, get) => {
       const guidedPacket = observeGuidedPingProgress(currentGuided(), event, net.now);
       if (guidedPacket !== get().guidedPacket) set({ guidedPacket });
     };
-    net.onFwDrop = (deviceId) => {
+    net.onFwDrop = (deviceId, packet) => {
       if (sim.net !== net) return;
       const now = net.scheduler.now;
       set({
         dropFlashes: [
           ...get().dropFlashes.slice(-19),
-          { id: ++flashSeq, deviceId, start: now, until: now + 700 },
+          { id: ++flashSeq, deviceId, start: now, until: now + 700, ...(packet && { protocols: trafficProtocolLayers(packet) }) },
         ],
       });
     };
@@ -1075,6 +1083,8 @@ export const useStore = create<NetsimState>()((set, get) => {
       try { localStorage.setItem('netlab-cable-style', cableStyle); } catch { /* Session preference still works. */ }
     },
     packetVisualizationMode: 'live',
+    animationProtocols: [],
+    setAnimationProtocols: animationProtocols => set({ animationProtocols }),
     guidedPacket: emptyGuidedPacket(),
     setPacketVisualizationMode(packetVisualizationMode) {
       if (packetVisualizationMode === get().packetVisualizationMode) return;
@@ -1104,11 +1114,18 @@ export const useStore = create<NetsimState>()((set, get) => {
     startPacketCapture(linkId = null) {
       if (linkId !== null && !sim.net.links.has(linkId)) return;
       capture.start(linkId);
+      sim.net.observeDecisions(capture.recordDecision);
     },
-    pausePacketCapture() { capture.pause(); },
-    resumePacketCapture() { capture.resume(); },
-    stopPacketCapture() { capture.stop(); },
-    clearPacketCapture() { capture.clear(); },
+    pausePacketCapture() { capture.pause(); sim.net.observeDecisions(); },
+    resumePacketCapture() {
+      capture.resume();
+      if (capture.state.status === 'capturing') sim.net.observeDecisions(capture.recordDecision);
+    },
+    stopPacketCapture() { capture.stop(); sim.net.observeDecisions(); },
+    clearPacketCapture() {
+      capture.clear();
+      sim.net.observeDecisions(capture.state.status === 'capturing' ? capture.recordDecision : undefined);
+    },
     topologyHistory: emptyTopologyHistory(),
     beginNodeMovement(source) {
       checkHistoryConfiguration();
@@ -1200,6 +1217,17 @@ export const useStore = create<NetsimState>()((set, get) => {
       refreshSessionProfile(id);
       get().refresh();
       commitEdit({ type: 'set-host-os', label: 'Change host OS', deviceId: id, before, after: os });
+      saveSoon();
+    },
+    setModemColor(id, color) {
+      const device = sim.net.devices.get(id);
+      if (!(device instanceof SwitchDevice) || device.kind !== 'modem' || device.disposed ||
+          (color !== 'white' && color !== 'dark') || device.modemColor === color) return;
+      prepareEdit();
+      const before = device.modemColor;
+      device.modemColor = color;
+      get().refresh();
+      commitEdit({ type: 'set-modem-color', label: 'Change modem color', deviceId: id, before, after: color });
       saveSoon();
     },
     addDeviceAt(kind, pos, preset) {

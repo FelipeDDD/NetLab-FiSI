@@ -1,4 +1,5 @@
-import type { WireFrameContext, WireTransfer } from './engine/network';
+import type { WireFrameContext, WireTransfer, WireVisualTrace } from './engine/network';
+import type { TraceEvent } from './engine/packetTrace';
 
 export const MAX_CAPTURE_RECORDS = 1_000;
 export const MAX_CAPTURE_TEXT_LENGTH = 16_384; // UTF-16 units, not wire bytes.
@@ -12,6 +13,8 @@ export interface TruncatedCaptureField {
 
 export interface CapturedPacket extends WireTransfer, WireFrameContext {
   parentTransferId?: number;
+  responseTo?: number;
+  resolvedByArp?: number;
   truncatedFields: TruncatedCaptureField[];
 }
 
@@ -20,6 +23,7 @@ export interface PacketCaptureState {
   linkId: string | null; // null observes all links.
   records: readonly CapturedPacket[];
   discarded: number; // Records evicted by retention, including pending overflow.
+  evidence?: ReadonlyMap<number, readonly TraceEvent[]>;
 }
 
 function emptyCapture(): PacketCaptureState {
@@ -50,6 +54,7 @@ export class PacketCapture {
   private pendingDiscarded = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private generation = 0;
+  private evidence = new Map<number, readonly TraceEvent[]>();
 
   constructor(private readonly onChange: (state: PacketCaptureState) => void) {}
 
@@ -78,7 +83,7 @@ export class PacketCapture {
 
   clear(): void {
     this.cancelPending();
-    this.snapshot = { ...this.snapshot, records: [], discarded: 0 };
+    this.snapshot = { ...emptyCapture(), status: this.snapshot.status, linkId: this.snapshot.linkId };
     this.publish();
   }
 
@@ -88,7 +93,14 @@ export class PacketCapture {
     this.publish();
   }
 
-  observe(transfer: WireTransfer, context: WireFrameContext, parentTransferId?: number): void {
+  recordDecision = (id: number, event: TraceEvent): void => {
+    const facts = this.evidence.get(id);
+    if (this.snapshot.status !== 'capturing' || !facts || facts.length > 32) return;
+    this.evidence.set(id, [...facts, facts.length === 32 ? { deviceId: event.deviceId, fact: { kind: 'more' } } : event]);
+    this.schedulePublication();
+  };
+
+  observe(transfer: WireTransfer, context: WireFrameContext, parentTransferId?: number, trace?: WireVisualTrace, replyId?: number): void {
     if (this.snapshot.status !== 'capturing' || (this.snapshot.linkId !== null && this.snapshot.linkId !== transfer.linkId)) return;
     try {
       const copy = structuredClone(context);
@@ -98,19 +110,27 @@ export class PacketCapture {
         this.pending.shift();
         this.pendingDiscarded++;
       }
-      this.pending.push({ ...transfer, ...copy, ...(parentTransferId === undefined ? {} : { parentTransferId }), truncatedFields });
-      if (this.timer === null) {
-        const generation = this.generation;
-        this.timer = setTimeout(() => {
-          if (generation !== this.generation) return;
-          this.timer = null;
-          this.mergePending();
-          this.publish();
-        }, CAPTURE_BATCH_MS);
-      }
+      const responseTo = replyId ?? trace?.echoRequestTransferId ?? trace?.arpRequestTransferId;
+      this.pending.push({ ...transfer, ...copy, ...(parentTransferId === undefined ? {} : { parentTransferId }),
+        ...(responseTo === undefined ? {} : { responseTo }),
+        ...(trace?.resolvedArpTransferId === undefined ? {} : { resolvedByArp: trace.resolvedArpTransferId }), truncatedFields });
+      this.evidence.set(transfer.id, []);
+      if (this.evidence.size > MAX_CAPTURE_RECORDS) this.evidence.delete(this.evidence.keys().next().value!);
+      this.schedulePublication();
     } catch {
       // A malformed/uncloneable observation cannot affect simulated traffic.
     }
+  }
+
+  private schedulePublication() {
+    if (this.timer !== null) return;
+    const generation = this.generation;
+    this.timer = setTimeout(() => {
+      if (generation !== this.generation) return;
+      this.timer = null;
+      this.mergePending();
+      this.publish();
+    }, CAPTURE_BATCH_MS);
   }
 
   private mergePending(): void {
@@ -118,6 +138,7 @@ export class PacketCapture {
     const excess = Math.max(0, records.length - MAX_CAPTURE_RECORDS);
     this.snapshot = {
       ...this.snapshot, records: records.slice(excess),
+      evidence: new Map(this.evidence),
       discarded: this.snapshot.discarded + this.pendingDiscarded + excess,
     };
     this.pending = [];
@@ -139,6 +160,7 @@ export class PacketCapture {
 
   private cancelPending(): void {
     this.cancelTimer();
+    this.evidence.clear();
     this.pending = [];
     this.pendingDiscarded = 0;
   }

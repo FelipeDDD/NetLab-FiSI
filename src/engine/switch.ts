@@ -9,11 +9,21 @@ export const MAC_AGE_MS = 300_000;
 
 export const CUSTOM_SWITCH_PORTS = { min: 1, max: 24, default: 8 } as const;
 
+export type ModemColor = 'white' | 'dark';
+interface ModemPortTraffic {
+  received: number;
+  forwarded: number;
+  disconnected: number;
+  unavailable: number;
+}
+
 // L2 learning switch with access-port VLANs: every port belongs to exactly
 // one VLAN (default 1) and frames never cross VLAN boundaries — two hosts in
 // the same subnet but different VLANs cannot even ARP for each other.
 export class SwitchDevice extends Device {
+  modemColor: ModemColor = 'white';
   readonly kind: 'switch' | 'ap' | 'modem';
+  private readonly bridgeTraffic = new Map<NetInterface, ModemPortTraffic>();
   // MAC table keys are "vlan|mac" so identical MACs stay separated per VLAN.
   macTable = new Map<string, NetInterface>();
   private learnedAt = new Map<string, number>();
@@ -51,6 +61,15 @@ export class SwitchDevice extends Device {
     if (kind === 'switch' && (!Number.isInteger(ports) || ports < CUSTOM_SWITCH_PORTS.min || ports > CUSTOM_SWITCH_PORTS.max)) throw new Error('Invalid switch capacity');
     this.kind = kind;
     this.addInterfaces('eth', ports);
+    if (kind === 'modem') {
+      for (const iface of this.interfaces) {
+        this.bridgeTraffic.set(iface, { received: 0, forwarded: 0, disconnected: 0, unavailable: 0 });
+      }
+    }
+  }
+
+  modemPortTraffic(iface: NetInterface): Readonly<ModemPortTraffic> | undefined {
+    return this.bridgeTraffic.get(iface);
   }
 
   vlanOf(portName: string): number {
@@ -92,7 +111,18 @@ export class SwitchDevice extends Device {
 
   receiveFrame(iface: NetInterface, frame: EthernetFrame): void {
     if (this.disposed || !iface.up || !this.interfaces.includes(iface)) return;
-    if (this.kind === 'modem') { this.flood(1, iface, frame); return; }
+    if (this.kind === 'modem') {
+      const incoming = this.bridgeTraffic.get(iface)!;
+      const outgoing = this.interfaces[iface === this.interfaces[0] ? 1 : 0];
+      incoming.received++;
+      if (!outgoing.link) {
+        incoming.disconnected++;
+        this.network.packetTrace?.decision(frame.payload, this.id, { kind: 'drop', reason: 'linkDown', detail: outgoing.name });
+      }
+      else if (outgoing.send(frame)) this.bridgeTraffic.get(outgoing)!.forwarded++;
+      else incoming.unavailable++;
+      return;
+    }
     this.ageMacs();
     const vlan = this.vlanOf(iface.name);
     this.macTable.set(`${vlan}|${frame.srcMac}`, iface);

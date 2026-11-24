@@ -5,6 +5,7 @@ import { createDevice } from './engine/factory';
 import { IpDevice } from './engine/ipdevice';
 import { parseCidr, parseIp } from './engine/ip';
 import type { EthernetFrame } from './engine/types';
+import { emptyPacketFilters, filterCapturedPackets } from './packetFilters';
 
 const transfer = (id = 1): WireTransfer => ({ id, linkId: 'link', fromDeviceId: 'a', toDeviceId: 'b', kind: 'arp', start: id, end: id + 80 });
 const arp = (): EthernetFrame => ({ srcMac: 'aa', dstMac: 'ff', payload: {
@@ -46,10 +47,16 @@ it('does not clone or schedule work when stopped, paused, or observing a differe
 
 it('bounds pending and published retention and counts both kinds of eviction exactly', () => {
   const capture = new PacketCapture(vi.fn()); capture.start();
-  for (let id = 0; id < 1_500; id++) capture.observe(transfer(id), context());
+  for (let id = 0; id < 1_500; id++) capture.observe({ ...transfer(id), linkId: `link-${id % 100}` }, context());
   expect(vi.getTimerCount()).toBe(1); vi.advanceTimersByTime(CAPTURE_BATCH_MS);
   expect(capture.state.records).toHaveLength(MAX_CAPTURE_RECORDS); expect(capture.state.discarded).toBe(500);
   expect(capture.state.records[0].id).toBe(500); expect(capture.state.records.at(-1)!.id).toBe(1499);
+  const snapshot = capture.state;
+  expect(filterCapturedPackets(snapshot.records, { ...emptyPacketFilters, protocols: ['arp'], linkId: 'link-1',
+    source: '0.0.0.1', destination: '0.0.0.2' })).toHaveLength(10);
+  expect(filterCapturedPackets(snapshot.records, { ...emptyPacketFilters, source: '0.0.0.' })).toHaveLength(0);
+  expect(filterCapturedPackets(snapshot.records, emptyPacketFilters)).toBe(snapshot.records);
+  expect(capture.state).toBe(snapshot);
   for (let id = 1_500; id < 2_750; id++) capture.observe(transfer(id), context());
   vi.advanceTimersByTime(CAPTURE_BATCH_MS);
   expect(capture.state.records).toHaveLength(MAX_CAPTURE_RECORDS); expect(capture.state.discarded).toBe(1_750);

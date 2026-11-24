@@ -17,6 +17,7 @@ function validateDeviceOptions(d: Record<string, unknown>): void {
     const ifaces=d.ifaces as Record<string,unknown>[];
     if(ifaces.length!==2||ifaces.some((i,n)=>i.name!==`eth${n}`||i.ip!==null||i.medium!==undefined||i.gateway!=null||i.dns!=null)||d.forwarding||!Array.isArray(d.routes)||d.routes.length||['services','firewall','dhcpServer','dhcpPools','dhcpRelays','dhcpRemotePools','dnsServer','httpServer','ripEnabled','nameserver'].some(k=>d[k]!==undefined)||(object(d.vlans)&&Object.keys(d.vlans).length))fail('modem bridge configuration');
   }
+  if (d.modemColor !== undefined && (d.kind !== 'modem' || (d.modemColor !== 'white' && d.modemColor !== 'dark'))) fail('modem color');
   if (d.nameserver !== undefined && d.nameserver !== null && !address(d.nameserver)) fail('nameserver');
   if (d.os !== undefined && d.os !== 'linux' && d.os !== 'windows') fail('OS profile');
   if (d.ripEnabled !== undefined && typeof d.ripEnabled !== 'boolean') fail('RIP configuration');

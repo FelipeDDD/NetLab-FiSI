@@ -32,6 +32,7 @@ export function historyOperationLabel(operation: TopologyOperation | { label: st
     case 'set-static-routes': return t('navigation.historyRoutes');
     case 'set-dhcp-configuration': return t('navigation.historyDhcp');
     case 'set-wifi-range': return t('navigation.historyWifiRange');
+    case 'set-modem-color': return t('navigation.historyModemColor');
     case 'set-host-os': return t('navigation.historyHostOs', { os: operation.after });
     case 'set-cable-color': return t('navigation.historyCableColor');
     case 'reconnect-link': return t('navigation.historyReconnect');

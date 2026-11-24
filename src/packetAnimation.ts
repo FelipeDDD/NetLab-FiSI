@@ -1,5 +1,6 @@
 import type { WireTransfer, WireVisualTrace } from './engine/network';
 import type { GuidedPacketState, PacketVisualizationMode } from './guidedPacket';
+import type { ApplicationProtocol } from './packetProtocols';
 
 export const PACKET_ANIMATION_KEY = 'netlab:packet-animation-duration:v1';
 export const PACKET_ANIMATION_SPEED_KEY = 'netlab:packet-animation-speed:v1';
@@ -23,6 +24,7 @@ export function isPingAnimationActive(state: GuidedPacketState): boolean {
 
 // Presentation-only metadata: engine timestamps remain unchanged.
 export interface AnimatedTransfer extends WireTransfer {
+  application?: ApplicationProtocol;
   visualStart: number;
   visualDuration: number;
   parentTransferId?: number;

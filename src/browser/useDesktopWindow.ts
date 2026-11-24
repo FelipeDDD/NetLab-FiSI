@@ -3,7 +3,7 @@ import {changeWindow,constrainWindow,initialWindow,windowLimits,type ResizeEdge,
 
 /** Same pointer-capture/ResizeObserver approach as ResizableInspector, with a
  * parent-bounded two-dimensional frame. Moving it never remounts its children. */
-export function useDesktopWindow() {
+export function useDesktopWindow(place?: (area: WindowArea, parent: HTMLElement) => WindowRect) {
   const element=useRef<HTMLElement>(null),[area,setArea]=useState<WindowArea>({width:0,height:0});
   const [preferred,setPreferred]=useState<WindowRect>(),[interacting,setInteracting]=useState(false);
   const drag=useRef<{pointer:number;x:number;y:number;rect:WindowRect;edge:ResizeEdge|'move';target:HTMLElement;original:WindowRect}>();
@@ -20,6 +20,7 @@ export function useDesktopWindow() {
       setArea(old=>old.width===next.width&&old.height===next.height?old:next);
       setPreferred(old => {
         if (old) return old;
+        if (place) return place(next, parent);
         const bounds = parent.getBoundingClientRect();
         const left = (parent.querySelector('.palette')?.getBoundingClientRect().right ?? bounds.left) - bounds.left + 12;
         const panel = parent.querySelector('[data-exercise="guided-nat-pat"]')?.getBoundingClientRect();
@@ -31,7 +32,7 @@ export function useDesktopWindow() {
     update();const observer=new ResizeObserver(update);observer.observe(parent);
     window.addEventListener('blur',finish);
     return ()=>{observer.disconnect();window.removeEventListener('blur',finish);finish();};
-  },[finish]);
+  },[finish,place]);
   useEffect(()=>()=>finish(),[finish]);
   function start(edge:ResizeEdge|'move',event:ReactPointerEvent<HTMLElement>) {
     if(event.button!==0||!event.isPrimary||!rect||!preferred)return;

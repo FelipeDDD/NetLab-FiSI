@@ -44,8 +44,10 @@ export class NetInterface {
     public mac: string,
   ) {}
 
-  send(frame: EthernetFrame): void {
-    if (!this.device.disposed && this.up && this.link) this.link.transmit(this, frame);
+  send(frame: EthernetFrame): boolean {
+    const sent = !this.device.disposed && this.up && this.link !== null && this.link.transmit(this, frame);
+    if (!sent) this.device.network.packetTrace?.decision(frame.payload, this.device.id, { kind: 'drop', reason: 'linkDown', detail: this.name });
+    return sent;
   }
 }
 
@@ -120,17 +122,21 @@ export class Link {
     return i === this.a ? this.b : this.a;
   }
 
-  transmit(from: NetInterface, frame: EthernetFrame): void {
-    if (!this.operational) return;
-    if (this.network.links.get(this.id) !== this || this.a.link !== this || this.b.link !== this) return;
+  transmit(from: NetInterface, frame: EthernetFrame): boolean {
+    if (!this.operational) return false;
+    if (this.network.links.get(this.id) !== this || this.a.link !== this || this.b.link !== this) return false;
     const to = this.other(from);
     const transferId = this.network.emitWire(this, from.device, to.device, frame);
     this.network.scheduler.schedule(this.latency, () => {
       if (this.network.links.get(this.id) === this && to.link === this && this.operational) {
         this.network.recordVisualArrival(frame.payload, to.device.id, transferId);
+        this.network.packetTrace?.received(transferId, to.device.id);
         to.device.receiveFrame(to, frame);
+      } else if (transferId !== undefined) {
+        this.network.packetTrace?.inFlightLoss(transferId, to.device.id, to.name);
       }
     }, this);
+    return true;
   }
 
   detach(): void {

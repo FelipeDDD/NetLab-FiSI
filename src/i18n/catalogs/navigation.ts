@@ -1,4 +1,5 @@
 const en = {
+  modemColor: 'Colour', modemWhite: 'White', modemDark: 'Graphite', historyModemColor: 'Change modem colour',
   paletteModem: 'Modem', modemHint: 'Transparent Ethernet bridge with two ports. No routing, IP configuration or services.',
   relayHint: 'Forward DHCP requests to a remote server. Requires IPv4, links and return routes.',
   relayEnable: 'Enabled', relayServer: 'DHCP Server IPv4', remotePools: 'DHCP · Remote subnets',
@@ -482,6 +483,7 @@ const en = {
 } as const;
 type Messages = Record<keyof typeof en, string>;
 const de: Messages = {
+  modemColor: 'Farbe', modemWhite: 'Weiß', modemDark: 'Graphit', historyModemColor: 'Modemfarbe ändern',
   paletteModem: 'Modem', modemHint: 'Transparente Ethernet-Bridge mit zwei Ports. Ohne Routing, IP-Konfiguration oder Dienste.',
   relayHint: 'DHCP-Anfragen an einen entfernten Server weiterleiten. IPv4, Verbindungen und Rückrouten erforderlich.',
   relayEnable: 'Aktiviert', relayServer: 'DHCP-Server IPv4', remotePools: 'DHCP · Entfernte Subnetze',
@@ -964,6 +966,7 @@ const de: Messages = {
   clientsLabel: "Clients",
 };
 const ptBR: Messages = {
+  modemColor: 'Cor', modemWhite: 'Branco', modemDark: 'Grafite', historyModemColor: 'Alterar cor do modem',
   paletteModem: 'Modem', modemHint: 'Bridge Ethernet transparente com duas portas. Sem roteamento, configuração IP ou serviços.',
   relayHint: 'Encaminhar solicitações DHCP ao servidor remoto. Requer IPv4, enlaces e rotas de retorno.',
   relayEnable: 'Habilitado', relayServer: 'IPv4 do DHCP Server', remotePools: 'DHCP · Sub-redes remotas',

@@ -17,7 +17,7 @@ import type {
 import { BROADCAST_IP, BROADCAST_MAC, ipToString, networkOf, type U32 } from './ip';
 import { FirewallModel, type EvalResult, type FilterHook } from './firewall';
 import { ConnTrack, tupleOf, rewriteTo } from './conntrack';
-import { filterRuleText } from './firewall-fmt';
+import { filterRuleText, natRuleText } from './firewall-fmt';
 
 export const DEFAULT_TTL = 64;
 const ARP_RETRY_MS = 500;
@@ -443,11 +443,11 @@ export abstract class IpDevice extends Device {
     return this.sendL4(dst, { kind: 'icmp', msg }, { ttl });
   }
 
-  sendIcmp(dst: U32, msg: IcmpMessage, opts: { ttl?: number; srcOverride?: U32 } = {}): string | null {
+  sendIcmp(dst: U32, msg: IcmpMessage, opts: { ttl?: number; srcOverride?: U32; diagnosticCause?: Ipv4Packet } = {}): string | null {
     return this.sendL4(dst, { kind: 'icmp', msg }, opts);
   }
 
-  sendL4(dst: U32, l4: L4, opts: { ttl?: number; srcOverride?: U32; visualCause?: Ipv4Packet } = {}): string | null {
+  sendL4(dst: U32, l4: L4, opts: { ttl?: number; srcOverride?: U32; visualCause?: Ipv4Packet; diagnosticCause?: Ipv4Packet } = {}): string | null {
     if (this.hasIp(dst)) {
       // Loopback-style delivery to our own address skips wire and firewall.
       const pkt: Ipv4Packet = {
@@ -461,7 +461,11 @@ export abstract class IpDevice extends Device {
       return null;
     }
     const route = this.lookupRoute(dst);
-    if (!route) return 'Network is unreachable';
+    const cause = opts.visualCause ?? opts.diagnosticCause;
+    if (!route) {
+      if (cause) this.network.packetTrace?.decision(cause, this.id, { kind: 'drop', reason: 'replyNoRoute', detail: ipToString(dst) });
+      return 'Network is unreachable';
+    }
     const iface = this.getInterface(route.ifaceName)!;
     const src = opts.srcOverride ?? iface.ip?.addr;
     if (src === undefined) return 'Network is unreachable';
@@ -470,12 +474,17 @@ export abstract class IpDevice extends Device {
     const now = this.network.now;
     this.ct.invalidateMasquerade(name => this.getInterface(name)?.ip?.addr);
     const proc = this.ct.process(pkt, now);
+    const original = pkt;
     pkt = proc.pkt;
+    const trace = this.network.packetTrace;
+    trace?.decision(pkt, this.id, { kind: 'route', route: { ...route }, nextHop: route.via ?? dst });
+    this.traceTranslation(pkt, original, pkt, 'Conntrack');
     const res = this.fw.evaluate('output', pkt, { oif: route.ifaceName, ctState: proc.state });
-    this.logFw(res, pkt);
+    this.logFw(res, pkt, res.verdict !== 'accept' && cause ? cause : pkt);
     if (res.verdict !== 'accept') return 'Operation not permitted';
 
     if (proc.dir === 'none' && proc.state === 'new') {
+      const before = pkt;
       const origTuple = tupleOf(pkt);
       const nr = this.fw.evalNat('postrouting', pkt, { oif: route.ifaceName, ctState: 'new' });
       if (nr?.action.type === 'masquerade' && !iface.ip) return 'Network is unreachable';
@@ -486,11 +495,14 @@ export abstract class IpDevice extends Device {
         if (!mapping) return 'NAT translation resources exhausted';
         const previousPacket = pkt;
         pkt = rewriteTo(pkt, mapping);
+        trace?.carry(before, pkt);
+        if (nr && trace) this.traceTranslation(pkt, before, pkt, natRuleText(nr));
         this.network.inheritVisualArrival(previousPacket, pkt, this.id);
       }
     }
     // A reply can be ready on the wire while the slower visual is still arriving.
     if (opts.visualCause) this.network.inheritVisualArrival(opts.visualCause, pkt, this.id);
+    if (cause) trace?.reply(cause, pkt, this.id);
     this.routePacket(pkt, route);
     return null;
   }
@@ -704,6 +716,7 @@ export abstract class IpDevice extends Device {
       const res = this.fw.evaluate('input', pktIn, { iif, ctState: 'new' });
       this.logFw(res, pktIn);
       if (res.verdict !== 'accept') return;
+      this.network.packetTrace?.decision(pktIn, this.id, { kind: 'local' });
       this.deliverBroadcast(pktIn, iif);
       return;
     }
@@ -712,21 +725,26 @@ export abstract class IpDevice extends Device {
     this.ct.invalidateMasquerade(name => this.getInterface(name)?.ip?.addr);
     const proc = this.ct.process(pktIn, now);
     let pkt = proc.pkt;
+    this.traceTranslation(pktIn, pktIn, pkt, 'Conntrack');
     const ctState = proc.state;
     // Tuple as the packet arrived (pre-DNAT) — the "original" side of a new conn.
     const origTuple = proc.dir === 'none' ? tupleOf(pkt) : null;
 
     if (proc.dir === 'none' && ctState === 'new') {
       const nr = this.fw.evalNat('prerouting', pkt, { iif, ctState });
-      if (nr && nr.action.type === 'dnat') pkt = this.applyDnat(pkt, nr.action.addr, nr.action.port);
+      if (nr && nr.action.type === 'dnat') {
+        const before = pkt;
+        pkt = this.applyDnat(pkt, nr.action.addr, nr.action.port);
+        if (this.network.packetTrace) this.traceTranslation(pktIn, before, pkt, natRuleText(nr));
+      }
     }
 
     if (this.hasIp(pkt.dst)) {
       const res = this.fw.evaluate('input', pkt, { iif, ctState });
-      this.logFw(res, pkt);
+      this.logFw(res, pkt, pktIn);
       if (res.verdict === 'drop') return;
       if (res.verdict === 'reject') {
-        this.rejectPacket(pkt);
+        this.rejectPacket(pkt, pktIn);
         return;
       }
       if (origTuple) {
@@ -734,41 +752,53 @@ export abstract class IpDevice extends Device {
         if (t && !this.ct.confirm(origTuple, t, now)) return;
       }
       this.network.inheritVisualArrival(pktIn, pkt, this.id);
+      this.network.packetTrace?.decision(pktIn, this.id, { kind: 'local' });
       if (pkt.l4.kind === 'udp' && pkt.l4.app?.kind === 'dhcp') receiveRelayedDhcp(this, pkt, iif);
       else this.deliverLocal(pkt);
       return;
     }
 
-    if (!this.forwarding) return;
+    if (!this.forwarding) {
+      this.network.packetTrace?.decision(pktIn, this.id, { kind: 'drop', reason: 'forwardingOff' });
+      return;
+    }
     const ttl = pkt.ttl - 1;
     if (ttl <= 0) {
-      if (!isIcmpError(pkt)) this.sendIcmp(pkt.src, { type: 'time-exceeded', original: refOf(pkt) });
+      this.network.packetTrace?.decision(pktIn, this.id, { kind: 'drop', reason: 'ttl' });
+      if (!isIcmpError(pkt)) this.sendIcmp(pkt.src, { type: 'time-exceeded', original: refOf(pkt) }, { diagnosticCause: pktIn });
       return;
     }
     pkt = { ...pkt, ttl };
     const route = this.lookupRoute(pkt.dst);
     if (!route) {
+      this.network.packetTrace?.decision(pktIn, this.id, { kind: 'drop', reason: 'noRoute', detail: ipToString(pkt.dst) });
       if (!isIcmpError(pkt))
-        this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'net', original: refOf(pkt) });
+        this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'net', original: refOf(pkt) }, { diagnosticCause: pktIn });
       return;
     }
+    this.network.packetTrace?.decision(pktIn, this.id, { kind: 'route', route: { ...route }, nextHop: route.via ?? pkt.dst });
     const res = this.fw.evaluate('forward', pkt, { iif, oif: route.ifaceName, ctState });
-    this.logFw(res, pkt);
+    this.logFw(res, pkt, pktIn);
     if (res.verdict === 'drop') return;
     if (res.verdict === 'reject') {
-      this.rejectPacket(pkt);
+      this.rejectPacket(pkt, pktIn);
       return;
     }
     if (proc.dir === 'none' && ctState === 'new') {
       const nr = this.fw.evalNat('postrouting', pkt, { iif, oif: route.ifaceName, ctState });
+      const before = pkt;
       if (nr?.action.type === 'masquerade' && !this.getInterface(route.ifaceName)?.ip) return;
       if (nr) pkt = this.applySnat(pkt, nr.action, this.getInterface(route.ifaceName)!);
       const trans = tupleOf(pkt);
       if (origTuple && trans) {
         const mapping = this.ct.confirm(origTuple, trans, now, nr?.action.type === 'masquerade' ? { iface: route.ifaceName, address: this.getInterface(route.ifaceName)?.ip?.addr ?? 0 } : undefined);
-        if (!mapping) return;
+        if (!mapping) {
+          this.network.packetTrace?.decision(pktIn, this.id, { kind: 'drop', reason: 'natExhausted' });
+          return;
+        }
         const previousPacket = pkt;
         pkt = rewriteTo(pkt, mapping);
+        if (nr && this.network.packetTrace) this.traceTranslation(pktIn, before, pkt, natRuleText(nr));
         this.network.inheritVisualArrival(previousPacket, pkt, this.id);
       }
     }
@@ -927,23 +957,32 @@ export abstract class IpDevice extends Device {
     return { ...pkt, src: newSrc };
   }
 
-  private rejectPacket(pkt: Ipv4Packet): void {
+  private rejectPacket(pkt: Ipv4Packet, cause: Ipv4Packet): void {
     // Linux REJECT default: ICMP port unreachable back to the sender.
     if (isIcmpError(pkt)) return;
-    this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'port', original: refOf(pkt) });
+    this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'port', original: refOf(pkt) }, { diagnosticCause: cause });
   }
 
-  private logFw(res: EvalResult, pkt: Ipv4Packet): void {
+  private traceTranslation(anchor: Ipv4Packet, from: Ipv4Packet, to: Ipv4Packet, rule: string) {
+    if (!this.network.packetTrace || from === to) return;
+    const before = tupleOf(from), after = tupleOf(to);
+    if (before && after) this.network.packetTrace.decision(anchor, this.id, { kind: 'nat', rule, before, after });
+  }
+
+  private logFw(res: EvalResult, pkt: Ipv4Packet, anchor = pkt): void {
     if (!res.filtered) return;
+    const rule = res.rule ? filterRuleText(res.rule) : `policy ${res.verdict}`;
+    this.network.packetTrace?.decision(anchor, this.id, { kind: 'firewall',
+      chain: this.fw.filter[res.hook].name, verdict: res.verdict, rule });
     this.fwLog.unshift({
       t: this.network.now,
       hook: res.hook,
       verdict: res.verdict,
-      rule: res.rule ? filterRuleText(res.rule) : `policy ${res.verdict}`,
+      rule,
       pkt: summarizePacket(pkt),
     });
     if (this.fwLog.length > FW_LOG_MAX) this.fwLog.length = FW_LOG_MAX;
-    if (res.verdict !== 'accept') this.network.onFwDrop?.(this.id);
+    if (res.verdict !== 'accept') this.network.onFwDrop?.(this.id, pkt);
   }
 
   // ---------- ARP ----------
@@ -1005,7 +1044,10 @@ export abstract class IpDevice extends Device {
   private arpRetry(nextHop: U32, entry: PendingArp): void {
     if (entry.tries >= ARP_MAX_TRIES) {
       this.pendingArp.delete(nextHop);
-      for (const pkt of entry.queue) this.failDelivery(pkt);
+      for (const pkt of entry.queue) {
+        this.network.packetTrace?.decision(pkt, this.id, { kind: 'drop', reason: 'arpTimeout', detail: ipToString(nextHop) });
+        this.failDelivery(pkt);
+      }
       return;
     }
     entry.tries++;
@@ -1026,7 +1068,7 @@ export abstract class IpDevice extends Device {
         this.notifySocket(ref, 'unreachable');
       }
     } else if (!isIcmpError(pkt)) {
-      this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'host', original: refOf(pkt) });
+      this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'host', original: refOf(pkt) }, { diagnosticCause: pkt });
     }
   }
 
@@ -1100,7 +1142,7 @@ export abstract class IpDevice extends Device {
         this.sendIcmp(
           pkt.src,
           reply,
-          { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined },
+          { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined, diagnosticCause: pkt },
         );
         break;
       }
@@ -1143,7 +1185,7 @@ export abstract class IpDevice extends Device {
           dstPort: dgram.srcPort,
           app: { kind: 'dns-answer', qid: app.qid, qname: app.qname, addr },
         },
-        { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined },
+        { srcOverride: this.hasIp(pkt.dst) ? pkt.dst : undefined, diagnosticCause: pkt },
       );
       return;
     }
@@ -1160,7 +1202,7 @@ export abstract class IpDevice extends Device {
       );
       return;
     }
-    this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'port', original: refOf(pkt) });
+    this.sendIcmp(pkt.src, { type: 'dest-unreachable', code: 'port', original: refOf(pkt) }, { diagnosticCause: pkt });
   }
 
   private handleTcp(pkt: Ipv4Packet, seg: TcpSegment): void {

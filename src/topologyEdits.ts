@@ -63,6 +63,9 @@ export function applyInspectorEdit(net: Network, operation: InspectorOperation, 
   } else if (operation.type === 'set-host-os') {
     if (!(device instanceof Host) || device.os !== operation[from]) return false;
     device.os = operation[to];
+  } else if (operation.type === 'set-modem-color') {
+    if (!(device instanceof SwitchDevice) || device.kind !== 'modem' || device.modemColor !== operation[from]) return false;
+    device.modemColor = operation[to];
   } else if (operation.type === 'rename-device') {
     if (device.name !== operation[from]) return false;
     device.name = operation[to];

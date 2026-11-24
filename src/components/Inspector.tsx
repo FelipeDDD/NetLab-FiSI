@@ -801,7 +801,7 @@ export function Inspector({ hidden = false }: { hidden?: boolean }) {
   if (device instanceof FirewallDevice) return <RouterInspector key={device.id} device={device} hidden={hidden} />;
   if (device instanceof ServerDevice) return <ServerInspector key={device.id} device={device} hidden={hidden} />;
   if (device instanceof ApDevice) return <ApInspector key={device.id} device={device} hidden={hidden} />;
-  if(device.kind === 'modem') return <ModemInspector device={device} hidden={hidden} />;
+  if (device instanceof SwitchDevice && device.kind === 'modem') return <ModemInspector device={device} hidden={hidden} />;
   if (device instanceof SwitchDevice && device.kind === 'switch') return <SwitchInspector key={device.id} device={device} hidden={hidden} />;
 
   const ipd = device instanceof IpDevice ? device : null;
