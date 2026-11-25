@@ -2,7 +2,7 @@ import {translateMessages,type Language} from '../i18n';
 const en={desktop:'Desktop',openDesktop:'Open desktop',closeDesktop:'Close desktop',browser:'Web Browser',openBrowser:'Open Browser',closeBrowser:'Close browser',moveWindow:'Move window · drag or use arrow keys',resizeWindow:'Resize window · drag or use arrow keys',
   intro:'Open the browser to test the simulated network.',address:'Address',go:'Go',back:'Back',forward:'Forward',reload:'Reload',stop:'Stop',
   start:'Enter a simulated HTTP address, for example http://server.lab.',loading:'Connecting…',dnsStage:'Resolving name / address…',tcpStage:'Connecting TCP…',httpStage:'Waiting for HTTP response…',
-  paused:'Simulation paused. Use Run to continue; timeouts use simulated time.',simple:'Educational browser · simple text and links · no scripts or external resources',
+  paused:'Simulation paused. Use Run to continue; timeouts use simulated time.',
   siteUnavailableTitle:'This site can’t be reached',noResponseTitle:'This page isn’t responding',invalidAddressTitle:'Check the address',httpsTitle:'HTTPS is not available',forbiddenTitle:'Access denied',notFoundTitle:'Page not found',whatMeans:'What does this mean?',
   url:'Enter an HTTP URL with a valid host and port. No connection was started.',https:'This browser does not implement TLS yet. The optional test below checks TCP only, without encryption or certificates.',
   dns:'The name could not be translated into an IP address. Check the configured DNS server and its records.',refused:'The connection was refused by the destination or a device along the path. Check the service, port and filtering rules.',
@@ -12,13 +12,13 @@ const en={desktop:'Desktop',openDesktop:'Open desktop',closeDesktop:'Close deskt
   dnsTimeoutMeaning:'No usable DNS answer was received. Without a destination IP, HTTP was not started.',dnsRefusedMeaning:'The query to the DNS server was refused. Name resolution was not completed.',dnsResolved:'DNS resolved: {host} → {address}',
   http403Meaning:'The HTTP server returned 403 and refused access to this page. This is an HTTP response, not a DNS or connection failure.',http404Meaning:'The HTTP server returned 404: the requested resource was not found. The HTTP connection reached the server.',
   probe:'Test TCP port {port} (no TLS)',tcpOpen:'TCP port {port} is reachable. Only TCP was tested: no TLS, encryption, certificate or HTTPS page.',
-  cancelled:'Request stopped.',response:'HTTP response',serverResponse:'Server response',tabs:'Browser tabs',tab:'Tab {number}',closeTab:'Close tab {number}',newTab:'New tab',tabLimit:'Close a tab to open a browser tab for another host.',
+  cancelled:'Request stopped.',response:'HTTP response',serverResponse:'Server response',tabs:'Browser tabs',tab:'Tab {number}',closeTab:'Close tab {number}',newTab:'New tab',chooseHost:'Choose a host',tabLimit:'Close a tab to open a browser tab for another host.',
 } as const;
 type Messages=Record<keyof typeof en,string>;
 const de:Messages={desktop:'Desktop',openDesktop:'Desktop öffnen',closeDesktop:'Desktop schließen',browser:'Web Browser',openBrowser:'Browser öffnen',closeBrowser:'Browser schließen',moveWindow:'Fenster bewegen · ziehen oder Pfeiltasten',resizeWindow:'Fenstergröße ändern · ziehen oder Pfeiltasten',
   intro:'Öffne den Browser, um das simulierte Netz zu testen.',address:'Adresse',go:'Öffnen',back:'Zurück',forward:'Vorwärts',reload:'Neu laden',stop:'Stoppen',
   start:'Eine simulierte HTTP-Adresse eingeben, zum Beispiel http://server.lab.',loading:'Verbindung wird aufgebaut…',dnsStage:'Name / Adresse auflösen…',tcpStage:'TCP-Verbindung aufbauen…',httpStage:'Auf HTTP-Antwort warten…',
-  paused:'Simulation pausiert. Mit Run fortsetzen; Timeouts verwenden die simulierte Zeit.',simple:'Lernbrowser · einfacher Text und Links · keine Skripte oder externen Ressourcen',
+  paused:'Simulation pausiert. Mit Run fortsetzen; Timeouts verwenden die simulierte Zeit.',
   siteUnavailableTitle:'Diese Website ist nicht erreichbar',noResponseTitle:'Diese Seite antwortet nicht',invalidAddressTitle:'Adresse prüfen',httpsTitle:'HTTPS ist nicht verfügbar',forbiddenTitle:'Zugriff verweigert',notFoundTitle:'Seite nicht gefunden',whatMeans:'Was bedeutet das?',
   url:'Eine HTTP-URL mit gültigem Host und Port eingeben. Es wurde keine Verbindung gestartet.',https:'Dieser Browser implementiert noch kein TLS. Der optionale Test unten prüft nur TCP, ohne Verschlüsselung oder Zertifikate.',
   dns:'Der Name konnte nicht in eine IP-Adresse aufgelöst werden. Den konfigurierten DNS-Server und seine Einträge prüfen.',refused:'Die Verbindung wurde vom Ziel oder einem Gerät auf dem Weg abgelehnt. Dienst, Port und Filterregeln prüfen.',
@@ -28,12 +28,12 @@ const de:Messages={desktop:'Desktop',openDesktop:'Desktop öffnen',closeDesktop:
   dnsTimeoutMeaning:'Es liegt keine nutzbare DNS-Antwort vor. Ohne Ziel-IP wurde HTTP noch nicht gestartet.',dnsRefusedMeaning:'Die Anfrage an den DNS-Server wurde abgelehnt. Die Namensauflösung wurde nicht abgeschlossen.',dnsResolved:'DNS aufgelöst: {host} → {address}',
   http403Meaning:'Der HTTP-Server hat mit 403 geantwortet und den Zugriff auf diese Seite verweigert. Das ist eine HTTP-Antwort, kein DNS- oder Verbindungsfehler.',http404Meaning:'Der HTTP-Server hat mit 404 geantwortet: Die angeforderte Ressource wurde nicht gefunden. Die HTTP-Verbindung hat den Server erreicht.',
   probe:'TCP-Port {port} testen (ohne TLS)',tcpOpen:'TCP-Port {port} ist erreichbar. Nur TCP wurde getestet: kein TLS, keine Verschlüsselung, kein Zertifikat und keine HTTPS-Seite.',
-  cancelled:'Anfrage gestoppt.',response:'HTTP-Antwort',serverResponse:'Antwort des Servers',tabs:'Browser-Tabs',tab:'Tab {number}',closeTab:'Tab {number} schließen',newTab:'Neuer Tab',tabLimit:'Schließe einen Tab, um einen Browser-Tab für ein anderes Gerät zu öffnen.',
+  cancelled:'Anfrage gestoppt.',response:'HTTP-Antwort',serverResponse:'Antwort des Servers',tabs:'Browser-Tabs',tab:'Tab {number}',closeTab:'Tab {number} schließen',newTab:'Neuer Tab',chooseHost:'Host auswählen',tabLimit:'Schließe einen Tab, um einen Browser-Tab für ein anderes Gerät zu öffnen.',
 };
 const pt:Messages={desktop:'Desktop',openDesktop:'Abrir desktop',closeDesktop:'Fechar desktop',browser:'Web Browser',openBrowser:'Abrir navegador',closeBrowser:'Fechar navegador',moveWindow:'Mover janela · arraste ou use as setas',resizeWindow:'Redimensionar janela · arraste ou use as setas',
   intro:'Abra o navegador para testar a rede simulada.',address:'Endereço',go:'Abrir',back:'Voltar',forward:'Avançar',reload:'Atualizar',stop:'Parar',
   start:'Digite um endereço HTTP simulado, por exemplo http://server.lab.',loading:'Conectando…',dnsStage:'Resolvendo nome / endereço…',tcpStage:'Conectando TCP…',httpStage:'Aguardando resposta HTTP…',
-  paused:'Simulação pausada. Use Run para continuar; os timeouts usam o tempo simulado.',simple:'Navegador educacional · texto e links simples · sem scripts ou recursos externos',
+  paused:'Simulação pausada. Use Run para continuar; os timeouts usam o tempo simulado.',
   siteUnavailableTitle:'Não é possível acessar este site',noResponseTitle:'Esta página não está respondendo',invalidAddressTitle:'Confira o endereço',httpsTitle:'HTTPS indisponível',forbiddenTitle:'Acesso negado',notFoundTitle:'Página não encontrada',whatMeans:'O que significa?',
   url:'Digite uma URL HTTP com host e porta válidos. Nenhuma conexão foi iniciada.',https:'Este navegador ainda não implementa TLS. O teste opcional abaixo verifica somente TCP, sem criptografia ou certificados.',
   dns:'O nome não pôde ser convertido em um endereço IP. Confira o servidor DNS configurado e seus registros.',refused:'A conexão foi recusada pelo destino ou por um equipamento no caminho. Verifique o serviço, a porta e as regras de filtragem.',
@@ -43,7 +43,7 @@ const pt:Messages={desktop:'Desktop',openDesktop:'Abrir desktop',closeDesktop:'F
   dnsTimeoutMeaning:'Nenhuma resposta DNS utilizável foi recebida. Sem o IP de destino, a conexão HTTP ainda não foi iniciada.',dnsRefusedMeaning:'A consulta ao servidor DNS foi recusada. A resolução do nome não foi concluída.',dnsResolved:'DNS resolvido: {host} → {address}',
   http403Meaning:'O servidor HTTP respondeu 403 e recusou acesso a esta página. Isso é uma resposta HTTP, não uma falha DNS ou de conexão.',http404Meaning:'O servidor HTTP respondeu 404: o recurso solicitado não foi encontrado. A conexão HTTP chegou ao servidor.',
   probe:'Testar porta TCP {port} (sem TLS)',tcpOpen:'A porta TCP {port} está acessível. Apenas TCP foi testado: sem TLS, criptografia, certificado ou página HTTPS.',
-  cancelled:'Solicitação interrompida.',response:'Resposta HTTP',serverResponse:'Resposta do servidor',tabs:'Guias do navegador',tab:'Guia {number}',closeTab:'Fechar guia {number}',newTab:'Nova guia',tabLimit:'Feche uma guia para abrir o navegador de outro Host.',
+  cancelled:'Solicitação interrompida.',response:'Resposta HTTP',serverResponse:'Resposta do servidor',tabs:'Guias do navegador',tab:'Guia {number}',closeTab:'Fechar guia {number}',newTab:'Nova guia',chooseHost:'Escolha um Host',tabLimit:'Feche uma guia para abrir o navegador de outro Host.',
 };
 export const browserMessages={en,de,'pt-BR':pt};
 export const browserText=(language:Language,key:keyof Messages,values?:Record<string,string|number>)=>translateMessages(browserMessages,language,key,values);

@@ -54,6 +54,21 @@ export type VisualEdge = { id: string; source: string; target: string };
 export function linkAttachment(node: VisualNode, linkId: string, nodes: VisualNode[], edges: VisualEdge[]): CableBox & { visualSlot?: number } {
   const box = { ...node.position, width: node.measured?.width ?? 96, height: node.measured?.height ?? 78 };
   if (!hasDeviceArtwork(node.data.kind) || node.data.kind !== 'switch') {
+    if (node.data.kind === 'server' && hasDeviceArtwork('server') && hasDeviceArtwork('router')) {
+      const edge = edges.find(edge => edge.id === linkId);
+      const peer = edge && nodes.find(peer => peer.id === (edge.source === node.id ? edge.target : edge.source));
+      if (peer?.data.kind === 'router') {
+        const peerBox = { ...peer.position, width: peer.measured?.width ?? 96, height: peer.measured?.height ?? 78 };
+        const separated = peerBox.x + peerBox.width < box.x || box.x + box.width < peerBox.x;
+        const port = cableAttachmentBox(peerBox, 'router');
+        const y = port.y + port.height / 2 + deviceArtworkOffsetY('router');
+        const top = box.y + 6 + deviceArtworkOffsetY('server');
+        // Land at the router's height only when the server chassis can hide the endpoint.
+        if (separated && y >= top + 16 && y <= top + DEVICE_ARTWORK.server.height - 12) {
+          return { x: box.x + box.width / 2 - 6, y: y - 3, width: 12, height: 6 };
+        }
+      }
+    }
     const attachment = cableAttachmentBox(box, node.data.kind), offset = deviceArtworkOffsetY(node.data.kind);
     return offset ? { ...attachment, y: attachment.y + offset } : attachment;
   }

@@ -40,6 +40,20 @@ it.each(['straight', 'hybrid'] as const)('%s supports all four approach directio
 });
 
 import { linkAttachment } from './deviceArtwork';
+it('makes side-by-side router–server links horizontal in both styles with room for the chassis', () => {
+  const router = { id: 'edge', position: { x: 550, y: 240 }, data: { kind: 'router' as const } };
+  const server = { id: 'web', position: { x: 900, y: 240 }, data: { kind: 'server' as const } };
+  const edges = [{ id: 'wan', source: router.id, target: server.id }];
+  const geometry = (node: typeof server, style: 'straight' | 'hybrid') => cableGeometry(
+    linkAttachment(router, 'wan', [router, node], edges), linkAttachment(node, 'wan', [router, node], edges), style);
+  for (const style of ['straight', 'hybrid'] as const) {
+    const path = geometry(server, style);
+    expect(path.pointAt(0).y).toBeCloseTo(path.pointAt(1).y);
+    expect(path.curved).toBe(false);
+  }
+  const below = geometry({ ...server, position: { x: 900, y: 400 } }, 'hybrid');
+  expect(below.pointAt(1).y).toBeGreaterThan(below.pointAt(0).y);
+});
 it('moves only the painted router/server connections, preserving logical boxes and alignment anchors', () => {
   for (const kind of ['host','router','server','switch','firewall','ap','notebook','smartphone'] as const) {
     const node = { id: kind, position: { x: 200, y: 300 }, measured: { width: 132, height: 127 }, data: { kind } };

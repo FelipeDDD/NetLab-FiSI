@@ -13,7 +13,6 @@ interface DesktopState {
   limitReached: boolean;
   open(device: Host): void;
   openBrowser(device: Host): void;
-  addTab(): void;
   selectTab(id: number): void;
   closeTab(id: number): void;
   showDesktop(): void;
@@ -43,15 +42,10 @@ export const useDesktop = create<DesktopState>((set, get) => {
     device: null, view: 'desktop', tabs: [], activeTab: null, limitReached: false,
     open: device => set(state => state.device === device ? state : { device, view: 'desktop', limitReached: false }),
     openBrowser: device => {
-      const { tabs, activeTab } = get();
-      const existing = tabs.find(tab => tab.id === activeTab && tab.device === device)
-        ?? tabs.find(tab => tab.device === device);
+      const { tabs } = get();
+      const existing = tabs.find(tab => tab.device === device);
       if (existing) set(showTab(existing));
-      else createTab(device);
-    },
-    addTab: () => {
-      const { device } = get();
-      if (device) createTab(device);
+      else if (!device.disposed) createTab(device);
     },
     selectTab: id => {
       const tab = get().tabs.find(tab => tab.id === id);

@@ -371,7 +371,7 @@ export const useStore = create<NetsimState>()((set, get) => {
   let movement: { source: 'drag' | 'keyboard'; before: Map<string, Point> } | null = null;
   let ignoreDrag = false;
   let labCheckGeneration = 0;
-  const natPings = new Map<string, { objective: string; target: number; configuration: string }>();
+  const natPings = new Map<string, { target: number; configuration: string }>();
   // Detection only: no serialized snapshot is ever applied to the live engine.
   const configuration = () => JSON.stringify(serializeNetwork(sim.net, {}));
   let chapterHistory:((id:string,direction:'undo'|'redo')=>void)|undefined;
@@ -573,14 +573,13 @@ export const useStore = create<NetsimState>()((set, get) => {
     net.onPingProgress = (event) => {
       if (sim.net !== net) return;
       const state = get(), key = event.deviceId + ':' + event.icmpId;
-      if (state.lab?.id === PROGRESSIVE_NAT_PAT_ID && state.labStep > 0) {
+      if (state.lab?.id === PROGRESSIVE_NAT_PAT_ID && state.labStep === 1) {
         const host = natSecondHost(net, state.labResults['nat-host']?.detail);
         const first = net.devices.get('PC1');
         if (event.type === 'started' && natHostReady(net, host) &&
             first?.getInterface('eth0')?.ip?.addr === NAT_LOCAL_IP &&
             (event.deviceId === host?.id || event.deviceId === first.id)) {
           natPings.set(key, {
-            objective: state.labStep === 1 ? 'nat-before-local' : 'nat-after-local',
             target: event.deviceId === first.id ? NAT_PEER_IP : NAT_LOCAL_IP,
             configuration: natConfiguration(net),
           });
@@ -588,7 +587,7 @@ export const useStore = create<NetsimState>()((set, get) => {
           const proof = natPings.get(key);
           if (proof && event.replyFrom === proof.target && proof.configuration === natConfiguration(net) &&
               [...net.devices.values()].filter(d => d.interfaces.some(i => i.ip?.addr === proof.target)).length === 1) {
-            state.recordLabResult(proof.objective, true, 'Echo Reply recebido.', proof.configuration);
+            state.recordLabResult('nat-before-local', true, 'Echo Reply recebido.', proof.configuration);
             natPings.delete(key);
           }
         }
@@ -703,6 +702,12 @@ export const useStore = create<NetsimState>()((set, get) => {
     if (noticeTimer) clearTimeout(noticeTimer);
     noticeTimer = null;
     const nodes = data.devices.map((d) => deviceNode(d.id, d.kind, d.name, d.x, d.y));
+    // Older saves embed the lab definition, including the retired final ping.
+    const lab = data.lab?.id === PROGRESSIVE_NAT_PAT_ID
+      ? { ...data.lab, steps: data.lab.steps.map(step => ({
+          ...step, objectives: step.objectives.filter(objective => objective.id !== 'nat-after-local'),
+        })) }
+      : data.lab ?? null;
     set({
       workspaceIdentity,
       topologyGeneration: get().topologyGeneration + 1,
@@ -728,7 +733,7 @@ export const useStore = create<NetsimState>()((set, get) => {
       terminalHasFocus: false,
       terminalFocusRequest: 0,
       terminalDockCollapsed: false,
-      lab: data.lab ?? null,
+      lab,
       labStep: data.labProgress?.step ?? 0,
       labResults: data.labProgress?.results ?? {},
       labChecking: false,

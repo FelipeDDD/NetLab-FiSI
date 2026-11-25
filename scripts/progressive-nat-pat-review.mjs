@@ -163,6 +163,15 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
       };
     `);
     assert.deepEqual(initialLayout, { hasAddress: true, hasNatDefinition: true, hasComparison: false, fontSize: '13px', clearOfPanel: true });
+    await wait('document.querySelector(".react-flow__edge[data-id=edge-web] .react-flow__edge-path")?.getTotalLength()>0');
+    for (const style of ['hybrid','straight']) {
+      await page.evaluate(`store.getState().setCableStyle(${JSON.stringify(style)});`);
+      assert(await page.evaluate(`
+        const path=document.querySelector('.react-flow__edge[data-id=edge-web] .react-flow__edge-path');
+        const length=path.getTotalLength(), first=path.getPointAtLength(0), last=path.getPointAtLength(length);
+        return Math.abs(first.y-last.y)<0.1 && Math.abs(length-Math.abs(last.x-first.x))<0.1;
+      `));
+    }
     for (const [locale, labels] of [
       ['de', ['Pakete', 'Aufnahme starten', 'Browser öffnen']],
       ['en', ['Packets', 'Start capture', 'Open Browser']],
@@ -336,7 +345,7 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     assert(await page.evaluate('return document.getElementById("nat-source-local").disabled && !document.querySelector("[data-nat-next]").disabled;'));
     await click(next);
     await wait('store.getState().labStep === 1');
-    assert(await page.evaluate('const term = document.querySelector(".nat-term-b"); return term?.getClientRects().length && getComputedStyle(term).fontWeight === "600" && getComputedStyle(term).backgroundColor !== "rgba(0, 0, 0, 0)";'));
+    assert.deepEqual(await page.evaluate('return [...document.querySelectorAll("[data-nat-body] .nat-term-c")].filter(term => getComputedStyle(term).borderTopWidth === "1px").map(term => term.textContent);'), ['192.168.60.11/24', '192.168.60.1']);
     await sampleStyle('B', 'B · Caixa azul-acinzentada');
     assert(await page.evaluate('return !document.querySelector(".lab-footer");'));
     await click('#packets-toggle');
@@ -423,8 +432,32 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await page.evaluate('sim.net.devices.get("edge").fw.deleteHandle(earlyNatHandle); store.getState().closeTerminal(pc2); store.getState().refresh();');
     await quickPing(pc2, 'PC1');
     await wait('document.querySelector("[data-nat-http-comparison]")');
-    await navigateFrom(pc2);
+    await navigateFrom('PC1');
+    await page.evaluate('sim.net.scheduler.advanceTo(sim.net.now + 12000);');
+    await wait('document.querySelector(".pc-browser-http-status")?.textContent.startsWith("HTTP 200")');
+    await click('.pc-browser-tab:nth-child(2) button:last-child');
+    await click('.pc-browser-add-tab');
+    await page.evaluate(`
+      const picker=document.querySelector('.pc-browser-host-choice');
+      picker.value=${JSON.stringify(pc2)};
+      picker.dispatchEvent(new Event('change',{bubbles:true}));
+      const browser=desktop.getState();
+      if(browser.tabs.length!==2||browser.device!==sim.net.devices.get(${JSON.stringify(pc2)})) throw Error('Wrong Host in the new tab');
+    `);
+    await page.evaluate(`
+      const input=document.getElementById('pc-browser-address');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input,'http://198.51.100.80');
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+    `);
+    await click('.pc-browser-navigation button[type="submit"]');
+    await page.evaluate('sim.net.scheduler.advanceTo(sim.net.now + 12000);');
     await wait('store.getState().labResults["nat-before-pc2"]?.pass');
+    await wait('document.querySelector(".pc-browser-error-code")?.textContent === "ERR_CONNECTION_TIMED_OUT"');
+    await click('.pc-browser-tab:nth-child(1) button[aria-pressed]');
+    await wait('document.querySelector(".pc-browser-http-status")?.textContent.startsWith("HTTP 200")');
+    await page.evaluate(`desktop.getState().openBrowser(sim.net.devices.get(${JSON.stringify(pc2)}));`);
+    await wait('document.querySelector(".pc-browser-error-code")?.textContent === "ERR_CONNECTION_TIMED_OUT"');
+    assert(await page.evaluate('return document.querySelectorAll(".pc-browser-tab").length===2;'));
     await click('.pc-desktop-close');
     await click(next);
     await wait('store.getState().labStep === 2');
@@ -434,7 +467,11 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     assert(await page.evaluate('return !document.querySelector("[data-nat-body] img");'));
     assert(await page.evaluate(`
       const button = document.querySelector("[data-guided-image]");
-      return Math.abs(button.getBoundingClientRect().right - button.parentElement.getBoundingClientRect().right) < 1;
+      const bounds = button.getBoundingClientRect();
+      const instruction = button.closest('section').querySelector('p').getBoundingClientRect();
+      const footer = document.querySelector('[data-nat-nav]').getBoundingClientRect();
+      return Math.abs(bounds.right - button.parentElement.getBoundingClientRect().right) < 1 &&
+        bounds.top >= instruction.bottom && footer.top - bounds.bottom >= 16;
     `));
     for (const locale of ['de', 'en', 'pt-BR']) {
       const labels = await page.evaluate(`
@@ -589,15 +626,20 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await mount(true);
     await wait('document.querySelector("[data-nat-check=nat-after-pair]")');
     assert(await page.evaluate('return document.querySelector("[data-nat-body]").textContent.includes("PC2 recebeu a página por uma nova conexão traduzida.");'));
+    await page.evaluate('store.getState().select("edge");');
+    await page.evaluate(`[...document.querySelectorAll('.inspector [role=tab]')].find(tab => tab.textContent === 'Firewall').click();`);
+    await page.evaluate(`[...document.querySelectorAll('.router-inspector-details > summary')].find(summary => summary.textContent === 'Conntrack').click();`);
+    await wait('document.querySelector(".router-inspector-details[open] > summary")?.textContent === "Conntrack"');
     await check('nat-after-pair');
-    await page.evaluate('store.getState().openTerminal("PC1");');
+    await wait('document.querySelector(".router-inspector-details[open] pre")?.textContent.includes("192.168.60.11")');
+    await wait('document.querySelector("[data-nat-finished]")?.textContent.includes("Tutorial concluído")');
+    assert(await page.evaluate('return !store.getState().labResults["nat-after-local"] && !document.querySelector("[data-nat-body]").textContent.includes("Teste novamente o ping");'));
+    await page.evaluate('store.getState().select(null); store.getState().openTerminal("PC1");');
     await wait('document.querySelector(".xterm-helper-textarea")');
     await page.evaluate('store.getState().select("edge");');
     await wait('document.querySelector(".app")?.dataset.panelPriority === "inspector"');
     await page.evaluate('store.getState().openTerminal("PC1");');
     await wait('document.querySelector(".app")?.dataset.panelPriority === "terminal"');
-    await submitTerminal('PC1', 'ping -c 1 192.168.60.11');
-    await wait('store.getState().labResults["nat-after-local"]?.pass');
     await wait('document.querySelector("[data-nat-finished]")?.textContent.includes("Tutorial concluído")');
     await click('[data-nat-nav] button:first-child');
     await click('[data-nat-nav] button:first-child');
@@ -629,12 +671,13 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await page.evaluate(`
       const legacy = ws.controller.recoveryDocument();
       legacy.topology.labProgress.step = 2;
+      legacy.topology.lab.steps[2].objectives.push({ id: 'nat-after-local', label: 'Ping final', check: legacy.topology.lab.steps[1].objectives[0].check });
       delete legacy.topology.labProgress.quiz['nat-rule-screen'];
       const opened = await ws.controller.openDocument(legacy);
       if (!opened.ok) throw Error(JSON.stringify(opened.error));
     `);
     await wait('document.querySelector("[data-nat-screen]")?.textContent.startsWith("1/3")');
-    assert(await page.evaluate('return !document.querySelector(".lab-panel") && store.getState().labResults["nat-after-pair"].pass;'));
+    assert(await page.evaluate('return !document.querySelector(".lab-panel") && store.getState().labResults["nat-after-pair"].pass && !store.getState().lab.steps[2].objectives.some(o => o.id === "nat-after-local");'));
     await page.evaluate(`
       const { controller } = ws;
       const saved = await controller.save('NAT/PAT review');

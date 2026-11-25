@@ -14,14 +14,19 @@ import { sim } from '../sim';
 import { natIntroSignature, natConfiguration, natSecondHost, natRouterEntries, natBrowserProof, natHostReady } from '../labs/natLearning';
 import { PROGRESSIVE_NAT_PAT_ID, PROGRESSIVE_NAT_PAT_URL } from '../labs/progressiveNatPat';
 
-export default function PCDesktop({ device, tabs }: { device: Host | null; tabs: BrowserTabEntry[] }) {
+export default function PCDesktop({ device, tabs, availableHosts }: { device: Host | null; tabs: BrowserTabEntry[]; availableHosts: Host[] }) {
   const { language } = useTranslation();
   const frame = useDesktopWindow();
-  const { view, activeTab, limitReached, addTab, selectTab, closeTab, openBrowser } = useDesktop();
+  const { view, activeTab, limitReached, selectTab, closeTab, openBrowser } = useDesktop();
   const visible = device !== null;
   const open = visible && view === 'browser';
   const t = (key: Parameters<typeof browserText>[1]) => browserText(language, key);
   const launch = useRef<HTMLButtonElement>(null);
+  const addTabButton = useRef<HTMLButtonElement>(null);
+  const [choosingHost, setChoosingHost] = useState(false);
+  const canAddTab = tabs.length < MAX_BROWSER_TABS && availableHosts.length > 0;
+  const showHostChoice = open && choosingHost && canAddTab;
+  useEffect(() => { setChoosingHost(false); }, [device, open, canAddTab]);
   const opener = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
   function closeBrowser() {
     useDesktop.getState().showDesktop();
@@ -41,7 +46,12 @@ export default function PCDesktop({ device, tabs }: { device: Host | null; tabs:
     onPointerMove={frame.move} onPointerUp={frame.finish} onPointerCancel={frame.finish} onLostPointerCapture={frame.finish}
     onPointerDown={event => event.stopPropagation()} onKeyDown={event => {
       event.stopPropagation();
-      if (event.key === 'Escape') { event.preventDefault(); if (open) closeBrowser(); else closeDesktop(); }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (showHostChoice) { setChoosingHost(false); addTabButton.current?.focus(); }
+        else if (open) closeBrowser();
+        else closeDesktop();
+      }
     }}>
     {visible && <header className={`pc-desktop-header${open ? ' is-browser' : ''}`} {...moveHeader}>
       <div><h2 id="pc-desktop-heading">{device.name} · {t(open ? 'browser' : 'desktop')}</h2>{!open && <small>{device.os === 'windows' ? 'Windows' : 'Linux'}</small>}</div>
@@ -59,9 +69,17 @@ export default function PCDesktop({ device, tabs }: { device: Host | null; tabs:
           {tabs.length > 1 && <button type="button" className="btn btn--icon" aria-label={browserText(language, 'closeTab', { number: index + 1 })}
             onClick={() => closeTab(id)}>×</button>}
         </div>)}
-        <button type="button" className="btn btn--icon pc-browser-add-tab" title={t('newTab')} aria-label={t('newTab')}
-          disabled={tabs.length >= MAX_BROWSER_TABS} onClick={addTab}>+</button>
+        <button ref={addTabButton} type="button" className="btn btn--icon pc-browser-add-tab" title={t('newTab')} aria-label={t('newTab')}
+          aria-expanded={showHostChoice} disabled={!canAddTab} onClick={() => setChoosingHost(value => !value)}>+</button>
       </div>}
+      {showHostChoice && <select className="pc-browser-host-choice" aria-label={t('chooseHost')} value="" autoFocus onChange={event => {
+        const host = availableHosts.find(host => host.id === event.target.value);
+        if (host && sim.net.devices.get(host.id) === host) openBrowser(host);
+        setChoosingHost(false);
+      }}>
+        <option value="" disabled>{t('chooseHost')}</option>
+        {availableHosts.map(host => <option key={host.id} value={host.id}>{host.name}</option>)}
+      </select>}
       {open && limitReached && <p role="status" className="pc-browser-tab-limit">{t('tabLimit')}</p>}
       {tabs.map(({ id, device: host }) => <BrowserTab key={id} device={host} active={open && id === activeTab} />)}
     </div>
@@ -145,6 +163,6 @@ function BrowserTab({ device, active }: { device: Host; active: boolean }) {
             {result.code==='https'&&https&&<button type="button" className="btn" onClick={()=>navigate(https.address,undefined,true)}>{t('probe',{port:https.port})}</button>}</BrowserErrorPanel>:
           result.kind==='tcp'?<p role="status">{t('tcpOpen',{port:result.port})}</p>:<><div className="pc-browser-http-status" role="status">HTTP {result.status} {result.reason}</div><BrowserErrorPanel result={result} language={language} showCode={false}/>{[403,404].includes(result.status)?<details className="pc-browser-server-response"><summary>{t('serverResponse')}</summary><article className="pc-browser-page">{content}</article></details>:<article className="pc-browser-page">{content}</article>}</>}
         {loading&&paused&&<p role="status" className="pc-browser-pause">{t('paused')}</p>}
-      </div><footer className="pc-browser-footer">{t('simple')}</footer>
+      </div>
   </div>;
 }

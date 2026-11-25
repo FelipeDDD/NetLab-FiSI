@@ -266,7 +266,7 @@ describe('progressive NAT/PAT Lab', () => {
           exchange.push({ role: 'reply', port: p.l4.dstPort, address: p.dst });
         }
       };
-      expect(Object.values(check(network, 2)).map(r => r.pass)).toEqual([true, true]);
+      expect(check(network, 2)).toMatchObject({ 'nat-after-pair': { pass: true } });
       const flows = router.ct.list(network.now).filter(e => e.orig.proto === 'tcp');
       expect(flows.map(e => e.orig.srcPort)).toEqual([40000, 40000]);
       expect(exchange.map(e => e.role)).toEqual(['request', 'request', 'reply', 'reply']);
@@ -292,7 +292,9 @@ describe('progressive NAT/PAT Lab', () => {
       server.staticRoutes = [];
       router.fw.addNatRule('postrouting', { srcNet: parseCidr('192.168.60.0/24')!, oif: 'eth1' },
         { type: 'snat', addr: ip('198.51.100.2') });
-      expect(Object.values(check(network, 2)).map(r => r.pass)).toEqual([true, true]);
+      const final = check(network, 2);
+      expect(Object.keys(final)).toEqual(['nat-after-pair']);
+      expect(final['nat-after-pair'].pass).toBe(true);
     } finally { disposeNetwork(network); }
   });
 });

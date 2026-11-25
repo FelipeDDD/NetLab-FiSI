@@ -66,7 +66,7 @@ export const progressiveNatPat: SaveFile = {
       },
     },
     {
-      id: 'web', name: 'Servidor Web', kind: 'server', x: 865, y: 240, forwarding: false, routes: [],
+      id: 'web', name: 'Servidor Web', kind: 'server', x: 900, y: 240, forwarding: false, routes: [],
       ifaces: [{ name: 'eth0', ip: webIp + '/24', up: true }],
       httpServer: { enabled: true, port: 80, body: '<h1>' + pageTitle + '</h1><p>Resposta do servidor externo simulado.</p>' },
     },
@@ -112,7 +112,6 @@ export const progressiveNatPat: SaveFile = {
         ],
         objectives: [
           { id: 'nat-after-pair', label: 'Os dois PCs recebem HTTP por conexões traduzidas simultâneas', check: { ...pc1Http, peer: 'PC2' } },
-          { id: 'nat-after-local', label: 'A comunicação local continua funcionando', check: localPing },
         ],
         feedback: 'Tutorial concluído! As duas conexões compartilharam o IPv4 externo com portas distintas. O PAT permite entregar cada resposta ao cliente certo. A porta de origem só precisa mudar quando o mapeamento exige.',
       },

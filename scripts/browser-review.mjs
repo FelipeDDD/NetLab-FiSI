@@ -29,7 +29,7 @@ export async function runBrowserReview({page,url,root,report}) {
     await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x+dx,y:p.y+dy,button:'left',clickCount:1});await delay(100);
   };
   const nodeMenu=async(id,keyboard=false)=>{
-    const p=await page.evaluate(`const e=[...document.querySelectorAll('.react-flow__node')].find(e=>e.dataset.id===${JSON.stringify(id)});e.focus({preventScroll:true});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};`);
+    const p=await page.evaluate(`const e=[...document.querySelectorAll('.react-flow__node')].find(e=>e.dataset.id===${JSON.stringify(id)});if(${keyboard})e.focus({preventScroll:true});const r=e.querySelector('.dev-icon').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};`);
     if(keyboard){await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'F10',code:'F10',modifiers:8,windowsVirtualKeyCode:121});await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'F10',code:'F10',modifiers:8,windowsVirtualKeyCode:121});}
     else {await page.send('Input.dispatchMouseEvent',{type:'mousePressed',...p,button:'right',clickCount:1});await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',...p,button:'right',clickCount:1});}
     await wait("document.querySelector('#device-context-menu [role=menuitem]')");
@@ -53,6 +53,105 @@ export async function runBrowserReview({page,url,root,report}) {
       pc.nameserver=ip.parseIp('192.168.1.20');linux.nameserver=pc.nameserver;server.dnsServer={enabled:true,records:new Map([['server.lab',pc.nameserver]])};
       window.safeBody='<h1>Serviceportal</h1><p>Willkommen im simulierten Netz von NetLab-FiSI.</p><ul><li><a href="/index.html">Startseite</a></li><li><a href="/missing.html">Fehlende Seite testen</a></li></ul>';
       server.httpServer={enabled:true,port:80,body:safeBody};s.setHostOs(pc.id,'windows');s.refresh();s.select(pc.id);s.setPaused(true,'activation');s.startPacketCapture();window.beforeBrowser=JSON.stringify(s.captureWorkspaceDocument());`);
+    await test('canvas: stationary and one-pixel clicks select devices without dragging at different zooms', async () => {
+      await page.evaluate(`
+        store.getState().addDeviceAt('router',{x:420,y:420});
+        store.getState().addDeviceAt('modem',{x:640,y:420});
+        window.flow=(await import('/src/workspace/viewportProbe.browser.tsx')).getViewportProbe();
+        window.browserInitialViewport=flow.getViewport();
+        window.clickTrace=[];
+        for (const type of ['pointerdown','pointermove','pointerup','click']) {
+          document.addEventListener(type, event => {
+            clickTrace.push([type,event.clientX,event.clientY,event.target.closest('.react-flow__node')?.dataset.id,event.target.className]);
+          },true);
+        }
+      `);
+      const issues = [];
+      for (const zoom of [.25, .5, 1, 1.25]) {
+        for (const kind of ['router', 'host', 'modem', 'switch']) {
+          for (const drift of [0, 1]) {
+            const point = await page.evaluate(`
+              store.getState().select(null);
+              const node=store.getState().nodes.find(n=>n.data.kind===${JSON.stringify(kind)});
+              await flow.setViewport({x:250-node.position.x*${zoom},y:240-node.position.y*${zoom},zoom:${zoom}});
+              await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+              const icon=document.querySelector('[data-testid="rf__node-'+node.id+'"] .dev-icon');
+              const r=icon.getBoundingClientRect(),x=Math.round(r.x+r.width/2),y=Math.round(r.y+r.height/2);
+              return {x,y,id:node.id,hit:document.elementFromPoint(x,y)?.closest('.react-flow__node')?.dataset.id,position:node.position};
+            `);
+            assert.equal(point.hit, point.id, `Artwork center must hit ${kind} at zoom ${zoom}, drift ${drift} (${point.x},${point.y})`);
+            const {x,y}=point;
+            await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+            await page.evaluate('clickTrace.length=0;');
+            await page.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',buttons:1,clickCount:1});
+            if(drift) await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:x+drift,y,buttons:1});
+            await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:x+drift,y,button:'left',clickCount:1});
+            const outcome = await page.evaluate(`return { selected:store.getState().selected,
+              position:store.getState().nodes.find(n=>n.id===${JSON.stringify(point.id)}).position,trace:clickTrace };`);
+            assert.deepEqual(outcome.position,point.position);
+            if (outcome.selected !== point.id) issues.push({kind,zoom,drift,trace:outcome.trace});
+          }
+        }
+      }
+      assert.deepEqual(issues.map(({kind,zoom,drift,trace})=>({kind,zoom,drift,events:trace.map(entry=>entry[0])})),[]);
+      const router = await page.evaluate(`
+        store.getState().select(null);
+        const node=store.getState().nodes.find(n=>n.data.kind==='router');
+        await flow.setViewport({x:250-node.position.x,y:240-node.position.y,zoom:1});
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        const r=document.querySelector('[data-testid="rf__node-'+node.id+'"] .dev-icon').getBoundingClientRect();
+        return {id:node.id,position:node.position,x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};
+      `);
+      const {x,y}=router;
+      await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+      await page.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',buttons:1,clickCount:1});
+      for(let i=1;i<=6;i++) await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:x+i*5,y:y+i*20/6,buttons:1});
+      await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:x+30,y:y+20,button:'left',clickCount:1});
+      await delay(90);
+      assert.notDeepEqual(await page.evaluate(`return store.getState().nodes.find(n=>n.id===${JSON.stringify(router.id)}).position;`),router.position);
+      await page.evaluate(`
+        store.getState().select(null);
+        await flow.setViewport({x:0,y:0,zoom:1});
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      `);
+      const modemId = await page.evaluate("return store.getState().nodes.find(n=>n.data.kind==='modem').id;");
+      const routerNode = `[data-testid="rf__node-${router.id}"]`, modemNode = `[data-testid="rf__node-${modemId}"]`;
+      await click(routerNode + ' .dev-icon');
+      await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Control',code:'ControlLeft',modifiers:2,windowsVirtualKeyCode:17});
+      const modemPoint = await page.evaluate(`const r=document.querySelector(${JSON.stringify(modemNode + ' .dev-icon')}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};`);
+      for (const type of ['mousePressed','mouseReleased']) await page.send('Input.dispatchMouseEvent',{type,...modemPoint,button:'left',modifiers:2,clickCount:1});
+      await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Control',code:'ControlLeft',windowsVirtualKeyCode:17});
+      assert.deepEqual(await page.evaluate('return store.getState().nodes.filter(n=>n.selected).map(n=>n.data.kind).sort();'),['modem','router']);
+      await page.evaluate('store.getState().select(null);store.getState().onNodesChange(store.getState().nodes.filter(n=>n.selected).map(n=>({type:"select",id:n.id,selected:false})));');
+      await click(routerNode + ' [data-handleid="r"]');
+      await click(modemNode + ' [data-handleid="l"]');
+      await wait(`store.getState().edges.some(e=>e.source===${JSON.stringify(router.id)}&&e.target===${JSON.stringify(modemId)})`);
+      await page.evaluate('store.getState().select(null);await flow.setViewport(browserInitialViewport);');
+      await wait("!document.querySelector('.inspector')");
+    });
+    await test('canvas: device menus preserve the Inspector and browser launches without it', async () => {
+      const escape = async () => {
+        for (const type of ['keyDown','keyUp']) await page.send('Input.dispatchKeyEvent',{type,key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+        await wait("!document.querySelector('#device-context-menu')");
+      };
+      await nodeMenu(await page.evaluate('return pc.id;'));
+      assert(await page.evaluate("return store.getState().selected===null&&!document.querySelector('.inspector');"));
+      await click('#device-context-menu button','Browser öffnen');
+      await wait("document.querySelector('#pc-browser-address')");
+      assert(await page.evaluate("return store.getState().selected===null&&!document.querySelector('.inspector');"));
+      await click('.pc-desktop-close');
+      await page.evaluate('store.getState().select(pc.id);');
+      for (const kind of ['host','router','modem','switch','server']) {
+        await nodeMenu(await page.evaluate(`return ${kind==='host'?"linux.id":`store.getState().nodes.find(n=>n.data.kind===${JSON.stringify(kind)}).id`};`));
+        assert(await page.evaluate("return store.getState().selected===pc.id&&!!document.querySelector('.inspector');"));
+        await escape();
+      }
+      await nodeMenu(await page.evaluate('return linux.id;'),true);
+      assert(await page.evaluate('return store.getState().selected===pc.id;'));
+      await escape();
+      await page.evaluate(`store.getState().deleteTopologyElements(store.getState().nodes.filter(n=>['router','modem'].includes(n.data.kind)).map(n=>n.id));
+        window.beforeBrowser=JSON.stringify(store.getState().captureWorkspaceDocument());`);
+    });
     await test('browser: Windows/Linux desktop launch shares UI and leaves terminals/configuration intact',async()=>{
       await click('.host-os-terminal button','Desktop');await wait("document.querySelector('.pc-desktop-home')");
       await wait("document.querySelector('.pc-desktop').getBoundingClientRect().width===420");
@@ -61,6 +160,7 @@ export async function runBrowserReview({page,url,root,report}) {
       await click('.pc-desktop-app');await wait("document.activeElement?.id==='pc-browser-address'");
       assert.equal(await page.evaluate('return store.getState().terminals.length;'),0);
       await navigate('http://server.lab');await wait("document.querySelector('.pc-browser-http-status')");
+      assert(await page.evaluate("return !document.querySelector('.pc-browser-footer');"));
       assert.equal(await page.evaluate('return store.getState().paused;'),false);
       assert(await page.evaluate("return document.querySelector('.pc-browser-page').textContent.includes('Serviceportal');"));
       assert.equal(await page.evaluate('return JSON.stringify(store.getState().captureWorkspaceDocument());'),await page.evaluate('return beforeBrowser;'));
@@ -102,50 +202,51 @@ export async function runBrowserReview({page,url,root,report}) {
     await test('browser tabs: one frame for all hosts, with a global limit and independent sessions',async()=>{
       const first=await browserState(),geometry=await rect();
       await page.evaluate('window.sharedBrowserFrame = document.querySelector(".pc-desktop");');
-      await click('.pc-browser-add-tab');
+      const chooseHost = async id => {
+        await wait('document.querySelector(".pc-browser-add-tab:not(:disabled)")');
+        await click('.pc-browser-add-tab');
+        await wait(`[...document.querySelectorAll('.pc-browser-host-choice option')].some(option => option.value === ${JSON.stringify(id)})`);
+        await page.evaluate(`
+          const picker=document.querySelector('.pc-browser-host-choice');
+          picker.value=${JSON.stringify(id)};
+          picker.dispatchEvent(new Event('change',{bubbles:true}));
+        `);
+      };
+      const linuxId = await page.evaluate('return linux.id;');
+      await chooseHost(linuxId);
       assert.equal(await page.evaluate('return document.querySelector(".pc-browser-navigation button").disabled;'),true);
+      await navigate('http://server.lab');
+      await wait("document.querySelector('.pc-browser-page')");
       await navigate('http://server.lab/missing.html');
       await wait("document.querySelector('.pc-browser-http-status')?.textContent.includes('404')");
       const second=await browserState();
-      await click('.pc-browser-add-tab');
-      assert(await page.evaluate('return document.querySelectorAll(".pc-browser-tab").length === 3 && document.querySelector(".pc-browser-add-tab").disabled;'));
+      assert(await page.evaluate('return document.querySelector(".pc-browser-add-tab").disabled;'));
       await click('.pc-browser-tab:nth-child(1) button[aria-pressed]');
       assert.deepEqual(await browserState(),first);
       await click('.pc-browser-tab:nth-child(2) button[aria-pressed]');
       assert.deepEqual(await browserState(),second);
-      await page.evaluate("const desktop = (await import('/src/browser/desktopState.ts')).useDesktop.getState();desktop.openBrowser(linux);");
+      const [third,fourth] = await page.evaluate(`
+        const s=store.getState();
+        s.addDeviceAt('notebook',{x:420,y:450});s.addDeviceAt('notebook',{x:620,y:450});
+        return store.getState().nodes.filter(n=>n.data.kind==='notebook').map(n=>n.id);
+      `);
+      await chooseHost(third);
+      assert(await page.evaluate('return document.querySelectorAll(".pc-browser-tab").length === 3 && document.querySelector(".pc-browser-add-tab").disabled;'));
+      await page.evaluate(`(await import('/src/browser/desktopState.ts')).useDesktop.getState().openBrowser(sim.net.devices.get(${JSON.stringify(fourth)}));`);
       await wait("document.querySelector('.pc-browser-tab-limit')");
-      assert.deepEqual(await browserState(),second);
       await click('.pc-browser-tab:nth-child(3) button:last-child');
       await page.evaluate("const desktop = (await import('/src/browser/desktopState.ts')).useDesktop.getState();desktop.openBrowser(linux);");
-      await wait("document.querySelector('#pc-desktop-heading')?.textContent.startsWith(linux.name + ' ·')");
-      assert.equal(await page.evaluate('return document.querySelectorAll(".pc-browser-tab").length;'),3);
-      assert(await page.evaluate('return document.querySelectorAll(".pc-desktop").length === 1 && document.querySelector(".pc-desktop") === window.sharedBrowserFrame;'));
-      assert.deepEqual(await rect(),geometry);
-      await navigate('http://server.lab');
-      await wait("document.querySelector('.pc-browser-page')");
-      const other=await browserState();
-      await page.evaluate("const desktop = (await import('/src/browser/desktopState.ts')).useDesktop.getState();desktop.openBrowser(pc);");
-      await wait("document.querySelector('#pc-desktop-heading')?.textContent.startsWith(pc.name + ' ·')");
-      assert.deepEqual(await browserState(),first);
-      assert.deepEqual(await rect(),geometry);
-      assert.equal(await page.evaluate('return document.querySelectorAll(".pc-browser-tab").length;'),3);
-      await page.evaluate("const desktop = (await import('/src/browser/desktopState.ts')).useDesktop.getState();desktop.openBrowser(linux);");
-      await wait("document.querySelector('#pc-desktop-heading')?.textContent.startsWith(linux.name + ' ·')");
-      assert.deepEqual(await browserState(),other);
-      assert.deepEqual(await rect(),geometry);
-      await page.evaluate("const desktop = (await import('/src/browser/desktopState.ts')).useDesktop.getState();desktop.openBrowser(pc);");
-      await wait("document.querySelector('#pc-desktop-heading')?.textContent.startsWith(pc.name + ' ·')");
-      await click('.pc-browser-tab:nth-child(2) button[aria-pressed]');
+      assert.deepEqual(await browserState(),second);
       await click('.pc-browser-desktop');
       await click('.pc-desktop-app');
       assert.deepEqual(await browserState(),second);
+      assert(await page.evaluate('return document.querySelectorAll(".pc-desktop").length === 1 && document.querySelector(".pc-desktop") === window.sharedBrowserFrame;'));
       assert.deepEqual(await rect(),geometry);
       await click('.pc-browser-tab:nth-child(1) button[aria-pressed]');
       await click('.pc-browser-tab:nth-child(2) button:last-child');
-      await click('.pc-browser-tab:nth-child(2) button:last-child');
       assert.deepEqual(await browserState(),first);
       assert.equal(await page.evaluate('return document.querySelectorAll(".pc-browser-tab").length;'),1);
+      await page.evaluate(`store.getState().deleteTopologyElements(${JSON.stringify([third,fourth])});`);
     });
     await test('browser: errors reflect DNS/service/link changes and recover on retry',async()=>{
       await navigate('http://unknown.lab');await failure('ERR_NAME_NOT_RESOLVED');

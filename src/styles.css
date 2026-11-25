@@ -319,7 +319,7 @@ body,
 .palette-item.kind-firewall .palette-item-icon { color: var(--firewall); }
 .palette-item.kind-server .palette-item-icon { color: var(--server); }
 .palette-item.kind-ap .palette-item-icon { color: var(--ap); }
-.palette-item.kind-modem .device-artwork { width: 34px; height: 26px; }
+.palette-item.kind-modem .device-artwork { width: 40px; height: 26px; }
 
 .palette-item:hover {
   border-color: var(--accent);

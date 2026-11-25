@@ -1,5 +1,6 @@
 import type { ServerPreset } from '../serverPresets';
 import { useTranslation, type TranslationKey } from '../i18n';
+import { UI_THEMES, useUiTheme } from '../uiTheme';
 import { useId, useState, type DragEvent, type Ref } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { canvasWorldBounds } from '../devicePlacement';
@@ -33,6 +34,7 @@ const CATEGORIES: { id: PaletteCategory; label: TranslationKey; items: { kind: D
 
 export function Palette({ compact = false, elementRef }: { compact?: boolean; elementRef?: Ref<HTMLElement> } = {}) {
   const { t } = useTranslation();
+  const modemColor = useUiTheme(s => UI_THEMES[s.theme].group === 'light' ? 'dark' : 'white');
   const addDeviceSmart = useStore((s) => s.addDeviceSmart);
   const { screenToFlowPosition } = useReactFlow();
   const add = (kind: DeviceKind, preset?: ServerPreset) => {
@@ -100,7 +102,7 @@ export function Palette({ compact = false, elementRef }: { compact?: boolean; el
                     onClick={() => add(it.kind,it.preset)}
                     title={t('navigation.paletteAddHint', { description: t(it.blurb) })}>
                     <span className="palette-item-icon">{it.kind === 'modem' && hasDeviceArtwork(it.kind)
-                      ? <DeviceArtwork kind={it.kind} fallback={<DeviceIcon kind={it.kind} size={26} />} />
+                      ? <DeviceArtwork kind={it.kind} modemColor={modemColor} fallback={<DeviceIcon kind={it.kind} size={26} />} />
                       : <DeviceIcon kind={it.kind} size={26} />}</span>
                     <span className="palette-item-label">{t(it.label)}</span>
                   </button>)}

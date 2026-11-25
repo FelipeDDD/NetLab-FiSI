@@ -4,10 +4,12 @@
 
 Os últimos ajustes destacam a transmissão selecionada no diagnóstico, distinguem requisições, respostas e erros ICMP e retiram os IDs internos dos enlaces da descrição. O Packet Inspector abre com filtros recolhidos, tem divisória redimensionável e alterna a prioridade com o Terminal Dock quando os painéis se sobrepõem.
 
+**Publicação de 26/11/2026.** O navegador permite escolher um Host real em **+** e mantém uma guia por Host. No NAT/PAT, o Servidor Web está mais à direita e o cabo sai reto do Router Borda. O catálogo mostra o Modem branco em temas escuros e grafite em temas claros. [Guia do navegador](pc-browser.md)
+
 ## Retomar em casa
 
 - Atualize a `main` a partir de `origin/main` se o checkout permitir avanço direto. Revise manualmente a leitura do diagnóstico com um ICMP sem rota, um percurso NAT/PAT e o terminal aberto.
-- Conclua a validação manual da Etapa 3 do tutorial NAT/PAT. Confirme o HTTP de PC2 após corrigir a regra, execute a demonstração de PAT e compare as portas externas em **Firewall → Conntrack**. A escolha do estilo de destaque técnico continua aberta. [Guia do tutorial](progressive-nat-pat.md)
+- Conclua a validação manual da Etapa 3 do tutorial NAT/PAT. Confirme o HTTP de PC2 após corrigir a regra, abra **Firewall → Conntrack** e compare as portas externas durante a demonstração de PAT. A verificação HTTP dos dois PCs conclui o tutorial. Os endereços a configurar usam o destaque técnico C. [Guia do tutorial](progressive-nat-pat.md)
 - Considere VLAN Trunk 802.1Q como próxima implementação.
 
 ## Validação

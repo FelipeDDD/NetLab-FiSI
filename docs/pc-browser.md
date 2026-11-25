@@ -70,7 +70,7 @@ O botão explícito **TCP-Port 443 testen (ohne TLS)** (ou a porta indicada na U
 
 ## Estado e layout
 
-O app compartilha uma única janela de Desktop e navegador. Ao abrir o navegador de um Host, a janela seleciona sua guia ou cria uma se houver espaço. Use **+** para abrir outra guia no Host selecionado. O limite é de três guias no total. Cada guia mantém seu endereço, histórico, resposta e controles de navegação em memória.
+O app compartilha uma única janela de Desktop e navegador. Ao abrir o navegador de um Host, a janela seleciona sua guia ou cria uma se houver espaço. Use **+** para escolher um Host da topologia que ainda não tenha guia. O limite é de três guias no total, uma por Host. Cada guia mantém seu endereço, histórico, resposta e controles de navegação em memória.
 
 A janela usa tokens dos temas existentes e não redimensiona React Flow. Em telas estreitas fica sobre a área central, podendo cobrir o Inspector temporariamente. Fechar a janela revela os painéis anteriores, preservando seleção, posições e viewport. Escape fecha primeiro o Browser e depois o Desktop. Excluir o PC ou trocar o plano invalida a referência à instância antiga e fecha a janela, sem associá-la a outro dispositivo com o mesmo ID.
 

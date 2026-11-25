@@ -161,7 +161,7 @@ export function NatPatPanel({ onExplore }: { onExplore?: () => void }) {
           <Confirmation>Na configuração original, os PCs trocaram Echo Reply, PC1 recebeu HTTP por NAT e PC2 saiu sem tradução e ficou sem resposta.</Confirmation>
           <p>Esse resultado foi registrado antes da alteração da rede. Para repetir a comparação, restaure a regra NAT inicial ou inicie uma nova tentativa.</p>
         </section> : <>
-        <section><p>Adicione outro Host à rede. Ele será {peer}. Conecte-o ao Switch LAN, configure IPv4 <code className="nat-term-b">192.168.60.11/24</code> e gateway <code className="nat-term-b">192.168.60.1</code> e confirme a conexão com um <code className="nat-term-b">PING</code> entre {peer} e PC1.</p>
+        <section><p>Adicione outro Host à rede. Ele será {peer}. Conecte-o ao Switch LAN, configure IPv4 <code className="nat-term-c">192.168.60.11/24</code> e gateway <code className="nat-term-c">192.168.60.1</code> e confirme a conexão com um <code className="nat-term-b">PING</code> entre {peer} e PC1.</p>
           {hostReady && <Confirmation>PC2 configurado e conectado.</Confirmation>}
           {!host && <p>Adicione um único Host para identificá-lo. Se já houver vários, remova os extras antes de continuar.</p>}
           {host && !hostReady && <Confirmation pending>Pendente: conexão, IPv4 ou gateway de PC2.</Confirmation>}
@@ -205,14 +205,12 @@ export function NatPatPanel({ onExplore }: { onExplore?: () => void }) {
           <h4>Demonstração de PAT</h4>
           <p>A demonstração abre duas conexões HTTP ao mesmo tempo para mostrar como PC1 e PC2 compartilham o IPv4 externo do Router.</p>
           <p><code className="nat-term-c">Conntrack</code> significa <em>Connection Tracking</em> (rastreamento de conexões). Ele associa cada resposta à conexão certa. PC1 e PC2 usam portas externas distintas quando precisam compartilhar o mesmo IP e acessar o mesmo destino.</p>
-          <p>Para ver as conexões, selecione o Router Borda e abra <strong>Inspector → Firewall → Conntrack</strong>.</p>
+          <p>Abra <strong>Router Borda → Firewall → Conntrack</strong> no Inspector. Observe a tabela enquanto executa <strong>Verificar HTTP dos dois PCs</strong>.</p>
           {(objectivePassed('nat-after-browser') || objectivePassed('nat-after-pair')) && check('nat-after-pair', 'Verificar HTTP dos dois PCs')}
           {result('nat-after-pair', 'PC1 e PC2 receberam HTTP por conexões traduzidas concorrentes.')}
           {mappings.length === 2 && <div className="guided-nat-mappings" aria-label="Mapeamentos TCP atuais no Conntrack">{mappings.map(mapping => <p key={mapping}>{mapping}</p>)}</div>}
         </section>
-        <section><p>Teste novamente o ping entre {peer} e PC1 pelo terminal ou pelo Quick Ping.</p>
-          {result('nat-after-local', 'Comunicação local preservada.')}</section>
-        {passed && <div className="exercise-learning" data-nat-finished><Confirmation>Tutorial concluído! O acesso externo dos dois clientes e a comunicação local foram confirmados.</Confirmation></div>}
+        {passed && <div className="exercise-learning" data-nat-finished><Confirmation>Tutorial concluído! PC1 e PC2 acessaram o servidor externo ao mesmo tempo por conexões traduzidas.</Confirmation></div>}
         </>}
       </>}
       {((step === 1 && !reviewInvestigation && hostReady && objectivePassed('nat-before-local')) || (step === 2 && natScreen === 2) || (step === 0 && screen === 1 && !introComplete)) && <details className="exercise-learning" data-nat-hints key={step}><summary>Dicas</summary>

@@ -2,7 +2,7 @@ import {lazy,Suspense,useEffect} from 'react';
 import {useDesktop} from './desktopState';
 import {useStore} from '../store';
 import {sim} from '../sim';
-import type {Host} from '../engine/ipdevice';
+import {Host} from '../engine/ipdevice';
 import {useTranslation} from '../i18n';
 import {browserText} from './messages';
 const Desktop=lazy(()=>import('./PCDesktop'));
@@ -21,5 +21,9 @@ export function DesktopSurface() {
   },[device,tabs,nodes,generation]);
   const liveTabs = tabs.filter(tab => validHost(tab.device));
   if (!active && !liveTabs.length) return null;
-  return <Suspense fallback={null}><Desktop key={generation} device={active} tabs={liveTabs}/></Suspense>;
+  const availableHosts = nodes.flatMap(({ id }) => {
+    const host = sim.net.devices.get(id);
+    return host instanceof Host && !host.disposed && !liveTabs.some(tab => tab.device === host) ? [host] : [];
+  });
+  return <Suspense fallback={null}><Desktop key={generation} device={active} tabs={liveTabs} availableHosts={availableHosts}/></Suspense>;
 }

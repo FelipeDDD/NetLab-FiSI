@@ -239,6 +239,9 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
       }}
       edgesReconnectable={false}
       nodesDraggable={!reconnecting && !quickPing}
+      // Use React Flow's existing 1px drag threshold for click suppression too.
+      nodeDragThreshold={1}
+      nodeClickDistance={1}
       nodesConnectable={!reconnecting && !quickPing}
       elementsSelectable={!reconnecting && !quickPing}
       onBeforeDelete={async ({ nodes, edges }) => {
@@ -291,9 +294,9 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         const edge = target.closest<HTMLElement>('.react-flow__edge');
         if (!reconnecting&&!quickPing&&reconnectNode&&!target.closest('button,input,select,textarea')&&(event.key==='ContextMenu'||(event.key==='F10'&&event.shiftKey))) {
           const device=sim.net.devices.get(reconnectNode.dataset.id!);
-          if(device&&(device.kind==='host'||device.kind==='notebook')) {
+          if(device) {
             event.preventDefault();event.stopPropagation();const r=reconnectNode.getBoundingClientRect();
-            setCableMenu(null);setMarkingMenu(null);select(device.id);setDeviceMenu({id:device.id,x:r.x+r.width/2,y:r.y+r.height/2});return;
+            setCableMenu(null);setMarkingMenu(null);setDeviceMenu({id:device.id,x:r.x+r.width/2,y:r.y+r.height/2});return;
           }
         }
         if (edge && (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) {
@@ -321,8 +324,8 @@ export function Flow({ fitOnInit = true }: { fitOnInit?: boolean } = {}) {
         select(n.id);
       }}
       onNodeContextMenu={(event,node)=>{
-        if(reconnecting||quickPing||(node.data.kind!=='host'&&node.data.kind!=='notebook'))return;
-        event.preventDefault();event.stopPropagation();setCableMenu(null);setMarkingMenu(null);select(node.id);
+        if(reconnecting||quickPing)return;
+        event.preventDefault();event.stopPropagation();setCableMenu(null);setMarkingMenu(null);
         setDeviceMenu({id:node.id,x:Math.max(8,Math.min(window.innerWidth-9,event.clientX)),y:Math.max(8,Math.min(window.innerHeight-9,event.clientY))});
       }}
       onEdgeMouseEnter={(event, edge) => { setPointer({ x: event.clientX, y: event.clientY }); useStore.getState().hoverLink(edge.id); }}

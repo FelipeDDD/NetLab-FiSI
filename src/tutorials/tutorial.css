@@ -74,8 +74,8 @@
 .exercise-panel [data-nat-body] .guided-command { color: var(--ui-warning); }
 [data-nat-body] details details { margin-inline-start: 12px; }
 [data-nat-body] details summary { cursor: pointer; }
-.guided-nat-image-actions { display: flex; justify-content: flex-end; }
-.guided-nat-image-actions > .guided-visual-help-trigger.is-embedded { margin-top: 4px; padding: 6px 12px; }
+.guided-nat-image-actions { display: flex; justify-content: flex-end; margin-block: 4px 16px; }
+.guided-nat-image-actions > .guided-visual-help-trigger.is-embedded { margin-top: 0; padding: 6px 12px; }
 .guided-nat-mappings { font-family: var(--font-mono); overflow-wrap: anywhere; }
 [data-nat-body] [data-tutorial-passed="true"] { color: var(--ui-success); }
 [data-exercise="guided-lpm"] pre { white-space: pre-wrap; overflow-wrap: anywhere; }

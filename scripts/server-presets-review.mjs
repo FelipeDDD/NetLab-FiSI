@@ -64,7 +64,10 @@ export async function runServerPresetsReview({page,url,root,report}){
    const first = artwork('modemId'), second = artwork('secondModemId');
    await page.evaluate('store.getState().select(modemId);');
    await wait('document.querySelector(".modem-inspector select")?.value === "white"');
-   assert.match(await page.evaluate('return document.querySelector(".palette-item.kind-modem image").getAttribute("href");'), /netlab-modem-white\.png$/);
+   for (const [ui, asset] of [['classic-light','dark'],['graphite-dark','white']]) {
+    await page.evaluate(`theme.getState().setTheme(${JSON.stringify(ui)});`);
+    await wait(`document.querySelector(".palette-item.kind-modem image")?.getAttribute("href").endsWith("netlab-modem-${asset}.png")`);
+   }
    assert.match(await page.evaluate(`return ${first};`), /netlab-modem-white\.png$/);
    const box = await page.evaluate(`return ${node('modemId')}.getBoundingClientRect().toJSON();`);
    await page.evaluate('const select=document.querySelector(".modem-inspector select");select.value="dark";select.dispatchEvent(new Event("change",{bubbles:true}));');
