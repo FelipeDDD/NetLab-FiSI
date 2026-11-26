@@ -14,6 +14,28 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     throw Error('NAT/PAT review: ' + condition);
   };
   const click = selector => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).click();`);
+  const locales = ['de', 'en', 'pt-BR'];
+  const setLocale = locale => page.evaluate(`(await import('/src/i18n/index.ts')).useLanguage.getState().setLanguage(${JSON.stringify(locale)});`);
+  const reviewLocales = async (fragments, selector = '[data-nat-body]') => {
+    const snapshot = () => page.evaluate(`
+      const { labStep, labResults, quizAnswers, workspaceIdentity } = store.getState();
+      return {labStep, labResults, quizAnswers, draftId:workspaceIdentity?.draftId};
+    `);
+    const before = await snapshot();
+    for (const [i, locale] of locales.entries()) {
+      await setLocale(locale);
+      for (const phrase of fragments[i]) {
+        await wait(`document.querySelector(${JSON.stringify(selector)})?.textContent.includes(${JSON.stringify(phrase)})`);
+      }
+      assert(await page.evaluate(`
+        const {translate}=await import('/src/i18n/index.ts');
+        const handle=document.querySelector('[data-exercise="guided-nat-pat"] .exercise-drag-handle');
+        return handle.getAttribute('title')===translate(${JSON.stringify(locale)},'exercises.panelMoveHint') &&
+          handle.querySelector('.exercise-position-reset').getAttribute('aria-label')===translate(${JSON.stringify(locale)},'exercises.panelResetPosition');
+      `));
+      assert.deepEqual(await snapshot(), before);
+    }
+  };
   const styleCrops = [];
   const sampleStyle = async (variant, label) => {
     if (process.env.NETLAB_NAT_STYLE_COMPARISON !== '1') return;
@@ -147,14 +169,19 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await guidedMenu();
     await click('[data-nat-start]');
     await wait('document.querySelector("[data-exercise=guided-nat-pat]")');
-    await wait('document.querySelector(".workspace-tab-wrap[data-active=true] .workspace-tab-name")?.textContent === document.querySelector("[data-exercise=guided-nat-pat] .exercise-heading strong")?.textContent');
-    await guidedMenu();
-    await wait(`document.querySelector('${natCompletion} [data-chapter-completed=false]')`);
-    await page.evaluate('[...document.querySelectorAll(".toolbar-menu-trigger")].find(e => /Übungen|Exercises|Exercícios/.test(e.textContent)).click();');
     await wait(`(() => {
       const viewport = document.querySelector('.react-flow__viewport');
       return viewport && new DOMMatrix(getComputedStyle(viewport).transform).a <= 0.901;
     })()`);
+    await reviewLocales([
+      ['Konzept und Paketaufnahme', 'Aufnahme starten', 'Browser öffnen'],
+      ['Concept and capture', 'Start capture', 'Open Browser'],
+      ['Conceito e captura', 'Iniciar captura', 'Abrir navegador'],
+    ]);
+    await wait('document.querySelector(".workspace-tab-wrap[data-active=true] .workspace-tab-name")?.textContent === document.querySelector("[data-exercise=guided-nat-pat] .exercise-heading strong")?.textContent');
+    await guidedMenu();
+    await wait(`document.querySelector('${natCompletion} [data-chapter-completed=false]')`);
+    await page.evaluate('[...document.querySelectorAll(".toolbar-menu-trigger")].find(e => /Übungen|Exercises|Exercícios/.test(e.textContent)).click();');
     const initialLayout = await page.evaluate(`
       const body = document.querySelector('[data-nat-body]');
       const panel = document.querySelector('[data-exercise=guided-nat-pat]').getBoundingClientRect();
@@ -230,6 +257,11 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await click('.pc-desktop-close');
     await click(next);
     await wait('document.querySelector("[data-nat-screen]")?.textContent.startsWith("2/2")');
+    await reviewLocales([
+      ['Pakete vergleichen', 'Wie lautet die IPv4-Quelladresse?', 'TCP SYN'],
+      ['Compare packets', 'What is the source IPv4 address?', 'TCP SYN'],
+      ['Comparar pacotes', 'Qual é o IPv4 de origem?', 'TCP SYN'],
+    ]);
     assert(await page.evaluate('const term = document.querySelector(".nat-term-a"); return term?.getClientRects().length && getComputedStyle(term).fontWeight === "600" && getComputedStyle(term).backgroundColor === "rgba(0, 0, 0, 0)";'));
     await sampleStyle('A', 'A · Texto sem caixa');
     assert.equal(await page.evaluate('return document.getElementById("nat-source-local").value;'), '192.168.');
@@ -350,6 +382,11 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     assert(await page.evaluate('return document.getElementById("nat-source-local").disabled && !document.querySelector("[data-nat-next]").disabled;'));
     await click(next);
     await wait('store.getState().labStep === 1');
+    await reviewLocales([
+      ['Arbeitsplatz hinzufügen', 'Fügen Sie einen weiteren Host', '192.168.60.1'],
+      ['Add a workstation', 'Add another host', '192.168.60.1'],
+      ['Novo posto', 'Adicione outro Host', '192.168.60.1'],
+    ]);
     assert.deepEqual(await page.evaluate('return [...document.querySelectorAll("[data-nat-body] .nat-term-c")].filter(term => getComputedStyle(term).borderTopWidth === "1px").map(term => term.textContent);'), ['192.168.60.11/24', '192.168.60.1']);
     await sampleStyle('B', 'B · Caixa azul-acinzentada');
     assert(await page.evaluate('return !document.querySelector(".lab-footer");'));
@@ -472,6 +509,11 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await click(next);
     await wait('store.getState().labStep === 2');
     assert(await page.evaluate('return !document.querySelector(".lab-footer");'));
+    await reviewLocales([
+      ['NAT und Firewall', 'Die Firewall-Filterung'],
+      ['NAT and firewall', 'Firewall filtering'],
+      ['NAT e Firewall', 'A filtragem de Firewall'],
+    ]);
     await click(next);
     await wait('document.querySelector("[data-guided-image]")');
     assert(await page.evaluate('return !document.querySelector("[data-nat-body] img");'));
@@ -501,6 +543,16 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     }
     await click('[data-guided-image]');
     await wait('document.querySelector("[data-guided-image-dialog] img")?.complete');
+    const svgViewer = '[data-guided-image-dialog]';
+    await page.evaluate(`window.openNatViewer=document.querySelector('${svgViewer}');`);
+    for (const locale of locales) {
+      await setLocale(locale);
+      await wait(`(() => {
+        const dialog=document.querySelector('${svgViewer}'), img=dialog?.querySelector('img');
+        return dialog===window.openNatViewer && dialog.lang===${JSON.stringify(locale)} && img?.complete &&
+          img.src.includes(${JSON.stringify(`nat-rule-${locale}.svg`)}) && img.naturalWidth===1670 && img.naturalHeight===940;
+      })()`);
+    }
     assert(await page.evaluate(`
       const viewer = document.querySelector("[data-guided-image-dialog]");
       const panel = document.querySelector("[data-exercise=guided-nat-pat]").getBoundingClientRect();
@@ -525,6 +577,11 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await wait('store.getState().labStep === 2 && document.querySelector("[data-guided-image]")');
     await click(next);
     await wait('store.getState().labStep === 2 && document.querySelector("[data-nat-screen]")?.textContent.startsWith("3/3")');
+    await reviewLocales([
+      ['Jetzt sind Sie dran', 'NAT-Regel hinzufügen', 'Manueller Test', 'PAT-Demonstration', 'Connection Tracking'],
+      ['Your turn', 'Add NAT rule', 'Manual test', 'PAT demonstration', 'Connection Tracking'],
+      ['Sua vez', 'Adicionar regra NAT', 'Teste manual', 'Demonstração de PAT', 'Connection Tracking'],
+    ]);
     assert(await page.evaluate('const term = document.querySelector(".nat-term-c"); return term?.getClientRects().length && getComputedStyle(term).borderTopWidth === "1px";'));
     await sampleStyle('C', 'C · Caixa com borda discreta');
     await saveStyleComparison();
@@ -640,8 +697,15 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await page.evaluate(`[...document.querySelectorAll('.inspector [role=tab]')].find(tab => tab.textContent === 'Firewall').click();`);
     await page.evaluate(`[...document.querySelectorAll('.router-inspector-details > summary')].find(summary => summary.textContent === 'Conntrack').click();`);
     await wait('document.querySelector(".router-inspector-details[open] > summary")?.textContent === "Conntrack"');
+    await setLocale('de');
+    await wait('document.querySelector("[data-nat-check=nat-after-pair]")?.textContent==="HTTP-Zugriff beider PCs prüfen"');
     await check('nat-after-pair');
     await wait('document.querySelector(".router-inspector-details[open] pre")?.textContent.includes("192.168.60.11")');
+    await reviewLocales([
+      ['Tutorial abgeschlossen!', 'HTTP-Zugriff beider PCs prüfen'],
+      ['Tutorial complete!', 'Check HTTP from both PCs'],
+      ['Tutorial concluído!', 'Verificar HTTP dos dois PCs'],
+    ]);
     await wait('document.querySelector("[data-nat-finished]")?.textContent.includes("Tutorial concluído")');
     await guidedMenu();
     await wait(`document.querySelector('${natCompletion} [data-chapter-completed=true]')`);
@@ -684,6 +748,8 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await page.evaluate(`
       const legacy = ws.controller.recoveryDocument();
       legacy.topology.labProgress.step = 2;
+      legacy.topology.lab.steps[1].title = 'Título legado em português';
+      legacy.topology.lab.steps[2].hints = ['Uma dica legada em português'];
       legacy.topology.lab.steps[2].objectives.push({ id: 'nat-after-local', label: 'Ping final', check: legacy.topology.lab.steps[1].objectives[0].check });
       delete legacy.topology.labProgress.quiz['nat-rule-screen'];
       const opened = await ws.controller.openDocument(legacy);
@@ -707,6 +773,12 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await wait('document.querySelector("[data-guided-image]")');
     await click(next);
     await wait('document.querySelector("[data-nat-finished]")?.textContent.includes("Tutorial concluído")');
+    await setLocale('en');
+    assert(await page.evaluate('return document.querySelector("[data-nat-hints]").textContent.includes("A /32 prefix") && !document.querySelector("[data-nat-body]").textContent.includes("legad");'));
+    await guidedMenu();
+    await wait(`document.querySelector('${natCompletion}[data-chapter-historically-completed=true]')?.closest('section').getAttribute('aria-label')==="NAT/PAT — Shared access"`);
+    await page.evaluate('[...document.querySelectorAll(".toolbar-menu-trigger")].find(e => /Übungen|Exercises|Exercícios/.test(e.textContent)).click();');
+    await setLocale('pt-BR');
     await check();
     assert(await page.evaluate('return store.getState().labResults["nat-after-pair"].pass;'));
     await click('[data-nat-nav] button:first-child');
@@ -739,6 +811,7 @@ export async function runProgressiveNatPatReview({ page, url, report }) {
     await wait(`document.querySelector('${natCompletion}[data-chapter-historically-completed=true] [data-nat-current-progress]')?.textContent.includes('0/5')`);
     report.results['NAT/PAT menu: incomplete attempt, real completion, F5, saved name and separate history'] = { passed: true };
     report.results['NAT/PAT tutorial: Inspector and xterm, current PC2 browser proof, real PAT, F5 and Save/Load'] = { passed: true };
+    report.results['NAT/PAT localization: DE/EN/PT-BR panel, live image change and legacy progress'] = { passed: true };
   } finally {
     await page.evaluate(`
       window.ws?.dispose();

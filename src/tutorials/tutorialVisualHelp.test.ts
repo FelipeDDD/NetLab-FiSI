@@ -4,9 +4,23 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { translate, type Language } from '../i18n';
 import { GuidedVisualHelp } from './GuidedVisualHelp';
-import { alternativeRoutingVisualHelp, staticRoutingVisualHelp, visualHelpPosition } from './tutorialVisualHelp';
+import { alternativeRoutingVisualHelp, natVisualHelp, staticRoutingVisualHelp, visualHelpPosition } from './tutorialVisualHelp';
 
 describe('optional tutorial visual help', () => {
+  it('keeps the NAT rule, annotations and geometry identical across languages', () => {
+    const contents = (language: Language) =>
+      readFileSync(new URL(`../assets/nat-rule-${language}.svg`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+    const redactDescriptions = (svg: string) => svg
+      .replace(/<(title|desc) id="\w+">[^<]+/g, (_, tag) => `<${tag}>`)
+      .replace(/(<text x="480" y="\d+">)[^<]+/g, '$1');
+    const pt = contents('pt-BR');
+    for (const [language, phrase] of [['de', 'Name der Ausgangsschnittstelle'], ['en', 'name of the outgoing interface']] as const) {
+      const svg = contents(language);
+      expect(natVisualHelp.images[language]).toContain(`nat-rule-${language}.svg`);
+      expect(svg).toContain(phrase);
+      expect(redactDescriptions(svg)).toBe(redactDescriptions(pt));
+    }
+  });
   it('reuses the same approved route images only on Chapter 5 tasks 8, 9 and 11', () => {
     expect(Object.keys(alternativeRoutingVisualHelp)).toEqual(['8', '9', '11']);
     for (const help of Object.values(alternativeRoutingVisualHelp)) expect(help).toBe(staticRoutingVisualHelp[4]);

@@ -12,13 +12,14 @@ Os últimos ajustes destacam a transmissão selecionada no diagnóstico, disting
 
 Atualize a `main` a partir de `origin/main` se o checkout permitir avanço direto.
 
-1. Traduzir o tutorial NAT/PAT para DE, EN e PT-BR. Na revisão manual da etapa 3, verificar o HTTP de PC2 e comparar as portas externas em **Firewall → Conntrack**. [Guia do tutorial](progressive-nat-pat.md)
-2. Configurar e publicar o formulário Tally com upload de imagem e notificações por e-mail. Definir `VITE_TALLY_FEEDBACK_FORM_ID` no ambiente de build. [Configuração do Tally](feedback-tally.md)
-3. Testar o envio real do feedback com uma imagem, confirmar a notificação por e-mail e publicar a versão atualizada na Vercel.
+1. Revisar o tutorial NAT/PAT em DE, EN e PT-BR. O painel, as dicas, as mensagens e a ilustração da regra já acompanham o idioma ativo. Na etapa 3, conferir com um aluno o HTTP de PC2 e a comparação das portas externas em **Firewall → Conntrack**. [Guia do tutorial](progressive-nat-pat.md)
+2. Publicar a versão atualizada na Vercel após revisar a tradução. O formulário Tally já foi publicado e testado em desenvolvimento, e o ID já está configurado na Vercel. [Configuração do Tally](feedback-tally.md)
 
 Para depois, revisar manualmente o diagnóstico com ICMP sem rota, NAT/PAT e terminal aberto. VLAN Trunk 802.1Q segue como candidata a uma próxima implementação.
 
 ## Validação
+
+A tradução do NAT/PAT passou em 138 testes direcionados e 109 verificações em Chromium. O fluxo incluiu troca de idioma, Save/Load, F5, tentativa legada e PAT com duas conexões reais. TypeScript e build passaram.
 
 A regressão Chromium do capítulo 6 verifica os controles compartilhados de movimentação, restauração, recolhimento, expansão e reinício ao alternar DE, EN e PT-BR durante a mesma tentativa. [Roteiro de revisão](../scripts/lpm-tutorial-review.mjs)
 

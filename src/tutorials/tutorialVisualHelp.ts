@@ -6,6 +6,14 @@ export type TutorialVisualHelp = {
   description: TranslationKey;
 };
 
+export const natVisualHelp: TutorialVisualHelp = {
+  title: 'guidedNat.ruleImageTitle', description: 'guidedNat.ruleImageAlt', images: {
+    de: new URL('../assets/nat-rule-de.svg', import.meta.url).href,
+    en: new URL('../assets/nat-rule-en.svg', import.meta.url).href,
+    'pt-BR': new URL('../assets/nat-rule-pt-BR.svg', import.meta.url).href,
+  },
+};
+
 /** Presentation only: no tutorial progression or simulator state is stored here. */
 export const staticRoutingVisualHelp: Partial<Record<number, TutorialVisualHelp>> = {
   2: { title: 'guidedVisual.title', description: 'guidedVisual.description', images: {

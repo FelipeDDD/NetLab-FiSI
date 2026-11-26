@@ -18,7 +18,9 @@ O painel e a abertura da tentativa usam a infraestrutura dos tutoriais guiados. 
 
 O menu usa os mesmos comprovantes do painel. Depois de confirmar a conclusão, registra a conquista no armazenamento local para que ela continue visível ao fechar o rascunho ou iniciar outra tentativa. Uma tentativa antiga só recupera essa indicação quando seus comprovantes ainda podem ser validados.
 
-Na etapa 3, três telas apresentam NAT e firewall, a ilustração da regra nftables e a atividade prática. O botão **Abrir imagem** usa o visualizador dos demais capítulos. A ilustração está em PT-BR.
+Na etapa 3, três telas apresentam NAT e firewall, a ilustração da regra nftables e a atividade prática. O botão **Abrir imagem** usa o visualizador dos demais capítulos. O painel e a ilustração acompanham o idioma ativo em DE, EN e PT-BR, inclusive com a imagem aberta.
+
+As tentativas existentes exibem títulos, dicas e mensagens do catálogo atual. Os comprovantes e os dados do Lab continuam no documento. Os nomes dos dispositivos seguem a topologia em uso, e a página HTTP simulada mantém o conteúdo verificado pelo exercício.
 
 ## Alterar NAT no Router Borda
 
@@ -67,7 +69,8 @@ verificam que remover a correção volta a falhar em conexões novas mesmo
 com associações anteriores ativas.
 
 O roteiro Chromium valida o menu, as dicas, os bloqueios antes das
-verificações, o visualizador em desktop e viewport compacto, o F5, a revisão de etapas e o Save/Load. Pode ser executado
+verificações, a troca entre DE, EN e PT-BR na mesma tentativa, a atualização
+da ilustração aberta, o F5, a revisão de etapas e o Save/Load com dados legados. Pode ser executado
 no PowerShell com `$env:NETLAB_PROGRESSIVE_NAT_REVIEW='1'` seguido de
 `node scripts/test-project-repository.mjs`. O roteiro usa banco descartável.
 

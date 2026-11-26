@@ -1,6 +1,6 @@
 import type { SaveFile, SavedDevice } from '../engine/serialize';
 import { CUSTOM_SWITCH_PORTS } from '../engine/switch';
-import { translate, type Language } from '../i18n';
+import { translate, type Language, type TranslationKey } from '../i18n';
 import { browserText } from '../browser/messages';
 import type { Objective } from './types';
 
@@ -14,23 +14,21 @@ export function natIntroConcept(language: Language): string {
   const startCapture = translate(language, 'navigation.startCapture');
   const openBrowser = browserText(language, 'openBrowser');
   return [
-    'NAT (Network Address Translation) permite que um Router ou Firewall altere os endereços IP dos pacotes em trânsito e, em alguns casos, as portas. Assim, vários PCs podem compartilhar um endereço externo.',
-    `Abra \`${packets}\`. Na seta ao lado do botão, escolha \`${startCapture}\`. (Você pode fechar o painel sem interromper a captura.)`,
-    `Clique com o botão direito no PC1, escolha \`${openBrowser}\` e acesse ${PROGRESSIVE_NAT_PAT_URL}.`,
+    translate(language, 'guidedNat.definition'),
+    translate(language, 'guidedNat.startCapture', { packets, startCapture }),
+    translate(language, 'guidedNat.openFirstPage', { openBrowser, url: PROGRESSIVE_NAT_PAT_URL }),
   ].join('\n');
 }
 
-export const NAT_INTRO_COMPARISON = [
-  'No painel de captura, escolha a visualização completa (`Full`). Procure registros TCP `[SYN]` com destino `198.51.100.80` e porta `80`.',
-  'Identifique o IPv4 de origem no enlace Switch LAN → Router Borda.',
-  'Depois, compare a origem do mesmo fluxo no enlace Router Borda → Servidor Web.',
-].join('\n');
-
-export const NAT_INTRO_HINTS = [
-  'Pause a captura para ler a lista com calma. Ignore ARP e as respostas com `SYN, ACK`. Na coluna `Link`, procure os dois enlaces em ordem, primeiro o local e depois o externo.',
-  'Na visualização compacta (`Compact`) do painel de captura, selecione a linha pelo horário e veja `Source IP` e `Destination IP` em `IPv4`.',
-  'A porta de destino é `80` nos dois enlaces. A porta de origem pode mudar com PAT. Se a captura estava pausada, retome-a. Para ver os dois enlaces, a captura deve indicar `All links`.',
+const hintKeys: readonly (readonly TranslationKey[])[] = [
+  ['guidedNat.introHintLinks', 'guidedNat.introHintFields', 'guidedNat.introHintPorts'],
+  ['guidedNat.hostHintPing', 'guidedNat.hostHintCapture'],
+  ['guidedNat.ruleHintPrefix', 'guidedNat.ruleHintMasquerade', 'guidedNat.ruleHintTerminal'],
 ];
+
+export function natHints(language: Language, step: number): string[] {
+  return hintKeys[step].map(key => translate(language, key));
+}
 
 function pc(id: string, y: number, ip: string): SavedDevice {
   return {
@@ -76,6 +74,8 @@ export const progressiveNatPat: SaveFile = {
     { id: 'lan-edge', a: ['lan', 'eth2'], b: ['edge', 'eth0'] },
     { id: 'edge-web', a: ['edge', 'eth1'], b: ['web', 'eth0'] },
   ],
+  // Keep the legacy Lab metadata in the document. The guided panel uses the
+  // current language on render, including when it opens an older attempt.
   lab: {
     id: PROGRESSIVE_NAT_PAT_ID,
     title: 'Tutorial progressivo — NAT/PAT',
@@ -84,17 +84,14 @@ export const progressiveNatPat: SaveFile = {
       {
         title: 'Acesso funcionando',
         body: natIntroConcept('pt-BR'),
-        hints: NAT_INTRO_HINTS,
+        hints: natHints('pt-BR', 0),
         objectives: [{ id: 'nat-first-http', label: 'PC1 recebe a página com a origem traduzida', check: pc1Http }],
         feedback: 'O servidor viu o endereço externo do Router. Na volta, o Router usou a associação da conexão para devolver a resposta ao PC1.',
       },
       {
-        title: 'Novo posto',
+        title: translate('pt-BR', 'guidedNat.workstation'),
         body: `Adicione outro Host à rede. Configure 192.168.60.11/24 e gateway 192.168.60.1, conecte-o ao Switch LAN e teste o ping e o acesso a ${PROGRESSIVE_NAT_PAT_URL} antes de alterar o Router.`,
-        hints: [
-          'Use o ping para testar PC2 → PC1. Depois tente abrir a mesma página externa em cada PC.',
-          'Se capturou as duas tentativas, compare o IPv4 de origem que sai do Router. Inspecione também a regra NAT e veja quais origens ela seleciona.',
-        ],
+        hints: natHints('pt-BR', 1),
         objectives: [
           { id: 'nat-before-local', label: 'PC2 alcança PC1 na LAN', check: localPing },
           { id: 'nat-before-pc1', label: 'PC1 continua recebendo a página', check: pc1Http },
@@ -105,11 +102,7 @@ export const progressiveNatPat: SaveFile = {
       {
         title: 'Acesso compartilhado',
         body: 'A regra NAT inicial contempla apenas PC1. Examine a restrição de origem no Router Borda e adapte-a para incluir PC2. Mantenha os endereços e a comunicação na LAN. A verificação abre duas conexões HTTP novas em paralelo.',
-        hints: [
-          'Compare os IPs dos PCs com a origem selecionada pela regra de saída. Um prefixo /32 seleciona apenas um endereço.',
-          'Masquerade é uma forma de SNAT que usa o IPv4 da interface de saída. Você pode trabalhar com uma regra para vários endereços ou com regras separadas.',
-          'No terminal do Router, `iptables -t nat -S` lista a configuração. Consulte a referência do terminal para editar as regras.',
-        ],
+        hints: natHints('pt-BR', 2),
         objectives: [
           { id: 'nat-after-pair', label: 'Os dois PCs recebem HTTP por conexões traduzidas simultâneas', check: { ...pc1Http, peer: 'PC2' } },
         ],
