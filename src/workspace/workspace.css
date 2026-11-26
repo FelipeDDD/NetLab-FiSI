@@ -1,5 +1,5 @@
 .workspace-tabs-bar { display: flex; align-items: stretch; gap: 8px; min-width: 0; padding: 5px 12px 0; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
-.workspace-tabs { display: flex; align-items: stretch; gap: 4px; overflow-x: auto; scrollbar-width: thin; min-width: 0; flex: 1; }
+.workspace-tabs { display: flex; align-items: stretch; gap: 4px; overflow-x: auto; scrollbar-width: thin; min-width: 0; flex: 0 1 auto; }
 .workspace-tab-wrap { display: flex; align-items: center; flex: 0 1 216px; min-width: 126px; max-width: 236px; border: 1px solid transparent; border-bottom: 0; border-radius: 7px 7px 0 0; background: transparent; color: var(--text-dim); position: relative; }
 .workspace-tab-wrap:hover { background: var(--bg-raised); }
 .workspace-tab-wrap[data-active="true"] { background: var(--bg); border-color: var(--border); color: var(--text); }

@@ -428,6 +428,12 @@ try {
     await runTutorialMenuReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, root, report });
     await prepare(pageOne);
   }
+  if (process.env.NETLAB_FEEDBACK_REVIEW === '1') {
+    const { runFeedbackReview } = await import('./feedback-review.mjs');
+    await runFeedbackReview({ page: pageOne, url: new URL('/__workspace_ui_test__', url).href, report,
+      configured: process.env.VITE_TALLY_FEEDBACK_FORM_ID === 'NetLabTestOnly' });
+    await prepare(pageOne);
+  }
   if (process.env.NETLAB_DOCUMENT_COLOR_REVIEW) {
     const { runDocumentColorReview } = await import('./document-color-review.mjs');
     const currentDebug = 'http://127.0.0.1:' + (await readFile(path.join(scratch, 'DevToolsActivePort'), 'utf8')).split('\n')[0];

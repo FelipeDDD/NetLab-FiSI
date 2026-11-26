@@ -1,3 +1,4 @@
+import { useGuidedPanelCollapse } from './GuidedPanelCollapse';
 import { TutorialCommand, TutorialText } from './TutorialCommand';
 import { useEffect, useState } from 'react';
 import { ExercisePanelFrame } from '../exercises/ExercisePanelFrame';
@@ -13,7 +14,8 @@ import { ChapterStepProgress, ChapterFinished, ExploreNetworkButton } from './Co
 export const ROUTER_TITLES=['introTitle','cablesTitle','interfacesTitle','hostTitle','gatewaysTitle','routeTitle','testTitle','diagnosisTitle'] as const;
 export const ROUTER_TEXTS=['introText','cablesText','interfacesText','hostText','gatewaysText','routeText','testText','diagnosisText'] as const;
 export function RouterTutorialPanel({controller,state,onExplore}:{controller:RouterTutorialController;state:RouterState;onExplore?():void}) {
-  const {t}=useTranslation(),[collapsed,setCollapsed]=useState(false),[repeat,setRepeat]=useState<RouterRepeatTicket|null>(null),r=state.record;
+  const {t}=useTranslation(),[repeat,setRepeat]=useState<RouterRepeatTicket|null>(null),r=state.record;
+  const [collapsed, setCollapsed] = useGuidedPanelCollapse('two-networks', r?.draftId);
   useEffect(()=>setRepeat(null),[r?.draftId,r?.step,state.active,collapsed]);
   useEffect(()=>{
     if(!repeat)return;

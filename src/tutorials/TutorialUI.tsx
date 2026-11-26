@@ -2,8 +2,9 @@ import { LpmController, type LpmState } from './LpmController';
 import { LpmProgressStore, LPM_PROGRESS_PREFIX, readLpmProgress, type LpmProgress } from './lpmProgress';
 import { LpmPanel } from './LpmPanel';
 import { TutorialCommand, TutorialText } from './TutorialCommand';
-import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { SessionController } from '../persistence/sessionController';
+import type { DraftControllerState } from '../persistence/sessionTypes';
 import type { ProjectRepository } from '../projects/repository';
 import { TutorialProgressStore } from './tutorialProgress';
 import { useStore } from '../store';
@@ -49,6 +50,10 @@ import { AlternativeEntryMenu } from './AlternativeEntryMenu';
 import { observeNetworkActivity } from '../networkObservations';
 import { NatPatPanel } from './NatPatPanel';
 import { progressiveNatPat, PROGRESSIVE_NAT_PAT_ID } from '../labs/progressiveNatPat';
+import { natConfiguration, natIntroSignature } from '../labs/natLearning';
+import { natPatCompleted, readNatPatCompletion, rememberNatPatCompletion, natPatProgress, savedNatPatProgress } from './natPatProgress';
+import { GuidedPanelCollapse, useGuidedPanelCollapse } from './GuidedPanelCollapse';
+import { readGuidedDraftTitle } from './guidedDraftTitle';
 import './tutorial.css';
 
 const Context = createContext<{ sessions: SessionController; repository: ProjectRepository; controller: TutorialController; state: TutorialState; subnet: SubnetTutorialController; subnetState: SubnetState; router:RouterTutorialController; routerState:RouterState; routing: StaticRoutingTutorialController; routingState: StaticRoutingState; alternative: AlternativePathsController; alternativeState: AlternativeState; lpm: LpmController; lpmState: LpmState; hiddenPanels: ReadonlySet<string>; hidePanel(chapter: ChapterId | typeof PROGRESSIVE_NAT_PAT_ID, draftId: string): void; showPanels(draftId: string): void } | null>(null);
@@ -56,8 +61,64 @@ export function GuidedTutorialProvider({ sessions, repository, children }: { ses
   const [restart]=useState(()=>new ChapterRestartService(repository,sessions)),status=useSyncExternalStore(restart.subscribe,restart.getState),{t}=useTranslation();
   useEffect(()=>useStore.getState().attachChapterHistory((id,direction)=>void restart.navigate(id,direction)),[restart]);
   useEffect(()=>{if(status.error)useStore.getState().setNotice(t('guidedRestart.storage'));},[status.error]);
-  return <GuidedTutorialRuntime key={status.generation} sessions={sessions} repository={repository} restart={restart}>{children}</GuidedTutorialRuntime>;
+  return <GuidedPanelCollapse>
+    <NatPatAchievement repository={repository}/>
+    <GuidedTutorialRuntime key={status.generation} sessions={sessions} repository={repository} restart={restart}>{children}</GuidedTutorialRuntime>
+  </GuidedPanelCollapse>;
 }
+
+export function useGuidedTabTitles(drafts: readonly DraftControllerState[]) {
+  const ui = useContext(Context);
+  const { t } = useTranslation();
+  const activeId = useStore(s => s.workspaceIdentity?.draftId);
+  const labId = useStore(s => s.lab?.id);
+  const generation = useStore(s => s.topologyGeneration);
+  const [saved, setSaved] = useState<Record<string, TranslationKey>>({});
+  const unnamed = JSON.stringify(drafts.filter(draft => !draft.base).map(draft => draft.id));
+  useEffect(() => {
+    if (!ui) return;
+    const { repository, sessions } = ui;
+    let cancelled = false;
+    const ids: string[] = JSON.parse(unnamed);
+    void Promise.all(ids.map(async id => {
+      const title = sessions.recoveryDocument(id)?.topology.lab?.id === PROGRESSIVE_NAT_PAT_ID
+        ? 'guided.natTitle' as const : await readGuidedDraftTitle(repository, id);
+      return { id, title };
+    })).then(titles => {
+      if (!cancelled) setSaved(Object.fromEntries(titles.flatMap(({ id, title }) => title ? [[id, title]] : [])));
+    }).catch(() => { /* Keep the existing tab names if storage is unavailable. */ });
+    return () => { cancelled = true; };
+  }, [ui?.repository, ui?.sessions, unnamed, generation, ui?.state.draftId, ui?.subnetState.record?.draftId,
+    ui?.routerState.record?.draftId, ui?.routingState.record?.draftId, ui?.alternativeState.record?.draftId, ui?.lpmState.record?.draftId]);
+  return (draft: DraftControllerState) => {
+    if (draft.base) return draft.base.planName;
+    const id = draft.id;
+    const live: TranslationKey | undefined = id === activeId && labId === PROGRESSIVE_NAT_PAT_ID ? 'guided.natTitle'
+      : ui?.lpmState.record?.draftId === id ? 'guidedLpm.title'
+      : ui?.alternativeState.record?.draftId === id ? 'guidedAlternative.title'
+      : ui?.routingState.record?.draftId === id ? 'guidedStatic.title'
+      : ui?.routerState.record?.draftId === id ? 'guidedRouter.title'
+      : ui?.subnetState.record?.draftId === id ? 'guidedSubnet.title'
+      : ui?.state.draftId === id ? 'guided.title' : undefined;
+    return t(live ?? saved[id] ?? 'workspace.untitled');
+  };
+}
+
+function useActiveNatPatProgress() {
+  const active = useStore(s => s.lab?.id === PROGRESSIVE_NAT_PAT_ID);
+  const results = useStore(s => s.labResults), quiz = useStore(s => s.quizAnswers);
+  useStore(s => active ? s.nodes : null);
+  return active ? natPatProgress({ results, quiz }, natConfiguration(sim.net), natIntroSignature(sim.net)) : null;
+}
+
+function NatPatAchievement({ repository }: { repository: ProjectRepository }) {
+  const natComplete = useActiveNatPatProgress()?.complete;
+  useEffect(() => {
+    if (natComplete) void rememberNatPatCompletion(repository).catch(() => { /* Menu can recover from the attempt and retry. */ });
+  }, [repository, natComplete]);
+  return null;
+}
+
 function GuidedTutorialRuntime({sessions,repository,restart,children}:{sessions:SessionController;repository:ProjectRepository;restart:ChapterRestartService;children:ReactNode}){
   const [hiddenPanels, setHiddenPanels] = useState<ReadonlySet<string>>(() => new Set());
   const hidePanel = (chapter: ChapterId | typeof PROGRESSIVE_NAT_PAT_ID, draftId: string) => setHiddenPanels(previous => new Set([...previous, `${draftId}:${chapter}`]));
@@ -182,8 +243,13 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
   const alternativeIndicator=alternativeHistory?'complete':alternativeDraft?'in-progress':'not-started';
   return <AlternativeEntryMenu popupRef={entryPopup} existing={!!alternativeDraft||alternativeHistory} disabled={ui.alternativeState.busy||progressLoading||progressError||!!progress.alternativeError} choose={entry=>{usePractice.getState().close();void ui.alternative.begin(entry);close();}}>{trigger=><section className="guided-tutorial-menu" aria-label={t('guided.group')}>
     <button type="button" role="menuitem" className="labs-menu-item guided-menu-toggle" data-guided-menu-toggle aria-expanded={expanded} aria-controls="guided-tutorial-groups" onClick={() => setExpanded(value => !value)}>
-      <svg className="guided-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 6.5c-2-1.5-4.8-2-8-1v12c3.2-1 6-.5 8 1m0-12c2-1.5 4.8-2 8-1v12c-3.2-1-6-.5-8 1m0-12v12"/></svg>
-      <span className="guided-menu-heading"><strong>{t('guided.group')}</strong><span className="guided-menu-summary">{t('guided.menuSummary')}</span></span>
+      <span className="guided-menu-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 6.5c-2-1.5-4.8-2-8-1v12c3.2-1 6-.5 8 1m0-12c2-1.5 4.8-2 8-1v12c-3.2-1-6-.5-8 1m0-12v12"/></svg>
+      </span>
+      <span className="guided-menu-heading">
+        <strong>{t('guided.group')}</strong>
+        <span className="guided-menu-summary">{t('guided.menuSummary', { count: 6 })}</span>
+      </span>
       <svg className="guided-menu-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={expanded ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'}/></svg>
     </button>
     {expanded && <div id="guided-tutorial-groups">
@@ -197,11 +263,11 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
       } else { usePractice.getState().close(); void controller.start(); close(); }
     }}>{t(firstProgress?.complete && subnetProgress?.complete ? 'guided.openNetwork' : basicsDraft ? 'guided.resume' : 'guided.start')}</button>
     {basicsDraft && <button type="button" role="menuitem" className="btn" data-restart-tutorial disabled={state.busy || !state.ready || progressLoading || progressError} onClick={() => { usePractice.getState().close(); void controller.start(true); close(); }}>{t('guided.restart')}</button>}
-    <small>{t('guided.prototype')}</small>{state.error && <p role="alert"><TutorialText>{t('guided.error')}</TutorialText></p>}
+    {state.error && <p role="alert"><TutorialText>{t('guided.error')}</TutorialText></p>}
     {state.storageError && <p role="alert">{t('guided.storageError')} <button className="btn" onClick={() => void controller.retryProgress()}>{t('common.retry')}</button></p>}
     </section>
     <section className="guided-menu-chapter" aria-label={t('guidedRouter.title')}>
-    <strong>{t('guidedRouter.title')}</strong><p><TutorialText>{t('guided.routerMenuDescription')}</TutorialText></p>
+    <strong>{t('guidedRouter.title')}</strong>
     {routerProgress && <div className="guided-menu-progress" data-chapter-progress="two-networks"><ChapterProgress progress={routerProgress}/></div>}
     {routerProgress?.complete ? <div className="guided-router-completed-actions" data-router-completed-actions>
       <button type="button" role="menuitem" className="btn" data-router-resume disabled={ui.routerState.busy} onClick={() => { if (!routerDraft) return; void ui.sessions.switchDraft(routerDraft).then(result => { if (result.ok) { ui.showPanels(routerDraft); usePractice.getState().close(); close(); } }); }}>{t('guided.openNetwork')}</button>
@@ -214,14 +280,14 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
     {ui.routerState.storageError&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>void ui.router.retryProgress()}>{t('common.retry')}</button></p>}
     </section>
     <section className="guided-menu-chapter" aria-label={t('guidedStatic.title')}>
-      <strong>{t('guidedStatic.title')}</strong><p><TutorialText>{t('guidedStatic.menuDescription')}</TutorialText></p>
+      <strong>{t('guidedStatic.title')}</strong>
       {(routingProgress||routingHistory)&&<div className="guided-menu-progress" data-chapter-progress="static-routing" data-chapter-historically-completed={routingHistory}><ChapterProgress progress={routingHistory?{completed:11,total:11,complete:true}:routingProgress!}/>{routingHistory&&routingProgress&&!routingProgress.complete&&<small>{t('guidedAlternative.currentPractice',{completed:routingProgress.completed,total:routingProgress.total})}</small>}</div>}
       {routingDraft&&<button type="button" role="menuitem" className="btn" data-static-resume disabled={ui.routingState.busy||progressLoading||progressError} onClick={()=>{void ui.sessions.switchDraft(routingDraft).then(result=>{if(result.ok){ui.showPanels(routingDraft);usePractice.getState().close();close();}});}}>{t(routingProgress?.complete?'guided.openNetwork':'guided.resume')}</button>}
       <button type="button" role="menuitem" className="btn" data-static-direct disabled={ui.routingState.busy||progressLoading||progressError} onClick={()=>{usePractice.getState().close();void ui.routing.begin();close();}}>{t(routingDraft||routingHistory?'guided.newAttempt':'guided.chapterStart')}</button>
       {(ui.routingState.storageError||progress.routingError)&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>{void ui.routing.retryProgress();setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}
     </section>
     <section className="guided-menu-chapter" aria-label={t('guidedAlternative.title')}>
-      <strong>{t('guidedAlternative.title')}</strong><p><TutorialText>{t('guidedAlternative.menuDescription')}</TutorialText></p>
+      <strong>{t('guidedAlternative.title')}</strong>
       <div className="guided-menu-progress" data-chapter-progress="alternative-paths" data-alternative-indicator={alternativeIndicator} data-chapter-completed={!!alternativeProgress?.complete} data-chapter-historically-completed={alternativeHistory} data-completed-tasks={alternativeProgress?.completed??0}>
         <span className={'guided-alternative-indicator is-'+alternativeIndicator}><span aria-hidden="true">{alternativeHistory?'✓':alternativeDraft?'●':'○'} </span>{t(alternativeHistory?'guidedAlternative.chapterCompleted':alternativeDraft?'guidedAlternative.inProgress':'guidedAlternative.notStarted')}</span>
         {alternativePractice&&<small data-alternative-practice-progress>{t('guidedAlternative.currentPractice',{completed:alternativePractice.completed,total:alternativePractice.total})}{alternativePractice.complete&&!alternativeProgress?.complete?' · '+t('guidedAlternative.practiceComplete'):''}</small>}
@@ -229,7 +295,7 @@ export function GuidedTutorialMenu({ close,entryPopup }: { close(): void;entryPo
       {alternativeDraft&&<button type="button" role="menuitem" className="btn" data-alternative-resume disabled={ui.alternativeState.busy||progressLoading||progressError||!!progress.alternativeError} onClick={()=>{void ui.sessions.switchDraft(alternativeDraft).then(result=>{if(result.ok){ui.showPanels(alternativeDraft);usePractice.getState().close();close();}});}}>{t(alternativeProgress?.complete||alternativePractice?.complete?'guided.openNetwork':'guided.resume')}</button>}
       {trigger}
       {(ui.alternativeState.storageError||progress.alternativeError)&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>{void ui.alternative.retryProgress();setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}
-    </section><LpmMenu ui={ui} close={close}/><NatPatMenu sessions={ui.sessions} showPanels={ui.showPanels} close={close}/>{progressError && <p role="alert"><TutorialText>{t('guided.storageError')}</TutorialText><button className="btn" onClick={()=>{setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}</div>}
+    </section><LpmMenu ui={ui} close={close}/><NatPatMenu sessions={ui.sessions} repository={ui.repository} showPanels={ui.showPanels} close={close}/>{progressError && <p role="alert"><TutorialText>{t('guided.storageError')}</TutorialText><button className="btn" onClick={()=>{setExpanded(false);requestAnimationFrame(()=>setExpanded(true));}}>{t('common.retry')}</button></p>}</div>}
   </section>}</AlternativeEntryMenu>;
 }
 const steps = [
@@ -251,8 +317,7 @@ export function GuidedTutorialPanel() {
   const ui = useContext(Context), { t } = useTranslation(), practiceOpen = usePractice(s => s.open);
   const natActive = useStore(s => s.lab?.id === PROGRESSIVE_NAT_PAT_ID);
   const generation = useStore(s => s.topologyGeneration);
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => setCollapsed(false), [ui?.state.draftId]);
+  const [collapsed, setCollapsed] = useGuidedPanelCollapse('first-connection', ui?.state.draftId);
   if (practiceOpen) return null;
   if (natActive) {
     const draft = ui?.sessions.getState().activeDraftId;
@@ -310,13 +375,39 @@ export function GuidedTutorialPanel() {
   </ExercisePanelFrame>;
 }
 
-function NatPatMenu({ sessions, showPanels, close }: { sessions: SessionController; showPanels(id: string): void; close(): void }) {
+function NatPatMenu({ sessions, repository, showPanels, close }: { sessions: SessionController; repository: ProjectRepository; showPanels(id: string): void; close(): void }) {
   const { t } = useTranslation();
-  const activeNat = useStore(s => s.lab?.id === PROGRESSIVE_NAT_PAT_ID);
+  const activeProgress = useActiveNatPatProgress();
   const [busy, setBusy] = useState(false), [error, setError] = useState(false);
-  const { activeDraftId, drafts } = sessions.getState();
-  const attempt = activeNat ? activeDraftId : [...drafts].reverse().find(draft =>
+  const [session, setSession] = useState(() => sessions.getState());
+  const [history, setHistory] = useState(false);
+  useEffect(() => sessions.subscribe(() => setSession(sessions.getState())), [sessions]);
+  const { activeDraftId, drafts } = session;
+  const attempt = activeProgress ? activeDraftId : [...drafts].reverse().find(draft =>
     draft.id !== activeDraftId && sessions.recoveryDocument(draft.id)?.topology.lab?.id === PROGRESSIVE_NAT_PAT_ID)?.id;
+  const attemptRevision = drafts.find(draft => draft.id === attempt)?.editSequence;
+  const progress = useMemo(() => activeProgress ?? (attempt ? savedNatPatProgress(sessions.recoveryDocument(attempt)) : null),
+    [activeProgress, attempt, attemptRevision, sessions]);
+  useEffect(() => {
+    if (history) return;
+    let cancelled = false;
+    const confirmed = async () => {
+      if (progress?.complete) return rememberNatPatCompletion(repository);
+      if (await readNatPatCompletion(repository)) return true;
+      const open = sessions.getState().drafts;
+      if (open.some(draft => savedNatPatProgress(sessions.recoveryDocument(draft.id))?.complete)) return rememberNatPatCompletion(repository);
+      const plans = await repository.listProjects();
+      if (!plans.ok) return false;
+      for (const plan of plans.value) {
+        if (cancelled) return false;
+        const saved = await repository.loadProject(plan.id);
+        if (saved.ok && savedNatPatProgress(saved.value.document)?.complete) return rememberNatPatCompletion(repository);
+      }
+      return false;
+    };
+    void confirmed().then(complete => { if (!cancelled) setHistory(complete); }).catch(() => { /* Current progress remains available. */ });
+    return () => { cancelled = true; };
+  }, [history, progress?.complete, repository, sessions]);
   const start = async (resume = false) => {
     setBusy(true);
     setError(false);
@@ -330,11 +421,15 @@ function NatPatMenu({ sessions, showPanels, close }: { sessions: SessionControll
     usePractice.getState().close();
     close();
   };
-  const lab = progressiveNatPat.lab!;
-  return <section className="guided-menu-chapter" aria-label={lab.title}>
-    <strong>{lab.title}</strong><p>{lab.blurb}</p>
-    {attempt && <button type="button" role="menuitem" className="btn" data-nat-resume disabled={busy} onClick={() => void start(true)}>{t('guided.resume')}</button>}
-    <button type="button" role="menuitem" className="btn" data-nat-start disabled={busy} onClick={() => void start()}>{t(attempt ? 'guided.newAttempt' : 'guided.chapterStart')}</button>
+  const completed = history || !!progress?.complete;
+  return <section className="guided-menu-chapter" aria-label={t('guided.natTitle')}>
+    <strong>{t('guided.natTitle')}</strong>
+    {(completed || progress) && <div className="guided-menu-progress" data-chapter-progress="progressive-nat-pat" data-chapter-historically-completed={completed}>
+      <ChapterProgress progress={completed ? natPatCompleted : progress!}/>
+      {completed && progress && !progress.complete && <small data-nat-current-progress>{t('guidedAlternative.currentPractice', { completed: progress.completed, total: progress.total })}</small>}
+    </div>}
+    {attempt && <button type="button" role="menuitem" className="btn" data-nat-resume disabled={busy} onClick={() => void start(true)}>{t(progress?.complete ? 'guided.openNetwork' : 'guided.resume')}</button>}
+    <button type="button" role="menuitem" className="btn" data-nat-start disabled={busy} onClick={() => void start()}>{t(attempt || completed ? 'guided.newAttempt' : 'guided.chapterStart')}</button>
     {error && <p role="alert">{t('guided.error')}</p>}
   </section>;
 }
@@ -349,8 +444,8 @@ function LpmMenu({ui,close}:{ui:NonNullable<React.ContextType<typeof Context>>;c
   })().catch(()=>{if(!cancelled)setError(true);}).finally(()=>{if(!cancelled)setLoading(false);});return()=>{cancelled=true;};},[ui.repository,ui.sessions,active,ui.lpmState.record,ui.lpmState.saving,retry]);
   const current=record&&ui.lpmState.record?.draftId===record.draftId?ui.lpmState.record:record;
   return <section className="guided-menu-chapter" aria-label={t('guidedLpm.title')}>
-    <strong>{t('guidedLpm.title')}</strong><p>{t('guidedLpm.menu')}</p>
-    {current&&<ChapterProgress progress={{completed:current.completed.length,total:5,complete:current.completed.length===5}}/>}
+    <strong>{t('guidedLpm.title')}</strong>
+    {current&&<div className="guided-menu-progress" data-chapter-progress="longest-prefix-match"><ChapterProgress progress={{completed:current.completed.length,total:5,complete:current.completed.length===5}}/></div>}
     {current&&<button className="btn" type="button" role="menuitem" data-lpm-resume disabled={loading||error||ui.lpmState.busy} onClick={()=>{void ui.sessions.switchDraft(current.draftId).then(result=>{if(result.ok){ui.showPanels(current.draftId);usePractice.getState().close();close();}});}}>{t(current.completed.length===5?'guided.openNetwork':'guided.resume')}</button>}
     <button className="btn" type="button" role="menuitem" data-lpm-start disabled={loading||error||ui.lpmState.busy} onClick={()=>{usePractice.getState().close();void ui.lpm.begin();close();}}>{t(current?'guided.newAttempt':'guided.chapterStart')}</button>
     {(error||ui.lpmState.storageError)&&<p role="alert">{t('guided.storageError')} <button className="btn" onClick={()=>{void ui.lpm.retryProgress();setRetry(n=>n+1);}}>{t('common.retry')}</button></p>}

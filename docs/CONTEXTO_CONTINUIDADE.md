@@ -6,10 +6,13 @@ Os últimos ajustes destacam a transmissão selecionada no diagnóstico, disting
 
 **Publicação de 26/11/2026.** O navegador permite escolher um Host real em **+** e mantém uma guia por Host. No NAT/PAT, o Servidor Web está mais à direita e o cabo sai reto do Router Borda. O catálogo mostra o Modem branco em temas escuros e grafite em temas claros. [Guia do navegador](pc-browser.md)
 
+**Revisão de 26/11/2026.** Tutoriais guiados tem um cabeçalho destacado abaixo de Prática de cálculo. Abas sem nome usam o título do tutorial quando há vínculo confirmado. **Novo plano** acompanha a última aba e fica na borda direita quando as abas precisam rolar. O estado recolhido acompanha a tentativa durante a sessão. A conclusão histórica do NAT/PAT aparece no menu junto do progresso da tentativa atual. O painel do Capítulo 6 usa rótulos acessíveis e ajuda visual no idioma ativo. [Guia NAT/PAT](progressive-nat-pat.md)
+
 ## Retomar em casa
 
 - Atualize a `main` a partir de `origin/main` se o checkout permitir avanço direto. Revise manualmente a leitura do diagnóstico com um ICMP sem rota, um percurso NAT/PAT e o terminal aberto.
 - Conclua a validação manual da Etapa 3 do tutorial NAT/PAT. Confirme o HTTP de PC2 após corrigir a regra, abra **Firewall → Conntrack** e compare as portas externas durante a demonstração de PAT. A verificação HTTP dos dois PCs conclui o tutorial. Os endereços a configurar usam o destaque técnico C. [Guia do tutorial](progressive-nat-pat.md)
+- Publique o formulário de feedback, ative as notificações e configure o ID antes de testar upload e recebimento de e-mail. [Configuração do Tally](feedback-tally.md)
 - Considere VLAN Trunk 802.1Q como próxima implementação.
 
 ## Validação

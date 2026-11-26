@@ -1,7 +1,8 @@
 const en = {
   chapterStart: 'Start chapter', newAttempt: 'Start a new attempt',
+  menuSummary: '{count} chapters + NAT/PAT',
   tasksCompleted: '{completed}/{total} tasks completed', explore: 'Explore the network freely', exploreInvitation: 'Your network is ready. Explore it freely and try your own configurations.', openNetwork: 'Open network',
-  basicsGroup: 'Chapters 1–2 · Fundamentals', subnetMenuTitle: 'Understanding subnet masks', routerMenuDescription: 'Router and default gateway', directStart: 'Start directly', menuSummary: '5 chapters · Networking fundamentals',
+  basicsGroup: 'Chapters 1–2 · Fundamentals', subnetMenuTitle: 'Understanding subnet masks', directStart: 'Start directly', natTitle: 'NAT/PAT — Shared access',
   restart: 'Start again', storageError: 'Tutorial progress could not be saved or recovered. Your topology is preserved. A conflict may require reloading.',
   repeatPing: 'No ping is running after restoration. Run ping 192.168.10.20 in this PC’s terminal again, wait for a reply, then stop it with Ctrl+C.',
   ipv4CInspector: 'Select PC C and set 192.168.10.30/24 in the Inspector (Network → IPv4).',
@@ -15,7 +16,6 @@ const en = {
   hintPingC: 'Waiting for a successful ping entered in PC C’s terminal.',
   group: 'Guided tutorials', title: 'First connection', start: 'Start tutorial', resume: 'Continue tutorial',
   progress: 'Step {step} of {total}', previous: 'Back', next: 'Next',
-  prototype: 'Progress is stored with the local draft. Running commands are not restored.',
   error: 'Could not open the tutorial. Apply unfinished forms and check the storage status.',
   cableTitle: 'Connect a cable', cableText: 'Connect PC A to a free port on the switch. Drag from a connection handle on PC A to the switch.',
   ipv4Title: 'Configure IPv4', ipv4Text: 'Give PC A the address 192.168.10.10/24. Use the Inspector (Netzwerk → IPv4) or its Linux terminal.',
@@ -38,8 +38,9 @@ const en = {
 type Messages = Record<keyof typeof en, string>;
 const de: Messages = {
   chapterStart: 'Kapitel starten', newAttempt: 'Neuen Versuch starten',
+  menuSummary: '{count} Kapitel + NAT/PAT',
   tasksCompleted: '{completed}/{total} Aufgaben abgeschlossen', explore: 'Netzwerk frei erkunden', exploreInvitation: 'Ihr Netzwerk ist bereit. Erkunden Sie es frei und probieren Sie eigene Konfigurationen aus.', openNetwork: 'Netzwerk öffnen',
-  basicsGroup: 'Kapitel 1–2 · Grundlagen', subnetMenuTitle: 'Subnetzmaske verstehen', routerMenuDescription: 'Router und Standardgateway', directStart: 'Direkt starten', menuSummary: '5 Kapitel · Netzwerkgrundlagen',
+  basicsGroup: 'Kapitel 1–2 · Grundlagen', subnetMenuTitle: 'Subnetzmaske verstehen', directStart: 'Direkt starten', natTitle: 'NAT/PAT — Gemeinsamer Zugriff',
   restart: 'Neu starten', storageError: 'Tutorialfortschritt konnte nicht gespeichert oder wiederhergestellt werden. Die Topologie bleibt erhalten. Bei einem Konflikt kann Neuladen nötig sein.',
   repeatPing: 'Nach dem Wiederherstellen läuft kein Ping. Starten Sie ping 192.168.10.20 erneut im Terminal dieses PCs, warten Sie auf eine Antwort und beenden Sie ihn mit Strg+C.',
   ipv4CInspector: 'Wählen Sie PC C und stellen Sie im Inspector unter Netzwerk → IPv4 die Adresse 192.168.10.30/24 ein.',
@@ -53,7 +54,6 @@ const de: Messages = {
   hintPingC: 'Warte auf einen erfolgreichen Ping aus dem Terminal von PC C.',
   group: 'Geführte Tutorials', title: 'Erste Verbindung', start: 'Tutorial starten', resume: 'Fortsetzen',
   progress: 'Schritt {step} von {total}', previous: 'Zurück', next: 'Weiter',
-  prototype: 'Der Fortschritt wird mit dem lokalen Planentwurf gespeichert. Laufende Befehle werden nicht wiederhergestellt.',
   error: 'Tutorial konnte nicht geöffnet werden. Offene Formulare übernehmen und den Speicherstatus prüfen.',
   cableTitle: 'Kabel verbinden', cableText: 'Verbinden Sie PC A mit einem freien Port des Switches. Ziehen Sie von einem Verbindungspunkt an PC A zum Switch.',
   ipv4Title: 'IPv4 konfigurieren', ipv4Text: 'Geben Sie PC A die Adresse 192.168.10.10/24. Nutzen Sie den Inspector (Netzwerk → IPv4) oder das Linux-Terminal von PC A.',
@@ -75,8 +75,9 @@ const de: Messages = {
 };
 const ptBR: Messages = {
   chapterStart: 'Iniciar capítulo', newAttempt: 'Iniciar nova tentativa',
+  menuSummary: '{count} capítulos + NAT/PAT',
   tasksCompleted: '{completed}/{total} tarefas concluídas', explore: 'Explorar a rede livremente', exploreInvitation: 'Sua rede está pronta. Explore livremente e experimente suas próprias configurações.', openNetwork: 'Abrir rede',
-  basicsGroup: 'Capítulos 1–2 · Fundamentos', subnetMenuTitle: 'Entender a máscara de sub-rede', routerMenuDescription: 'Roteador e gateway padrão', directStart: 'Iniciar diretamente', menuSummary: '5 capítulos · Fundamentos de redes',
+  basicsGroup: 'Capítulos 1–2 · Fundamentos', subnetMenuTitle: 'Entender a máscara de sub-rede', directStart: 'Iniciar diretamente', natTitle: 'NAT/PAT — Acesso compartilhado',
   restart: 'Recomeçar', storageError: 'Não foi possível salvar ou recuperar o progresso do tutorial. A topologia foi preservada. Um conflito pode exigir recarregar a página.',
   repeatPing: 'Nenhum ping está em execução após a restauração. Execute ping 192.168.10.20 novamente no terminal deste PC, espere uma resposta e encerre com Ctrl+C.',
   ipv4CInspector: 'Selecione PC C e configure 192.168.10.30/24 no Inspector (Network → IPv4).',
@@ -90,7 +91,6 @@ const ptBR: Messages = {
   hintPingC: 'Aguardando um ping bem-sucedido digitado no terminal de PC C.',
   group: 'Tutoriais guiados', title: 'Primeira conexão', start: 'Iniciar tutorial', resume: 'Continuar tutorial',
   progress: 'Etapa {step} de {total}', previous: 'Voltar', next: 'Avançar',
-  prototype: 'O progresso fica salvo junto ao rascunho local. Comandos em execução não são restaurados.',
   error: 'Não foi possível abrir o tutorial. Aplique os formulários pendentes e confira o estado do armazenamento.',
   cableTitle: 'Conectar um cabo', cableText: 'Conecte PC A a uma porta livre do switch. Arraste de um ponto de conexão de PC A até o switch.',
   ipv4Title: 'Configurar IPv4', ipv4Text: 'Atribua 192.168.10.10/24 ao PC A. Use o Inspector (Netzwerk → IPv4) ou o terminal Linux de PC A.',

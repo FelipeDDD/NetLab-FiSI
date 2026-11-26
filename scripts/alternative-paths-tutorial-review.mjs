@@ -45,7 +45,7 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
   const next=async n=>{await wait('document.querySelector("[data-alternative-next]:not(:disabled)")');await click('[data-alternative-next]');await step(n);await saved();};
   const answer=async(kind,value)=>{await page.evaluate('const e=document.querySelector("[data-alternative-answer='+kind+']");e.value='+JSON.stringify(value)+';e.dispatchEvent(new Event("change",{bubbles:true}));');await delay(100);};
   const test=async(name,fn)=>{try{await fn();report.results['chapter5 v5: '+name]={passed:true};}catch(e){report.results['chapter5 v5: '+name]={passed:false,error:e.stack,visible:await page.evaluate('return document.querySelector(".exercise-panel")?.innerText;')};throw e;}};
-  const shot=async name=>{await page.evaluate('store.getState().setTerminalDockCollapsed(true);const body=document.querySelector(".exercise-body");if(body)body.scrollTop=0;');await delay(180);await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:100,y:20});const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(directory,name+'.png'),Buffer.from(png.data,'base64'));};
+  const shot=async name=>{if(process.env.NETLAB_TUTORIAL_MENU_SCREENSHOT_ONLY==='1')return;await page.evaluate('store.getState().setTerminalDockCollapsed(true);const body=document.querySelector(".exercise-body");if(body)body.scrollTop=0;');await delay(180);await page.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:100,y:20});const png=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(directory,name+'.png'),Buffer.from(png.data,'base64'));};
   const reloadAt=async n=>{await saved();const before=await receipt();await mount(true);await step(n);await saved();assert.deepEqual(await receipt(),before);};
   const variants=async n=>{for(const language of ['de','en','pt-BR'])for(const name of ['graphite-dark','classic-light']){
     await page.evaluate('lang.getState().setLanguage('+JSON.stringify(language)+');theme.getState().setTheme('+JSON.stringify(name)+');');await delay(75);
@@ -102,6 +102,26 @@ export async function runAlternativePathsReview({ page, url, root, report }) {
     });
     await test('complete real 16-task sequence and historic review without recapturing the baseline',async()=>{
       await open('beginning');
+      const panel = '[data-exercise="guided-alternative-paths"]';
+      const toggle = panel + ' header button[aria-expanded]';
+      const remainsCollapsed = async () => {
+        await delay(240);
+        await wait(`document.querySelector(${JSON.stringify(toggle)})?.getAttribute('aria-expanded')==='false'`);
+        assert.equal(await page.evaluate('return document.querySelector("[data-alternative-step]");'), null);
+      };
+      await test('minimized panel survives edits and revalidates when expanded', async () => {
+        await click(toggle);
+        const extra = await page.evaluate('const s=store.getState(), ids=new Set(s.nodes.map(n=>n.id));s.addDeviceAt("host",{x:900,y:600});return store.getState().nodes.find(n=>!ids.has(n.id)).id;');
+        await remainsCollapsed();
+        await page.evaluate(`store.getState().onNodesChange([{type:'position',id:${JSON.stringify(extra)},position:{x:960,y:620},dragging:false}]);`);
+        await remainsCollapsed();
+        await page.evaluate(`const error=store.getState().setIfaceIp(${JSON.stringify(extra)},'eth0','192.0.2.10/24');if(error)throw Error(error);`);
+        await remainsCollapsed();
+        await page.evaluate(`store.getState().deleteDevice(${JSON.stringify(extra)});`);
+        await remainsCollapsed();
+        await click(toggle);
+        await step(1);
+      });
       for(let index=0;index<3;index++){const rows=await page.evaluate('return chapter.TRANSIT_PLAN.slice('+index*2+','+(index*2+2)+');');for(const r of rows)assert.equal(await command(r.device,'ip address add '+r.address+' dev '+r.iface),'');const tests=await page.evaluate('return chapter.NEIGHBOR_TESTS.slice('+index*2+','+(index*2+2)+');');for(const t of tests)assert.match(await command(t.from,'ping -c 1 '+t.target,true),/64 bytes from/);await next(index+2);}
       await answer('remote','23');await next(5);for(const [id,address]of [[I.r1,'192.168.10.1/24'],[I.a,'192.168.10.10/24']])await command(id,'ip address add '+address+' dev '+(id===I.a?'eth0':'eth2'));await configureGateway(I.a,'192.168.10.1');await next(6);await variants(6);
       for(const [id,address]of [[I.r3,'192.168.20.1/24'],[I.b,'192.168.20.20/24']])await command(id,'ip address add '+address+' dev '+(id===I.b?'eth0':'eth2'));await configureGateway(I.b,'192.168.20.1');await next(7);await routes();const baseline=(await receipt()).progress.viaBaseline;

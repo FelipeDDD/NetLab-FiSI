@@ -16,6 +16,7 @@ import { consumeHomeIntent } from '../home/navigation';
 import { useLearningHelp } from './LearningHelp';
 import { studioText } from '../export/studio/messages';
 import { TRAFFIC_PROTOCOLS, toggleTrafficProtocol } from '../packetProtocols';
+import { FeedbackButton } from './FeedbackButton';
 
 const TopologyStudio = lazy(() => import('../export/studio/TopologyStudio'));
 
@@ -212,6 +213,7 @@ export function Toolbar({ inspectorLayout, onInspectorLayoutChange }: {
               }
             }}>{t(item.label)}</button>)}
         </div>}
+      <FeedbackButton onOpen={() => { closeMenu(); setDialog(null); }} />
     </nav>
     <LanguageSelector compact id="toolbar-language" />
 

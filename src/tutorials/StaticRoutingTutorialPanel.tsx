@@ -1,5 +1,6 @@
+import { useGuidedPanelCollapse } from './GuidedPanelCollapse';
 import { TutorialCommand, TutorialText } from './TutorialCommand';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { GuidedVisualHelp } from './GuidedVisualHelp';
 import { staticRoutingVisualHelp } from './tutorialVisualHelp';
 import { ExercisePanelFrame } from '../exercises/ExercisePanelFrame';
@@ -30,7 +31,8 @@ function FinalRoutingVerification({ controller, state }: { controller: StaticRou
 }
 
 export function StaticRoutingTutorialPanel({ controller, state, onExplore }: { controller: StaticRoutingTutorialController; state: StaticRoutingState; onExplore(): void }) {
-  const { t } = useTranslation(), [collapsed, setCollapsed] = useState(false), r = state.record;
+  const { t } = useTranslation(), r = state.record;
+  const [collapsed, setCollapsed] = useGuidedPanelCollapse('static-routing', r?.draftId);
   if (!state.active || !r) return null;
   const completion = staticRoutingCompletion(r), line = r.step <= 8;
   const pairs: readonly StaticPair[] = r.step === 8 ? ['ab', 'ba'] : STATIC_PAIRS;

@@ -1,6 +1,6 @@
 # Tutorial progressivo de NAT/PAT
 
-Abra **Übungen (Beta) → Geführte Tutorials → Tutorial progressivo — NAT/PAT**.
+Abra **Exercícios (Beta) → Tutoriais guiados → NAT/PAT — Acesso compartilhado**.
 O workspace abre uma nova tentativa em outro plano. Se já houver um rascunho
 do tutorial aberto, o menu oferece também a opção de continuar.
 O [planejamento original](planning/tutorial-progressivo-nat-pat.md) registra
@@ -15,6 +15,8 @@ a intenção pedagógica e as escolhas anteriores à implementação.
 3. **Acesso compartilhado.** Ajuste o NAT para incluir PC2, reabra a página no navegador dele e aguarde a confirmação da nova conexão traduzida. Abra **Router Borda → Firewall → Conntrack** e observe a tabela enquanto executa **Verificar HTTP dos dois PCs**. A conclusão aparece quando a verificação confirma duas conexões HTTP traduzidas em paralelo. O ping local é comprovado na etapa 2.
 
 O painel e a abertura da tentativa usam a infraestrutura dos tutoriais guiados. A tela interna, a associação do Host e os comprovantes continuam nos campos de progresso da topologia. Tentativas salvas na época em que o tutorial aparecia em Labs abrem no painel guiado, incluindo documentos JSON. Uma assinatura da configuração acompanha as verificações. Mudanças técnicas exigem novas provas. Resultados antigos sem assinatura permanecem armazenados, mas devem ser verificados novamente. A posição dos dispositivos não invalida as provas.
+
+O menu usa os mesmos comprovantes do painel. Depois de confirmar a conclusão, registra a conquista no armazenamento local para que ela continue visível ao fechar o rascunho ou iniciar outra tentativa. Uma tentativa antiga só recupera essa indicação quando seus comprovantes ainda podem ser validados.
 
 Na etapa 3, três telas apresentam NAT e firewall, a ilustração da regra nftables e a atividade prática. O botão **Abrir imagem** usa o visualizador dos demais capítulos. A ilustração está em PT-BR.
 

@@ -10,7 +10,8 @@ import { progressiveNatPat } from './progressiveNatPat';
 import { Shell } from '../commands/shell';
 import { requestPage, simulatedUrl, type BrowserResult } from '../browser/request';
 import { packetAnimationDuration, packetAnimationProgress, sequencePacketAnimation, type AnimatedTransfer } from '../packetAnimation';
-import { natCapturedFlow, natIntroComplete, natIntroSignature, natInvestigationComplete, natSecondHost } from './natLearning';
+import { natCapturedFlow, natConfiguration, natIntroComplete, natIntroSignature, natInvestigationComplete, natSecondHost } from './natLearning';
+import { savedNatPatProgress } from '../tutorials/natPatProgress';
 import { PacketCapture } from '../packetCapture';
 import { createDevice } from '../engine/factory';
 import { natHostReady, natBrowserProof, natRouterEntries } from './natLearning';
@@ -295,6 +296,44 @@ describe('progressive NAT/PAT Lab', () => {
       const final = check(network, 2);
       expect(Object.keys(final)).toEqual(['nat-after-pair']);
       expect(final['nat-after-pair'].pass).toBe(true);
+    } finally { disposeNetwork(network); }
+  });
+
+  it('recovers completion from an older document with evidence and rejects pending or stale results', () => {
+    const { network } = prepareTopologyDocument(progressiveNatPat);
+    try {
+      const passed = (detail: string) => ({ pass: true, detail });
+      const intro = natIntroSignature(network);
+      addPc2(network);
+      network.connect('PC2', 'lan');
+      const investigation = natConfiguration(network);
+      const router = network.devices.get('edge') as IpDevice;
+      router.fw.addNatRule('postrouting', { oif: 'eth1' }, { type: 'masquerade' });
+      const final = check(network, 2)['nat-after-pair'];
+      expect(final.pass).toBe(true);
+      const results = {
+        'nat-first-http': passed(intro),
+        'nat-source-local': passed(intro),
+        'nat-source-external': passed(intro),
+        'nat-before-local': passed('echo reply'),
+        'nat-before-pc1': passed('translated HTTP'),
+        'nat-before-pc2': passed('untranslated timeout'),
+        'nat-proof-nat-before-local': passed(investigation),
+        'nat-proof-nat-before-pc1': passed(investigation),
+        'nat-proof-nat-before-pc2': passed(investigation),
+        'nat-after-pair': passed(final.detail),
+        'nat-proof-nat-after-pair': passed(natConfiguration(network)),
+      };
+      const document = () => ({
+        schemaVersion: 1 as const,
+        topology: { ...serializeNetwork(network, {}), lab, labProgress: { step: 2, quiz: {}, results } },
+      });
+      expect(savedNatPatProgress(document())).toEqual({ completed: 5, total: 5, complete: true });
+      const pending = document();
+      pending.topology.labProgress.results = { ...results, 'nat-before-pc2': { pass: false, detail: '' } };
+      expect(savedNatPatProgress(pending)).toEqual({ completed: 2, total: 5, complete: false });
+      router.fw.nat.postrouting.rules.splice(1);
+      expect(savedNatPatProgress(document())).toEqual({ completed: 4, total: 5, complete: false });
     } finally { disposeNetwork(network); }
   });
 });

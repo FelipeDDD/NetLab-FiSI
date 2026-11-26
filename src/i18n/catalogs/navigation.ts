@@ -1,4 +1,8 @@
 const en = {
+  feedback: 'Feedback',
+  feedbackPrivacy: 'Tally processes what you choose to submit.',
+  feedbackFailed: 'Could not load the Tally form. Check your connection and try again.',
+  feedbackCleanUrl: 'Open NetLab without link parameters to send feedback through Tally.',
   modemColor: 'Colour', modemWhite: 'White', modemDark: 'Graphite', historyModemColor: 'Change modem colour',
   paletteModem: 'Modem', modemHint: 'Transparent Ethernet bridge with two ports. No routing, IP configuration or services.',
   relayHint: 'Forward DHCP requests to a remote server. Requires IPv4, links and return routes.',
@@ -185,7 +189,7 @@ const en = {
   paletteRouter: "Router",
   paletteNotebook: "Notebook",
   paletteSmartphone: "Smartphone",
-  paletteAp: "Wi-Fi AP",
+  paletteAp: "Access Point",
   paletteFirewall: "Firewall",
   paletteWorkstation: "Workstation",
   paletteServerHint: "DHCP / DNS / Web",
@@ -483,6 +487,10 @@ const en = {
 } as const;
 type Messages = Record<keyof typeof en, string>;
 const de: Messages = {
+  feedback: 'Feedback',
+  feedbackPrivacy: 'Tally verarbeitet die Angaben, die du absendest.',
+  feedbackFailed: 'Das Tally-Formular konnte nicht geladen werden. Prüfe die Verbindung und versuche es erneut.',
+  feedbackCleanUrl: 'Öffne NetLab ohne Linkparameter, um Feedback über Tally zu senden.',
   modemColor: 'Farbe', modemWhite: 'Weiß', modemDark: 'Graphit', historyModemColor: 'Modemfarbe ändern',
   paletteModem: 'Modem', modemHint: 'Transparente Ethernet-Bridge mit zwei Ports. Ohne Routing, IP-Konfiguration oder Dienste.',
   relayHint: 'DHCP-Anfragen an einen entfernten Server weiterleiten. IPv4, Verbindungen und Rückrouten erforderlich.',
@@ -669,7 +677,7 @@ const de: Messages = {
   paletteRouter: "Router",
   paletteNotebook: "Notebook",
   paletteSmartphone: "Smartphone",
-  paletteAp: "Wi-Fi AP",
+  paletteAp: "Access Point",
   paletteFirewall: "Firewall",
   paletteWorkstation: "Arbeitsstation",
   paletteServerHint: "DHCP / DNS / Web",
@@ -966,6 +974,10 @@ const de: Messages = {
   clientsLabel: "Clients",
 };
 const ptBR: Messages = {
+  feedback: 'Feedback',
+  feedbackPrivacy: 'O Tally processa as informações que você escolhe enviar.',
+  feedbackFailed: 'Não foi possível carregar o formulário do Tally. Confira a conexão e tente novamente.',
+  feedbackCleanUrl: 'Abra o NetLab sem parâmetros no link para enviar feedback pelo Tally.',
   modemColor: 'Cor', modemWhite: 'Branco', modemDark: 'Grafite', historyModemColor: 'Alterar cor do modem',
   paletteModem: 'Modem', modemHint: 'Bridge Ethernet transparente com duas portas. Sem roteamento, configuração IP ou serviços.',
   relayHint: 'Encaminhar solicitações DHCP ao servidor remoto. Requer IPv4, enlaces e rotas de retorno.',
@@ -1152,7 +1164,7 @@ const ptBR: Messages = {
   paletteRouter: "Router",
   paletteNotebook: "Notebook",
   paletteSmartphone: "Smartphone",
-  paletteAp: "AP Wi-Fi",
+  paletteAp: "Access Point",
   paletteFirewall: "Firewall",
   paletteWorkstation: "Estação de trabalho",
   paletteServerHint: "DHCP / DNS / Web",

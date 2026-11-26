@@ -4,13 +4,15 @@ import { sim } from '../sim';
 import { ipToString, parseIp } from '../engine/ip';
 import { IpDevice } from '../engine/ipdevice';
 import { natCapturedFlow, natIntroSignature, natSecondHost, natConfiguration, natHostReady, natIntroComplete, natInvestigationComplete } from '../labs/natLearning';
-import { natIntroConcept, PROGRESSIVE_NAT_PAT_URL } from '../labs/progressiveNatPat';
+import { natIntroConcept, PROGRESSIVE_NAT_PAT_ID, PROGRESSIVE_NAT_PAT_URL } from '../labs/progressiveNatPat';
 import { useTranslation } from '../i18n';
 import { ExercisePanelFrame } from '../exercises/ExercisePanelFrame';
 import { ChapterStepProgress, ExploreNetworkButton } from './CompletionUI';
 import { TutorialCommand } from './TutorialCommand';
 import { GuidedVisualHelp } from './GuidedVisualHelp';
 import type { TutorialVisualHelp } from './tutorialVisualHelp';
+import { useGuidedPanelCollapse } from './GuidedPanelCollapse';
+import { natPatProgress } from './natPatProgress';
 
 const natImage = new URL('../assets/nat-rule-pt-BR.svg', import.meta.url).href;
 const natVisualHelp: TutorialVisualHelp = { title: 'guidedVisual.title', description: 'guidedVisual.description', images: { de: natImage, en: natImage, 'pt-BR': natImage } };
@@ -34,7 +36,8 @@ export function NatPatPanel({ onExplore }: { onExplore?: () => void }) {
   const capture = useStore(s => s.packetCapture), checking = useStore(s => s.labChecking);
   useStore(s => s.nodes);
   const { language, t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(false);
+  const draftId = useStore(s => s.workspaceIdentity?.draftId);
+  const [collapsed, setCollapsed] = useGuidedPanelCollapse(PROGRESSIVE_NAT_PAT_ID, draftId);
   const [local, setLocal] = useState('192.168.'), [external, setExternal] = useState('');
   const [error, setError] = useState('');
   const signature = natIntroSignature(sim.net);
@@ -96,13 +99,7 @@ export function NatPatPanel({ onExplore }: { onExplore?: () => void }) {
   const introReady = introComplete || !!captured && !!http;
   const passed = lab.steps[step].objectives.every(o => objectivePassed(o.id));
   const reviewInvestigation = investigationComplete && (!passed || !hostReady);
-  const objectives = lab.steps.flatMap(s => s.objectives);
-  const completed = objectives.filter(o => {
-    if (o.id === 'nat-first-http') return introComplete || http;
-    if (o.id.startsWith('nat-before-') && investigationComplete) return true;
-    return objectivePassed(o.id);
-  }).length;
-  const complete = completed === objectives.length;
+  const progress = natPatProgress({ results, quiz }, configuration, signature);
   const next = () => {
     if (step === 0 && screen === 0) state.answerQuiz('nat-intro-screen', 1);
     else if (step === 2) state.answerQuiz('nat-rule-screen', natScreen + 1);
@@ -116,8 +113,8 @@ export function NatPatPanel({ onExplore }: { onExplore?: () => void }) {
   const canAdvance = step === 0 ? (screen === 0 ? introReady : !!localOk && !!externalOk) :
     step === 1 ? investigationComplete || passed && hostReady : natScreen < 2;
   return <ExercisePanelFrame exerciseId="guided-nat-pat" collapsed={collapsed} header={<>
-    <div className="exercise-heading"><strong>{lab.title}</strong>
-      <ChapterStepProgress step={step + 1} total={lab.steps.length} progress={{ completed, total: objectives.length, complete }}/>
+    <div className="exercise-heading"><strong>{t('guided.natTitle')}</strong>
+      <ChapterStepProgress step={step + 1} total={lab.steps.length} progress={progress}/>
     </div>
     <button type="button" className="btn btn--icon" aria-label={t(collapsed ? 'exercises.expand' : 'exercises.collapse')}
       aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}>{collapsed ? '+' : '−'}</button>
@@ -210,7 +207,7 @@ export function NatPatPanel({ onExplore }: { onExplore?: () => void }) {
           {result('nat-after-pair', 'PC1 e PC2 receberam HTTP por conexões traduzidas concorrentes.')}
           {mappings.length === 2 && <div className="guided-nat-mappings" aria-label="Mapeamentos TCP atuais no Conntrack">{mappings.map(mapping => <p key={mapping}>{mapping}</p>)}</div>}
         </section>
-        {passed && <div className="exercise-learning" data-nat-finished><Confirmation>Tutorial concluído! PC1 e PC2 acessaram o servidor externo ao mesmo tempo por conexões traduzidas.</Confirmation></div>}
+        {progress.complete && <div className="exercise-learning" data-nat-finished><Confirmation>Tutorial concluído! PC1 e PC2 acessaram o servidor externo ao mesmo tempo por conexões traduzidas.</Confirmation></div>}
         </>}
       </>}
       {((step === 1 && !reviewInvestigation && hostReady && objectivePassed('nat-before-local')) || (step === 2 && natScreen === 2) || (step === 0 && screen === 1 && !introComplete)) && <details className="exercise-learning" data-nat-hints key={step}><summary>Dicas</summary>
@@ -224,7 +221,7 @@ export function NatPatPanel({ onExplore }: { onExplore?: () => void }) {
     <footer data-nat-nav>
       <button type="button" className="btn" disabled={checking || (step === 0 && screen === 0)} onClick={previous}>{t('guided.previous')}</button>
       {(step < 2 || natScreen < 2) && <button type="button" className="btn btn--primary" data-nat-next disabled={checking || !canAdvance} onClick={next}>{t('guided.next')}</button>}
-      {step === 2 && natScreen === 2 && passed && <ExploreNetworkButton onClick={onExplore ?? (() => setCollapsed(true))}/>}
+      {step === 2 && natScreen === 2 && progress.complete && <ExploreNetworkButton onClick={onExplore ?? (() => setCollapsed(true))}/>}
     </footer></>}
   </ExercisePanelFrame>;
 }

@@ -1,5 +1,5 @@
+import { useGuidedPanelCollapse } from './GuidedPanelCollapse';
 import { TutorialCommand, TutorialText } from './TutorialCommand';
-import { useState } from 'react';
 import { ExercisePanelFrame } from '../exercises/ExercisePanelFrame';
 import { useTranslation, type TranslationKey } from '../i18n';
 import { sim } from '../sim';
@@ -15,7 +15,8 @@ import { alternativeRoutingVisualHelp } from './tutorialVisualHelp';
 import type { AlternativeState, AlternativePathsController } from './AlternativePathsController';
 
 export function AlternativePathsPanel({ controller, state, onExplore }: { controller: AlternativePathsController; state: AlternativeState; onExplore(): void }) {
-  const { t } = useTranslation(), [collapsed, setCollapsed] = useState(false), r = state.record;
+  const { t } = useTranslation(), r = state.record;
+  const [collapsed, setCollapsed] = useGuidedPanelCollapse('alternative-paths', r?.draftId);
   if (!state.active || !r) return null;
   const completion = alternativePathsCompletion(r), target = alternativeTarget(sim.net, I.b) ?? '192.168.14.14', router = sim.net.devices.get(I.r1);
   const practice=alternativePracticeCompletion(r),partialFinished=!!r.entry&&practice.complete,finished=completion.complete||partialFinished;

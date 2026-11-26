@@ -4,14 +4,18 @@ import path from 'node:path';
 
 export async function runLpmReview({ page, url, root, report }) {
   const database = 'netlab-idb-test-' + crypto.randomUUID(), directory = path.join(root, '.playwright-mcp/reviews/chapter6-lpm-refinement');
-  await mkdir(directory, { recursive: true });
   const delay = ms => new Promise(r => setTimeout(r, ms));
   const wait = async expression => { for (let n = 0; n < 250; n++) { if (await page.evaluate(`return !!(${expression});`)) return; await delay(50); } throw Error('LPM wait: ' + expression); };
   const click = async selector => {
     const p = await page.evaluate(`const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length);if(!e)throw Error('Missing '+${JSON.stringify(selector)});e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};`);
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...p, ...(type === 'mouseMoved' ? {} : { button: 'left', clickCount: 1 }) }); await delay(120);
   };
-  const shot = async name => { const image = await page.send('Page.captureScreenshot', { format: 'png' }); await writeFile(path.join(directory, name + '.png'), Buffer.from(image.data, 'base64')); };
+  const shot = async name => {
+    if (process.env.NETLAB_LPM_SCREENSHOT !== '1' || name !== '06-part1-complete') return;
+    await mkdir(directory, { recursive: true });
+    const image = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(path.join(directory, name + '.png'), Buffer.from(image.data, 'base64'));
+  };
   const mount = async reload => {
     await page.send(reload ? 'Page.reload' : 'Page.navigate', reload ? { ignoreCache: true } : { url }); await delay(400);
     await page.evaluate(`window.store=(await import('/src/store.ts')).useStore;window.sim=(await import('/src/sim.ts')).sim;window.lang=(await import('/src/i18n/index.ts')).useLanguage;window.theme=(await import('/src/uiTheme.ts')).useUiTheme;window.ws=await(await import('/src/workspace/reviewEntry.tsx')).mountWorkspaceReview(document.getElementById('root'),{databaseName:${JSON.stringify(database)}});window.events=[];window.release=(await import('/src/terminalCommandEvents.ts')).observeTerminalCommands(e=>events.push({type:e.type,deviceId:e.command.deviceId,line:e.command.line,text:e.text,source:e.command.source}));`);
@@ -43,6 +47,15 @@ export async function runLpmReview({ page, url, root, report }) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: 950, deviceScaleFactor: 1, mobile: false });
       await page.evaluate(`lang.getState().setLanguage(${JSON.stringify(language)});theme.getState().setTheme(${JSON.stringify(theme)});store.getState().setTerminalDockCollapsed(true);`); await delay(200);
       assert(await page.evaluate('const p=document.querySelector(".exercise-panel"),r=p.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&p.scrollWidth<=p.clientWidth+1;'));
+      assert(await page.evaluate(`
+        const {translate}=await import('/src/i18n/index.ts'), t=key=>translate(${JSON.stringify(language)},key);
+        const panel=document.querySelector('[data-exercise=guided-lpm]'), handle=panel.querySelector('.exercise-drag-handle');
+        return panel.querySelector('h3').textContent===t('guidedLpm.step${n}Title') &&
+          panel.querySelector('.exercise-body > p').textContent===t('guidedLpm.step${n}Text') &&
+          panel.getAttribute('aria-label')===t('exercises.panelLabel') &&
+          handle.getAttribute('aria-label')===t('exercises.panelMove') && handle.title===t('exercises.panelMoveHint') &&
+          handle.querySelector('.exercise-position-reset').title===t('exercises.panelResetPosition');
+      `));
       await shot(`step-${n}-${language}-${width}`);
     }
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 950, deviceScaleFactor: 1, mobile: false }); await page.evaluate('lang.getState().setLanguage("de");theme.getState().setTheme("graphite-dark");');
@@ -84,6 +97,23 @@ export async function runLpmReview({ page, url, root, report }) {
       assert(await page.evaluate('return !document.querySelector("[data-lpm-step] pre");'));await shot('05-independent-task-pending');
       await command('tutorial-06-r1', 'ip route add 192.168.80.130/32 via 10.6.12.2 dev eth2'); assert.deepEqual((await progress()).completed, [1, 2, 3, 4]); assert.match(await ping(), /64 bytes from/); assert.deepEqual((await progress()).completed, [1, 2, 3, 4, 5]); await variants(5); assert(await page.evaluate('return !!document.querySelector("[data-lpm-finished]");'));
       await page.evaluate('document.querySelector("[data-lpm-finished]").scrollIntoView({block:"nearest"});'); await shot('06-part1-complete');
+    });
+    await test('visual help changes language within the same attempt', async () => {
+      const before = await progress();
+      await click('[data-lpm-help] > summary');
+      await click('[data-guided-image]');
+      for (const language of ['de', 'en', 'pt-BR']) {
+        await page.evaluate(`lang.getState().setLanguage(${JSON.stringify(language)});`);
+        const file = JSON.stringify('rota-estatica-' + language + '.png');
+        await wait(`(() => { const img=document.querySelector('[data-guided-image-dialog] img'); return img?.naturalWidth>0 && img.src.includes(${file}); })()`);
+        assert(await page.evaluate(`
+          const {translate}=await import('/src/i18n/index.ts');
+          return document.querySelector('[data-guided-image-dialog] img').alt===translate(${JSON.stringify(language)},'guidedVisual.staticRouteDescription');
+        `));
+      }
+      await click('[data-guided-image-close]');
+      await page.evaluate('lang.getState().setLanguage("de");');
+      assert.deepEqual(await progress(), before);
     });
     await test('historic backward/forward navigation, F5 and restart with Undo/Redo', async () => {
       for (let n = 4; n >= 1; n--) { await click('.exercise-panel footer button:first-child'); await step(n); await saved(); }

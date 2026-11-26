@@ -60,6 +60,8 @@ body,
 }
 .toolbar-menu-trigger { border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text-dim); padding: 7px 8px; font-size: 12px; white-space: nowrap; cursor: pointer; }
 .toolbar-menu-trigger:hover, .toolbar-menu-trigger[aria-expanded="true"] { color: var(--text); background: var(--bg-raised); border-color: var(--border); }
+.toolbar-feedback { display: inline-flex; align-items: center; gap: 5px; }
+.toolbar-feedback svg { flex: none; }
 .toolbar :is(button, select, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .toolbar-quick-actions { margin-left: auto; gap: 7px; }
 .toolbar .toolbar-quick-history { gap: 3px; }
@@ -100,6 +102,7 @@ body,
   .toolbar .speed { width: 56px; padding-inline: 3px; }
   .toolbar-packets .packets-toggle { padding-inline: 7px; }
   .toolbar .packet-settings-toggle { width: 22px; }
+  .toolbar-feedback span { display: none; }
 }
 
 .brand-name {
@@ -311,6 +314,15 @@ body,
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 64px;
+  max-width: 100%;
+  height: 40px;
+}
+
+.palette-item-icon .device-artwork {
+  width: 100%;
+  height: 100%;
 }
 
 .palette-item.kind-host .palette-item-icon { color: var(--host); }

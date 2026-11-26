@@ -1,8 +1,10 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { boundExercisePanel } from './panelPosition';
+import { useTranslation } from '../i18n';
 
 /** Presentation only: no topology, viewport or progress writes. */
 export function ExercisePanelFrame({exerciseId,collapsed,header,children}:{exerciseId:string;collapsed:boolean;header:ReactNode;children:ReactNode}) {
+  const { t } = useTranslation();
   const element=useRef<HTMLElement>(null);
   const [position,setPosition]=useState<{x:number;y:number}>();
   const drag=useRef<{id:number;x:number;y:number;left:number;top:number;target:HTMLElement}>();
@@ -24,10 +26,10 @@ export function ExercisePanelFrame({exerciseId,collapsed,header,children}:{exerc
     window.addEventListener('blur',finish);
     return()=>{observer.disconnect();window.removeEventListener('blur',finish);finish();};
   },[]);
-  return <aside ref={element} className={`exercise-panel${collapsed?' is-collapsed':''}`} aria-label="Übung" data-exercise={exerciseId}
+  return <aside ref={element} className={`exercise-panel${collapsed?' is-collapsed':''}`} aria-label={t('exercises.panelLabel')} data-exercise={exerciseId}
     onKeyDown={event=>event.stopPropagation()}
     style={position?{left:position.x,top:position.y}:undefined}>
-    <header className="exercise-drag-handle" tabIndex={0} aria-label="Übung verschieben" title="Zum Verschieben ziehen oder Pfeiltasten verwenden"
+    <header className="exercise-drag-handle" tabIndex={0} aria-label={t('exercises.panelMove')} title={t('exercises.panelMoveHint')}
       onPointerDown={event=>{
         if(event.button!==0||!event.isPrimary||(event.target as Element).closest('button,input,select,a'))return;
         event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
@@ -45,7 +47,7 @@ export function ExercisePanelFrame({exerciseId,collapsed,header,children}:{exerc
         const panel=element.current!;setPosition(bound({x:panel.offsetLeft+dx,y:panel.offsetTop+dy}));
       }}>
       {header}
-      <button type="button" className="btn btn--icon exercise-position-reset" aria-label="Übung an Ausgangsposition" title="An Ausgangsposition zurücksetzen"
+      <button type="button" className="btn btn--icon exercise-position-reset" aria-label={t('exercises.panelResetPosition')} title={t('exercises.panelResetPosition')}
         onClick={()=>{finish();setPosition(undefined);}}>↖</button>
     </header>
     {children}

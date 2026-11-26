@@ -101,7 +101,7 @@ export function Palette({ compact = false, elementRef }: { compact?: boolean; el
                     onDragStart={e => onDragStart(e, it.kind, it.preset)}
                     onClick={() => add(it.kind,it.preset)}
                     title={t('navigation.paletteAddHint', { description: t(it.blurb) })}>
-                    <span className="palette-item-icon">{it.kind === 'modem' && hasDeviceArtwork(it.kind)
+                    <span className="palette-item-icon">{hasDeviceArtwork(it.kind)
                       ? <DeviceArtwork kind={it.kind} modemColor={modemColor} fallback={<DeviceIcon kind={it.kind} size={26} />} />
                       : <DeviceIcon kind={it.kind} size={26} />}</span>
                     <span className="palette-item-label">{t(it.label)}</span>

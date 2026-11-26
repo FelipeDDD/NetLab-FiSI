@@ -26,6 +26,60 @@ export async function runServerPresetsReview({page,url,root,report}){
    });
    return;
   }
+  await test('catalog uses the canvas artwork in both themes and keeps it inside the buttons', async () => {
+   const expected = ['host','server','switch','modem','router','notebook','smartphone','ap','firewall'];
+   const comparison = [];
+   for (const appearance of ['graphite-dark', 'classic-light']) {
+    await page.evaluate(`theme.getState().setTheme(${JSON.stringify(appearance)});i18n.useLanguage.getState().setLanguage('pt-BR');`);
+    await wait(`document.documentElement.dataset.uiTheme === ${JSON.stringify(appearance)}`);
+    const icons = await page.evaluate(`
+      const {DEVICE_ARTWORK}=await import('/src/deviceArtwork.ts');
+      return Promise.all([...document.querySelectorAll('.palette-item')].map(async button => {
+        const kind=[...button.classList].find(name=>name.startsWith('kind-')).slice(5);
+        const svg=button.querySelector('.device-artwork'), image=svg?.querySelector('image');
+        const href=image?.getAttribute('href');
+        if (href) { const loaded=new Image();loaded.src=href;await loaded.decode(); }
+        const slot=button.querySelector('.palette-item-icon').getBoundingClientRect(), bounds=svg?.getBoundingClientRect();
+        const expected=kind==='modem' && document.documentElement.dataset.uiTheme==='classic-light'
+          ? DEVICE_ARTWORK.modem.darkFile : DEVICE_ARTWORK[kind].file;
+        return {kind, valid: !!href?.endsWith('/'+expected) && button.draggable && !!button.getAttribute('aria-label') &&
+          svg.getAttribute('viewBox')===DEVICE_ARTWORK[kind].viewBox && svg.getAttribute('preserveAspectRatio')==='xMidYMid meet' &&
+          bounds.width>0 && bounds.height>0 && bounds.left>=slot.left-0.5 && bounds.right<=slot.right+0.5 &&
+          bounds.top>=slot.top-0.5 && bounds.bottom<=slot.bottom+0.5 };
+      }));
+    `);
+    assert.deepEqual(icons.map(icon=>icon.kind),expected);
+    assert(icons.every(icon=>icon.valid),JSON.stringify(icons));
+    if (process.env.NETLAB_CATALOG_COMPARISON === '1') {
+     const clip = await page.evaluate(`
+       await document.fonts.ready;
+       const palette=document.querySelector('.palette').getBoundingClientRect(), last=document.querySelector('.palette-item.kind-firewall').getBoundingClientRect();
+       return {x:Math.floor(palette.x),y:Math.floor(palette.y),width:Math.floor(palette.width),height:Math.ceil(last.bottom-palette.y)+12,scale:1};
+     `);
+     const shot=await page.send('Page.captureScreenshot',{format:'png',clip,captureBeyondViewport:false});
+     comparison.push({label:appearance==='graphite-dark'?'Graphite Dark':'Classic Light',data:shot.data});
+    }
+   }
+   if (comparison.length) {
+    const png=await page.evaluate(`
+      const panels=await Promise.all(${JSON.stringify(comparison)}.map(async ({label,data})=>{
+        const image=new Image();image.src='data:image/png;base64,'+data;await image.decode();return {label,image};
+      }));
+      const canvas=document.createElement('canvas'),gap=12,heading=32;
+      canvas.width=panels.reduce((width,panel)=>width+panel.image.width+gap,gap);
+      canvas.height=Math.max(...panels.map(panel=>panel.image.height))+heading+gap;
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#222831';ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#fff';ctx.font='600 14px system-ui';
+      let x=gap;
+      for(const {label,image} of panels){ctx.fillText(label,x,21);ctx.drawImage(image,x,heading);x+=image.width+gap;}
+      return canvas.toDataURL('image/png').split(',')[1];
+    `);
+    const target=path.join(root,'.playwright-mcp/reviews/catalog-assets');
+    await mkdir(target,{recursive:true});
+    await writeFile(path.join(target,'catalogo-claro-escuro.png'),Buffer.from(png,'base64'));
+   }
+   await page.evaluate('theme.getState().setTheme("graphite-dark");i18n.useLanguage.getState().setLanguage("de");');
+  });
   await test('single generic palette entry starts empty; internal presets remain compatible',async()=>{
    await page.evaluate('window.ids={};');
    await page.evaluate('document.querySelector(".palette-item.kind-server").click();');

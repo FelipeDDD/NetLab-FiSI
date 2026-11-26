@@ -8,6 +8,7 @@ import { hasPendingForms } from '../persistence/pendingForms';
 import { encodeDraftDocument } from '../projects/workspaceDocument';
 import { translate, useLanguage, useTranslation, type Language } from '../i18n';
 import { createEmptyProjectDocument } from '../projects/projectDocument';
+import { useGuidedTabTitles } from '../tutorials/TutorialUI';
 
 export const emptyPlan: ProjectDocument = createEmptyProjectDocument();
 /** An unnamed draft still needs Save As, even when it contains nothing to lose.
@@ -191,6 +192,7 @@ export function WorkspaceProvider({ controller, repository, children }: { contro
 export function WorkspaceTabs() {
   const { t } = useTranslation();
   const ui = useWorkspaceUI(); const focus = useRef<HTMLButtonElement | null>(null);
+  const draftTitle = useGuidedTabTitles(ui?.state.drafts ?? []);
   useEffect(() => { focus.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); focus.current?.focus({ preventScroll: true }); }, [ui?.state.activeDraftId]);
   if (!ui) return null;
   const ids = ui.state.session?.draftIds ?? [];
@@ -199,11 +201,11 @@ export function WorkspaceTabs() {
       onDragStart={e => e.dataTransfer.setData('application/x-netlab-draft', draft.id)} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('application/x-netlab-draft'); if (ids.includes(id) && id !== draft.id) ui.reorder(id, draft.id); }}>
       <button role="tab" aria-selected={draft.id === ui.state.activeDraftId} tabIndex={draft.id === ui.state.activeDraftId ? 0 : -1}
         ref={element => { if (draft.id === ui.state.activeDraftId) focus.current = element; }}
-        onMouseDown={e => e.preventDefault()} onClick={() => ui.switchTo(draft.id)} title={`${draft.base?.planName ?? t('workspace.untitled')}${draft.manualSavePending ? ' · ' + t('workspace.unsaved') : ''}`}
+        onMouseDown={e => e.preventDefault()} onClick={() => ui.switchTo(draft.id)} title={`${draftTitle(draft)}${draft.manualSavePending ? ' · ' + t('workspace.unsaved') : ''}`}
         onKeyDown={e => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { e.preventDefault(); if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { const next = ids[index + (e.key === 'ArrowLeft' ? -1 : 1)]; if (next) ui.reorder(e.key === 'ArrowLeft' ? draft.id : next, e.key === 'ArrowLeft' ? next : draft.id); } else { const next = e.key === 'Home' ? ids[0] : e.key === 'End' ? ids.at(-1)! : ids[(index + (e.key === 'ArrowLeft' ? -1 : 1) + ids.length) % ids.length]; ui.switchTo(next); } } }}>
         <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" aria-hidden="true"><rect x="2" y="2" width="4" height="4" rx="1"/><rect x="12" y="12" width="4" height="4" rx="1"/><path d="M4 6v8h8M6 4h8v8"/></svg>
-        <span className="workspace-tab-name">{draft.base?.planName ?? t('workspace.untitled')}</span>{draft.manualSavePending && <span className="workspace-dirty" aria-label={t('workspace.unsaved')}>●</span>}
-      </button><button className="workspace-tab-close" aria-label={t('workspace.closeNamed', { name: draft.base?.planName ?? t('workspace.untitled') })} onMouseDown={e => e.preventDefault()} onClick={() => ui.close(draft.id)}>×</button>
+        <span className="workspace-tab-name">{draftTitle(draft)}</span>{draft.manualSavePending && <span className="workspace-dirty" aria-label={t('workspace.unsaved')}>●</span>}
+      </button><button className="workspace-tab-close" aria-label={t('workspace.closeNamed', { name: draftTitle(draft) })} onMouseDown={e => e.preventDefault()} onClick={() => ui.close(draft.id)}>×</button>
     </div>)}
     {!ids.length && <span className="workspace-no-tabs">{t('workspace.noPlan')}</span>}
   </div><button type="button" className="workspace-add" title={t('workspace.new')} aria-label={t('workspace.new')} disabled={ui.busy} onMouseDown={e => e.preventDefault()} onClick={ui.newPlan}>+<span> {t('workspace.new')}</span></button></div>;

@@ -22,6 +22,7 @@ export async function runSubnetTutorialReview({ page, root, report, wait, delay,
     await delay(100);
   };
   const shot = async (scene, variant = 'graphite-dark', width = 1440, height = 1000) => {
+    if (process.env.NETLAB_TUTORIAL_MENU_SCREENSHOT_ONLY === '1') return;
     await delay(100); const r = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }); await writeFile(path.join(directory, scene + '.png'), Buffer.from(r.data, 'base64'));
     captures.push({ source: path.relative(root, path.join(directory, scene + '.png')).split(path.sep).join('/'), scene, variant, state: 'normal', width, height });
   };
@@ -39,6 +40,7 @@ export async function runSubnetTutorialReview({ page, root, report, wait, delay,
     chapterOneMeta = await page.evaluate("return (await ws.repository.getMeta('guided:v1:draft:'+ws.controller.getState().activeDraftId)).value.value;");
     await wait("document.querySelector('[data-start-subnet]:not(:disabled)')");
     await click('[data-start-subnet]'); await step(1); await saved();
+    assert(await page.evaluate("return document.querySelector('.workspace-tab-wrap[data-active=true] .workspace-tab-name')?.textContent===document.querySelector('[data-exercise=guided-subnet-mask] .exercise-heading strong')?.textContent;"));
     assert.equal(await page.evaluate('return ws.controller.getState().activeDraftId;'), tutorialId);
     assert(await page.evaluate(`const d=sim.net.devices.get(${JSON.stringify(d)}),i=d.getInterface('eth0');return d.os==='linux'&&i.ip.addr===(await import('/src/engine/ip.ts')).parseIp('192.168.10.12')&&i.ip.prefix===28&&i.gateway===null&&i.link.operational&&chapterOneDevices.every(old=>sim.net.devices.get(old.id)===old)&&JSON.stringify(store.getState().nodes.filter(n=>n.id!==d.id).map(n=>({id:n.id,position:n.position})))===JSON.stringify(chapterOnePositions);`));
     assert.equal(await page.evaluate('return store.getState().topologyHistory.past.length;'), await page.evaluate('return chapterOneHistory+1;'));
@@ -128,6 +130,7 @@ export async function runSubnetTutorialReview({ page, root, report, wait, delay,
     assert(await page.evaluate("const r=document.querySelector('.exercise-panel').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1&&document.documentElement.scrollWidth<=innerWidth+1;"));
     await shot('05-completed-light-700', 'classic-light', 700, 800); await reload(5); assert.equal(await passed(), true);
   });
+  if (!captures.length) return;
   const main = ['01-mask-question', '02-real-demonstration', '05-completed-light-700'], manifest = path.join(directory, 'manifest.json');
   await writeFile(manifest, JSON.stringify({ id: 'guided-subnet-mask', title: 'Kapitel 2 – Subnetzmaske verstehen', variants: [{ id: 'graphite-dark', label: 'Graphite Dark' }, { id: 'classic-light', label: 'Classic Light' }], states: ['normal'], captures, share: captures.filter(c => main.includes(c.scene)).map(c => ({ ...c, name: c.scene })), shareContactSheet: false }));
   report.subnetTutorialReview = await generateReview(manifest);

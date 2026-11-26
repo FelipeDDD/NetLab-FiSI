@@ -31,7 +31,7 @@ export async function runGuidedTutorialReview({ page, url, root, report }) {
   };
   const passed = () => page.evaluate("return document.querySelector('[data-tutorial-passed]').dataset.tutorialPassed==='true';");
   const advance = async ms => { await page.evaluate(`store.getState().setPaused(true);sim.net.scheduler.advanceTo(sim.net.now+${ms});`); await delay(100); };
-  const screenshot = async name => { if (name !== '05-pc-c-hinzufuegen') return; const png = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }); await writeFile(path.join(directory, name + '.png'), Buffer.from(png.data, 'base64')); };
+  const screenshot = async name => { if (process.env.NETLAB_TUTORIAL_MENU_SCREENSHOT_ONLY === '1' || name !== '05-pc-c-hinzufuegen') return; const png = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }); await writeFile(path.join(directory, name + '.png'), Buffer.from(png.data, 'base64')); };
   const mount = async (reload = false) => {
     await page.send(reload ? 'Page.reload' : 'Page.navigate', reload ? { ignoreCache: true } : { url }); await wait("document.readyState==='complete'&&document.getElementById('root')");
     await page.evaluate(`window.store=(await import('/src/store.ts')).useStore;window.sim=(await import('/src/sim.ts')).sim;window.serial=await import('/src/engine/serialize.ts');window.lang=(await import('/src/i18n/index.ts')).useLanguage;window.theme=(await import('/src/uiTheme.ts')).useUiTheme;lang.getState().setLanguage('de');window.ws=await (await import('/src/workspace/reviewEntry.tsx')).mountWorkspaceReview(document.getElementById('root'),{databaseName:${JSON.stringify(database)}});`);

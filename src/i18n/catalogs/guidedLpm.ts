@@ -1,6 +1,6 @@
 const de = {
  shortCheck:'Route /24 für den direkten Weg erhalten', longCheck:'Neue Route über den Umweg nachgewiesen',
-  title: 'Kapitel 6 — Longest Prefix Match · Teil 1', menu: 'Zwei Wege zum selben Ziel: beobachten, untersuchen und selbst verändern.',
+  title: 'Kapitel 6 — Longest Prefix Match · Teil 1',
   step1Title: 'Der unerwartete Weg', step1Text: 'Von PC A führen zwei Wege zu PC B: ein direkter Weg und ein Umweg über mehrere Router.',
   prediction: 'Welchen Weg erwarten Sie?', shortPath: 'Den direkten Weg', longPath: 'Den Umweg über R2, R3 und R4', confirmPrediction: 'Vorhersage bestätigen',
   predicted: 'Ihre Vorhersage: {path}.', test: 'Pingen Sie PC B von PC A aus und beobachten Sie den Hinweg.',
@@ -25,7 +25,7 @@ const de = {
 };
 const en: typeof de = {
  shortCheck:'Original /24 route retained on the short path', longCheck:'New route verified along the long path',
-  title: 'Chapter 6 — Longest Prefix Match · Part 1', menu: 'Two paths to one destination: observe, investigate and change the decision yourself.',
+  title: 'Chapter 6 — Longest Prefix Match · Part 1',
   step1Title: 'The unexpected path', step1Text: 'Two paths lead from PC A to PC B: a direct path and a detour through several routers.',
   prediction: 'Which path do you expect?', shortPath: 'The direct path', longPath: 'The detour through R2, R3 and R4', confirmPrediction: 'Confirm prediction',
   predicted: 'Your prediction: {path}.', test: 'Ping PC B from PC A and observe the outbound path.',
@@ -50,7 +50,7 @@ const en: typeof de = {
 };
 const pt: typeof de = {
  shortCheck:'Rota /24 preservada no caminho curto', longCheck:'Nova rota comprovada pelo caminho longo',
-  title: 'Capítulo 6 — Longest Prefix Match · Parte 1', menu: 'Dois caminhos para o mesmo destino: observe, investigue e mude a decisão.',
+  title: 'Capítulo 6 — Longest Prefix Match · Parte 1',
   step1Title: 'O caminho inesperado', step1Text: 'Há dois caminhos de PC A até PC B: um direto e um desvio por vários roteadores.',
   prediction: 'Qual caminho você espera?', shortPath: 'O caminho direto', longPath: 'O desvio por R2, R3 e R4', confirmPrediction: 'Confirmar previsão',
   predicted: 'Sua previsão: {path}.', test: 'Execute um ping de PC A para PC B e observe o percurso de ida.',

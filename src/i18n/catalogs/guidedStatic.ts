@@ -1,6 +1,5 @@
 const en = {
   title: 'Chapter 4 · Static routing',
-  menuDescription: 'Three routers, next hop and return path',
   scenario: 'Scenario {scenario}/2',
   lineTitle: 'Three routers in a chain',
   expandedTitle: 'Connect three networks',
@@ -19,7 +18,6 @@ const en = {
 };
 const de: typeof en = {
   title: 'Kapitel 4 · Statisches Routing',
-  menuDescription: 'Drei Router, Next Hop und Rückweg',
   scenario: 'Szenario {scenario}/2',
   lineTitle: 'Drei Router in Reihe',
   expandedTitle: 'Drei Netzwerke verbinden',
@@ -38,7 +36,6 @@ const de: typeof en = {
 };
 const pt: typeof en = {
   title: 'Capítulo 4 · Roteamento estático',
-  menuDescription: 'Três routers, próximo salto e caminho de retorno',
   scenario: 'Cenário {scenario}/2',
   lineTitle: 'Três routers em sequência',
   expandedTitle: 'Conectar três redes',

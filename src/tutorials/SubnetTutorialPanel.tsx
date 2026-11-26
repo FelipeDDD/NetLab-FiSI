@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useGuidedPanelCollapse } from './GuidedPanelCollapse';
+import { type ReactNode } from 'react';
 import { ExercisePanelFrame } from '../exercises/ExercisePanelFrame';
 import { useTranslation } from '../i18n';
 import { useStore } from '../store';
@@ -15,7 +16,8 @@ const titles = ['maskTitle', 'demoTitle', 'failureTitle', 'correctTitle', 'retes
 const texts = ['maskText', 'demoText', 'failureText', 'correctText', 'retestText'] as const;
 const successes = ['maskPassed', 'demoPassed', 'failurePassed', 'correctPassed', 'finished'] as const;
 export function SubnetTutorialPanel({ controller, state, afterCompletion, onExplore }: { controller: SubnetTutorialController; state: SubnetState; afterCompletion?:ReactNode; onExplore?():void }) {
-  const { t } = useTranslation(), [collapsed, setCollapsed] = useState(false), r = state.record;
+  const { t } = useTranslation(), r = state.record;
+  const [collapsed, setCollapsed] = useGuidedPanelCollapse('subnet-mask', r?.draftId);
   if (!state.active || !r) return null;
   const step = r.step - 1;
   const completion = subnetChapterCompletion(r, correctedSubnet(sim.net, r.pcC));

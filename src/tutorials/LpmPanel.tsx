@@ -1,3 +1,4 @@
+import { useGuidedPanelCollapse } from './GuidedPanelCollapse';
 import { useEffect, useState } from 'react';
 import { useTranslation, type TranslationKey } from '../i18n';
 import { ExercisePanelFrame } from '../exercises/ExercisePanelFrame';
@@ -13,7 +14,8 @@ import { GuidedVisualHelp } from './GuidedVisualHelp';
 import { staticRoutingVisualHelp } from './tutorialVisualHelp';
 
 export function LpmPanel({ controller, state, onExplore }: { controller: LpmController; state: LpmState; onExplore(): void }) {
-  const { t } = useTranslation(), [collapsed, setCollapsed] = useState(false), r = state.record;
+  const { t } = useTranslation(), r = state.record;
+  const [collapsed, setCollapsed] = useGuidedPanelCollapse('longest-prefix-match', r?.draftId);
   const [prediction, setPrediction] = useState<'short' | 'long' | ''>('');
   const [confirmed, setConfirmed] = useState(false);
   useEffect(() => { setPrediction(''); setConfirmed(false); }, [r?.attemptId]);
