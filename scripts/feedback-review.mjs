@@ -1,25 +1,6 @@
 import assert from 'node:assert/strict';
 
-// Exercise the SDK contract without accessing a real form or submitting data.
-const widgetFixture = `
-window.Tally = {
-  openPopup(id, options) {
-    window.popupOptions = { id, layout: options.layout, width: options.width, hiddenFields: options.hiddenFields };
-    const popup = document.createElement('dialog');
-    popup.dataset.feedbackFixture = '';
-    popup.style.width = options.width + 'px';
-    const close = document.createElement('button');
-    close.textContent = 'Close';
-    close.onclick = () => this.closePopup(id);
-    popup.appendChild(close);
-    document.body.appendChild(popup);
-    popup.addEventListener('close', () => { popup.remove(); options.onClose(); }, { once: true });
-    popup.showModal();
-    options.onOpen();
-  },
-  closePopup() { document.querySelector('[data-feedback-fixture]')?.close(); },
-};
-`;
+const embedUrl = 'https://tally.so/embed/NetLabTestOnly';
 
 export async function runFeedbackReview({ page, url, report, configured }) {
   const database = 'netlab-idb-test-' + crypto.randomUUID();
@@ -31,59 +12,70 @@ export async function runFeedbackReview({ page, url, report, configured }) {
     }
     throw new Error('Feedback review: ' + condition);
   };
-  let blocked = true, requests = 0;
+  const requests = [];
   await page.send('Fetch.enable', { patterns: [{ urlPattern: 'https://tally.so/*' }] });
   const release = page.onEvent('Fetch.requestPaused', ({ requestId, request }) => {
-    requests++;
-    if (blocked || request.url !== 'https://tally.so/widgets/embed.js') {
-      void page.send('Fetch.failRequest', { requestId, errorReason: 'ConnectionFailed' });
-    } else {
-      void page.send('Fetch.fulfillRequest', {
-        requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/javascript' }],
-        body: Buffer.from(widgetFixture).toString('base64'),
-      });
-    }
+    requests.push(request);
+    void page.send('Fetch.fulfillRequest', {
+      requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/html' }],
+      body: Buffer.from('<!doctype html><title>Form fixture</title><input type="file">').toString('base64'),
+    });
   });
   try {
-    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 950, deviceScaleFactor: 1, mobile: false });
     await page.send('Page.navigate', { url });
     await wait('document.readyState==="complete" && document.getElementById("root")');
     await page.evaluate(`
       window.language = (await import('/src/i18n/index.ts')).useLanguage;
-      language.getState().setLanguage('pt-BR');
       (await import('/src/uiTheme.ts')).useUiTheme.getState().setTheme('graphite-dark');
       window.ws = await (await import('/src/workspace/reviewEntry.tsx')).mountWorkspaceReview(document.getElementById('root'), { databaseName: ${JSON.stringify(database)} });
     `);
     await wait('document.querySelector(".toolbar")');
     assert.equal(await page.evaluate(`return !!${button};`), configured);
-    assert.equal(requests, 0);
+    assert.equal(requests.length, 0);
     if (!configured) {
       report.results['feedback: absent without a configured ID, no Tally request'] = { passed: true };
       return;
     }
-    assert(await page.evaluate(`const b=${button};return b.previousElementSibling.textContent.endsWith('Ajuda') && b.getAttribute('aria-description').includes('Tally');`));
-    await page.evaluate(`history.replaceState(null, '', location.pathname + '?review=private');${button}.click();`);
-    await wait('document.querySelector(".toolbar-notice")?.textContent.includes("sem parâmetros")');
-    assert.equal(requests, 0);
-    await page.evaluate(`history.replaceState(null, '', location.pathname);${button}.click();`);
-    await wait('document.querySelector(".toolbar-notice")?.textContent.includes("Não foi possível carregar")');
-    assert.equal(requests, 1);
-    blocked = false;
 
-    for (const [locale, width] of [['en', 1440], ['de', 400]]) {
-      await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
-      await page.evaluate(`language.getState().setLanguage(${JSON.stringify(locale)});${button}.click();`);
-      await wait(`${button}.getAttribute('aria-expanded')==='true'`);
-      assert.deepEqual(await page.evaluate('return popupOptions;'), {
-        id: 'NetLabTestOnly', layout: 'modal', width: Math.min(560, width - 24),
-      });
-      assert(await page.evaluate('return !!document.querySelector(".react-flow") && document.documentElement.scrollWidth<=innerWidth+1;'));
-      if (locale === 'en') await page.evaluate('document.querySelector("[data-feedback-fixture] button").click();');
-      else for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-      await wait(`!document.querySelector("[data-feedback-fixture]") && document.activeElement===${button}`);
+    for (const width of [1440, 400]) {
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 400 });
+      for (const [locale, suffix] of [['pt-BR', ''], ['en', '?utm_source=chatgpt.com'], ['de', '?email=teste@example.com#privado']]) {
+        const before = requests.length;
+        const location = await page.evaluate(`
+          language.getState().setLanguage(${JSON.stringify(locale)});
+          history.replaceState(null, '', '/app.html' + ${JSON.stringify(suffix)});
+          ${button}.focus();
+          ${button}.click();
+          return window.location.href;
+        `);
+        await wait('document.querySelector(".feedback-dialog[open] iframe")');
+        for (let i = 0; i < 200 && requests.length === before; i++) await new Promise(resolve => setTimeout(resolve, 50));
+        assert.equal(requests.length, before + 1);
+        const request = requests.at(-1);
+        assert.equal(request.method, 'GET');
+        assert.equal(request.url, embedUrl);
+        assert(!request.hasPostData && !Object.keys(request.headers).some(key => /^referer$/i.test(key)));
+        assert.deepEqual(await page.evaluate(`
+          const dialog = document.querySelector('.feedback-dialog');
+          const iframe = dialog.querySelector('iframe');
+          const rect = dialog.getBoundingClientRect();
+          return {
+            url: window.location.href, policy: iframe.referrerPolicy, src: iframe.src,
+            closeFocused: document.activeElement === dialog.querySelector('button'),
+            fits: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+            dark: getComputedStyle(dialog).colorScheme === 'dark',
+          };
+        `), { url: location, policy: 'no-referrer', src: embedUrl, closeFocused: true, fits: true, dark: true });
+
+        if (locale === 'de') {
+          for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        } else {
+          await page.evaluate('document.querySelector(".feedback-dialog-close").click();');
+        }
+        await wait(`!document.querySelector(".feedback-dialog") && document.activeElement===${button}`);
+      }
     }
-    assert.equal(requests, 2, 'reuse the loaded widget');
-    report.results['feedback: toolbar, privacy guard, error, modal contract and compact closing'] = { passed: true };
+    report.results['feedback: clean iframe requests, desktop/mobile layout, and focus restored'] = { passed: true };
   } finally {
     release();
     await page.send('Fetch.disable');
