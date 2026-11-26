@@ -8,15 +8,18 @@ Os últimos ajustes destacam a transmissão selecionada no diagnóstico, disting
 
 **Revisão de 26/11/2026.** Tutoriais guiados tem um cabeçalho destacado abaixo de Prática de cálculo. Abas sem nome usam o título do tutorial quando há vínculo confirmado. **Novo plano** acompanha a última aba e fica na borda direita quando as abas precisam rolar. O estado recolhido acompanha a tentativa durante a sessão. A conclusão histórica do NAT/PAT aparece no menu junto do progresso da tentativa atual. O painel do Capítulo 6 usa rótulos acessíveis e ajuda visual no idioma ativo. [Guia NAT/PAT](progressive-nat-pat.md)
 
-## Retomar em casa
+## Retomar em 27/11/2026
 
-- Atualize a `main` a partir de `origin/main` se o checkout permitir avanço direto. Revise manualmente a leitura do diagnóstico com um ICMP sem rota, um percurso NAT/PAT e o terminal aberto.
-- Conclua a validação manual da Etapa 3 do tutorial NAT/PAT. Confirme o HTTP de PC2 após corrigir a regra, abra **Firewall → Conntrack** e compare as portas externas durante a demonstração de PAT. A verificação HTTP dos dois PCs conclui o tutorial. Os endereços a configurar usam o destaque técnico C. [Guia do tutorial](progressive-nat-pat.md)
-- Publique o formulário de feedback, ative as notificações e configure o ID antes de testar upload e recebimento de e-mail. [Configuração do Tally](feedback-tally.md)
-- Considere VLAN Trunk 802.1Q como próxima implementação.
+Atualize a `main` a partir de `origin/main` se o checkout permitir avanço direto.
+
+1. Traduzir o tutorial NAT/PAT para DE, EN e PT-BR. Na revisão manual da etapa 3, verificar o HTTP de PC2 e comparar as portas externas em **Firewall → Conntrack**. [Guia do tutorial](progressive-nat-pat.md)
+2. Configurar e publicar o formulário Tally com upload de imagem e notificações por e-mail. Definir `VITE_TALLY_FEEDBACK_FORM_ID` no ambiente de build. [Configuração do Tally](feedback-tally.md)
+3. Testar o envio real do feedback com uma imagem, confirmar a notificação por e-mail e publicar a versão atualizada na Vercel.
+
+Para depois, revisar manualmente o diagnóstico com ICMP sem rota, NAT/PAT e terminal aberto. VLAN Trunk 802.1Q segue como candidata a uma próxima implementação.
 
 ## Validação
 
-A rodada final passou em 154 testes direcionados, 126 verificações em Chromium, TypeScript, build e `git diff --check`. A revisão anterior do diagnóstico também cobriu ICMP sem rota e NAT/PAT em Chromium.
+A regressão Chromium do capítulo 6 verifica os controles compartilhados de movimentação, restauração, recolhimento, expansão e reinício ao alternar DE, EN e PT-BR durante a mesma tentativa. [Roteiro de revisão](../scripts/lpm-tutorial-review.mjs)
 
 A suíte completa ainda sinaliza a falha conhecida de visibilidade de um salto ARP no Capítulo 4 (`staticRoutingPresentation.test.ts`), já reproduzida na base `58529f9`.

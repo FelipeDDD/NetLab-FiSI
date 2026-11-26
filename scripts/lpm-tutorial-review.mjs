@@ -58,7 +58,10 @@ export async function runLpmReview({ page, url, root, report }) {
       `));
       await shot(`step-${n}-${language}-${width}`);
     }
-    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 950, deviceScaleFactor: 1, mobile: false }); await page.evaluate('lang.getState().setLanguage("de");theme.getState().setTheme("graphite-dark");');
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 950, deviceScaleFactor: 1, mobile: false });
+    await page.evaluate('lang.getState().setLanguage("de");theme.getState().setTheme("graphite-dark");');
+    // Let the desktop layout settle before the next real pointer interaction.
+    await page.evaluate('await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));');
   };
   try {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 950, deviceScaleFactor: 1, mobile: false }); await mount(false); await page.evaluate('lang.getState().setLanguage("de");');
@@ -134,6 +137,42 @@ export async function runLpmReview({ page, url, root, report }) {
       await click('.react-flow__node[data-id="tutorial-06-r1"]');await click('[role="tab"][id$="-tab-routing"]');await saved();
       assert.equal((await progress()).inspected,true);assert.deepEqual((await progress()).completed,[1]);
       assert(await page.evaluate('return !document.querySelector("[data-lpm-help]").open&&!document.querySelector("[data-lpm-step] table");'));
+    });
+    await test('shared panel controls follow the active language without reloading the attempt', async () => {
+      const panelSelector = '[data-exercise="guided-lpm"]';
+      const toggle = panelSelector + ' > header > button[aria-expanded]';
+      const restart = '[data-chapter-restart="longest-prefix-match"]';
+      const before = await progress();
+      const verify = async (language, collapsed, restartOpen = false) => {
+        await page.evaluate(`lang.getState().setLanguage(${JSON.stringify(language)});`);
+        await wait(`(() => {
+          const panel = document.querySelector(${JSON.stringify(panelSelector)});
+          const handle = panel.querySelector('.exercise-drag-handle'), reset = panel.querySelector('.exercise-position-reset');
+          const toggle = panel.querySelector('header > button[aria-expanded]'), restart = panel.querySelector('[data-chapter-restart]');
+          const confirm = panel.querySelector('[data-chapter-restart-popover]');
+          const t = window.panelReviewTranslate.bind(null, ${JSON.stringify(language)});
+          return panel.getAttribute('aria-label') === t('exercises.panelLabel') &&
+            handle.getAttribute('aria-label') === t('exercises.panelMove') && handle.title === t('exercises.panelMoveHint') &&
+            reset.getAttribute('aria-label') === t('exercises.panelResetPosition') && reset.title === t('exercises.panelResetPosition') &&
+            toggle.getAttribute('aria-label') === t(${JSON.stringify(collapsed ? 'exercises.expand' : 'exercises.collapse')}) &&
+            toggle.getAttribute('aria-expanded') === ${JSON.stringify(String(!collapsed))} &&
+            restart.getAttribute('aria-label') === t('guidedRestart.open') && restart.title === t('guidedRestart.open') &&
+            (${restartOpen} ? confirm?.getAttribute('aria-label') === t('guidedRestart.title') &&
+              confirm.querySelector('p').textContent === t('guidedRestart.description') : !confirm);
+        })()`);
+      };
+      await page.evaluate("window.panelReviewTranslate = (await import('/src/i18n/index.ts')).translate;");
+      const languages = ['de', 'en', 'pt-BR'];
+      for (const language of languages) await verify(language, false);
+      await click(toggle);
+      for (const language of languages) await verify(language, true);
+      await click(toggle);
+      await click(restart);
+      for (const language of languages) await verify(language, false, true);
+      for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await verify('de', false);
+      assert(await page.evaluate(`return document.activeElement === document.querySelector(${JSON.stringify(restart)});`));
+      assert.deepEqual(await progress(), before);
     });
   } finally {
     await page.evaluate('window.release?.();window.ws?.dispose();');
